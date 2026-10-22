@@ -75,8 +75,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          [ -n "$VERSION" ] || VERSION="2.0.0"
           STAGE=release-stage/macos
           mkdir -p "$STAGE"
 
@@ -85,11 +83,17 @@ jobs:
           test -n "$APP_PATH"
           test -n "$DMG_PATH"
 
-          # 版本必须与 bundle 内嵌的 Info.plist 一致，否则用户装的包与源码对不上。
+          # 版本以 bundle 内嵌的 Info.plist 为准。手动 dispatch 时 ref 是分支名而不是
+          # tag，此时没有可比的 tag 版本，只在确实是 v* tag 时才做一致性校验。
           ACTUAL_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
-          if [ "$ACTUAL_VERSION" != "$VERSION" ]; then
-            echo "bundle version $ACTUAL_VERSION != tag version $VERSION" >&2
-            exit 1
+          VERSION="$ACTUAL_VERSION"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$ACTUAL_VERSION" != "$TAG_VERSION" ]; then
+              echo "bundle version $ACTUAL_VERSION != tag version $TAG_VERSION" >&2
+              exit 1
+            fi
+            VERSION="$TAG_VERSION"
           fi
 
           # 记录签名状态：未签名产物必须如实标注，不能被表述为已签名。
