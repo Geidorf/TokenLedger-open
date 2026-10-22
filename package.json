@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Geidorf/TokenLedger.git"
+    "url": "https://github.com/Geidorf/TokenLedger-open.git"
   },
-  "homepage": "https://github.com/Geidorf/TokenLedger#readme",
+  "homepage": "https://github.com/Geidorf/TokenLedger-open#readme",
   "bugs": {
-    "url": "https://github.com/Geidorf/TokenLedger/issues"
+    "url": "https://github.com/Geidorf/TokenLedger-open/issues"
   },
   "private": true,
   "type": "module",
