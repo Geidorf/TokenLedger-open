@@ -1,0 +1,124 @@
+name: TokenLedger Unsigned macOS DMG
+
+# 为公开发行版产出**未签名**的 macOS arm64 DMG 与 ZIP。
+#
+# 与 release-rc.yml 的分工：release-rc.yml 出**已签名并公证**的正式 RC，
+# 需要 Apple Developer ID 与公证凭据；本 workflow 出未签名产物，供公开版
+# 在签名链路就绪前提供可安装的 macOS 包。ADR-015 要求未签名产物不得表述为
+# 公开 RC，因此这里只上传到 release 的 pre-release 资产，且 release notes
+# 必须写明未签名状态。
+#
+# 触发：手动 dispatch，或在 v* tag 上运行。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '上传到哪个 release tag（留空则不发布，只构建）'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tokenledger-unsigned-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_CHANNEL: 'public-rc'
+
+jobs:
+  unsigned-macos:
+    name: Unsigned macOS arm64 DMG & ZIP
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Reject every Rust warning before packaging
+        env:
+          RUSTFLAGS: '--check-cfg=cfg(feature,values("cargo-clippy"))'
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Build unsigned arm64 DMG and ZIP
+        run: npm run build -- --target aarch64-apple-darwin --bundles dmg,app --config src-tauri/tauri.macos.conf.json
+
+      - name: Stage the bundles and record hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -n "$VERSION" ] || VERSION="2.0.0"
+          STAGE=release-stage/macos
+          mkdir -p "$STAGE"
+
+          APP_PATH="$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          DMG_PATH="$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$APP_PATH"
+          test -n "$DMG_PATH"
+
+          # 版本必须与 bundle 内嵌的 Info.plist 一致，否则用户装的包与源码对不上。
+          ACTUAL_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+          if [ "$ACTUAL_VERSION" != "$VERSION" ]; then
+            echo "bundle version $ACTUAL_VERSION != tag version $VERSION" >&2
+            exit 1
+          fi
+
+          # 记录签名状态：未签名产物必须如实标注，不能被表述为已签名。
+          {
+            echo "signature=unsigned"
+            echo "notarization=not-applied"
+            echo "bundle_version=$ACTUAL_VERSION"
+            echo "source_sha=$GITHUB_SHA"
+            echo "build_environment=GitHub Actions macos-15 arm64; run $GITHUB_RUN_ID"
+          } > "$STAGE/macos-signature.txt"
+
+          cp "$DMG_PATH" "$STAGE/TokenLedger_macOS_${VERSION}_arm64-unsigned.dmg"
+          # ZIP 让不装 DMG 的用户也能取到 .app 本体。
+          (cd "$(dirname "$APP_PATH")" && zip -q -r "$GITHUB_WORKSPACE/$STAGE/TokenLedger_macOS_${VERSION}_arm64-unsigned.zip" "$(basename "$APP_PATH")")
+
+          shasum -a 256 "$STAGE"/*.dmg "$STAGE"/*.zip | tee "$STAGE/macos-sha256.txt"
+
+      - name: Verify the staged artifacts contain no forbidden strings
+        run: node scripts/verify-release-artifact-clean.mjs release-stage/macos/*.dmg release-stage/macos/*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-macos
+          path: release-stage/macos
+          if-no-files-found: error
+
+      - name: Upload to the release as pre-release assets
+        if: inputs.tag != '' || startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-stage/macos/*.dmg release-stage/macos/*.zip --clobber
+            echo "uploaded to existing release $RELEASE_TAG"
+          else
+            echo "release $RELEASE_TAG does not exist; artifacts stay in this run only" >&2
+          fi

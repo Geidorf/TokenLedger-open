@@ -45,6 +45,7 @@ src-tauri/permissions/
 
 # Local probe/scratch state
 .tmp/
+.tmp-*/
 
 # 本机 MCP 配置（含真实项目引用；仓库内 .mcp.json 只留占位符）
 .mcp.local.json
