@@ -58,6 +58,11 @@ jobs:
 
       - run: npm ci
 
+      # `tauri::generate_context!` 会检查 frontendDist（../dist）目录存在。
+      # clippy 与 build 都要过这道宏，目录缺失时宏直接 panic。
+      - name: Create placeholder frontendDist
+        run: mkdir -p dist
+
       - name: Reject every Rust warning before packaging
         env:
           RUSTFLAGS: '--check-cfg=cfg(feature,values("cargo-clippy"))'
