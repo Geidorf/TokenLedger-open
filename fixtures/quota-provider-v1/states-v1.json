@@ -1,0 +1,143 @@
+{
+  "envelopeCases": [
+    {
+      "name": "codex-auth-required",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "openai-codex-local",
+        "displayName": "Codex",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "auth-required",
+        "windows": [],
+        "reasonCode": "local_authorization_required",
+        "action": {
+          "kind": "open-settings",
+          "labelKey": "quota.action.configureCodex",
+          "value": "codex-local"
+        }
+      },
+      "readerOutcome": "valid",
+      "syncOutcome": "reject-action"
+    },
+    {
+      "name": "claude-consumer-unsupported",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "anthropic-claude-consumer",
+        "displayName": "Claude",
+        "scope": "consumer-subscription",
+        "mode": "unsupported",
+        "capability": "unsupported",
+        "status": "unsupported",
+        "windows": [],
+        "reasonCode": "consumer_api_unavailable",
+        "action": {
+          "kind": "show-command",
+          "labelKey": "quota.action.openClaudeUsage",
+          "value": "/usage"
+        }
+      },
+      "readerOutcome": "valid",
+      "syncOutcome": "reject-action"
+    },
+    {
+      "name": "organization-provider-error",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "openai-api-organization",
+        "displayName": "OpenAI API organization",
+        "scope": "api-organization",
+        "mode": "automatic",
+        "capability": "plan-dependent",
+        "status": "error",
+        "windows": [],
+        "reasonCode": "provider_worker_failed"
+      },
+      "readerOutcome": "valid",
+      "syncOutcome": "valid"
+    },
+    {
+      "name": "claude-codexbar-timeout",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "anthropic-claude-consumer",
+        "displayName": "Claude consumer usage",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "experimental",
+        "status": "error",
+        "windows": [],
+        "reasonCode": "claude_codexbar_timeout"
+      },
+      "readerOutcome": "valid",
+      "syncOutcome": "valid"
+    },
+    {
+      "name": "claude-native-authorization-required",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "anthropic-claude-consumer",
+        "displayName": "Claude consumer usage",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "experimental",
+        "status": "auth-required",
+        "windows": [],
+        "reasonCode": "claude_native_authorization_required",
+        "action": {
+          "kind": "open-settings",
+          "labelKey": "quota.action.reviewClaudeNative",
+          "value": "claude-local"
+        }
+      },
+      "readerOutcome": "valid",
+      "syncOutcome": "reject-action"
+    },
+    {
+      "name": "future-optional-fields",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "future-compatible-provider",
+        "displayName": "Future compatible",
+        "scope": "api-organization",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "future-compatible-provider",
+            "windowId": "future:tokens",
+            "windowLabel": "Token usage",
+            "scope": "api-organization",
+            "source": "official-api",
+            "status": "ok",
+            "used": 1200,
+            "unit": "tokens",
+            "observedAt": "2026-07-15T08:20:00Z",
+            "fetchedAt": "2026-07-15T08:20:01Z",
+            "staleAfterSeconds": 600,
+            "futureWindowMetadata": {
+              "revision": 2
+            }
+          }
+        ],
+        "futureEnvelopeMetadata": {
+          "revision": 2
+        }
+      },
+      "readerOutcome": "valid-ignore-unknown",
+      "syncOutcome": "reject-unknown-field"
+    }
+  ],
+  "absenceCase": {
+    "name": "old-response-without-quota",
+    "input": {
+      "summary": {
+        "totalTokens": 1200
+      }
+    },
+    "outcome": "unavailable-not-zero"
+  }
+}

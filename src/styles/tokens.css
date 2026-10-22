@@ -1,0 +1,741 @@
+/* ==========================================================================
+   TokenLedger design tokens
+   --------------------------------------------------------------------------
+   :root exposes the raw CSS custom properties used by hand-written styles
+   in src/index.css and by component-level inline styles.
+   The @theme block makes the same values available to Tailwind 4 utilities
+   (e.g. `bg-primary`, `text-secondary`, `rounded-md`) without a JS config file.
+
+   Theme strategy:
+   - :root[data-theme="dark"] (default + auto-dark) holds the dark palette.
+     T10.150 moved it from the old macOS window gray (#1c1c1e) to a deeper,
+     slightly cool neutral with three clear depth steps:
+       app/window #0a0c10 → page #0d0f13 → card #15181e → raised #1b1f26.
+     Token names are unchanged so existing component code keeps working.
+   - :root[data-theme="light"] defines the light palette (cool gray page,
+     white cards, soft layered shadows). The useTheme hook applies data-theme
+     on <html> based on user choice or system preference.
+   - Text keeps a readable ladder on cards (dark ≈ 16 / 10.6 / 6.9 : 1,
+     light ≈ 17.9 / 9.7 / 5.7 : 1) so hierarchy comes from tone, not weight:
+     on Windows the CJK UI font only ships Regular and Bold, so every
+     weight ≥ 600 renders as Bold and cannot carry hierarchy by itself.
+   ========================================================================== */
+
+:root,
+:root[data-theme="dark"],
+:root[data-theme="auto"] {
+  /* ----- Semantic surface colors ----------------------------------------- */
+  --color-bg-app: #0a0c10;
+  --color-bg-shell-grad-1: transparent;
+  --color-bg-shell-grad-2: #0d0f13;
+  --color-bg-shell-grad-3: #0d0f13;
+  --color-bg-sidebar: rgba(10, 12, 16, 0.9);
+  --color-bg-header: rgba(13, 15, 19, 0.82);
+  --color-bg-header-solid: #0d0f13;
+  --color-bg-popover: #1d2129;
+  --color-bg-subtle: rgba(255, 255, 255, 0.03);
+  --color-bg-scrim: rgba(3, 5, 9, 0.66);
+  --color-bg-page: #0d0f13;
+  --color-bg-input: rgba(255, 255, 255, 0.045);
+  --color-bg-hover-soft: rgba(255, 255, 255, 0.035);
+  --color-bg-hover-mid: rgba(255, 255, 255, 0.055);
+  --color-bg-hover-strong: rgba(255, 255, 255, 0.08);
+  --color-bg-hover-bright: rgba(255, 255, 255, 0.1);
+
+  /* ----- Text colors ----------------------------------------------------- */
+  --color-text-primary: #f2f4f7;
+  --color-text-secondary: #c3c8d2;
+  --color-text-tertiary: #9aa2b0;
+  --color-text-muted: #a5acb9;
+  --color-text-faint: #8f97a5;
+  --color-text-dimmer: #8b93a1;
+  --color-text-weekday: #9aa2b0;
+  --color-text-on-primary: #ffffff;
+  --color-text-inverse: #f2f4f7;
+  --color-text-danger: #fb7185;
+  --color-danger-text: #fb7185;
+  --color-text-month: #b4bac6;
+  --color-text-success: #ffffff;
+  /* Small status text on tinted chips and cards (T10.150 QA F6). Dark keeps
+     the status hues: they already clear 7:1 on every tint. */
+  --color-success-text: #4ade80;
+  --color-warning-text: #fbbf24;
+
+  /* ----- Borders & dividers --------------------------------------------- */
+  --color-border-faint: rgba(255, 255, 255, 0.05);
+  --color-border-row: rgba(255, 255, 255, 0.045);
+  --color-border-status: rgba(255, 255, 255, 0.06);
+
+  /* ----- Brand & accent palette ----------------------------------------- */
+  --color-primary-hover: #8fb4ff;
+  /* 白字压在强调色上不足 4.5:1（T10.128 P1）。填充另立一个 token：
+     强调色仍需在深底上够亮，填充色则要暗到白字能过 4.5:1（#2f6be6 为 4.81:1）。 */
+  --color-primary-fill: #2f6be6;
+  --color-primary-fill-hover: #3a75ee;
+  --color-primary-soft-bg: rgba(91, 140, 255, 0.14);
+  --color-primary-soft-border: rgba(91, 140, 255, 0.28);
+  --color-primary-soft-icon: #8fb4ff;
+  --color-primary-glow: rgba(91, 140, 255, 0.28);
+  --color-primary-focus: rgba(107, 157, 255, 0.78);
+  --color-primary-focus-soft: rgba(107, 157, 255, 0.55);
+
+  --color-success-soft-bg: rgba(74, 222, 128, 0.12);
+  --color-success-soft-border: rgba(74, 222, 128, 0.32);
+  --color-success-toast-bg: rgba(12, 52, 32, 0.94);
+  --color-success-toast-border: rgba(74, 222, 128, 0.28);
+
+  --color-danger-soft-bg: rgba(251, 113, 133, 0.12);
+  --color-danger-soft-border: rgba(251, 113, 133, 0.36);
+  --color-danger-soft-hover: rgba(251, 113, 133, 0.2);
+  --color-danger-toast-bg: rgba(72, 16, 30, 0.94);
+  --color-danger-toast-border: rgba(251, 113, 133, 0.32);
+
+  --color-info-toast-bg: rgba(14, 34, 70, 0.94);
+  --color-info-toast-border: rgba(91, 140, 255, 0.32);
+
+  --color-pill-bg: rgba(255, 255, 255, 0.05);
+  --color-pill-border: rgba(255, 255, 255, 0.08);
+  --color-code-bg: rgba(255, 255, 255, 0.07);
+  --color-toggle-off: rgba(255, 255, 255, 0.14);
+  --color-icon-soft-bg: rgba(91, 140, 255, 0.14);
+  --color-row-divider: rgba(255, 255, 255, 0.06);
+  --color-table-head-bg: #11141a;
+
+  --color-scroll-track: transparent;
+  --color-scroll-thumb: rgba(148, 158, 176, 0.28);
+  --color-scroll-thumb-hover: rgba(176, 186, 204, 0.5);
+
+  /* ----- Brand material (T10.150) -----------------------------------------
+     The gradient is identity, not data: logo mark, the active navigation
+     indicator, the primary KPI accent and primary buttons. Charts keep the
+     flat --chart-* series colors so color never becomes the only cue. */
+  --color-brand-1: #5b8cff;
+  --color-brand-2: #8b6cff;
+  --color-brand-gradient: linear-gradient(135deg, #5b8cff 0%, #8b6cff 100%);
+  --color-brand-gradient-soft: linear-gradient(135deg, rgba(91, 140, 255, 0.2) 0%, rgba(139, 108, 255, 0.14) 100%);
+  --color-ambient:
+    radial-gradient(1100px 420px at 18% -12%, rgba(91, 140, 255, 0.1), transparent 62%),
+    radial-gradient(900px 380px at 100% -6%, rgba(139, 108, 255, 0.07), transparent 60%);
+
+  /* ----- Chart series (T10.150; retuned T10.187 to colour-vision palette B,
+     user decision U-4, 2026-09-25) -------------------------------------------
+     Harmonized, slightly desaturated hues that stay distinct on #15181e.
+     Read through src/utils/chartTheme.ts; components never inline hex.
+     Every same-view pair of the 8 slots clears T10.161's colour-vision bar
+     (deutan >=5.8, protan >=5.4, tritan >=3.3) under Machado 2009 severity-1.0
+     simulation, with a margin of about 10% (10.06% unquantised at the
+     tightest pair; 8.1% for light protan once the simulated colour is
+     rounded to 8-bit — docs/task-logs/T10.187/*). Android uses the same 8
+     values, in the same order (T10.177); the desktop static wallpaper keeps
+     its own separate dark copy, held equal by a fixture contract test
+     (fixtures/tool-chart-slots-v1/palette-b.json, T10.187 review P2-1). */
+  --chart-1: #6b9dff;
+  --chart-2: #907adc;
+  --chart-3: #2dd4bf;
+  --chart-4: #fbbf24;
+  --chart-5: #fb7185;
+  --chart-6: #3fe480;
+  --chart-7: #3dbdf7;
+  --chart-8: #fb923c;
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-axis: #8f97a5;
+
+  /* Heatmap levels (kept dark-only; light palette reuses the same tones) */
+  --heat-0: #1a2130;
+  --heat-low: #1e293b;
+  --heat-k1: #0f2537;
+  --heat-k2: #104a6d;
+  --heat-k3: #0277bd;
+  --heat-k4: #4fc3f7;
+  --heat-m1: #064e3b;
+  --heat-m2: #0f766e;
+  --heat-m3: #10b981;
+  --heat-m4: #34d399;
+  --heat-b1: #581c87;
+  --heat-b2: #7e22ce;
+  --heat-b3: #c084fc;
+  --heat-future: rgba(40, 48, 62, 0.42);
+
+  /* ----- Enhanced semantic palette (v2) ---------------------------------- */
+  --color-bg-inset-hover: rgba(0, 0, 0, 0.26);
+  --color-text-label: #a5acb9;
+  --color-text-caption: #98a0ae;
+  --color-primary-muted: rgba(107, 157, 255, 0.55);
+  --color-primary-subtle: rgba(107, 157, 255, 0.08);
+  --color-success-muted: rgba(74, 222, 128, 0.55);
+  --color-success-subtle: rgba(74, 222, 128, 0.08);
+  --color-warning-muted: rgba(251, 191, 36, 0.55);
+  --color-warning-subtle: rgba(251, 191, 36, 0.08);
+  --color-danger-muted: rgba(251, 113, 133, 0.55);
+  --color-danger-subtle: rgba(251, 113, 133, 0.08);
+  --color-info-muted: rgba(56, 189, 248, 0.55);
+  --color-info-subtle: rgba(56, 189, 248, 0.08);
+
+  /* ----- Enhanced materials & inner highlights -------------------------- */
+  --color-border-inner-highlight: rgba(255, 255, 255, 0.06);
+  --color-border-glass: rgba(255, 255, 255, 0.08);
+  --color-surface-gradient-1: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+  --color-surface-gradient-card: linear-gradient(180deg, rgba(29, 33, 41, 0.92) 0%, rgba(21, 24, 30, 0.98) 100%);
+  --color-surface-glow-blue: radial-gradient(circle at 50% 0%, rgba(91, 140, 255, 0.16), transparent 70%);
+  --color-surface-glow-emerald: radial-gradient(circle at 50% 0%, rgba(74, 222, 128, 0.14), transparent 70%);
+  --color-surface-glow-violet: radial-gradient(circle at 50% 0%, rgba(139, 108, 255, 0.16), transparent 70%);
+  --color-surface-glow-amber: radial-gradient(circle at 50% 0%, rgba(251, 191, 36, 0.14), transparent 70%);
+
+  /* ----- Shadows --------------------------------------------------------- */
+  --shadow-toast: 0 24px 60px -12px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-primary: 0 10px 24px -6px rgba(47, 107, 230, 0.5);
+  --shadow-glow-primary: 0 0 28px rgba(91, 140, 255, 0.24);
+  --shadow-glow-success: 0 0 24px rgba(74, 222, 128, 0.2);
+  --shadow-modal: 0 32px 80px -16px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.07);
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Light theme
+   --------------------------------------------------------------------------
+   Activated by data-theme="light" on <html>. The useTheme hook in App.tsx
+   applies this attribute when the user selects "Light" or when the system
+   preference is light and data-theme="auto".
+   ========================================================================== */
+
+:root[data-theme="light"] {
+  --color-bg-app: #eceef2;
+  --color-bg-base: #ffffff;
+  --color-bg-elevated: rgba(15, 23, 42, 0.03);
+  --color-bg-overlay: rgba(255, 255, 255, 0.98);
+  --color-bg-shell-grad-1: transparent;
+  --color-bg-shell-grad-2: #f7f8fa;
+  --color-bg-shell-grad-3: #f4f5f7;
+  --color-bg-panel: #ffffff;
+  --color-bg-sidebar: rgba(238, 240, 244, 0.94);
+  --color-bg-header: rgba(246, 247, 249, 0.86);
+  --color-bg-header-solid: #f6f7f9;
+  --color-bg-popover: #ffffff;
+  --color-bg-subtle: rgba(15, 23, 42, 0.03);
+  --color-bg-scrim: rgba(15, 23, 42, 0.28);
+  --color-bg-page: #f4f5f7;
+  --color-bg-input: rgba(15, 23, 42, 0.04);
+  --color-bg-hover-soft: rgba(15, 23, 42, 0.03);
+  --color-bg-hover-mid: rgba(15, 23, 42, 0.05);
+  --color-bg-hover-strong: rgba(15, 23, 42, 0.08);
+  --color-bg-hover-bright: rgba(15, 23, 42, 0.1);
+
+  --color-text-primary: #0f1729;
+  --color-text-secondary: #3b4556;
+  --color-text-tertiary: #5d6778;
+  --color-text-muted: #586273;
+  --color-text-faint: #626c7d;
+  --color-text-dimmer: #667085;
+  --color-text-weekday: #5d6778;
+  --color-text-on-primary: #ffffff;
+  --color-text-inverse: #0f1729;
+  --color-text-danger: #c81e3c;
+  --color-danger-text: #c81e3c;
+  --color-text-month: #3b4556;
+  --color-text-success: #15803d;
+  /* 11px 状态胶囊压在 6–10% 的同色调底上，选中行还要再叠一层主色底：
+     #15803d / #a15c07 只有 3.8–4.5:1。小字改用文字档，实测 ≥5.2:1（T10.150 QA F6）。 */
+  --color-success-text: #166534;
+  --color-warning-text: #8a4b00;
+
+  --color-border: rgba(15, 23, 42, 0.08);
+  --color-border-strong: rgba(15, 23, 42, 0.14);
+  --color-border-faint: rgba(15, 23, 42, 0.06);
+  --color-border-row: rgba(15, 23, 42, 0.06);
+  --color-border-status: rgba(15, 23, 42, 0.08);
+
+  /* 选中项标签压在 8% 深底上仍需过 4.5:1（T10.128 P2）：#1f5fd6 约 4.9:1。 */
+  --color-primary: #1f5fd6;
+  --color-primary-hover: #1a52bd;
+  --color-primary-fill: #1f5fd6;
+  --color-primary-fill-hover: #1a52bd;
+  --color-primary-soft-bg: rgba(31, 95, 214, 0.09);
+  --color-primary-soft-border: rgba(31, 95, 214, 0.2);
+  --color-primary-soft-icon: #2563eb;
+  --color-primary-glow: rgba(31, 95, 214, 0.18);
+  --color-primary-focus: rgba(31, 95, 214, 0.72);
+  --color-primary-focus-soft: rgba(31, 95, 214, 0.5);
+
+  /* 状态点、图形与白卡上的正文用它（#15803d 在白卡上 5.0:1）；色调底上的
+     小字改用 --color-success-text（T10.150 QA F6）。 */
+  --color-success: #15803d;
+  --color-success-soft-bg: rgba(22, 163, 74, 0.1);
+  --color-success-soft-border: rgba(22, 163, 74, 0.3);
+  --color-success-toast-bg: rgba(236, 253, 243, 0.97);
+  --color-success-toast-border: rgba(22, 163, 74, 0.3);
+
+  --color-accent: #6d4ae0;
+
+  --color-warning: #a15c07;
+
+  --color-danger: #c81e3c;
+  --color-danger-soft-bg: rgba(225, 29, 72, 0.08);
+  --color-danger-soft-border: rgba(225, 29, 72, 0.28);
+  --color-danger-soft-hover: rgba(225, 29, 72, 0.14);
+  --color-danger-toast-bg: rgba(255, 241, 242, 0.97);
+  --color-danger-toast-border: rgba(225, 29, 72, 0.28);
+
+  --color-info: #0369a1;
+  --color-info-toast-bg: rgba(239, 246, 255, 0.97);
+  --color-info-toast-border: rgba(31, 95, 214, 0.26);
+
+  --color-orange: #b45309;
+
+  --color-pill-bg: rgba(15, 23, 42, 0.05);
+  --color-pill-border: rgba(15, 23, 42, 0.08);
+  --color-code-bg: rgba(15, 23, 42, 0.06);
+  --color-toggle-off: rgba(100, 116, 139, 0.36);
+  --color-icon-soft-bg: rgba(31, 95, 214, 0.09);
+  --color-row-divider: rgba(15, 23, 42, 0.07);
+  --color-table-head-bg: #f9fafb;
+
+  /* Brand material and ambient light (T10.150). */
+  --color-brand-1: #3b6ff5;
+  --color-brand-2: #7c5cf0;
+  --color-brand-gradient: linear-gradient(135deg, #3b6ff5 0%, #7c5cf0 100%);
+  --color-brand-gradient-soft: linear-gradient(135deg, rgba(59, 111, 245, 0.12) 0%, rgba(124, 92, 240, 0.08) 100%);
+  --color-ambient:
+    radial-gradient(1100px 420px at 18% -12%, rgba(59, 111, 245, 0.07), transparent 62%),
+    radial-gradient(900px 380px at 100% -6%, rgba(124, 92, 240, 0.05), transparent 60%);
+
+  /* Chart series on white cards (T10.150; retuned T10.187 palette B, U-4).
+     All 8 now also clear 3:1 against the bare page background #f4f5f7
+     (previously chart-4 alone fell short at ~2.92:1). */
+  --chart-1: #2f6be6;
+  --chart-2: #8972fe;
+  --chart-3: #0d9488;
+  --chart-4: #d57501;
+  --chart-5: #d41340;
+  --chart-6: #16a34a;
+  --chart-7: #1d85c3;
+  --chart-8: #d34c04;
+  --chart-grid: rgba(15, 23, 42, 0.07);
+  --chart-axis: #5d6778;
+
+  /* Light surfaces need their own legible heatmap ramp. */
+  --heat-0: #edf0f5;
+  --heat-low: #e1e6ee;
+  --heat-k1: #d8ecff;
+  --heat-k2: #9ed1ff;
+  --heat-k3: #4aa8ff;
+  --heat-k4: #007aff;
+  --heat-m1: #d8f4e2;
+  --heat-m2: #93ddb0;
+  --heat-m3: #34c759;
+  --heat-m4: #178f3a;
+  --heat-b1: #ebe8ff;
+  --heat-b2: #c4bcff;
+  --heat-b3: #766ee8;
+  --heat-future: rgba(100, 116, 139, 0.1);
+
+  --color-scroll-track: transparent;
+  --color-scroll-thumb: rgba(15, 23, 42, 0.18);
+  --color-scroll-thumb-hover: rgba(15, 23, 42, 0.3);
+
+  /* ----- Enhanced semantic palette (v2) ---------------------------------- */
+  --color-bg-inset: rgba(15, 23, 42, 0.04);
+  --color-bg-inset-hover: rgba(15, 23, 42, 0.06);
+  --color-bg-elevated-2: rgba(15, 23, 42, 0.05);
+  --color-bg-elevated-3: rgba(15, 23, 42, 0.08);
+  --color-text-label: #586273;
+  --color-text-caption: #5d6778;
+  --color-border-subtle: rgba(15, 23, 42, 0.05);
+  --color-border-accent: rgba(31, 95, 214, 0.3);
+  --color-primary-muted: rgba(31, 95, 214, 0.5);
+  --color-primary-subtle: rgba(31, 95, 214, 0.06);
+  --color-success-muted: rgba(22, 163, 74, 0.5);
+  --color-success-subtle: rgba(22, 163, 74, 0.06);
+  --color-warning-muted: rgba(217, 119, 6, 0.5);
+  --color-warning-subtle: rgba(217, 119, 6, 0.06);
+  --color-danger-muted: rgba(225, 29, 72, 0.5);
+  --color-danger-subtle: rgba(225, 29, 72, 0.06);
+  --color-info-muted: rgba(2, 132, 199, 0.5);
+  --color-info-subtle: rgba(2, 132, 199, 0.06);
+
+  /* ----- Enhanced materials & inner highlights -------------------------- */
+  --color-border-inner-highlight: rgba(255, 255, 255, 0.7);
+  --color-border-glass: rgba(15, 23, 42, 0.08);
+  --color-surface-gradient-1: linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.4) 100%);
+  --color-surface-gradient-card: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
+  --color-surface-glow-blue: radial-gradient(circle at 50% 0%, rgba(59, 111, 245, 0.08), transparent 70%);
+  --color-surface-glow-emerald: radial-gradient(circle at 50% 0%, rgba(22, 163, 74, 0.08), transparent 70%);
+  --color-surface-glow-violet: radial-gradient(circle at 50% 0%, rgba(124, 92, 240, 0.08), transparent 70%);
+  --color-surface-glow-amber: radial-gradient(circle at 50% 0%, rgba(217, 119, 6, 0.08), transparent 70%);
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 4px 10px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 12px 28px -8px rgba(16, 24, 40, 0.14);
+  --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-toast: 0 20px 48px -12px rgba(16, 24, 40, 0.22), 0 0 0 1px rgba(16, 24, 40, 0.06);
+  --shadow-primary: 0 8px 20px -6px rgba(31, 95, 214, 0.36);
+  --shadow-xs: 0 1px 1px rgba(16, 24, 40, 0.04);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px -2px rgba(16, 24, 40, 0.05);
+  --shadow-card-hover: 0 2px 4px rgba(16, 24, 40, 0.04), 0 12px 28px -10px rgba(16, 24, 40, 0.14), 0 0 0 1px rgba(31, 95, 214, 0.08);
+  --shadow-float: 0 16px 40px -10px rgba(16, 24, 40, 0.2), 0 0 0 1px rgba(16, 24, 40, 0.06);
+  --shadow-modal: 0 32px 72px -16px rgba(16, 24, 40, 0.28), 0 0 0 1px rgba(16, 24, 40, 0.06);
+  --shadow-glow-primary: 0 0 24px rgba(31, 95, 214, 0.16);
+  --shadow-glow-success: 0 0 24px rgba(22, 163, 74, 0.16);
+
+  color-scheme: light;
+}
+
+/* ----- Spacing (4px grid) --------------------------------------------- */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+}
+
+/* ----- Radius (unified Apple-style rhythm) -----------------------------
+   Monotonic scale so larger surfaces always read rounder than the controls
+   nested inside them (concentric corners, per Apple HIG). sm stays at 6px so
+   the segmented control's buttons remain concentric with its 10px track
+   (10 − 4px padding = 6). */
+:root {
+  --radius-full: 9999px;
+  --radius-card: 16px;
+  --radius-chip: 10px;
+  --radius-button: 10px;
+  --radius-input: 8px;
+  --radius-modal: 20px;
+}
+
+/* ----- Typography ----------------------------------------------------- */
+:root {
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-xl2: 24px; /* fills the 20→28 gap (SF Title2/Title1 step) */
+  --font-size-2xl: 28px;
+  --font-size-3xs: 11px; /* legacy micro labels respect the 11px floor */
+  --font-size-2xs: 11px;
+  --font-size-display: 34px;
+  --font-size-hero: 48px;
+  /* T10.150：两档常用正文字号收成令牌，替代散落的 13px / 15px 字面量。 */
+  --font-size-md: 13px;
+  --font-size-title: 15px;
+
+  /* Line-heights — tighter on display sizes, roomier on body (SF type ramp) */
+  --leading-tight: 1.1;
+  --leading-snug: 1.25;
+  --leading-normal: 1.45;
+  --leading-display: 1.05;
+  --leading-body: 1.5;
+  --leading-compact: 1.2;
+
+  /* Letter-spacing — SF Pro Display tightens optically at large sizes */
+  --tracking-tight: -0.022em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-display: -0.035em;
+  --tracking-label: 0.03em;
+
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  /* SF Pro system stack: native on macOS / iOS, gracefully falls back to
+     Segoe UI Variable on Windows, system-ui on Linux/Android. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI Variable", "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-heavy: 800;
+  /* 界面标签用 500：Windows 中文字体没有 Medium，会回落为 Regular；
+     层级靠字号与色阶，而不是把每个标签都加粗。 */
+  --weight-label: 500;
+  --weight-title: 600;
+  --tracking-numeric: -0.02em;
+}
+
+/* ----- Motion --------------------------------------------------------- */
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --motion-toggle: 180ms;
+  --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --easing-ease: ease;
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 160ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --dur-sheet: 320ms;
+  --motion-instant: 60ms;
+  --motion-gentle: 400ms;
+  --motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --motion-accelerate: cubic-bezier(0.4, 0.0, 1, 1);
+
+  /* T10.150 motion language: quick, decelerating, never bouncy on data.
+     press 90ms → hover 160ms → indicator 360ms → enter 420ms. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --motion-press: 90ms;
+  --motion-hover: 160ms;
+  --motion-indicator: 360ms;
+  --motion-enter: 420ms;
+  --motion-stagger: 40ms;
+}
+
+/* ----- Glass / translucent surfaces ---------------------------------- */
+:root {
+  --glass-blur: 24px;
+  --glass-saturate: 180%;
+}
+
+/* ==========================================================================
+   Tailwind 4 theme bridge
+   --------------------------------------------------------------------------
+   Declaring these inside @theme exposes them as Tailwind utility classes:
+     bg-primary, text-secondary, border-default, rounded-md, p-4, mt-2, etc.
+   This is the Tailwind-4-native replacement for tailwind.config.ts's
+   theme.extend. The legacy JS config still exists for documentation
+   purposes but the source of truth is this file.
+   ========================================================================== */
+
+/* Canonical values live here once; aliases reference differently named tokens.
+   Never emit --token: var(--token): that invalidates the token through a cycle. */
+@theme {
+  --color-bg-base: #0d0f13;
+  --color-bg-elevated: #1b1f26;
+  --color-bg-overlay: rgba(21, 24, 30, 0.98);
+  --color-bg-panel: #15181e;
+
+  --color-primary: #6b9dff;
+  --color-success: #4ade80;
+  --color-accent: #a78bfa;
+  --color-warning: #fbbf24;
+  --color-danger: #fb7185;
+  --color-info: #38bdf8;
+  --color-orange: #fb923c;
+
+  --color-muted: var(--color-text-muted);
+  --color-faint: var(--color-text-faint);
+  --color-secondary: var(--color-text-secondary);
+  --color-tertiary: var(--color-text-tertiary);
+
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.11);
+
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 14px 34px -8px rgba(0, 0, 0, 0.55);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.45);
+
+  --text-xs: var(--font-size-xs);
+  --text-sm: var(--font-size-sm);
+  --text-base: var(--font-size-base);
+  --text-lg: var(--font-size-lg);
+  --text-xl: var(--font-size-xl);
+  --text-xl2: var(--font-size-xl2);
+  --text-2xl: var(--font-size-2xl);
+  --text-3xs: var(--font-size-3xs);
+  --text-2xs: var(--font-size-2xs);
+  --text-display: var(--font-size-display);
+  --text-hero: var(--font-size-hero);
+
+  --color-bg-inset: rgba(0, 0, 0, 0.22);
+  --color-bg-elevated-2: #232833;
+  --color-bg-elevated-3: #2b313d;
+  --color-label: var(--color-text-label);
+  --color-caption: var(--color-text-caption);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-accent: rgba(107, 157, 255, 0.4);
+
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.25);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -14px rgba(0, 0, 0, 0.55);
+  --shadow-card-hover: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 2px 6px rgba(0, 0, 0, 0.35), 0 16px 40px -16px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(107, 157, 255, 0.1);
+  --shadow-float: 0 20px 50px -12px rgba(0, 0, 0, 0.66), 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  --radius-xs: 4px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-pill: 100px;
+
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+}
+
+/* ========================================================================
+   Windows / system high-contrast bridge
+   ------------------------------------------------------------------------
+   Forced-colors mode is a user preference, not a second product theme. Use
+   system colors so Canvas/Field/Highlight remain legible in both light and
+   dark high-contrast palettes, while keeping the semantic token contract
+   intact for component styles and inline projections.
+   ======================================================================== */
+
+@media (forced-colors: active) {
+  :root,
+  :root[data-theme="dark"],
+  :root[data-theme="light"],
+  :root[data-theme="auto"] {
+    color-scheme: light dark;
+
+    --color-bg-base: Canvas;
+    --color-bg-elevated: Canvas;
+    --color-bg-overlay: Canvas;
+    --color-bg-shell-grad-1: Canvas;
+    --color-bg-shell-grad-2: Canvas;
+    --color-bg-shell-grad-3: Canvas;
+    --color-bg-panel: Canvas;
+    --color-bg-sidebar: Canvas;
+    --color-bg-header: Canvas;
+    --color-bg-header-solid: Canvas;
+    --color-bg-popover: Canvas;
+    --color-bg-subtle: Canvas;
+    --color-bg-scrim: Canvas;
+    --color-bg-page: Canvas;
+    --color-bg-input: Field;
+    --color-bg-hover-soft: Highlight;
+    --color-bg-hover-mid: Highlight;
+    --color-bg-hover-strong: Highlight;
+    --color-bg-hover-bright: Highlight;
+
+    --color-text-primary: CanvasText;
+    --color-text-secondary: CanvasText;
+    --color-text-tertiary: CanvasText;
+    --color-text-muted: CanvasText;
+    --color-text-faint: CanvasText;
+    --color-text-dimmer: CanvasText;
+    --color-text-weekday: CanvasText;
+    --color-text-on-primary: HighlightText;
+    --color-text-inverse: CanvasText;
+    /* CanvasText, not MarkText: see the warning and danger block below. */
+    --color-text-danger: CanvasText;
+    --color-danger-text: CanvasText;
+    --color-text-month: CanvasText;
+    --color-text-success: LinkText;
+    --color-text-label: CanvasText;
+    --color-text-caption: CanvasText;
+
+    --color-border: ButtonText;
+    --color-border-strong: ButtonText;
+    --color-border-faint: ButtonText;
+    --color-border-row: ButtonText;
+    --color-border-status: ButtonText;
+    --color-border-subtle: ButtonText;
+    --color-border-accent: Highlight;
+
+    --color-primary: Highlight;
+    --color-primary-hover: Highlight;
+    --color-primary-soft-bg: Highlight;
+    --color-primary-soft-border: Highlight;
+    --color-primary-soft-icon: Highlight;
+    --color-primary-glow: Highlight;
+    --color-primary-focus: Highlight;
+    --color-primary-focus-soft: Highlight;
+    --color-primary-muted: Highlight;
+    --color-primary-subtle: Highlight;
+    /* Primary fills (buttons, switch tracks) pair with HighlightText; left
+       unmapped they were forced to Canvas: an ON switch vanished and primary
+       labels drew HighlightText on Canvas (T10.150 QA F1/F2). */
+    --color-primary-fill: Highlight;
+    --color-primary-fill-hover: Highlight;
+
+    --color-success: LinkText;
+    --color-success-soft-bg: Canvas;
+    --color-success-soft-border: LinkText;
+    --color-success-toast-bg: Canvas;
+    --color-success-toast-border: LinkText;
+    --color-success-muted: LinkText;
+    --color-success-subtle: Canvas;
+    --color-success-text: LinkText;
+
+    /* Warning and danger foregrounds (text, icons, borders, status dots) all
+       sit on Canvas, and MarkText is black in every Chromium forced palette
+       (invisible on a dark Canvas), so every step uses CanvasText (T10.150 QA
+       F6 for the text step; T10.181 for the rest). The words still carry the
+       meaning; no system colour means "warning". */
+    --color-warning: CanvasText;
+    --color-warning-muted: CanvasText;
+    --color-warning-subtle: Canvas;
+    --color-warning-text: CanvasText;
+    --color-danger: CanvasText;
+    --color-danger-soft-bg: Canvas;
+    --color-danger-soft-border: CanvasText;
+    --color-danger-soft-hover: Canvas;
+    --color-danger-toast-bg: Canvas;
+    --color-danger-toast-border: CanvasText;
+    --color-danger-muted: CanvasText;
+    --color-danger-subtle: Canvas;
+    --color-info: LinkText;
+    --color-info-toast-bg: Canvas;
+    --color-info-toast-border: LinkText;
+    --color-info-muted: LinkText;
+    --color-info-subtle: Canvas;
+    --color-accent: Highlight;
+    --color-orange: CanvasText;
+
+    --color-pill-bg: Canvas;
+    --color-pill-border: ButtonText;
+    --color-code-bg: Canvas;
+    --color-toggle-off: GrayText;
+    --color-icon-soft-bg: Canvas;
+    --color-row-divider: ButtonText;
+    --color-table-head-bg: Canvas;
+    --color-scroll-track: Canvas;
+    --color-scroll-thumb: ButtonText;
+    --color-scroll-thumb-hover: Highlight;
+
+    --color-bg-inset: Canvas;
+    --color-bg-inset-hover: Highlight;
+    --color-bg-elevated-2: Canvas;
+    --color-bg-elevated-3: Canvas;
+
+    --heat-0: Canvas;
+    --heat-low: Canvas;
+    --heat-k1: Canvas;
+    --heat-k2: Highlight;
+    --heat-k3: Highlight;
+    --heat-k4: HighlightText;
+    --heat-m1: Canvas;
+    --heat-m2: LinkText;
+    --heat-m3: LinkText;
+    --heat-m4: LinkText;
+    --heat-b1: Canvas;
+    --heat-b2: Highlight;
+    --heat-b3: HighlightText;
+    --heat-future: Canvas;
+
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
+    --shadow-panel: none;
+    --shadow-toast: none;
+    --shadow-primary: none;
+    --shadow-xs: none;
+    --shadow-card: none;
+    --shadow-card-hover: none;
+    --shadow-float: none;
+    --shadow-glow-primary: none;
+    --shadow-glow-success: none;
+  }
+}

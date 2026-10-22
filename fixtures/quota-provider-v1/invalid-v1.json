@@ -1,0 +1,365 @@
+{
+  "cases": [
+    {
+      "name": "percent-over-100",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-percent",
+          "displayName": "Invalid percent",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-percent",
+              "windowId": "primary",
+              "windowLabel": "Primary",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 101,
+              "limit": 100,
+              "remaining": -1,
+              "unit": "percent",
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window-values",
+      "syncOutcome": "reject-window-values"
+    },
+    {
+      "name": "remaining-arithmetic-mismatch",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-arithmetic",
+          "displayName": "Invalid arithmetic",
+          "scope": "manual-budget",
+          "mode": "manual",
+          "capability": "manual",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-arithmetic",
+              "windowId": "monthly",
+              "windowLabel": "Monthly",
+              "scope": "manual-budget",
+              "source": "manual",
+              "status": "ok",
+              "used": 40,
+              "limit": 100,
+              "remaining": 70,
+              "unit": "usd",
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window-values",
+      "syncOutcome": "reject-window-values"
+    },
+    {
+      "name": "timestamp-without-zone",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-time",
+          "displayName": "Invalid time",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-time",
+              "windowId": "tokens",
+              "windowLabel": "Tokens",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "used": 1000,
+              "unit": "tokens",
+              "observedAt": "2026-07-15T08:00:00",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window-timeline",
+      "syncOutcome": "reject-window-timeline"
+    },
+    {
+      "name": "fractional-window-minutes",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-fractional-window",
+          "displayName": "Invalid fractional window",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-fractional-window",
+              "windowId": "primary",
+              "windowLabel": "Primary",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 10,
+              "limit": 100,
+              "remaining": 90,
+              "unit": "percent",
+              "windowMinutes": 0.5,
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window-timeline",
+      "syncOutcome": "reject-window-timeline"
+    },
+    {
+      "name": "fractional-stale-after-seconds",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-fractional-stale",
+          "displayName": "Invalid fractional stale",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-fractional-stale",
+              "windowId": "primary",
+              "windowLabel": "Primary",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 10,
+              "limit": 100,
+              "remaining": 90,
+              "unit": "percent",
+              "windowMinutes": 300,
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 0.5
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window-timeline",
+      "syncOutcome": "reject-window-timeline"
+    },
+    {
+      "name": "timeline-integer-overflow",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-timeline-overflow",
+          "displayName": "Invalid timeline overflow",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-timeline-overflow",
+              "windowId": "primary",
+              "windowLabel": "Primary",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 10,
+              "limit": 100,
+              "remaining": 90,
+              "unit": "percent",
+              "windowMinutes": 2147483648,
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 2147483648
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window-timeline",
+      "syncOutcome": "reject-window-timeline"
+    },
+    {
+      "name": "duplicate-window-stable-key",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "duplicate-window",
+          "displayName": "Duplicate window",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "duplicate-window",
+              "windowId": "primary",
+              "windowLabel": "Primary",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 10,
+              "unit": "requests",
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            },
+            {
+              "providerId": "duplicate-window",
+              "windowId": "primary",
+              "windowLabel": "Primary duplicate",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 11,
+              "unit": "requests",
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-duplicate-window-key",
+      "syncOutcome": "reject-duplicate-window-key"
+    },
+    {
+      "name": "unsupported-with-window",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "unsupported-with-data",
+          "displayName": "Unsupported with data",
+          "scope": "consumer-subscription",
+          "mode": "unsupported",
+          "capability": "unsupported",
+          "status": "unsupported",
+          "windows": [
+            {
+              "providerId": "unsupported-with-data",
+              "windowId": "invented",
+              "windowLabel": "Invented",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 0,
+              "unit": "percent",
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            }
+          ],
+          "reasonCode": "consumer_api_unavailable"
+        }
+      ],
+      "readerOutcome": "reject-envelope-status",
+      "syncOutcome": "reject-envelope-status"
+    },
+    {
+      "name": "duplicate-provider-stable-key",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "duplicate-provider",
+          "displayName": "Duplicate A",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "error",
+          "windows": [],
+          "reasonCode": "provider_worker_failed"
+        },
+        {
+          "schemaVersion": 1,
+          "providerId": "duplicate-provider",
+          "displayName": "Duplicate B",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "experimental",
+          "status": "error",
+          "windows": [],
+          "reasonCode": "source_schema_unsupported"
+        }
+      ],
+      "readerOutcome": "reject-duplicate-provider-key",
+      "syncOutcome": "reject-duplicate-provider-key"
+    },
+    {
+      "name": "unsafe-arbitrary-url-action",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "unsafe-action",
+          "displayName": "Unsafe action",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "auth-required",
+          "windows": [],
+          "reasonCode": "admin_key_required",
+          "action": {
+            "kind": "open-url",
+            "labelKey": "quota.action.signIn",
+            "value": "https://evil.example/collect?credential=redacted"
+          }
+        }
+      ],
+      "readerOutcome": "valid-envelope-hide-action",
+      "syncOutcome": "reject-action"
+    },
+    {
+      "name": "sync-account-label-disallowed",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "account-label",
+          "displayName": "Account label",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "account-label",
+              "windowId": "primary",
+              "windowLabel": "Primary",
+              "accountLabel": "person@example.com",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 20,
+              "limit": 100,
+              "remaining": 80,
+              "unit": "percent",
+              "observedAt": "2026-07-15T08:00:00Z",
+              "fetchedAt": "2026-07-15T08:00:01Z",
+              "staleAfterSeconds": 900
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "valid-local-envelope",
+      "syncOutcome": "reject-account-label"
+    }
+  ]
+}

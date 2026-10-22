@@ -1,0 +1,17 @@
+{
+  "summary": {
+    "totalTokens": 10,
+    "inputTokens": 4,
+    "outputTokens": 6,
+    "cachedTokens": 0,
+    "totalCost": 0.0123,
+    "totalRequests": 2,
+    "avgTokensPerReq": 5
+  },
+  "tools": {},
+  "models": {},
+  "trends": [],
+  "heatmap": {},
+  "history": [],
+  "machines": []
+}

@@ -1,0 +1,150 @@
+/* One-time notice at the top of 设置 → 模型价格 after the price override file
+   was cleaned up on upgrade (T10.189, U-5/U-6). A neutral card like the
+   settings groups below it: the heading and the text carry the meaning, the
+   icon only repeats it (no colour-only cue). */
+.price-migration-notice {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-panel);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  line-height: 1.6;
+}
+
+.price-migration-notice-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-primary-soft-bg);
+  color: var(--color-primary);
+}
+
+.price-migration-notice-body {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.price-migration-notice-title {
+  margin: 3px 0 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-title);
+  font-weight: var(--weight-title);
+  line-height: 1.4;
+}
+
+.price-migration-notice p {
+  max-width: 72ch;
+  margin: 0;
+}
+
+.price-migration-notice-changes {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+  list-style: none;
+}
+
+.price-migration-notice-changes li {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.price-migration-notice-model {
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.price-migration-notice-rate {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A ghost button: pulled left by its own padding so the label lines up with
+   the text above; the chevron repeats what the label says. */
+.price-migration-notice-more {
+  justify-self: start;
+  margin-inline-start: -14px;
+}
+
+.price-migration-notice-chevron {
+  transition: transform var(--motion-hover) var(--ease-out-quart);
+}
+
+.price-migration-notice-more[aria-expanded='true'] .price-migration-notice-chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .price-migration-notice-chevron {
+    transition: none;
+  }
+}
+
+.price-migration-notice-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.price-migration-notice-facts dt {
+  color: var(--color-text-tertiary);
+}
+
+.price-migration-notice-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.price-migration-notice-facts code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.price-migration-notice-error {
+  color: var(--color-danger);
+}
+
+.price-migration-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .price-migration-notice {
+    flex-direction: column;
+  }
+
+  .price-migration-notice-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .price-migration-notice-facts dd + dt {
+    margin-top: 6px;
+  }
+}

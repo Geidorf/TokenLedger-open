@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/tokenledger-icon.svg" />
+    <title>TokenLedger</title>
+    <!-- Theme bootstrap: resolve and apply the saved/system theme before the
+         first paint so light-mode users never see a dark flash (FOUC). This
+         mirrors src/utils/useTheme.ts exactly (storage key + auto->system
+         fallback). All color tokens are gated behind :root[data-theme=...],
+         so this attribute must be set before any styled content renders. -->
+    <script>
+      (function () {
+        try {
+          // Platform tag: gates macOS-only native vibrancy/transparency CSS
+          // (see src/index.css and src-tauri/tauri.macos.conf.json).
+          var ua = (navigator.userAgent || '').toLowerCase();
+          var plat = (navigator.platform || '').toLowerCase();
+          var isMac =
+            plat.indexOf('mac') >= 0 ||
+            ua.indexOf('macintosh') >= 0 ||
+            ua.indexOf('mac os x') >= 0;
+          document.documentElement.setAttribute('data-platform', isMac ? 'macos' : 'other');
+        } catch (e) {}
+        try {
+          var stored = localStorage.getItem('tokenledger:theme');
+          var mode =
+            stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'auto';
+          var effective =
+            mode === 'auto'
+              ? window.matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : 'dark'
+              : mode;
+          document.documentElement.setAttribute('data-theme', effective);
+          document.documentElement.style.colorScheme = effective;
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
+    <!-- First-paint background fallback (matches --color-bg-page in
+         src/styles/tokens.css) for the brief moment before bundled CSS loads. -->
+    <style>
+      html {
+        background-color: #0d0f13;
+        color: #f2f4f7;
+      }
+      html[data-theme='light'] {
+        background-color: #f4f5f7;
+        color: #0f1729;
+      }
+      /* macOS: keep the first paint transparent so the native vibrancy
+         material isn't masked by an opaque flash before the bundle loads. */
+      html[data-platform='macos'] {
+        background-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

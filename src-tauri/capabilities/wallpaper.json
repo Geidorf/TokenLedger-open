@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "wallpaper",
+  "description": "allows the read-only wallpaper webview to read settings and cached stats and subscribe to refresh events",
+  "windows": [
+    "wallpaper"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-get-settings",
+    "allow-get-cached-stats"
+  ]
+}

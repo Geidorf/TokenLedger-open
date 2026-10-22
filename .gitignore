@@ -1,0 +1,86 @@
+node_modules/
+dist/
+nul
+*.db
+*.db-journal
+*.db.bak-*
+.claude/
+.DS_Store
+.env
+__pycache__/
+.codegraph/
+*.log
+.cmp/
+.agents/
+.codex/
+.zcode/
+.reasonix/
+reasonix.toml
+
+# Local review/browser scratch output
+tmp/
+scratch/
+review/
+/TokenLedger项目评审报告*.html
+
+# Other local agent tool state
+.mavis/
+.opencode/
+.zcodeignore
+
+# Android mobile app
+apps/android/.gradle/
+apps/android/**/build/
+apps/android/local.properties
+apps/android/.kotlin/
+
+# Supabase CLI scratch state
+supabase/.temp/
+
+# Local build artifacts
+release/
+
+# Tauri 构建期自动生成的权限清单（main 不跟踪任何文件）
+src-tauri/permissions/
+
+# Local probe/scratch state
+.tmp/
+
+# 本机 MCP 配置（含真实项目引用；仓库内 .mcp.json 只留占位符）
+.mcp.local.json
+
+# 独立 CARGO_TARGET_DIR（各执行岗 worktree 内自建，避免共享构建产物）
+target-*/
+
+# 二进制验收证据不入库（T10.140；截图与压缩包自 2026-10-17 用户决定起一并拦截）
+# 理由见 docs/task-logs/README.md：证据用 SHA-256 + 外部存放位置寻址，不作为仓库体积负担。
+# 只阻止新增，不改写历史。Android 截图回归参考图在 apps/ 下，不受影响。
+docs/task-logs/**/*.apk
+docs/task-logs/**/*.zip
+docs/task-logs/**/*.mov
+docs/task-logs/**/*.mp4
+docs/task-logs/**/*.[pP][nN][gG]
+docs/task-logs/**/*.[jJ][pP][gG]
+docs/task-logs/**/*.[jJ][pP][eE][gG]
+docs/task-logs/**/*.[gG][iI][fF]
+docs/task-logs/**/*.[wW][eE][bB][pP]
+docs/task-logs/**/*.[gG][zZ]
+docs/audits/**/*.[pP][nN][gG]
+docs/audits/**/*.[jJ][pP][gG]
+docs/audits/**/*.[jJ][pP][eE][gG]
+
+# 内部协作过程材料（公开版不随仓库发布；这些内容保留在私有仓库）
+docs/task-logs/
+docs/archive/
+docs/audits/
+docs/plans/
+docs/TASKS.md
+docs/TASKS-archive.md
+docs/BACKLOG.md
+docs/runbooks/
+CLAUDE.md
+.mcp.json
+skills-lock.json
+start.sh
+start_tokenledger.bat
+start_tokenledger_minimized.bat

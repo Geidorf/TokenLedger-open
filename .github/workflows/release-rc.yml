@@ -1,0 +1,654 @@
+name: TokenLedger Signed RC
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tokenledger-signed-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_CHANNEL: 'public-rc'
+  TOKENLEDGER_SUPABASE_URL: ${{ vars.TOKENLEDGER_PRODUCTION_SUPABASE_URL }}
+  TOKENLEDGER_SUPABASE_PUBLISHABLE_KEY: ${{ vars.TOKENLEDGER_PRODUCTION_SUPABASE_PUBLISHABLE_KEY }}
+
+jobs:
+  quality-gate:
+    name: Secret-free Full Release Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: gradle
+
+      # `npm run check:release` 包含 cargo fmt / clippy；钉版本号会切到 minimal
+      # profile，两个组件必须显式声明，否则 gate 挂在 `cargo-fmt is not installed`。
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux libraries needed to compile the Tauri gate
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            build-essential \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      - name: Start isolated Supabase services
+        run: supabase start
+
+      - name: Run the complete no-skip release gate
+        run: npm run check:release
+
+      - name: Stop isolated Supabase services
+        if: always()
+        run: supabase stop --no-backup
+
+  preflight:
+    name: Protected Tag & Production Preflight
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    environment: production-release
+    outputs:
+      supabase_migration_head: ${{ steps.production_migrations.outputs.migration_head }}
+      supabase_remote_head_version: ${{ steps.production_migrations.outputs.remote_head_version }}
+      previous_release_tag: ${{ steps.lineage.outputs.previous_tag }}
+      previous_release_version: ${{ steps.lineage.outputs.previous_version }}
+    env:
+      TOKENLEDGER_PRODUCTION_SUPABASE_READONLY_DB_URL: ${{ secrets.TOKENLEDGER_PRODUCTION_SUPABASE_READONLY_DB_URL }}
+      TOKENLEDGER_PRODUCTION_SUPABASE_PROJECT_REF: ${{ vars.TOKENLEDGER_PRODUCTION_SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      # 上一正式发布由 git tag 推导（TOKENLEDGER_PREVIOUS_RELEASE_TAG 可覆盖，
+      # `none` 表示首个公开发布）；后续 Android 升级证据与 manifest 都以此为准，
+      # 不再写死任何版本号。
+      - name: Resolve previous public release lineage
+        id: lineage
+        env:
+          TOKENLEDGER_PREVIOUS_RELEASE_TAG: ${{ vars.TOKENLEDGER_PREVIOUS_RELEASE_TAG }}
+        run: node scripts/release-lineage.mjs --current "${GITHUB_REF_NAME#v}"
+
+      - name: Fail unless tag and public client configuration are ready
+        run: npm run release:preflight -- --channel "$RELEASE_CHANNEL" --platform common
+
+      - name: Verify production migration history through the protected read-only URL
+        id: production_migrations
+        run: |
+          mkdir -p release-stage/trust
+          npm run release:production-migration-evidence -- \
+            --output release-stage/trust/production-migration-evidence.json
+
+      - name: Verify immutable source and manifest tooling
+        run: |
+          npm run check:docs
+          npm run version:check
+          npm run test:release-manifest
+          npm run test:release-security
+          git diff --check
+
+      - name: Upload measured production migration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-trust-evidence
+          path: release-stage/trust/production-migration-evidence.json
+          if-no-files-found: error
+
+  macos:
+    name: Signed & Notarized macOS arm64 DMG
+    needs: preflight
+    runs-on: macos-15
+    environment: production-release
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Verify macOS signing and notarization prerequisites
+        run: npm run release:preflight -- --channel "$RELEASE_CHANNEL" --platform macos
+
+      - name: Reject every Rust warning before using signing resources
+        env:
+          RUSTFLAGS: '--check-cfg=cfg(feature,values("cargo-clippy"))'
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Build signed and notarized arm64 DMG
+        run: npm run build -- --target aarch64-apple-darwin --bundles dmg --config src-tauri/tauri.macos.conf.json
+
+      - name: Verify signature, notarization and staple
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          DMG_PATH="$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$APP_PATH"
+          test -n "$DMG_PATH"
+          EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+          ACTUAL_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+          test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
+          mkdir -p release-stage/macos
+          CODESIGN_DETAILS="$(codesign -dvvv "$APP_PATH" 2>&1)"
+          ACTUAL_AUTHORITY="$(
+            printf '%s\n' "$CODESIGN_DETAILS" |
+              sed -n 's/^Authority=//p' |
+              head -n 1
+          )"
+          ACTUAL_TEAM="$(
+            printf '%s\n' "$CODESIGN_DETAILS" |
+              sed -n 's/^TeamIdentifier=//p' |
+              head -n 1
+          )"
+          test -n "$ACTUAL_AUTHORITY"
+          test -n "$ACTUAL_TEAM"
+          test "$ACTUAL_AUTHORITY" = "$APPLE_SIGNING_IDENTITY"
+          test "$ACTUAL_TEAM" = "$APPLE_TEAM_ID"
+          {
+            printf '%s\n' "$CODESIGN_DETAILS"
+            printf 'MeasuredVersion=%s\nMeasuredAuthority=%s\nMeasuredTeamIdentifier=%s\n' \
+              "$ACTUAL_VERSION" "$ACTUAL_AUTHORITY" "$ACTUAL_TEAM"
+            codesign --verify --deep --strict --verbose=4 "$APP_PATH"
+            codesign --verify --strict --verbose=4 "$DMG_PATH"
+            spctl --assess --type execute --verbose=4 "$APP_PATH"
+            spctl --assess --type open \
+              --context context:primary-signature \
+              --verbose=4 "$DMG_PATH"
+            xcrun stapler validate "$DMG_PATH"
+          } > release-stage/macos/macos-signature.txt 2>&1
+          cp "$DMG_PATH" "release-stage/macos/TokenLedger_macOS_${GITHUB_REF_NAME#v}_arm64.dmg"
+          node scripts/release-manifest.mjs describe \
+            --file "release-stage/macos/TokenLedger_macOS_${GITHUB_REF_NAME#v}_arm64.dmg" \
+            --platform macos \
+            --arch arm64 \
+            --kind dmg \
+            --artifact-version "$ACTUAL_VERSION" \
+            --signature verified \
+            --signing-identity "authority:$ACTUAL_AUTHORITY;team:$ACTUAL_TEAM" \
+            --signature-evidence-ref macos-signature.txt \
+            --build-environment "GitHub Actions macos-15 arm64; run ${GITHUB_RUN_ID}" \
+            --output release-stage/macos/macos-dmg.artifact.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: release-stage/macos
+          if-no-files-found: error
+
+  windows:
+    name: Authenticode Signed Windows x64 MSI
+    needs: preflight
+    runs-on: windows-2025
+    environment: production-release
+    env:
+      TOKENLEDGER_WINDOWS_CERTIFICATE_BASE64: ${{ secrets.TOKENLEDGER_WINDOWS_CERTIFICATE_BASE64 }}
+      TOKENLEDGER_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.TOKENLEDGER_WINDOWS_CERTIFICATE_PASSWORD }}
+      TOKENLEDGER_WINDOWS_SIGNING_IDENTITY: ${{ vars.TOKENLEDGER_WINDOWS_SIGNING_IDENTITY }}
+      TOKENLEDGER_WINDOWS_TIMESTAMP_URL: ${{ vars.TOKENLEDGER_WINDOWS_TIMESTAMP_URL }}
+    steps:
+      # 与 ci.yml 的两个 Windows job 同因：超长 Compose golden 路径会让
+      # checkout 以 `Filename too long` 失败，公开 RC 的签名 MSI 链因此不可能
+      # 跑通。必须用 --system，actions/checkout 会临时改写 HOME。
+      - name: Allow long paths on the Windows runner
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Materialize certificate outside the checkout
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TOKENLEDGER_WINDOWS_CERTIFICATE_BASE64)) {
+            throw "TOKENLEDGER_WINDOWS_CERTIFICATE_BASE64 is missing"
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP "tokenledger-release.pfx"
+          [IO.File]::WriteAllBytes(
+            $certificatePath,
+            [Convert]::FromBase64String($env:TOKENLEDGER_WINDOWS_CERTIFICATE_BASE64)
+          )
+          "TOKENLEDGER_WINDOWS_CERTIFICATE_PATH=$certificatePath" >> $env:GITHUB_ENV
+
+      - name: Verify Windows signing prerequisites
+        run: npm run release:preflight -- --channel "$env:RELEASE_CHANNEL" --platform windows
+
+      - name: Import certificate and build signed MSI
+        shell: pwsh
+        run: |
+          $password = ConvertTo-SecureString `
+            $env:TOKENLEDGER_WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate `
+            -FilePath $env:TOKENLEDGER_WINDOWS_CERTIFICATE_PATH `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $password
+          if (-not $certificate.Thumbprint) {
+            throw "The imported Windows certificate has no thumbprint"
+          }
+          $configPath = Join-Path $env:RUNNER_TEMP "tauri.windows.release.json"
+          @{
+            bundle = @{
+              targets = @("msi")
+              windows = @{
+                certificateThumbprint = $certificate.Thumbprint
+                digestAlgorithm = "sha256"
+                timestampUrl = $env:TOKENLEDGER_WINDOWS_TIMESTAMP_URL
+              }
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 $configPath
+          npm run build -- --bundles msi --config $configPath
+
+      - name: Verify Authenticode and stage MSI
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi |
+            Select-Object -First 1
+          $exe = Get-Item src-tauri/target/release/tokenledger.exe
+          if (-not $msi) { throw "MSI was not produced" }
+          $expectedVersion = $env:GITHUB_REF_NAME.TrimStart('v')
+          $actualVersion = $exe.VersionInfo.ProductVersion -replace '\.0$', ''
+          if ($actualVersion -ne $expectedVersion) {
+            throw "Windows executable version $actualVersion does not match release tag $expectedVersion"
+          }
+          $msiSignature = Get-AuthenticodeSignature $msi.FullName
+          $exeSignature = Get-AuthenticodeSignature $exe.FullName
+          if ($msiSignature.Status -ne "Valid" -or $exeSignature.Status -ne "Valid") {
+            throw "Authenticode verification failed: MSI=$($msiSignature.Status), EXE=$($exeSignature.Status)"
+          }
+          $actualSubject = $msiSignature.SignerCertificate.Subject
+          if ($actualSubject -ne $env:TOKENLEDGER_WINDOWS_SIGNING_IDENTITY) {
+            throw "MSI signer subject does not match the protected expected identity"
+          }
+          if (
+            $msiSignature.SignerCertificate.Thumbprint -ne
+            $exeSignature.SignerCertificate.Thumbprint
+          ) {
+            throw "MSI and embedded executable were signed by different certificates"
+          }
+          New-Item -ItemType Directory -Force release-stage/windows | Out-Null
+          @(
+            "MSI status=$($msiSignature.Status)"
+            "MSI signer=$actualSubject"
+            "MSI thumbprint=$($msiSignature.SignerCertificate.Thumbprint)"
+            "MeasuredVersion=$actualVersion"
+            "EXE status=$($exeSignature.Status)"
+            "EXE signer=$($exeSignature.SignerCertificate.Subject)"
+            "EXE thumbprint=$($exeSignature.SignerCertificate.Thumbprint)"
+          ) | Set-Content release-stage/windows/windows-signature.txt
+          $target = "release-stage/windows/TokenLedger_Windows_$($env:GITHUB_REF_NAME.TrimStart('v'))_x64.msi"
+          Copy-Item $msi.FullName $target
+          node scripts/release-manifest.mjs describe `
+            --file $target `
+            --platform windows `
+            --arch x86_64 `
+            --kind msi `
+            --artifact-version $actualVersion `
+            --signature verified `
+            --signing-identity $actualSubject `
+            --signature-evidence-ref windows-signature.txt `
+            --build-environment "GitHub Actions windows-2025 x64; run $env:GITHUB_RUN_ID" `
+            --output release-stage/windows/windows-msi.artifact.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: release-stage/windows
+          if-no-files-found: error
+
+  android:
+    name: Signed Android APK & AAB
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production-release
+    permissions:
+      actions: read
+      contents: read
+    env:
+      TOKENLEDGER_ANDROID_KEYSTORE_BASE64: ${{ secrets.TOKENLEDGER_ANDROID_KEYSTORE_BASE64 }}
+      TOKENLEDGER_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.TOKENLEDGER_ANDROID_KEYSTORE_PASSWORD }}
+      TOKENLEDGER_ANDROID_KEY_ALIAS: ${{ secrets.TOKENLEDGER_ANDROID_KEY_ALIAS }}
+      TOKENLEDGER_ANDROID_KEY_PASSWORD: ${{ secrets.TOKENLEDGER_ANDROID_KEY_PASSWORD }}
+      TOKENLEDGER_ANDROID_SIGNING_CERT_SHA256: ${{ vars.TOKENLEDGER_ANDROID_SIGNING_CERT_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: gradle
+
+      - run: npm ci
+
+      - name: Materialize keystore outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TOKENLEDGER_ANDROID_KEYSTORE_BASE64"
+          KEYSTORE_PATH="$RUNNER_TEMP/tokenledger-release.jks"
+          printf '%s' "$TOKENLEDGER_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "TOKENLEDGER_ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Verify Android signing prerequisites and package identity
+        run: npm run release:preflight -- --channel "$RELEASE_CHANNEL" --platform android
+
+      - name: Build signed, minified APK and AAB
+        run: node scripts/run-android-gradle.mjs :app:assembleSignedRelease :app:bundleSignedRelease
+
+      - name: Verify signature and production applicationId
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_PATH="$(find apps/android/app/build/outputs/apk/signedRelease -name '*.apk' -print -quit)"
+          AAB_PATH="$(find apps/android/app/build/outputs/bundle/signedRelease -name '*.aab' -print -quit)"
+          test -n "$APK_PATH"
+          test -n "$AAB_PATH"
+          EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          test -x "$APKSIGNER"
+          APPLICATION_ID="$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK_PATH")"
+          test "$APPLICATION_ID" = "com.jeidorf.tokenledger.mobile"
+          APK_VERSION="$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest version-name "$APK_PATH")"
+          test "$APK_VERSION" = "$EXPECTED_VERSION"
+          mkdir -p release-stage/android
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" \
+            > release-stage/android/android-apk-signature.txt
+          ACTUAL_CERT_SHA256="$(
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+              release-stage/android/android-apk-signature.txt |
+              head -n 1 |
+              tr -d ':' |
+              tr '[:upper:]' '[:lower:]'
+          )"
+          EXPECTED_CERT_SHA256="$(
+            printf '%s' "$TOKENLEDGER_ANDROID_SIGNING_CERT_SHA256" |
+              sed 's/^sha256://I' |
+              tr -d ':' |
+              tr '[:upper:]' '[:lower:]'
+          )"
+          test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          if "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$APK_PATH" |
+            grep -Eq 'android:debuggable[[:space:]]*=[[:space:]]*"true"'; then
+            echo "Formal Android APK is debuggable" >&2
+            exit 1
+          fi
+          printf 'applicationId=%s\ncertificateSha256=%s\n' \
+            "$APPLICATION_ID" "$ACTUAL_CERT_SHA256" \
+            >> release-stage/android/android-apk-signature.txt
+          jarsigner -verify -strict -verbose -certs \
+            -keystore "$TOKENLEDGER_ANDROID_KEYSTORE_PATH" \
+            -storepass:env TOKENLEDGER_ANDROID_KEYSTORE_PASSWORD \
+            "$AAB_PATH" \
+            > release-stage/android/android-aab-signature.txt
+          keytool -J-Duser.language=en -J-Duser.country=US \
+            -printcert -jarfile "$AAB_PATH" \
+            >> release-stage/android/android-aab-signature.txt
+          AAB_CERT_SHA256="$(
+            sed -n 's/^[[:space:]]*SHA256: //p' \
+              release-stage/android/android-aab-signature.txt |
+              head -n 1 |
+              tr -d ':' |
+              tr '[:upper:]' '[:lower:]'
+          )"
+          test "$AAB_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          APK_TARGET="release-stage/android/TokenLedger_Android_${GITHUB_REF_NAME#v}.apk"
+          AAB_TARGET="release-stage/android/TokenLedger_Android_${GITHUB_REF_NAME#v}.aab"
+          cp "$APK_PATH" "$APK_TARGET"
+          cp "$AAB_PATH" "$AAB_TARGET"
+          node scripts/release-manifest.mjs describe \
+            --file "$APK_TARGET" \
+            --platform android \
+            --arch universal \
+            --kind apk \
+            --artifact-version "$APK_VERSION" \
+            --signature verified \
+            --signing-identity "sha256:$ACTUAL_CERT_SHA256" \
+            --signature-evidence-ref android-apk-signature.txt \
+            --build-environment "GitHub Actions ubuntu-latest Android API 36; run ${GITHUB_RUN_ID}" \
+            --output release-stage/android/android-apk.artifact.json
+          node scripts/release-manifest.mjs describe \
+            --file "$AAB_TARGET" \
+            --platform android \
+            --arch universal \
+            --kind aab \
+            --artifact-version "$APK_VERSION" \
+            --signature verified \
+            --signing-identity "sha256:$ACTUAL_CERT_SHA256" \
+            --signature-evidence-ref android-aab-signature.txt \
+            --build-environment "GitHub Actions ubuntu-latest Android API 36; run ${GITHUB_RUN_ID}" \
+            --output release-stage/android/android-aab.artifact.json
+
+      # 以下三步只在存在上一正式发布时执行：首个公开发布没有可升级的旧包，
+      # manifest 会以 previousRelease=null 显式记录这一点。
+      - name: Locate the previous release's signed Android artifact
+        if: needs.preflight.outputs.previous_release_tag != ''
+        id: private_android_run
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TOKENLEDGER_PREVIOUS_RELEASE_TAG: ${{ needs.preflight.outputs.previous_release_tag }}
+        run: node scripts/find-private-android-release-run.mjs
+
+      - name: Download the previous release's Android artifact
+        if: needs.preflight.outputs.previous_release_tag != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: release-android
+          path: release-upgrade/previous
+          run-id: ${{ steps.private_android_run.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Prove signed in-place upgrade compatibility from the previous release
+        if: needs.preflight.outputs.previous_release_tag != ''
+        shell: bash
+        env:
+          PREVIOUS_VERSION: ${{ needs.preflight.outputs.previous_release_version }}
+        run: |
+          set -euo pipefail
+          RC_VERSION="${GITHUB_REF_NAME#v}"
+          mapfile -t PRIVATE_APKS < <(
+            find release-upgrade/previous \
+              -type f \
+              -name "TokenLedger_Android_${PREVIOUS_VERSION}.apk" \
+              -print
+          )
+          test "${#PRIVATE_APKS[@]}" -eq 1
+          RC_APK="release-stage/android/TokenLedger_Android_${RC_VERSION}.apk"
+          test -f "$RC_APK"
+          node scripts/verify-android-upgrade-artifacts.mjs \
+            --private-apk "${PRIVATE_APKS[0]}" \
+            --rc-apk "$RC_APK" \
+            --previous-version "$PREVIOUS_VERSION" \
+            --rc-version "$RC_VERSION" \
+            --private-run-id "${{ steps.private_android_run.outputs.run_id }}" \
+            --private-run-url "${{ steps.private_android_run.outputs.run_url }}" \
+            --private-run-sha "${{ steps.private_android_run.outputs.head_sha }}" \
+            --output release-stage/android/android-upgrade-evidence.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: release-stage/android
+          if-no-files-found: error
+
+  manifest:
+    name: Verify & Publish Release Manifest
+    needs:
+      - preflight
+      - macos
+      - windows
+      - android
+    runs-on: ubuntu-latest
+    environment: production-release
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-input
+
+      - name: Assemble content-addressed manifest
+        env:
+          VERIFIED_SUPABASE_MIGRATION_HEAD: ${{ needs.preflight.outputs.supabase_migration_head }}
+          PREVIOUS_RELEASE_VERSION: ${{ needs.preflight.outputs.previous_release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          while IFS= read -r source; do
+            target="release-assets/$(basename "$source")"
+            test ! -e "$target"
+            cp "$source" "$target"
+          done < <(
+            find release-input -type f \
+              \( \
+                -name '*.dmg' -o \
+                -name '*.msi' -o \
+                -name '*.apk' -o \
+                -name '*.aab' -o \
+                -name '*-signature.txt' -o \
+                -name 'production-migration-evidence.json' -o \
+                -name 'android-upgrade-evidence.json' \
+              \) \
+              -print
+          )
+          VALIDATION_ARGS=(
+            --validation-ref "github:https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            --validation-ref "evidence:production-migration-evidence.json"
+          )
+          if [ "$RELEASE_CHANNEL" = "public-rc" ] && [ -n "${PREVIOUS_RELEASE_VERSION:-}" ]; then
+            VALIDATION_ARGS+=(
+              --validation-ref "evidence:android-upgrade-evidence.json"
+            )
+          fi
+          node scripts/release-manifest.mjs assemble \
+            --descriptor-root release-input \
+            --channel "$RELEASE_CHANNEL" \
+            --version "${GITHUB_REF_NAME#v}" \
+            --previous-release "${PREVIOUS_RELEASE_VERSION:-none}" \
+            --source-sha "$GITHUB_SHA" \
+            --supabase-migration-head "$VERIFIED_SUPABASE_MIGRATION_HEAD" \
+            "${VALIDATION_ARGS[@]}" \
+            --output release-assets/release-manifest.json
+          node scripts/release-manifest.mjs validate \
+            --manifest release-assets/release-manifest.json \
+            --artifacts-dir release-assets
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest
+          path: release-assets/release-manifest.json
+          if-no-files-found: error
+
+      - name: Publish public RC only after every signed artifact verifies
+        if: env.RELEASE_CHANNEL == 'public-rc'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --prerelease \
+            --title "TokenLedger ${GITHUB_REF_NAME} RC" \
+            --notes "Signed public RC. Verification evidence: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            release-assets/*

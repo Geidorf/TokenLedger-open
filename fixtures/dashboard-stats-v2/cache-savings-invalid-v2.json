@@ -1,0 +1,558 @@
+{
+  "fixtureVersion": 1,
+  "contract": "docs/contracts/dashboard-stats-v2.md §2.4",
+  "description": "summary.cacheSavings 不可得的形状：拆分不可证明时对象缺失；对象非法时整体丢弃，summary 的旧核心字段（含 cacheSavedUsd）照常保留，不把缺失当 0。把用例的 summary 放进 statsTemplate 即是一份完整的 Stats v2 响应，解析后 summary.cacheSavings 必须不存在（expected 为 null）。rows 与 prices 只供本机生产端复算第一个用例。",
+  "prices": {
+    "claude-sonnet-4-6": { "input": 3.0, "output": 15.0, "cache_input": 0.3, "cache_write": 3.75 },
+    "gpt-5.6-sol": { "input": 5.0, "output": 30.0, "cache_input": 0.5, "cache_write": 6.25 },
+    "default": { "input": 1.0, "output": 3.0 }
+  },
+  "statsTemplate": {
+    "tools": {},
+    "models": {},
+    "trends": [],
+    "heatmap": {},
+    "history": [],
+    "meta": {
+      "contractVersion": 2,
+      "generatedAt": "2026-07-15T09:30:00+08:00",
+      "timezone": "Asia/Shanghai",
+      "range": "month",
+      "stale": false,
+      "query": {
+        "range": "month",
+        "timezone": "Asia/Shanghai",
+        "machines": [],
+        "tools": [],
+        "models": [],
+        "search": null,
+        "tokenMode": "effective"
+      },
+      "capabilities": {
+        "comparison": false,
+        "detailPagination": true,
+        "entityDashboard": true,
+        "multiFilterSearch": true,
+        "quotaSnapshots": false,
+        "cacheSavings": true
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "split-unproven-object-absent",
+      "reason": "方案 §3.4 第 6 行与用户决定 Q6：Codex 有 0.8M 缓存读取但不上报写入量，拆分不可证明；与可证明的 Claude 记录混在同一范围时整体不可得。读写拆分、cacheSavedUsd 与 cacheSavings 一起缺失，能力位为 true 表示「该范围不可得」。",
+      "rows": [
+        { "tool": "claude", "model": "claude-sonnet-4-6", "inputTokens": 100000, "outputTokens": 20000, "cachedTokens": 9000000, "cacheWriteTokens": 1000000 },
+        { "tool": "codex", "model": "gpt-5.6-sol", "inputTokens": 100000, "outputTokens": 20000, "cachedTokens": 800000, "cacheWriteTokens": 0 }
+      ],
+      "summary": {
+        "totalTokens": 240000,
+        "inputTokens": 200000,
+        "outputTokens": 40000,
+        "cachedTokens": 9800000,
+        "totalCost": 8.25,
+        "totalRequests": 2,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "object-without-proven-split",
+      "reason": "对象的出现条件与 cacheReadTokens/cacheWriteTokens 相同；没有拆分却带了对象，丢弃。",
+      "summary": {
+        "totalTokens": 240000,
+        "inputTokens": 200000,
+        "outputTokens": 40000,
+        "cachedTokens": 9800000,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 8.25,
+        "totalRequests": 2,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "split-inconsistent-with-combined",
+      "reason": "cacheReadTokens + cacheWriteTokens 与 cachedTokens 不一致，拆分不成立，对象随之丢弃。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9800000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "net-is-not-read-minus-premium",
+      "reason": "netSavedUsd 写成了读取节省（毛值），与 读取节省 − 写入溢价 相差超过容差 1e-6 × max(1, 读取节省 + 写入溢价)。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 21.6,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "negative-write-premium",
+      "reason": "写入溢价必须 ≥ 0（净节省才可以为负）。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": -0.75,
+          "netSavedUsd": 22.35,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "negative-read-saved",
+      "reason": "读取节省必须 ≥ 0。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavings": {
+          "readSavedUsd": -21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": -22.35,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "amount-as-string",
+      "reason": "金额必须是有限的 JSON number，字符串不接受。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": "21.6",
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "amount-null",
+      "reason": "三个金额都必须存在且为有限数；null 不能当 0。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": null,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "amount-missing",
+      "reason": "缺 writePremiumUsd：不能按 0 补齐。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "unknown-price-basis",
+      "reason": "priceBasis 只接受 local-prices 与 uploaded-prices。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "vendor-invoice"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "price-basis-missing",
+      "reason": "缺 priceBasis：无法判断是本机价格还是上传时价格，丢弃。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "fallback-read-exceeds-read-tokens",
+      "reason": "兜底读取量不能大于 cacheReadTokens。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 8000001,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "fallback-write-exceeds-write-tokens",
+      "reason": "兜底写入量不能大于 cacheWriteTokens。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 1000001,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "fallback-count-fractional",
+      "reason": "兜底计数必须是整数。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0.5,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "fallback-count-negative",
+      "reason": "兜底计数不能小于 0。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": -1,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "fallback-count-missing",
+      "reason": "缺兜底计数：不能按 0 补齐成「全部列价」。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "gross-field-disagrees-with-read-saved",
+      "reason": "cacheSavedUsd 同时存在时必须与 readSavedUsd 在容差内相等；这里旧字段写成了净值，丢弃新对象，旧字段照旧保留。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 20.85,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "object-is-a-number",
+      "reason": "cacheSavings 必须是对象；把净值直接写成数字不接受。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": 20.85,
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "object-is-an-array",
+      "reason": "cacheSavings 必须是对象，数组不接受。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": [],
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "object-null",
+      "reason": "null 与缺失同义，都是不可得；不能补成 0。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": null,
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "fallback-count-as-string",
+      "reason": "兜底计数必须是 JSON number；字符串形式的整数（即便像 \"0\" 这样数值上合法）也不接受。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": "0",
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    },
+    {
+      "name": "cached-tokens-fractional",
+      "reason": "cachedTokens 必须是安全整数；带小数点的总量（即便截断后与 cacheReadTokens + cacheWriteTokens 相等）也不接受。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000.5,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": null
+    }
+  ]
+}

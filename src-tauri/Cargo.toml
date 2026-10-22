@@ -1,0 +1,60 @@
+[package]
+name = "tokenledger"
+version = "2.0.0"
+description = "TokenLedger native desktop app (Tauri 2 + React)"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.92"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = "2.6.2"
+
+[dependencies]
+serde_json = { version = "1.0", features = ["preserve_order"] }
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+dirs = "6.0.0"
+tokio = { version = "1.48", features = ["rt", "time", "net", "sync"] }
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+walkdir = "2.5"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
+hostname = "0.4"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+image = "0.25"
+ab_glyph = "0.2"
+tauri = { version = "2.0.0", features = ["custom-protocol", "tray-icon", "macos-private-api"] }
+tauri-plugin-single-instance = "2.4.3"
+tauri-plugin-notification = "2.4.0"
+keyring = { version = "3.6", features = ["windows-native", "apple-native", "linux-native"] }
+portable-pty = "0.9"
+sha2 = "0.10"
+zstd = "0.13"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+futures-util = "0.3"
+getrandom = "0.3"
+toml_edit = "=0.20.2"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Foundation", "Storage", "Storage_Streams", "System_UserProfile", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2.7"
+window-vibrancy = "0.6"

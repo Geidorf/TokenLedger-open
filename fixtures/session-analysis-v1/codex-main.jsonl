@@ -1,0 +1,15 @@
+{"type":"session_meta","timestamp":"2026-09-04T00:00:00Z","payload":{"id":"11111111-1111-4111-8111-111111111111","source":"cli","instructions":"PRIVATE_SYSTEM_SENTINEL"}}
+{"type":"turn_context","timestamp":"2026-09-04T00:00:00Z","payload":{"model":"gpt-fixture","turn_id":"t1"}}
+{"type":"response_item","timestamp":"2026-09-04T00:00:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"PRIVATE_USER_BODY_SENTINEL"}]}}
+{"type":"event_msg","timestamp":"2026-09-04T00:00:00Z","payload":{"type":"user_message","id":"u1","message":"PRIVATE_USER_BODY_SENTINEL"}}
+{"type":"event_msg","timestamp":"2026-09-04T00:00:00Z","payload":{"type":"task_started","turn_id":"t1"}}
+{"type":"response_item","timestamp":"2026-09-04T00:00:01Z","payload":{"type":"function_call","call_id":"c1","name":"exec_command","arguments":"PRIVATE_TOOL_ARGUMENT_SENTINEL"}}
+{"type":"response_item","timestamp":"2026-09-04T00:00:01Z","payload":{"type":"function_call","call_id":"c1","name":"exec_command","arguments":"PRIVATE_TOOL_ARGUMENT_SENTINEL"}}
+{"type":"event_msg","timestamp":"2026-09-04T00:00:02Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"cached_input_tokens":60},"last_token_usage":{"input_tokens":100,"output_tokens":20,"cached_input_tokens":60}}}}
+{"type":"response_item","timestamp":"2026-09-04T00:00:03Z","payload":{"type":"function_call_output","call_id":"c1","output":"PRIVATE_TOOL_RESULT_SENTINEL"}}
+{"type":"turn_context","timestamp":"2026-09-04T00:00:03Z","payload":{"model":"gpt-fixture","turn_id":"t1"}}
+{"type":"event_msg","timestamp":"2026-09-04T00:00:04Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"output_tokens":30,"cached_input_tokens":80},"last_token_usage":{"input_tokens":50,"output_tokens":10,"cached_input_tokens":20}}}}
+{"type":"event_msg","timestamp":"2026-09-04T00:00:04Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"output_tokens":30,"cached_input_tokens":80},"last_token_usage":{"input_tokens":50,"output_tokens":10,"cached_input_tokens":20}}}}
+{"type":"event_msg","timestamp":"2026-09-04T00:00:05Z","payload":{"type":"task_complete","turn_id":"t1"}}
+{"type":"event_msg","timestamp":"2026-09-04T00:01:00Z","payload":{"type":"user_message","id":"u2","message":"PRIVATE_USER_BODY_SENTINEL"}}
+{"type":"event_msg","timestamp":"2026-09-04T00:01:01Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"output_tokens":35,"cached_input_tokens":80},"last_token_usage":{"input_tokens":10,"output_tokens":5,"cached_input_tokens":0}}}}

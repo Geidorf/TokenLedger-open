@@ -1,0 +1,30 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "gateway-main-only",
+  "description": "allows only the main settings webview to switch model access on or off, manage local gateway providers, keys, request history, Agent gateway configs (Codex and JSON-configured Agents) and routing groups, plus the explicit copy-local-token reveal",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-gateway-set-model-access",
+    "allow-gateway-status",
+    "allow-gateway-list-providers",
+    "allow-gateway-upsert-provider",
+    "allow-gateway-set-provider-key",
+    "allow-gateway-delete-provider",
+    "allow-gateway-recent-requests",
+    "allow-gateway-codex-inspect",
+    "allow-gateway-codex-preview",
+    "allow-gateway-codex-apply",
+    "allow-gateway-codex-restore",
+    "allow-gateway-agent-inspect",
+    "allow-gateway-agent-preview",
+    "allow-gateway-agent-apply",
+    "allow-gateway-agent-restore",
+    "allow-gateway-list-routing-groups",
+    "allow-gateway-upsert-routing-group",
+    "allow-gateway-delete-routing-group",
+    "allow-gateway-recent-route-decisions",
+    "allow-gateway-reveal-local-token"
+  ]
+}

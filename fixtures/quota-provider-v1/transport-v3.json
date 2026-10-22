@@ -1,0 +1,433 @@
+{
+  "description": "transport v3（门控货币单位）与 v2 投影兼容；与 transport-v2.json 共用同一批行、epoch 与 generation。匿名合成数据。",
+  "functions": {
+    "read": "get_quota_snapshots_v3",
+    "write": "upsert_quota_snapshots_v3",
+    "delete": "delete_quota_snapshot_provider_v2",
+    "clear": "clear_quota_snapshots_v2"
+  },
+  "v3UpsertRequest": {
+    "p_transport_version": 3,
+    "p_epoch": 7,
+    "p_providers": [
+      {
+        "generation": 0,
+        "envelope": {
+          "schemaVersion": 1,
+          "providerId": "balance-deepseek",
+          "displayName": "DeepSeek",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "balance-deepseek",
+              "windowId": "balance-cny",
+              "windowLabel": "CNY balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "remaining": 12.5,
+              "unit": "currency",
+              "currency": "CNY",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            },
+            {
+              "providerId": "balance-deepseek",
+              "windowId": "balance-usd",
+              "windowLabel": "USD balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "remaining": 3.2,
+              "unit": "currency",
+              "currency": "USD",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "v3ReadResponse": {
+    "status": "ok",
+    "transportVersion": 3,
+    "epoch": 7,
+    "revision": 13,
+    "generatedAt": "2026-10-04T12:00:05+08:00",
+    "providers": [
+      {
+        "schemaVersion": 1,
+        "providerId": "balance-deepseek",
+        "displayName": "DeepSeek",
+        "scope": "api-organization",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "balance-deepseek",
+            "windowId": "balance-cny",
+            "windowLabel": "CNY balance",
+            "scope": "api-organization",
+            "source": "official-api",
+            "status": "ok",
+            "remaining": 12.5,
+            "unit": "currency",
+            "currency": "CNY",
+            "observedAt": "2026-10-04T12:00:00+08:00",
+            "fetchedAt": "2026-10-04T12:00:01+08:00",
+            "staleAfterSeconds": 3600
+          },
+          {
+            "providerId": "balance-deepseek",
+            "windowId": "balance-usd",
+            "windowLabel": "USD balance",
+            "scope": "api-organization",
+            "source": "official-api",
+            "status": "ok",
+            "remaining": 3.2,
+            "unit": "currency",
+            "currency": "USD",
+            "observedAt": "2026-10-04T12:00:00+08:00",
+            "fetchedAt": "2026-10-04T12:00:01+08:00",
+            "staleAfterSeconds": 3600
+          }
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "providerId": "openai-codex-local",
+        "displayName": "Codex",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "openai-codex-local",
+            "windowId": "codex:primary",
+            "windowLabel": "5 hour window",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "used": 38,
+            "limit": 100,
+            "remaining": 62,
+            "unit": "percent",
+            "windowMinutes": 300,
+            "resetsAt": "2026-07-15T10:00:00+08:00",
+            "observedAt": "2026-07-15T08:30:00+08:00",
+            "fetchedAt": "2026-07-15T08:30:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      }
+    ],
+    "providerStates": [
+      {
+        "providerId": "balance-deepseek",
+        "scope": "api-organization",
+        "generation": 0,
+        "deleted": false,
+        "sourceObservedAt": "2026-10-04T12:00:00+08:00",
+        "receivedAt": "2026-10-04T12:00:05+08:00"
+      },
+      {
+        "providerId": "openai-codex-local",
+        "scope": "consumer-subscription",
+        "generation": 3,
+        "deleted": false,
+        "sourceObservedAt": "2026-07-15T08:30:00+08:00",
+        "receivedAt": "2026-07-15T08:31:00+08:00"
+      }
+    ]
+  },
+  "v2ReadResponse": {
+    "status": "ok",
+    "transportVersion": 2,
+    "epoch": 7,
+    "revision": 13,
+    "generatedAt": "2026-10-04T12:00:05+08:00",
+    "providers": [
+      {
+        "schemaVersion": 1,
+        "providerId": "openai-codex-local",
+        "displayName": "Codex",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "openai-codex-local",
+            "windowId": "codex:primary",
+            "windowLabel": "5 hour window",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "used": 38,
+            "limit": 100,
+            "remaining": 62,
+            "unit": "percent",
+            "windowMinutes": 300,
+            "resetsAt": "2026-07-15T10:00:00+08:00",
+            "observedAt": "2026-07-15T08:30:00+08:00",
+            "fetchedAt": "2026-07-15T08:30:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      }
+    ],
+    "providerStates": [
+      {
+        "providerId": "openai-codex-local",
+        "scope": "consumer-subscription",
+        "generation": 3,
+        "deleted": false,
+        "sourceObservedAt": "2026-07-15T08:30:00+08:00",
+        "receivedAt": "2026-07-15T08:31:00+08:00"
+      }
+    ]
+  },
+  "v2Projection": {
+    "omittedProviderKeys": [
+      "balance-deepseek:api-organization"
+    ],
+    "rule": "v2/v1 读取省略含 currency 窗口的 envelope 及其 providerState，旧读取方看到的是该来源未同步"
+  },
+  "v2UpsertRejected": {
+    "request": {
+      "p_transport_version": 2,
+      "p_epoch": 7,
+      "p_providers": [
+        {
+          "generation": 0,
+          "envelope": {
+            "schemaVersion": 1,
+            "providerId": "balance-deepseek",
+            "displayName": "DeepSeek",
+            "scope": "api-organization",
+            "mode": "automatic",
+            "capability": "stable",
+            "status": "ok",
+            "windows": [
+              {
+                "providerId": "balance-deepseek",
+                "windowId": "balance-cny",
+                "windowLabel": "CNY balance",
+                "scope": "api-organization",
+                "source": "official-api",
+                "status": "ok",
+                "remaining": 12.5,
+                "unit": "currency",
+                "currency": "CNY",
+                "observedAt": "2026-10-04T12:00:00+08:00",
+                "fetchedAt": "2026-10-04T12:00:01+08:00",
+                "staleAfterSeconds": 3600
+              },
+              {
+                "providerId": "balance-deepseek",
+                "windowId": "balance-usd",
+                "windowLabel": "USD balance",
+                "scope": "api-organization",
+                "source": "official-api",
+                "status": "ok",
+                "remaining": 3.2,
+                "unit": "currency",
+                "currency": "USD",
+                "observedAt": "2026-10-04T12:00:00+08:00",
+                "fetchedAt": "2026-10-04T12:00:01+08:00",
+                "staleAfterSeconds": 3600
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "error": {
+      "code": "22023",
+      "message": "quota_snapshot_invalid_payload",
+      "details": null,
+      "hint": null
+    }
+  },
+  "v3UpsertWrongTransportRejected": {
+    "request": {
+      "p_transport_version": 2,
+      "p_epoch": 7,
+      "p_providers": [
+        {
+          "generation": 0,
+          "envelope": {
+            "schemaVersion": 1,
+            "providerId": "balance-deepseek",
+            "displayName": "DeepSeek",
+            "scope": "api-organization",
+            "mode": "automatic",
+            "capability": "stable",
+            "status": "ok",
+            "windows": [
+              {
+                "providerId": "balance-deepseek",
+                "windowId": "balance-cny",
+                "windowLabel": "CNY balance",
+                "scope": "api-organization",
+                "source": "official-api",
+                "status": "ok",
+                "remaining": 12.5,
+                "unit": "currency",
+                "currency": "CNY",
+                "observedAt": "2026-10-04T12:00:00+08:00",
+                "fetchedAt": "2026-10-04T12:00:01+08:00",
+                "staleAfterSeconds": 3600
+              },
+              {
+                "providerId": "balance-deepseek",
+                "windowId": "balance-usd",
+                "windowLabel": "USD balance",
+                "scope": "api-organization",
+                "source": "official-api",
+                "status": "ok",
+                "remaining": 3.2,
+                "unit": "currency",
+                "currency": "USD",
+                "observedAt": "2026-10-04T12:00:00+08:00",
+                "fetchedAt": "2026-10-04T12:00:01+08:00",
+                "staleAfterSeconds": 3600
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "error": {
+      "code": "22023",
+      "message": "quota_snapshot_unsupported_transport",
+      "details": null,
+      "hint": null
+    }
+  },
+  "legacyCloudFallback": {
+    "missingV3Response": {
+      "status": 404,
+      "body": {
+        "code": "PGRST202",
+        "details": "Searched for the function public.get_quota_snapshots_v3 without parameters or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.",
+        "hint": null,
+        "message": "Could not find the function public.get_quota_snapshots_v3 without parameters in the schema cache"
+      }
+    },
+    "localProviders": [
+      {
+        "schemaVersion": 1,
+        "providerId": "openai-codex-local",
+        "displayName": "Codex",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "openai-codex-local",
+            "windowId": "codex:primary",
+            "windowLabel": "5 hour window",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "used": 38,
+            "limit": 100,
+            "remaining": 62,
+            "unit": "percent",
+            "windowMinutes": 300,
+            "resetsAt": "2026-07-15T10:00:00+08:00",
+            "observedAt": "2026-07-15T08:30:00+08:00",
+            "fetchedAt": "2026-07-15T08:30:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "providerId": "balance-deepseek",
+        "displayName": "DeepSeek",
+        "scope": "api-organization",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "balance-deepseek",
+            "windowId": "balance-cny",
+            "windowLabel": "CNY balance",
+            "scope": "api-organization",
+            "source": "official-api",
+            "status": "ok",
+            "remaining": 12.5,
+            "unit": "currency",
+            "currency": "CNY",
+            "observedAt": "2026-10-04T12:00:00+08:00",
+            "fetchedAt": "2026-10-04T12:00:01+08:00",
+            "staleAfterSeconds": 3600
+          },
+          {
+            "providerId": "balance-deepseek",
+            "windowId": "balance-usd",
+            "windowLabel": "USD balance",
+            "scope": "api-organization",
+            "source": "official-api",
+            "status": "ok",
+            "remaining": 3.2,
+            "unit": "currency",
+            "currency": "USD",
+            "observedAt": "2026-10-04T12:00:00+08:00",
+            "fetchedAt": "2026-10-04T12:00:01+08:00",
+            "staleAfterSeconds": 3600
+          }
+        ]
+      }
+    ],
+    "expectedV2UploadProviderIds": [
+      "openai-codex-local"
+    ],
+    "expectedLocalDisplayProviderIds": [
+      "openai-codex-local",
+      "balance-deepseek"
+    ]
+  },
+  "compatibilityMatrix": [
+    {
+      "client": "new",
+      "cloud": "new",
+      "read": "get_quota_snapshots_v3",
+      "write": "upsert_quota_snapshots_v3",
+      "currency": "synced"
+    },
+    {
+      "client": "new",
+      "cloud": "old",
+      "read": "get_quota_snapshots_v2",
+      "write": "upsert_quota_snapshots_v2",
+      "currency": "stripped-before-upload-local-display-only"
+    },
+    {
+      "client": "old",
+      "cloud": "new",
+      "read": "get_quota_snapshots_v2",
+      "write": "upsert_quota_snapshots_v2",
+      "currency": "omitted-by-server-projection-shows-unsynced"
+    },
+    {
+      "client": "old",
+      "cloud": "old",
+      "read": "get_quota_snapshots_v2",
+      "write": "upsert_quota_snapshots_v2",
+      "currency": "not-produced"
+    }
+  ]
+}

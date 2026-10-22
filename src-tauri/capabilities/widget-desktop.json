@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "widget-desktop",
+  "description": "allows only the desktop widget to use its existing remove-from-desktop control",
+  "windows": [
+    "desktop-widget"
+  ],
+  "permissions": [
+    "allow-set-desktop-widget-enabled"
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "summary": {
+    "totalTokens": 580,
+    "inputTokens": 430,
+    "outputTokens": 150,
+    "cachedTokens": 300,
+    "totalCost": 1.5,
+    "totalRequests": 6,
+    "avgTokensPerReq": 96.6666666667
+  },
+  "tools": {},
+  "models": {
+    "explicit-split": {
+      "name": "explicit-split",
+      "input": 100,
+      "output": 50,
+      "cached": 100,
+      "cacheRead": 80,
+      "cacheWrite": 20,
+      "total": 150,
+      "cost": 1.25,
+      "requests": 2
+    },
+    "known-free": {
+      "name": "known-free",
+      "input": 50,
+      "output": 0,
+      "cached": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 50,
+      "cost": 0,
+      "requests": 1
+    },
+    "unknown-cost-combined-cache": {
+      "name": "unknown-cost-combined-cache",
+      "input": 200,
+      "output": 100,
+      "cached": 100,
+      "total": 300,
+      "requests": 2
+    },
+    "inconsistent-cache-split": {
+      "name": "inconsistent-cache-split",
+      "input": 80,
+      "output": 0,
+      "cached": 100,
+      "cacheRead": 80,
+      "cacheWrite": 10,
+      "total": 80,
+      "cost": 0.25,
+      "requests": 1
+    }
+  },
+  "trends": [
+    { "date": "2026-09-01", "codex": 580, "__requests": 6 }
+  ],
+  "heatmap": { "2026-09-01": 580 },
+  "history": [],
+  "meta": {
+    "contractVersion": 2,
+    "generatedAt": "2026-09-01T12:00:00Z",
+    "timezone": "UTC",
+    "range": "month",
+    "query": {
+      "range": "month",
+      "timezone": "UTC",
+      "machines": [],
+      "tools": [],
+      "models": [],
+      "search": null,
+      "tokenMode": "effective"
+    },
+    "capabilities": {}
+  }
+}

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TokenLedger 桌面小组件 provider（T8.2）。
+  三档尺寸经 Glance SizeMode.Responsive 匹配：4×1 / 2×2 / 4×2。
+  updatePeriodMillis=0：更新完全交给 WorkManager 与应用内 updateAll。
+  previewImage/previewLayout 使用与公开 Provider 一致的静态 Launcher 预览资产。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="48dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="48dp"
+    android:maxResizeWidth="320dp"
+    android:maxResizeHeight="200dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:configure="com.jeidorf.tokenledger.mobile.widget.WidgetConfigureActivity"
+    android:widgetFeatures="reconfigurable|hide_from_picker"
+    android:description="@string/widget_description"
+    android:previewImage="@drawable/ic_widget_combo_preview"
+    android:previewLayout="@layout/widget_combo_preview_layout"
+    android:initialLayout="@layout/glance_default_loading_layout" />

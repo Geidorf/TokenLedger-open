@@ -1,0 +1,68 @@
+{
+  "providers": [
+    {
+      "schemaVersion": 1,
+      "providerId": "company-openapi-0123456789abcdef01234567",
+      "displayName": "研发账号额度",
+      "scope": "api-organization",
+      "mode": "automatic",
+      "capability": "plan-dependent",
+      "status": "ok",
+      "windows": [
+        {
+          "providerId": "company-openapi-0123456789abcdef01234567",
+          "windowId": "key-daily",
+          "windowLabel": "API Key 今日限额",
+          "scope": "api-organization",
+          "source": "official-api",
+          "status": "ok",
+          "used": 25,
+          "limit": 100,
+          "remaining": 75,
+          "unit": "percent",
+          "windowMinutes": 1440,
+          "observedAt": "2026-08-04T16:00:00Z",
+          "fetchedAt": "2026-08-04T16:01:00Z",
+          "staleAfterSeconds": 300
+        },
+        {
+          "providerId": "company-openapi-0123456789abcdef01234567",
+          "windowId": "user-daily",
+          "windowLabel": "用户今日限额",
+          "scope": "api-organization",
+          "source": "official-api",
+          "status": "ok",
+          "used": 20,
+          "limit": 100,
+          "remaining": 80,
+          "unit": "percent",
+          "windowMinutes": 1440,
+          "observedAt": "2026-08-04T16:00:00Z",
+          "fetchedAt": "2026-08-04T16:01:00Z",
+          "staleAfterSeconds": 300
+        },
+        {
+          "providerId": "company-openapi-0123456789abcdef01234567",
+          "windowId": "user-monthly",
+          "windowLabel": "用户本月限额",
+          "scope": "api-organization",
+          "source": "official-api",
+          "status": "ok",
+          "used": 35,
+          "limit": 100,
+          "remaining": 65,
+          "unit": "percent",
+          "observedAt": "2026-08-04T16:00:00Z",
+          "fetchedAt": "2026-08-04T16:01:00Z",
+          "staleAfterSeconds": 300
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "providerId": "company-openapi-0123456789abcdef01234567",
+    "scope": "api-organization",
+    "windowIds": ["key-daily", "user-daily", "user-monthly"],
+    "containsSecrets": false
+  }
+}

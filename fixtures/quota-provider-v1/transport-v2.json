@@ -1,0 +1,143 @@
+{
+  "upsertRequest": {
+    "p_transport_version": 2,
+    "p_epoch": 7,
+    "p_providers": [
+      {
+        "generation": 3,
+        "envelope": {
+          "schemaVersion": 1,
+          "providerId": "openai-codex-local",
+          "displayName": "Codex",
+          "scope": "consumer-subscription",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "openai-codex-local",
+              "windowId": "codex:primary",
+              "windowLabel": "5 hour window",
+              "scope": "consumer-subscription",
+              "source": "local-authorized",
+              "status": "ok",
+              "used": 38,
+              "limit": 100,
+              "remaining": 62,
+              "unit": "percent",
+              "windowMinutes": 300,
+              "resetsAt": "2026-07-15T10:00:00+08:00",
+              "observedAt": "2026-07-15T08:30:00+08:00",
+              "fetchedAt": "2026-07-15T08:30:01+08:00",
+              "staleAfterSeconds": 900
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "readResponse": {
+    "status": "ok",
+    "transportVersion": 2,
+    "epoch": 7,
+    "revision": 12,
+    "generatedAt": "2026-07-15T08:31:00+08:00",
+    "providers": [
+      {
+        "schemaVersion": 1,
+        "providerId": "openai-codex-local",
+        "displayName": "Codex",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "openai-codex-local",
+            "windowId": "codex:primary",
+            "windowLabel": "5 hour window",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "used": 38,
+            "limit": 100,
+            "remaining": 62,
+            "unit": "percent",
+            "windowMinutes": 300,
+            "resetsAt": "2026-07-15T10:00:00+08:00",
+            "observedAt": "2026-07-15T08:30:00+08:00",
+            "fetchedAt": "2026-07-15T08:30:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      }
+    ],
+    "providerStates": [
+      {
+        "providerId": "anthropic-claude-consumer",
+        "scope": "consumer-subscription",
+        "generation": 2,
+        "deleted": true,
+        "receivedAt": "2026-07-15T08:20:00+08:00"
+      },
+      {
+        "providerId": "openai-codex-local",
+        "scope": "consumer-subscription",
+        "generation": 3,
+        "deleted": false,
+        "sourceObservedAt": "2026-07-15T08:30:00+08:00",
+        "receivedAt": "2026-07-15T08:31:00+08:00"
+      }
+    ]
+  },
+  "semantics": {
+    "retention": "durable-until-explicit-delete",
+    "omittedProviders": "preserve",
+    "conflictPrimaryClock": "max-windows-observedAt",
+    "equalObservedAtTieBreak": "later-server-receivedAt",
+    "olderObservedAt": "ignore",
+    "errorAuthRequiredUnsupportedUpload": "reject",
+    "readOldData": "return-and-client-recomputes-staleness",
+    "providerDelete": "increment-provider-generation-and-tombstone",
+    "globalDelete": "increment-global-epoch-and-all-existing-provider-generations"
+  },
+  "clearResponse": {
+    "status": "ok",
+    "transportVersion": 2,
+    "epoch": 8,
+    "revision": 13,
+    "clearedProviderCount": 1,
+    "generatedAt": "2026-07-15T08:32:00+08:00",
+    "providers": [],
+    "providerStates": [
+      {
+        "providerId": "anthropic-claude-consumer",
+        "scope": "consumer-subscription",
+        "generation": 3,
+        "deleted": true,
+        "receivedAt": "2026-07-15T08:32:00+08:00"
+      },
+      {
+        "providerId": "openai-codex-local",
+        "scope": "consumer-subscription",
+        "generation": 4,
+        "deleted": true,
+        "receivedAt": "2026-07-15T08:32:00+08:00"
+      }
+    ]
+  },
+  "raceCases": [
+    {
+      "name": "device-a-omits-device-b-provider",
+      "outcome": "device-b-provider-preserved"
+    },
+    {
+      "name": "older-in-flight-write-after-provider-delete",
+      "outcome": "ignored-by-provider-generation"
+    },
+    {
+      "name": "older-in-flight-write-after-global-delete",
+      "outcome": "rejected-by-stale-epoch"
+    }
+  ]
+}

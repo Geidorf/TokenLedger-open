@@ -1,0 +1,86 @@
+{
+  "fixtureVersion": 1,
+  "oldV2ResponseMetaQuery": {
+    "range": "today",
+    "timezone": "Asia/Shanghai",
+    "machine": "mac",
+    "tool": "codex",
+    "model": null,
+    "tokenMode": "effective"
+  },
+  "oldV2ResponseNormalized": {
+    "range": "today",
+    "timezone": "Asia/Shanghai",
+    "machines": ["mac"],
+    "tools": ["codex"],
+    "models": [],
+    "search": null,
+    "tokenMode": "effective"
+  },
+  "emptyArraysResponseEcho": {
+    "machines": [],
+    "tools": [],
+    "models": [],
+    "machine": null,
+    "tool": null,
+    "model": null
+  },
+  "cases": [
+    {
+      "name": "legacy machine sentinel and tool",
+      "input": {
+        "range": "today",
+        "timezone": "Asia/Shanghai",
+        "machine": "all_cloud",
+        "tool": " codex ",
+        "model": null,
+        "tokenMode": "effective"
+      },
+      "normalized": {
+        "range": "today",
+        "timezone": "Asia/Shanghai",
+        "machines": [],
+        "tools": ["codex"],
+        "models": [],
+        "search": null,
+        "tokenMode": "effective"
+      }
+    },
+    {
+      "name": "equivalent singular and plural",
+      "input": {
+        "range": "week",
+        "timezone": "UTC",
+        "machine": "mac",
+        "machines": [" mac ", "mac"],
+        "tool": "claude",
+        "tools": ["claude"],
+        "models": [],
+        "search": "   ",
+        "tokenMode": "effective"
+      },
+      "normalized": {
+        "range": "week",
+        "timezone": "UTC",
+        "machines": ["mac"],
+        "tools": ["claude"],
+        "models": [],
+        "search": null,
+        "tokenMode": "effective"
+      }
+    },
+    {
+      "name": "conflicting singular and plural",
+      "input": {
+        "range": "month",
+        "timezone": "UTC",
+        "machine": "mac",
+        "machines": ["windows"],
+        "tools": [],
+        "models": [],
+        "tokenMode": "effective"
+      },
+      "outcome": "reject"
+    }
+  ]
+}

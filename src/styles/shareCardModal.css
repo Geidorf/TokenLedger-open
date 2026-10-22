@@ -1,0 +1,41 @@
+/*
+ * T10.163 复核修复（P1-1）：分享弹窗新增的「导出 HTML 简报」按钮把
+ * 「复制图片」「保存高清图片」挤成逐字竖排。
+ *
+ * 根因：三个按钮共享的 `.secondary-action`（index.css）只给了 `width: 100%`，
+ * 没有 `flex`。在 `.share-modal-actions`（`display:flex; width:min(100%,360px);
+ * flex-direction:row`）这个横向容器里，`width:100%` 会变成一个 ~360px 的
+ * flex-basis；而原有两个按钮是 `flex: 1 1 0`（零基数、按比例增长）。三者的
+ * flex-basis 加上两条 8px gap 超出容器宽度时，浏览器把负空间几乎全部记在
+ * 基数最大的新按钮头上，但新按钮触底 min-content 之前，旧的两个零基数按钮
+ * 先被压缩到各自的 min-content（约一个汉字宽）——独立评审的截图证实了这个
+ * 现象，本文件不重复贴证据。
+ *
+ * 修复对 `.share-modal-actions` 的 `flex-wrap` 不加媒体查询、任何宽度下都
+ * 生效：新按钮本来就有的 ~360px 基数在两条 gap 的挤压下会正好换到独立一行，
+ * 原有两个按钮的横向空间和这个按钮出现之前完全一致（同样是 flex:1 1 0 平分
+ * 容器宽度）。768px 及以下 `.share-modal-actions` 在 index.css 里被改成
+ * `flex-direction: column`，此时 flex-wrap 语义是纵轴换出多列；但该容器没有
+ * 设置任何 `height`/`max-height`，纵向不受限时不会真的换出第二列，三个按钮
+ * 仍然各自独占一行、宽度不受影响。
+ *
+ * 复核修复 R2-4：初版把这条规则放进了 `@media (min-width: 769px)`，而
+ * index.css 里 column 布局用的断点是 `@media (max-width: 768px)`——一个用
+ * 768px、一个用 769px，中间 (768, 769) 这段开区间 CSS px 两条媒体查询都不
+ * 命中，容器退回未加宽度限制的默认 row + nowrap，页脚挤压会在这段小数宽度上
+ * 原样复现（例如系统缩放比例换算出 768.x 这样的宽度）。改成无条件规则后两条
+ * 断点之间不再有缝隙，且如上一段所说，对 768px 及以下的 column 布局无副作用。
+ *
+ * 44px 触控下限对两个宽度都适用：`.secondary-action` 的 `min-height` 取的是
+ * `--space-8`（32px，见 src/styles/tokens.css），只有原有两个按钮在 index.css
+ * 里单独补了 `min-block-size: 44px`；这条新按钮的规则同样补上，且不放进媒体
+ * 查询里，保证移动宽度也达标。
+ */
+
+.share-action-digest {
+  min-block-size: 44px;
+}
+
+.share-modal-actions {
+  flex-wrap: wrap;
+}

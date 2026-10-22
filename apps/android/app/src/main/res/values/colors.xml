@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  只放启动窗口在 Compose 画第一帧之前需要的颜色（T10.173 §3.1，T10.177）。
+  值必须等于 ui/foundation/LedgerTokens.kt 的深色一套：tl_paper = page，tl_primary = primary。
+  LedgerTokensTest 逐项比对这两个文件与 LedgerTokens，改一边另一边会失败。
+
+  非夜间目录也用深色：应用外观默认 Dark、且不跟随系统，浅色启动底会让多数用户先闪一帧白
+  （T10.95 回退过一次）。等外观设置能同步到启动主题时，再把这里改成浅色 page。
+-->
+<resources>
+    <color name="tl_paper">#0D0F13</color>
+    <color name="tl_primary">#6B9DFF</color>
+</resources>

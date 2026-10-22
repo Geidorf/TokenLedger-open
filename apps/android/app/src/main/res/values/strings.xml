@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TokenLedger</string>
+    <string name="config_missing_message">服务配置暂不可用，请联系发布方获取正确版本。</string>
+    <string name="login_subtitle">云端仪表盘 · v%1$s</string>
+    <string name="email_label">邮箱</string>
+    <string name="password_label">密码</string>
+    <string name="login_action">登录</string>
+    <string name="login_loading">登录中</string>
+    <string name="widget_label">TokenLedger 额度</string>
+    <string name="widget_description">查看订阅额度与 Token 消耗，遵循诚实额度原则显示数据时效。</string>
+    <string name="widget_ring_label">TokenLedger · 环形额度 (2×2)</string>
+    <string name="widget_ring_description">双栏独立环形仪表盘，直观展示各 AI 来源可用额度比例</string>
+    <string name="widget_bar_label">TokenLedger · 单行消耗 (4×1)</string>
+    <string name="widget_bar_description">单行紧凑消耗卡片，展示有效 Token、预估费用与数据时间</string>
+    <string name="widget_combo_label">TokenLedger · 综合看板 (4×2)</string>
+    <string name="widget_combo_description">双栏全量卡片，同时展示来源额度与 Token 消耗及预估费用</string>
+</resources>

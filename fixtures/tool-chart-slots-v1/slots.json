@@ -1,0 +1,65 @@
+{
+  "$schema": "tool-chart-slots-v1",
+  "note": "Shared test vectors for the tool -> chart-slot table (R-8; docs/design/android-visual-refresh-v2.md §3.8, T10.178 review P2-6). Normalise a name by trimming it with the ECMAScript WhiteSpace+LineTerminator character set (not Rust's or the JVM's own Unicode-whitespace trim -- see `trimProbes` below, T10.187 review P3-1) and lower-casing it, resolve it through `aliases`, then look it up in `registered`; a name in neither resolves via FNV-1a 32-bit over the UTF-16 code units of the normalised name, mod 8, plus 1 (see `hashedUnregistered`). In one view, tools are assigned slots in rank order; a same-slot collision shifts the lower-ranked tool to the next free slot, wrapping 8 -> 1 (`collisionAndWrap`); the 9th distinct tool onward draws the neutral \"other\" colour instead of repeating a primary slot (`nineToolView`). Read by tests/frontend-contracts.test.mjs (desktop TS: toolChartSlot/assignToolChartSlots) and src-tauri/src/wallpaper.rs (Rust: tool_chart_slot/assign_tool_chart_slots, via include_str!). Android does not read this file yet (T10.178 review P2-6); its own test suite (LedgerTokensTest.kt) carries equivalent vectors by hand, including the 12 `trimProbes` vectors below (ported verbatim from its trimProbes map, T10.187 review P3-1). Moved from tests/fixtures/tool-chart-slots-v1.json to this root fixtures/<name>/ location in the T10.187 review P3-3 fix round, to match the repo's other cross-team fixtures (fixtures/dashboard-stats-v2/, fixtures/quota-provider-v1/, fixtures/session-analysis-v1/). See the sibling file palette-b.json for the 8 slot colours plus 'other', per theme.",
+  "registered": {
+    "antigravity": 1,
+    "gemini": 1,
+    "codex": 2,
+    "marvis": 2,
+    "hermes": 2,
+    "pi": 3,
+    "opencode": 4,
+    "workbuddy": 4,
+    "reasonix": 5,
+    "deepseek": 5,
+    "grok": 5,
+    "claude": 6,
+    "qclaw": 6,
+    "kilo": 7,
+    "kimi": 7,
+    "trae": 7,
+    "minimax": 8,
+    "zcode": 8
+  },
+  "aliases": {
+    "deepseekgui": 5,
+    "dsh": 5,
+    "kimidesktop": 7,
+    "mavis": 2
+  },
+  "hashedUnregistered": {
+    "": 6,
+    "x": 8,
+    "some_future_tool": 5,
+    "未来工具": 1,
+    "cursor": 8,
+    "cline": 1
+  },
+  "collisionAndWrap": {
+    "comment": "minimax and zcode both primary to slot 8; the unregistered name 'x' also hashes to slot 8. In rank order: minimax keeps 8, zcode collides and shifts to 1 (the 8 -> 1 wraparound), x collides on 8 then on 1 and lands on 2.",
+    "namesInRankOrder": ["minimax", "zcode", "x"],
+    "slots": [8, 1, 2]
+  },
+  "nineToolView": {
+    "comment": "One tool per primary slot 1..8 in order, plus a 9th (gemini, which primary-hashes to slot 1) — the 9th distinct tool in a view always draws the neutral \"other\" colour, never a repeated or reshuffled primary slot.",
+    "namesInRankOrder": ["antigravity", "codex", "pi", "opencode", "reasonix", "claude", "kilo", "minimax", "gemini"],
+    "assignment": [1, 2, 3, 4, 5, 6, 7, 8, "other"]
+  },
+  "trimProbes": {
+    "comment": "12 vectors ported verbatim from the Android trimProbes map (apps/android/app/src/test/java/.../LedgerTokensTest.kt, around line 522). Each exercises the full normalise+alias+table+hash pipeline (toolChartSlot / tool_chart_slot), not a trim function in isolation, so a name is only interesting here if trimming it, or not, changes which branch of that pipeline resolves it. U+FEFF (ZWNBSP) and U+0085 (NEL) are the two characters ECMAScript's trim() and a naive Unicode-whitespace trim disagree on (ECMAScript trims FEFF but not 0085; Unicode White_Space is the reverse); U+180E and U+200B are former-or-never Zs characters that both trims already agree are not whitespace; U+001C/001F are information separators, never whitespace in either scheme. All names are written with JSON \\u escapes rather than raw bytes so the fixture stays readable in any editor/diff.",
+    "cases": [
+      { "name": "codex\u001C", "slot": 1 },
+      { "name": "\u001Ccodex", "slot": 7 },
+      { "name": "\u001F", "slot": 7 },
+      { "name": "﻿codex", "slot": 2 },
+      { "name": "codex﻿", "slot": 2 },
+      { "name": "﻿", "slot": 6 },
+      { "name": " Codex　", "slot": 2 },
+      { "name": " codex ", "slot": 2 },
+      { "name": "\u000Bcodex\u000C", "slot": 2 },
+      { "name": "᠎codex", "slot": 1 },
+      { "name": "\u0085codex", "slot": 8 },
+      { "name": "codex​", "slot": 6 }
+    ]
+  }
+}

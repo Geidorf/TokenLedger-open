@@ -1,0 +1,229 @@
+{
+  "providers": [
+    {
+      "schemaVersion": 1,
+      "providerId": "openai-codex-local",
+      "displayName": "Codex",
+      "scope": "consumer-subscription",
+      "mode": "automatic",
+      "capability": "stable",
+      "status": "ok",
+      "windows": [
+        {
+          "providerId": "openai-codex-local",
+          "windowId": "codex:primary",
+          "windowLabel": "5 hour window",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "used": 38,
+          "limit": 100,
+          "remaining": 62,
+          "unit": "percent",
+          "windowMinutes": 300,
+          "resetsAt": "2026-07-15T10:00:00+08:00",
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:01+08:00",
+          "staleAfterSeconds": 900
+        },
+        {
+          "providerId": "openai-codex-local",
+          "windowId": "codex:secondary",
+          "windowLabel": "7 day window",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "used": 64,
+          "limit": 100,
+          "remaining": 36,
+          "unit": "percent",
+          "windowMinutes": 10080,
+          "resetsAt": "2026-07-18T08:00:00+08:00",
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:01+08:00",
+          "staleAfterSeconds": 900
+        },
+        {
+          "providerId": "openai-codex-local",
+          "windowId": "codex:credits-balance",
+          "windowLabel": "Credits balance",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "remaining": 12.5,
+          "unit": "credits",
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:01+08:00",
+          "staleAfterSeconds": 900
+        },
+        {
+          "providerId": "openai-codex-local",
+          "windowId": "codex:credits-unlimited",
+          "windowLabel": "Included Credits",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "unit": "credits",
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:01+08:00",
+          "staleAfterSeconds": 900,
+          "reasonCode": "credits_unlimited"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "providerId": "anthropic-claude-consumer",
+      "displayName": "Claude",
+      "scope": "consumer-subscription",
+      "mode": "automatic",
+      "capability": "plan-dependent",
+      "status": "stale",
+      "windows": [
+        {
+          "providerId": "anthropic-claude-consumer",
+          "windowId": "claude:five-hour",
+          "windowLabel": "5 hour window",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "stale",
+          "used": 72,
+          "limit": 100,
+          "remaining": 28,
+          "unit": "percent",
+          "windowMinutes": 300,
+          "resetsAt": "2026-07-15T09:00:00+08:00",
+          "observedAt": "2026-07-15T07:40:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:02+08:00",
+          "staleAfterSeconds": 900,
+          "reasonCode": "observation_stale"
+        }
+      ],
+      "reasonCode": "observation_stale"
+    },
+    {
+      "schemaVersion": 1,
+      "providerId": "google-antigravity-consumer",
+      "displayName": "Antigravity",
+      "scope": "consumer-subscription",
+      "mode": "automatic",
+      "capability": "experimental",
+      "status": "ok",
+      "windows": [
+        {
+          "providerId": "google-antigravity-consumer",
+          "windowId": "antigravity-gemini-models-gemini-session",
+          "windowLabel": "Gemini 5 hour",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "used": 9,
+          "limit": 100,
+          "remaining": 91,
+          "unit": "percent",
+          "windowMinutes": 300,
+          "resetsAt": "2026-07-15T12:00:00+08:00",
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:03+08:00",
+          "staleAfterSeconds": 900
+        },
+        {
+          "providerId": "google-antigravity-consumer",
+          "windowId": "antigravity-gemini-models-gemini-weekly",
+          "windowLabel": "Gemini weekly",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "used": 8,
+          "limit": 100,
+          "remaining": 92,
+          "unit": "percent",
+          "windowMinutes": 10080,
+          "resetsAt": "2026-07-21T08:00:00+08:00",
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:03+08:00",
+          "staleAfterSeconds": 900
+        },
+        {
+          "providerId": "google-antigravity-consumer",
+          "windowId": "antigravity-claude-and-gpt-models-claude-session",
+          "windowLabel": "Claude / GPT 5 hour",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "used": 0,
+          "limit": 100,
+          "remaining": 100,
+          "unit": "percent",
+          "windowMinutes": 300,
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:03+08:00",
+          "staleAfterSeconds": 900
+        },
+        {
+          "providerId": "google-antigravity-consumer",
+          "windowId": "antigravity-claude-and-gpt-models-claude-weekly",
+          "windowLabel": "Claude / GPT weekly",
+          "scope": "consumer-subscription",
+          "source": "local-authorized",
+          "status": "ok",
+          "used": 0,
+          "limit": 100,
+          "remaining": 100,
+          "unit": "percent",
+          "windowMinutes": 10080,
+          "observedAt": "2026-07-15T08:30:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:03+08:00",
+          "staleAfterSeconds": 900
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "providerId": "manual-monthly-budget",
+      "displayName": "Monthly API budget",
+      "scope": "manual-budget",
+      "mode": "manual",
+      "capability": "manual",
+      "status": "ok",
+      "windows": [
+        {
+          "providerId": "manual-monthly-budget",
+          "windowId": "manual:2026-07",
+          "windowLabel": "July budget",
+          "scope": "manual-budget",
+          "source": "manual",
+          "status": "ok",
+          "used": 50,
+          "limit": 100,
+          "remaining": 50,
+          "unit": "usd",
+          "resetsAt": "2026-08-01T00:00:00+08:00",
+          "observedAt": "2026-07-15T08:00:00+08:00",
+          "fetchedAt": "2026-07-15T08:30:04+08:00",
+          "staleAfterSeconds": 3600
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "providerCount": 4,
+    "windowCount": 10,
+    "drawableProgressKeys": [
+      "openai-codex-local:consumer-subscription:codex:primary",
+      "openai-codex-local:consumer-subscription:codex:secondary",
+      "anthropic-claude-consumer:consumer-subscription:claude:five-hour",
+      "google-antigravity-consumer:consumer-subscription:antigravity-gemini-models-gemini-session",
+      "google-antigravity-consumer:consumer-subscription:antigravity-gemini-models-gemini-weekly",
+      "google-antigravity-consumer:consumer-subscription:antigravity-claude-and-gpt-models-claude-session",
+      "google-antigravity-consumer:consumer-subscription:antigravity-claude-and-gpt-models-claude-weekly",
+      "manual-monthly-budget:manual-budget:manual:2026-07"
+    ],
+    "absoluteOnlyKeys": [
+      "openai-codex-local:consumer-subscription:codex:credits-balance"
+    ],
+    "unlimitedKeys": [
+      "openai-codex-local:consumer-subscription:codex:credits-unlimited"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+# Copy this file to local.properties before building a cloud-enabled APK.
+# local.properties is git-ignored; do not commit SDK paths or secret keys.
+# sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+# 填入你自己的 Supabase 项目：控制台 → Project Settings → API
+TOKENLEDGER_SUPABASE_URL=https://<your-project-ref>.supabase.co
+TOKENLEDGER_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<your-publishable-key>
+
+# Optional: required only for assembleSignedRelease. Never commit real values.
+# TOKENLEDGER_ANDROID_KEYSTORE_PATH=/absolute/path/to/tokenledger-upload.keystore
+# TOKENLEDGER_ANDROID_KEYSTORE_PASSWORD=<local-or-ci-secret>
+# TOKENLEDGER_ANDROID_KEY_ALIAS=<release-key-alias>
+# TOKENLEDGER_ANDROID_KEY_PASSWORD=<local-or-ci-secret>

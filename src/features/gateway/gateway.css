@@ -1,0 +1,132 @@
+/* Additions on top of the T10.262 prototype styles (mw-*). */
+.mw-page { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.mw-page .mw-header,
+.mw-header.app-header {
+  display: flex;
+  width: 100%;
+  -webkit-user-select: none;
+  user-select: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--space-6);
+}
+.mw-header.app-header .toolbar-brand {
+  display: grid;
+  gap: 2px;
+}
+.mw-header.app-header .toolbar-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+}
+.mw-header.app-header h1 {
+  display: inline;
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-title);
+  color: var(--color-text-primary);
+}
+.mw-header.app-header .toolbar-subtitle {
+  margin: 0;
+}
+.mw-header.app-header .header-controls {
+  margin-left: auto;
+}
+/* 「模型接入 · 页名」：标题是 inline-flex，分隔符两侧的空格会被吃掉，按原样保留。 */
+.mw-header.app-header .toolbar-title-sep { white-space: pre; }
+/* 外壳在 1081–1420px 把顶栏改成上下两排、更窄时再居中堆叠；模型接入顶栏只有一枚网关状态胶囊，
+   任何宽度都保持「标题在左、胶囊在右」，放不下时胶囊整体换到下一行并靠右。 */
+.app-shell header.app-header.mw-header {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px var(--space-4);
+}
+.app-shell header.app-header.mw-header .toolbar-brand {
+  display: grid;
+  flex: 1 1 280px;
+  width: auto;
+  min-width: 0;
+  text-align: left;
+}
+.app-shell header.app-header.mw-header .header-controls {
+  width: auto;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+.mw-page-stack.mw-gateway-stack { gap: var(--space-5); }
+.mw-routing .mw-routing-main { gap: var(--space-4); }
+.mw-field textarea,
+.mw-native-select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  padding: 9px 12px;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+.mw-field textarea { resize: vertical; min-height: 64px; }
+.mw-field textarea:focus,
+.mw-native-select:focus { border-color: var(--color-primary-focus); box-shadow: 0 0 0 3px var(--color-primary-focus-soft); }
+.mw-native-select.is-compact { padding: 5px 8px; font-family: inherit; font-size: var(--font-size-xs); }
+.mw-empty { padding: 20px; color: var(--color-text-tertiary); font-size: var(--font-size-sm); }
+.mw-note.is-danger .mw-btn { margin-left: 8px; }
+.mw-warning-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.mw-diff-lines { white-space: pre; }
+
+.mw-table-wrap {
+  overflow-x: auto;
+  /* 右侧还有列（缓存写、耗时）时右边缘出现阴影，滚到最右时被随内容滚动的底色盖住。 */
+  background:
+    linear-gradient(to left, var(--color-bg-panel) 40%, transparent) right center / 32px 100% no-repeat local,
+    linear-gradient(to left, color-mix(in srgb, var(--color-text-primary) 14%, transparent), transparent) right center / 14px 100% no-repeat scroll,
+    var(--color-bg-panel);
+}
+.mw-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.mw-table th { padding: 8px 10px; border-bottom: 1px solid var(--color-border); color: var(--color-text-tertiary); font-weight: var(--weight-semibold); text-align: left; white-space: nowrap; }
+.mw-table td { padding: 8px 10px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); color: var(--color-text-secondary); white-space: nowrap; }
+.mw-table td.is-num, .mw-table th.is-num { text-align: right; }
+.mw-table tr:last-child td { border-bottom: none; }
+.mw-table .is-danger { color: var(--color-danger-text); }
+
+.mw-editor { display: grid; gap: 14px; padding: 0 20px 20px; overflow-y: auto; }
+.mw-editor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mw-editor-row > .mw-flex { flex: 1; }
+.mw-editor .mw-members li { grid-template-columns: auto 1fr auto auto auto auto; }
+.mw-rule-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 8px; }
+.mw-rule-edit input { width: 110px; border: 1px solid var(--color-border); border-radius: var(--radius-input); padding: 5px 8px; background: var(--color-bg-input); color: var(--color-text-primary); font-size: var(--font-size-xs); }
+.mw-decision-attempts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+
+.mw-agent-status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mw-agent-actions { display: flex; gap: 6px; align-items: center; }
+.mw-led.is-off { background: var(--color-text-tertiary); box-shadow: none; animation: none; }
+.mw-led.is-danger { background: var(--color-danger-text); box-shadow: none; animation: none; }
+
+/* T10.300e: identity stays readable, with keyboard focus exposing every character. */
+.mw-routing .mw-decision-top { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:4px 8px; }
+.mw-routing .mw-decision-top > .mw-faint { display:none; }
+.mw-routing .mw-decision-top > strong { grid-column:2; }
+.mw-routing .mw-decision-top .mw-decision-identity { min-width:0; white-space:normal; overflow-wrap:anywhere; text-overflow:clip; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.5; }
+.mw-routing .mw-decision-identity:focus { display:block; -webkit-line-clamp:unset; overflow:visible; }
+.mw-routing .mw-decision-identity:focus-visible, .mw-decision-attempts .mw-chip:focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; }
+.mw-decision-attempts .mw-chip { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+@media (max-width:1280px) { .mw-page .mw-routing { grid-template-columns:minmax(0,1fr); } }
+
+/* 可点的胶囊：点击区保持 44px 见方，胶囊本身仍是 22px 高的小标签，不被按钮最小尺寸撑成圆形。 */
+.mw-chip-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  cursor: pointer;
+}
+.mw-chip-hit:hover .mw-chip { border-color: var(--color-primary); }
+.mw-chip-hit:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }

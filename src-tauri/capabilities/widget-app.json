@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "widget-app",
+  "description": "allows widget views to read their data and use their existing refresh and navigation controls",
+  "windows": [
+    "widget",
+    "desktop-widget"
+  ],
+  "permissions": [
+    "allow-get-settings",
+    "allow-get-cached-stats",
+    "allow-get-local-quota-providers",
+    "allow-refresh-scan",
+    "allow-focus-main-window",
+    "allow-open-main-settings"
+  ]
+}

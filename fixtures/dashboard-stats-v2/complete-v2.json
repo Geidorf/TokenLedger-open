@@ -1,0 +1,201 @@
+{
+  "summary": {
+    "totalTokens": 1200,
+    "inputTokens": 900,
+    "outputTokens": 300,
+    "cachedTokens": 200,
+    "cacheReadTokens": 150,
+    "cacheWriteTokens": 50,
+    "cacheSavedUsd": 0.08,
+    "totalCost": 0.42,
+    "totalRequests": 3,
+    "avgTokensPerReq": 400
+  },
+  "tools": {
+    "codex": {
+      "name": "codex",
+      "input": 900,
+      "output": 300,
+      "cached": 200,
+      "cacheRead": 150,
+      "cacheWrite": 50,
+      "total": 1200,
+      "cost": 0.42,
+      "requests": 3,
+      "models": { "gpt-5": 1200 },
+      "heatmap": { "2026-07-15": 1200 }
+    }
+  },
+  "models": {
+    "gpt-5": {
+      "name": "gpt-5",
+      "input": 900,
+      "output": 300,
+      "cached": 200,
+      "total": 1200,
+      "cost": 0.42,
+      "requests": 3,
+      "heatmap": { "2026-07-15": 1200 }
+    }
+  },
+  "trends": [
+    { "date": "09:00", "codex": 500, "__requests": 1 },
+    { "date": "10:00", "codex": 700, "__requests": 2 }
+  ],
+  "comparison": {
+    "window": {
+      "kind": "dayOverDay",
+      "timezone": "Asia/Shanghai",
+      "bucket": "hour",
+      "currentStart": "2026-07-15T00:00:00+08:00",
+      "currentEnd": "2026-07-15T10:30:00+08:00",
+      "previousStart": "2026-07-14T00:00:00+08:00",
+      "previousEnd": "2026-07-14T10:30:00+08:00",
+      "alignedThrough": "10:30"
+    },
+    "current": {
+      "summary": {
+        "totalTokens": 1200,
+        "inputTokens": 900,
+        "outputTokens": 300,
+        "totalCost": 0.42,
+        "totalRequests": 3,
+        "avgTokensPerReq": 400
+      },
+      "series": [
+        { "bucket": "00:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "01:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "02:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "03:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "04:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "05:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "06:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "07:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "08:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "09:00", "tokens": 500, "requests": 1, "cost": 0.17 },
+        { "bucket": "10:00", "tokens": 700, "requests": 2, "cost": 0.25 }
+      ]
+    },
+    "previous": {
+      "summary": {
+        "totalTokens": 800,
+        "inputTokens": 600,
+        "outputTokens": 200,
+        "totalCost": 0.28,
+        "totalRequests": 2,
+        "avgTokensPerReq": 400
+      },
+      "series": [
+        { "bucket": "00:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "01:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "02:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "03:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "04:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "05:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "06:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "07:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "08:00", "tokens": 0, "requests": 0, "cost": 0 },
+        { "bucket": "09:00", "tokens": 300, "requests": 1, "cost": 0.1 },
+        { "bucket": "10:00", "tokens": 500, "requests": 1, "cost": 0.18 }
+      ]
+    },
+    "delta": {
+      "tokens": { "absolute": 400, "percent": 50.0, "direction": "up" },
+      "requests": { "absolute": 1, "percent": 50.0, "direction": "up" },
+      "cost": { "absolute": 0.14, "percent": 50.0, "direction": "up" }
+    }
+  },
+  "heatmap": { "2026-07-15": 1200 },
+  "history": [
+    {
+      "id": 42,
+      "tool": "codex",
+      "model": "gpt-5",
+      "inputTokens": 300,
+      "outputTokens": 100,
+      "cachedTokens": 50,
+      "cacheWriteTokens": 10,
+      "cost": 0.14,
+      "timestamp": "2026-07-15 10:20:00",
+      "sessionId": "session-42",
+      "machineId": "macbook-pro",
+      "requests": 1
+    }
+  ],
+  "historyPage": {
+    "items": [
+      {
+        "id": 42,
+        "tool": "codex",
+        "model": "gpt-5",
+        "inputTokens": 300,
+        "outputTokens": 100,
+        "cachedTokens": 50,
+        "cacheWriteTokens": 10,
+        "cost": 0.14,
+        "timestamp": "2026-07-15 10:00:00",
+        "sessionId": "hour:10",
+        "machineId": "macbook-pro",
+        "requests": 1
+      }
+    ],
+    "nextCursor": "v2.opaque-query-bound-cursor",
+    "hasMore": true,
+    "totalCount": 3,
+    "filteredSummary": {
+      "totalTokens": 1200,
+      "inputTokens": 900,
+      "outputTokens": 300,
+      "totalCost": 0.42,
+      "totalRequests": 3,
+      "avgTokensPerReq": 400
+    },
+    "availableFilters": {
+      "tools": [{ "value": "codex", "count": 3 }],
+      "models": [{ "value": "gpt-5", "count": 3 }],
+      "machines": [{ "value": "macbook-pro", "count": 3 }]
+    },
+    "granularity": "hour"
+  },
+  "machineDistribution": [
+    {
+      "value": "macbook-pro",
+      "tokens": 1200,
+      "inputTokens": 900,
+      "outputTokens": 300,
+      "cachedTokens": 200,
+      "cacheWriteTokens": 50,
+      "requests": 3,
+      "cost": 0.42
+    }
+  ],
+  "machines": ["macbook-pro"],
+  "meta": {
+    "contractVersion": 2,
+    "generatedAt": "2026-07-15T10:30:00+08:00",
+    "lastRefreshedAt": "2026-07-15T10:29:40+08:00",
+    "timezone": "Asia/Shanghai",
+    "range": "today",
+    "machine": "macbook-pro",
+    "stale": false,
+    "query": {
+      "range": "today",
+      "timezone": "Asia/Shanghai",
+      "machines": ["macbook-pro"],
+      "tools": ["codex"],
+      "models": ["gpt-5"],
+      "search": null,
+      "machine": "macbook-pro",
+      "tool": "codex",
+      "model": "gpt-5",
+      "tokenMode": "effective"
+    },
+    "capabilities": {
+      "comparison": true,
+      "detailPagination": true,
+      "entityDashboard": true,
+      "multiFilterSearch": true,
+      "quotaSnapshots": false
+    }
+  }
+}

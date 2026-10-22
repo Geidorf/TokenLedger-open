@@ -1,0 +1,143 @@
+/* T10.160：原 Workbuddy 多维分析视图（WorkbuddyAnalyticsSection，513 行）已作为死代码
+   删除。本文件下余 .behavior-* 规则归 T10.164 所有；.workbuddy-card-header 是
+   BehaviorAnalysisView 仍在使用的共享基础样式，一并保留。 */
+
+.behavior-analysis-view { --behavior-accent: var(--color-primary, #006dcc); }
+.behavior-analysis-heading { margin-bottom: 0; }
+/* U-102（T10.278）：区块之间多留白，口径说明收进 ⓘ。 */
+.behavior-analysis-view.content-stack { gap:var(--space-6); }
+.behavior-heading-info { display:flex; min-width:0; align-items:center; gap:var(--space-2); }
+/* T10.164：刷新反馈靠文字承担（reduced-motion 下转圈会停），按钮用 aria-disabled 保住焦点。 */
+.behavior-refresh { position:relative; display:flex; flex:none; align-items:center; gap:.5rem; }
+.behavior-refresh-status { color:var(--color-text-tertiary); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.behavior-refresh-button[aria-disabled="true"] { cursor:progress; }
+.behavior-range-note { display:flex; align-items:flex-start; gap:.5rem; margin:0; padding:.55rem .75rem; border-radius:var(--radius-button); background:var(--color-bg-subtle); color:var(--color-text-secondary); font-size:.8rem; line-height:1.5; }
+.behavior-range-note svg { flex:none; margin-top:.15rem; color:var(--behavior-accent); }
+/* T10.150：范围快选改用共享 .segmented 轨道 + 滑动选中指示（tl-seg），
+   自身只负责跟自定义区间输入并排布局，不再自带边框/底色的外层小卡片。 */
+.behavior-range-bar { display:flex; align-items:center; flex-wrap:wrap; gap:.6rem; }
+.behavior-range-segmented.tl-seg button.active { background:transparent; box-shadow:none; }
+.behavior-custom-range { display:flex; align-items:center; gap:.4rem; margin-left:auto; color:var(--color-text-muted); font-size:.8rem; }
+.behavior-range-bar input, .behavior-analysis-view select { min-width:8.5rem; min-height:44px; border:1px solid var(--color-border); border-radius:var(--radius-input); padding:0 .6rem; color:var(--color-text-primary); background:var(--color-bg-input); }
+.behavior-custom-range .behavior-apply-range, .behavior-selection-bar button { min-height:44px; border:1px solid var(--color-border); border-radius:var(--radius-button); padding:.4rem .75rem; background:var(--color-bg-elevated); color:var(--color-text-primary); cursor:pointer; }
+.behavior-custom-range .behavior-apply-range:disabled, .behavior-selection-bar button:disabled { opacity:.5; cursor:not-allowed; }
+.behavior-range-error { margin:-.35rem 0 0; color:var(--color-danger); font-size:.8rem; }
+.behavior-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--space-4); }
+/* KPI tile consistent with the dashboard KPI spec: icon in a tinted 32px/8
+   radius tile, 13/500 label, 20/600 value (5.4 规格，T10.150). */
+.behavior-stat { display:flex; align-items:center; gap:.75rem; padding:.9rem 1rem; }
+.behavior-stat-icon { display:flex; flex:none; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; background:var(--color-bg-subtle); color:var(--behavior-accent); }
+.behavior-stat-text { display:flex; min-width:0; flex-direction:column; gap:2px; }
+.behavior-stat-label { color:var(--color-text-secondary); font-size:13px; font-weight:var(--weight-label); }
+.behavior-stat strong { color:var(--color-text-primary); font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+.behavior-stat-note { color:var(--color-text-tertiary); font-size:12px; line-height:1.35; }
+.behavior-chart-grid, .behavior-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-5); }
+/* Session rows carry cost, span and model, so they get the wider column. */
+.behavior-detail-grid { grid-template-columns:minmax(0,2fr) minmax(0,3fr); }
+.behavior-chart-card, .behavior-detail-grid .panel { min-width:0; padding:1rem; }
+.behavior-chart-card h2, .behavior-detail-grid h2 { margin:0; font-size:.95rem; }
+.behavior-chart-card > .workbuddy-card-header { min-height:3rem; margin-bottom:.65rem; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:.25rem; }
+.behavior-chart-card > .workbuddy-card-header > span { display:block; max-width:100%; color:var(--color-text-muted); font-size:.75rem; line-height:1.35; }
+.behavior-chart { height:18rem; min-height:12rem; }
+.behavior-heatmap-scroll { max-width:100%; overflow-x:auto; }
+.behavior-selection-bar { display:flex; align-items:center; flex-wrap:wrap; gap:.65rem; color:var(--color-text-secondary); font-size:.8rem; }
+.behavior-selection-bar label { display:flex; align-items:center; gap:.5rem; }
+/* T10.164 排行下钻：整行是 ≥44px 的按钮（工具 → 专属看板，会话 → 明细），Claude/Codex
+   会话另有「逐轮分析」。列表左右各让出 8px，让行内填充与标题文字对齐；描边内收，避免被滚动容器裁掉。 */
+.behavior-rank-head { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem var(--space-1); margin-bottom:.4rem; }
+.behavior-rank-head > p { flex-basis:100%; }
+.behavior-rank-head h2 small { color:var(--color-text-tertiary); font-size:12px; font-weight:400; }
+.behavior-rank-caption { margin:0; color:var(--color-text-tertiary); font-size:12px; line-height:1.45; }
+.behavior-rank-note { margin:0; padding:.45rem .65rem; border-radius:var(--radius-button); background:var(--color-bg-subtle); color:var(--color-text-secondary); font-size:12px; line-height:1.5; }
+.behavior-rank-note.is-attention { background:var(--color-warning-subtle); }
+/* 逐轮分析定位失败的播报区常驻（空时无高度），只更新其中文字，读屏才会可靠播报。 */
+.behavior-rank-live > .behavior-rank-note { margin-bottom:.4rem; }
+.behavior-rank-empty { margin:.4rem 0 0; color:var(--color-text-tertiary); font-size:.8rem; }
+/* position:relative contains the rows' .sr-only labels (absolute): without it
+   they escape the page's scroll container and make the whole document scroll. */
+.behavior-rank-list { position:relative; max-height:24rem; overflow:auto; margin:0 -8px; padding:0; list-style:none; }
+/* 列表超出 24rem 时末行会被裁成半行：末尾放一块粘在可视区底部的渐隐，还有未显示的行时
+   盖在最后一行上提示可滚动；滚到底后它回到列表末尾的空白处，不遮任何一行。 */
+.behavior-rank-list::after { content:""; position:sticky; bottom:0; display:block; height:1.75rem; background:linear-gradient(transparent, var(--color-bg-panel)); pointer-events:none; }
+.behavior-rank-row { display:grid; grid-template-columns:minmax(0,1fr); align-items:center; column-gap:.35rem; }
+/* Each row is its own grid: a fixed action column keeps the numbers aligned
+   between rows with and without 「逐轮分析」. */
+.behavior-rank-list.has-actions .behavior-rank-row { grid-template-columns:minmax(0,1fr) 6.25rem; }
+.behavior-rank-row + .behavior-rank-row { border-top:1px solid var(--color-border-row); }
+.behavior-rank-main { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"name value" "meta aside"; align-items:center; column-gap:.75rem; row-gap:2px; width:100%; min-height:44px; margin:2px 0; padding:.45rem 8px; border:0; border-radius:var(--radius-button); background:transparent; color:inherit; font:inherit; text-align:left; }
+button.behavior-rank-main { grid-template-columns:minmax(0,1fr) auto 16px; grid-template-areas:"name value go" "meta aside go"; cursor:pointer; transition:background-color var(--motion-hover) var(--ease-out-quart); }
+button.behavior-rank-main:hover { background:var(--color-bg-hover-soft); }
+.behavior-rank-main:focus-visible, .behavior-rank-action:focus-visible { outline:2px solid var(--color-primary); outline-offset:-2px; }
+.behavior-rank-name { grid-area:name; display:flex; align-items:center; gap:7px; min-width:0; color:var(--color-text-primary); font-size:13px; font-weight:var(--weight-label); }
+.behavior-rank-name > span:last-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.behavior-rank-value { grid-area:value; justify-self:end; color:var(--color-text-primary); font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.behavior-rank-meta { grid-area:meta; min-width:0; color:var(--color-text-tertiary); font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.behavior-rank-aside { grid-area:aside; justify-self:end; align-self:start; color:var(--color-text-secondary); font-size:12px; line-height:1.4; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.behavior-rank-aside.is-unavailable { color:var(--color-text-tertiary); }
+.behavior-rank-go { grid-area:go; justify-self:end; color:var(--color-text-tertiary); }
+button.behavior-rank-main:hover .behavior-rank-go { color:var(--color-text-secondary); }
+.behavior-rank-action { display:inline-flex; justify-self:end; align-items:center; justify-content:center; gap:5px; min-width:44px; min-height:44px; margin-right:8px; padding:0 10px; border:0; border-radius:var(--radius-button); background:transparent; color:var(--color-text-secondary); font:inherit; font-size:12px; font-weight:var(--weight-label); white-space:nowrap; cursor:pointer; transition:background-color var(--motion-hover) var(--ease-out-quart), color var(--motion-hover) var(--ease-out-quart); }
+.behavior-rank-action:hover { background:var(--color-bg-hover-mid); color:var(--color-text-primary); }
+.behavior-rank-action[aria-busy="true"] { cursor:progress; }
+.behavior-rank-action-slot { display:block; }
+.behavior-request-sizes { padding:1rem; }
+.behavior-percentile-copy { color:var(--color-text-secondary); font-size:.8rem; margin:.45rem 0; }
+.behavior-empty { padding:2rem; text-align:center; color:var(--color-text-secondary); }
+.behavior-day-pager { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; color:var(--color-text-secondary); font-size:.78rem; }
+.behavior-day-pager span { margin-right:auto; }
+.behavior-day-pager button { min-height:44px; border:1px solid var(--color-border); border-radius:var(--radius-button); padding:.4rem .7rem; background:var(--color-bg-elevated); color:var(--color-text-primary); cursor:pointer; }
+.behavior-day-pager button:disabled { opacity:.45; cursor:not-allowed; }
+.behavior-heatmap-scroll { max-width:100%; overflow-x:auto; padding:.25rem 0 .4rem; }
+/* 半宽卡片里 24 列要一次放下（不再靠横向滚动藏住 15 点以后）；更窄时仍可横向滚动。 */
+.behavior-heatmap-grid { display:grid; grid-template-columns:48px repeat(24, minmax(11px, 1fr)); gap:3px; min-width:384px; align-items:center; }
+.behavior-heatmap-row { display:contents; }
+.behavior-heatmap-date, .behavior-heatmap-hour { color:var(--color-text-muted); font-size:.7rem; font-variant-numeric:tabular-nums; text-align:center; }
+.behavior-heatmap-cell { width:100%; height:23px; padding:0; border:1px solid transparent; border-radius:5px; background:var(--color-bg-subtle); cursor:pointer; }
+.behavior-heatmap-cell[data-level="1"] { background:color-mix(in srgb, var(--color-primary) 20%, var(--color-bg-panel)); }
+.behavior-heatmap-cell[data-level="2"] { background:color-mix(in srgb, var(--color-primary) 38%, var(--color-bg-panel)); }
+.behavior-heatmap-cell[data-level="3"] { background:color-mix(in srgb, var(--color-primary) 57%, var(--color-bg-panel)); }
+.behavior-heatmap-cell[data-level="4"] { background:color-mix(in srgb, var(--color-primary) 76%, var(--color-bg-panel)); }
+.behavior-heatmap-cell[data-level="5"] { background:var(--color-primary); }
+.behavior-heatmap-cell:hover, .behavior-heatmap-cell[aria-pressed="true"] { border-color:var(--color-text-primary); outline:2px solid var(--color-primary); outline-offset:1px; }
+.behavior-heatmap-cell:focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; }
+.behavior-coverage-note { color:var(--color-text-muted); font-size:.78rem; margin:0; }
+.behavior-project-entry { display:flex; align-items:center; gap:var(--space-2); padding:.75rem 1rem; }
+.behavior-project-entry p { margin:0; color:var(--color-text-secondary); font-size:.85rem; line-height:1.5; }
+.behavior-project-entry > button, .behavior-project-panel button.secondary-inline { min-height:44px; }
+.behavior-project-entry > button { margin-left:auto; }
+.behavior-project-panel { padding:1rem; }
+.behavior-project-tools { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin:0 0 .6rem; }
+.behavior-project-tools label { display:flex; align-items:center; gap:.4rem; color:var(--color-text-secondary); font-size:.8rem; }
+.behavior-project-tools input { min-height:44px; }
+.behavior-project-meter { grid-column:1 / -1; height:4px; border-radius:999px; background:var(--color-bg-subtle); }
+.behavior-project-meter > span { display:block; height:100%; border-radius:inherit; background:var(--color-primary); }
+.behavior-rank-list.has-projects .behavior-rank-row { grid-template-columns:minmax(0,1fr) auto; }
+.behavior-rank-list.has-actions.has-projects .behavior-rank-row { grid-template-columns:minmax(0,1fr) auto 6.25rem; }
+.behavior-project-chip { display:inline-flex; align-items:center; max-width:10rem; min-height:44px; padding:0 .65rem; border:0; border-radius:var(--radius-button); background:var(--color-bg-subtle); color:var(--color-text-secondary); font:inherit; font-size:12px; cursor:pointer; }
+.behavior-project-chip:focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; }
+.behavior-loading { min-height:12rem; display:grid; place-items:center; color:var(--color-text-muted); }
+@media (max-width: 760px) {
+  .behavior-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .behavior-chart-grid, .behavior-detail-grid { grid-template-columns:1fr; }
+  .behavior-custom-range { width:100%; margin-left:0; flex-wrap:wrap; }
+  .behavior-range-bar input { flex:1; min-width:7rem; }
+  .behavior-chart { height:15rem; }
+  .behavior-heatmap-grid { grid-template-columns:64px repeat(24, 26px); min-width:760px; }
+  .behavior-heatmap-cell { height:30px; }
+}
+
+/* BehaviorAnalysisView 复用的卡片头部基础样式（更具体的
+   .behavior-chart-card > .workbuddy-card-header 覆盖规则见上方 .behavior-* 区块）。 */
+.workbuddy-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.behavior-custom-range { margin-left:0; flex-basis:100%; flex-wrap:wrap; }
+.behavior-applied-range { color:var(--color-text-secondary); font-size:12px; font-variant-numeric:tabular-nums; }
+.behavior-range-bar input[aria-invalid="true"] { border-color:var(--color-danger); }
+.behavior-heading-info { flex-wrap:wrap; }

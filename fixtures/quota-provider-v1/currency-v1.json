@@ -1,0 +1,500 @@
+{
+  "description": "门控货币单位 unit='currency'（quota-provider-v1 §2.2）。只经 transport v3 与同版本本机 IPC 传递；匿名合成数据。",
+  "knownUnits": [
+    "percent",
+    "requests",
+    "tokens",
+    "usd",
+    "credits",
+    "currency"
+  ],
+  "validProviders": [
+    {
+      "schemaVersion": 1,
+      "providerId": "balance-deepseek",
+      "displayName": "DeepSeek",
+      "scope": "api-organization",
+      "mode": "automatic",
+      "capability": "stable",
+      "status": "ok",
+      "windows": [
+        {
+          "providerId": "balance-deepseek",
+          "windowId": "balance-cny",
+          "windowLabel": "CNY balance",
+          "scope": "api-organization",
+          "source": "official-api",
+          "status": "ok",
+          "remaining": 12.5,
+          "unit": "currency",
+          "currency": "CNY",
+          "observedAt": "2026-10-04T12:00:00+08:00",
+          "fetchedAt": "2026-10-04T12:00:01+08:00",
+          "staleAfterSeconds": 3600
+        },
+        {
+          "providerId": "balance-deepseek",
+          "windowId": "balance-usd",
+          "windowLabel": "USD balance",
+          "scope": "api-organization",
+          "source": "official-api",
+          "status": "ok",
+          "remaining": 3.2,
+          "unit": "currency",
+          "currency": "USD",
+          "observedAt": "2026-10-04T12:00:00+08:00",
+          "fetchedAt": "2026-10-04T12:00:01+08:00",
+          "staleAfterSeconds": 3600
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "providerId": "balance-openrouter",
+      "displayName": "OpenRouter",
+      "scope": "api-organization",
+      "mode": "automatic",
+      "capability": "stable",
+      "status": "ok",
+      "windows": [
+        {
+          "providerId": "balance-openrouter",
+          "windowId": "balance-usd",
+          "windowLabel": "USD balance",
+          "scope": "api-organization",
+          "source": "official-api",
+          "status": "ok",
+          "used": 5,
+          "limit": 20,
+          "remaining": 15,
+          "unit": "currency",
+          "currency": "USD",
+          "observedAt": "2026-10-04T12:00:00+08:00",
+          "fetchedAt": "2026-10-04T12:00:01+08:00",
+          "staleAfterSeconds": 3600
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "providerId": "balance-moonshot",
+      "displayName": "Moonshot",
+      "scope": "api-organization",
+      "mode": "automatic",
+      "capability": "stable",
+      "status": "ok",
+      "windows": [
+        {
+          "providerId": "balance-moonshot",
+          "windowId": "balance-xts",
+          "windowLabel": "XTS balance",
+          "scope": "api-organization",
+          "source": "official-api",
+          "status": "ok",
+          "remaining": 7,
+          "unit": "currency",
+          "currency": "XTS",
+          "observedAt": "2026-10-04T12:00:00+08:00",
+          "fetchedAt": "2026-10-04T12:00:01+08:00",
+          "staleAfterSeconds": 3600
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "balance-deepseek": {
+      "windows": {
+        "balance-cny": {
+          "currency": "CNY",
+          "remaining": 12.5,
+          "sameCurrencyLimit": false
+        },
+        "balance-usd": {
+          "currency": "USD",
+          "remaining": 3.2,
+          "sameCurrencyLimit": false
+        }
+      }
+    },
+    "balance-openrouter": {
+      "windows": {
+        "balance-usd": {
+          "currency": "USD",
+          "remaining": 15,
+          "sameCurrencyLimit": true
+        }
+      }
+    },
+    "balance-moonshot": {
+      "windows": {
+        "balance-xts": {
+          "currency": "XTS",
+          "remaining": 7,
+          "sameCurrencyLimit": false
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "currency-code-missing",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-currency",
+          "displayName": "Invalid currency",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-currency",
+              "windowId": "balance-cny",
+              "windowLabel": "Balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "remaining": 1,
+              "unit": "currency",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window",
+      "syncOutcome": "reject"
+    },
+    {
+      "name": "currency-code-lowercase",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-currency",
+          "displayName": "Invalid currency",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-currency",
+              "windowId": "balance-cny",
+              "windowLabel": "Balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "remaining": 1,
+              "unit": "currency",
+              "currency": "cny",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window",
+      "syncOutcome": "reject"
+    },
+    {
+      "name": "currency-code-not-three-letters",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-currency",
+          "displayName": "Invalid currency",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-currency",
+              "windowId": "balance-cny",
+              "windowLabel": "Balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "remaining": 1,
+              "unit": "currency",
+              "currency": "CNYX",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window",
+      "syncOutcome": "reject"
+    },
+    {
+      "name": "currency-code-on-non-currency-unit",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-currency",
+          "displayName": "Invalid currency",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-currency",
+              "windowId": "balance-cny",
+              "windowLabel": "Balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "remaining": 1,
+              "unit": "usd",
+              "currency": "USD",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window",
+      "syncOutcome": "reject"
+    },
+    {
+      "name": "currency-window-with-reset-timeline",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-currency",
+          "displayName": "Invalid currency",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-currency",
+              "windowId": "balance-cny",
+              "windowLabel": "Balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "remaining": 1,
+              "unit": "currency",
+              "currency": "CNY",
+              "windowMinutes": 1440,
+              "resetsAt": "2026-10-05T00:00:00+08:00",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window",
+      "syncOutcome": "reject"
+    },
+    {
+      "name": "currency-credits-unlimited",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-currency",
+          "displayName": "Invalid currency",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-currency",
+              "windowId": "balance-cny",
+              "windowLabel": "Balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "unit": "currency",
+              "currency": "CNY",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600,
+              "reasonCode": "credits_unlimited"
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window",
+      "syncOutcome": "reject"
+    },
+    {
+      "name": "currency-limit-arithmetic-mismatch",
+      "providers": [
+        {
+          "schemaVersion": 1,
+          "providerId": "invalid-currency",
+          "displayName": "Invalid currency",
+          "scope": "api-organization",
+          "mode": "automatic",
+          "capability": "stable",
+          "status": "ok",
+          "windows": [
+            {
+              "providerId": "invalid-currency",
+              "windowId": "balance-cny",
+              "windowLabel": "Balance",
+              "scope": "api-organization",
+              "source": "official-api",
+              "status": "ok",
+              "used": 5,
+              "limit": 20,
+              "remaining": 16,
+              "unit": "currency",
+              "currency": "USD",
+              "observedAt": "2026-10-04T12:00:00+08:00",
+              "fetchedAt": "2026-10-04T12:00:01+08:00",
+              "staleAfterSeconds": 3600
+            }
+          ]
+        }
+      ],
+      "readerOutcome": "reject-window",
+      "syncOutcome": "reject"
+    }
+  ],
+  "unknownUnitCases": [
+    {
+      "name": "unknown-unit-window-dropped",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "future-unit-provider",
+        "displayName": "Future",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "future-unit-provider",
+            "windowId": "primary",
+            "windowLabel": "Primary",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "used": 40,
+            "limit": 100,
+            "remaining": 60,
+            "unit": "percent",
+            "windowMinutes": 300,
+            "observedAt": "2026-10-04T11:00:00+08:00",
+            "fetchedAt": "2026-10-04T11:00:01+08:00",
+            "staleAfterSeconds": 900
+          },
+          {
+            "providerId": "future-unit-provider",
+            "windowId": "future",
+            "windowLabel": "Future",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "remaining": 3,
+            "unit": "gems",
+            "observedAt": "2026-10-04T11:00:00+08:00",
+            "fetchedAt": "2026-10-04T11:00:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      },
+      "expected": {
+        "kept": true,
+        "status": "ok",
+        "windowIds": [
+          "primary"
+        ]
+      }
+    },
+    {
+      "name": "unknown-unit-ok-window-dropped-leaves-stale",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "future-unit-provider",
+        "displayName": "Future",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "future-unit-provider",
+            "windowId": "future",
+            "windowLabel": "Future",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "remaining": 3,
+            "unit": "gems",
+            "observedAt": "2026-10-04T11:00:00+08:00",
+            "fetchedAt": "2026-10-04T11:00:01+08:00",
+            "staleAfterSeconds": 900
+          },
+          {
+            "providerId": "future-unit-provider",
+            "windowId": "weekly",
+            "windowLabel": "Weekly",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "stale",
+            "used": 10,
+            "limit": 100,
+            "remaining": 90,
+            "unit": "percent",
+            "windowMinutes": 10080,
+            "observedAt": "2026-10-04T11:00:00+08:00",
+            "fetchedAt": "2026-10-04T11:00:01+08:00",
+            "staleAfterSeconds": 900,
+            "reasonCode": "observation_stale"
+          }
+        ]
+      },
+      "expected": {
+        "kept": true,
+        "status": "stale",
+        "windowIds": [
+          "weekly"
+        ]
+      }
+    },
+    {
+      "name": "unknown-unit-only-window-drops-envelope",
+      "provider": {
+        "schemaVersion": 1,
+        "providerId": "future-unit-provider",
+        "displayName": "Future",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "future-unit-provider",
+            "windowId": "future",
+            "windowLabel": "Future",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "remaining": 3,
+            "unit": "gems",
+            "observedAt": "2026-10-04T11:00:00+08:00",
+            "fetchedAt": "2026-10-04T11:00:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      },
+      "expected": {
+        "kept": false
+      }
+    }
+  ]
+}

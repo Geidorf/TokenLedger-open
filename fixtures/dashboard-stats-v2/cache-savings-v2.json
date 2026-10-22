@@ -1,0 +1,360 @@
+{
+  "fixtureVersion": 1,
+  "contract": "docs/contracts/dashboard-stats-v2.md §2.4",
+  "description": "summary.cacheSavings 的合法形状：列价的正值、兜底计数、负净值、已知 0 与微小值。把用例的 summary 放进 statsTemplate 即是一份完整的 Stats v2 响应；expected 是消费端校验通过后保留的对象（未知附加键忽略）。rows 与 prices 是本机生产端复算这些数值的输入，prices 是方案 docs/design/cache-savings-net-v1.md §3.4 例算用的单价，其他端可以忽略。金额单位 USD，价格单位 USD/百万 Token。",
+  "prices": {
+    "claude-sonnet-4-6": { "input": 3.0, "output": 15.0, "cache_input": 0.3, "cache_write": 3.75 },
+    "claude-fable-5": { "input": 10.0, "output": 50.0, "cache_input": 1.0, "cache_write": 12.5 },
+    "kimi-k2.6": { "input": 0.9, "output": 3.75, "cache_input": 0.15 },
+    "gpt-5.5-pro": { "input": 30.0, "output": 180.0, "cache_input": 30.0, "cache_write": 30.0 },
+    "gpt-5.6-sol": { "input": 5.0, "output": 30.0, "cache_input": 0.5, "cache_write": 6.25 },
+    "default": { "input": 1.0, "output": 3.0 }
+  },
+  "statsTemplate": {
+    "tools": {},
+    "models": {},
+    "trends": [],
+    "heatmap": {},
+    "history": [],
+    "meta": {
+      "contractVersion": 2,
+      "generatedAt": "2026-07-15T09:30:00+08:00",
+      "timezone": "Asia/Shanghai",
+      "range": "month",
+      "stale": false,
+      "query": {
+        "range": "month",
+        "timezone": "Asia/Shanghai",
+        "machines": [],
+        "tools": [],
+        "models": [],
+        "search": null,
+        "tokenMode": "effective"
+      },
+      "capabilities": {
+        "comparison": false,
+        "detailPagination": true,
+        "entityDashboard": true,
+        "multiFilterSearch": true,
+        "quotaSnapshots": false,
+        "cacheSavings": true
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "listed-positive",
+      "note": "方案 §3.4 第 1 行：claude-sonnet-4-6 读 8M、写 1M，全部列价。读取节省 8 × (3 − 0.3) = 21.60，写入溢价 1 × (3.75 − 3) = 0.75，净节省 20.85。",
+      "rows": [
+        { "tool": "claude", "model": "claude-sonnet-4-6", "inputTokens": 100000, "outputTokens": 20000, "cachedTokens": 9000000, "cacheWriteTokens": 1000000 }
+      ],
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 21.6,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": {
+        "readSavedUsd": 21.6,
+        "writePremiumUsd": 0.75,
+        "netSavedUsd": 20.85,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 0,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "negative-net",
+      "note": "方案 §3.4 第 2 行：读 0.2M、写 1M。读取节省 0.54，写入溢价 0.75，净节省 −0.21：写入溢价高于读取节省，带符号照实给出。",
+      "rows": [
+        { "tool": "claude", "model": "claude-sonnet-4-6", "inputTokens": 50000, "outputTokens": 10000, "cachedTokens": 1200000, "cacheWriteTokens": 1000000 }
+      ],
+      "summary": {
+        "totalTokens": 60000,
+        "inputTokens": 50000,
+        "outputTokens": 10000,
+        "cachedTokens": 1200000,
+        "cacheReadTokens": 200000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 0.54,
+        "cacheSavings": {
+          "readSavedUsd": 0.54,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": -0.21,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 4.11,
+        "totalRequests": 1,
+        "avgTokensPerReq": 60000
+      },
+      "expected": {
+        "readSavedUsd": 0.54,
+        "writePremiumUsd": 0.75,
+        "netSavedUsd": -0.21,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 0,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "write-price-fallback",
+      "note": "方案 §3.4 第 4 行：kimi-k2.6 缺写价，按输入价 × 1.25 = 1.125 兜底。读 4M、写 2M：读取节省 3.00，写入溢价 0.45，净节省 2.55；兜底写入量 2M 需标注「含兜底单价」。",
+      "rows": [
+        { "tool": "kimi", "model": "kimi-k2.6", "inputTokens": 80000, "outputTokens": 20000, "cachedTokens": 6000000, "cacheWriteTokens": 2000000 }
+      ],
+      "summary": {
+        "totalTokens": 100000,
+        "inputTokens": 80000,
+        "outputTokens": 20000,
+        "cachedTokens": 6000000,
+        "cacheReadTokens": 4000000,
+        "cacheWriteTokens": 2000000,
+        "cacheSavedUsd": 3.0,
+        "cacheSavings": {
+          "readSavedUsd": 3.0,
+          "writePremiumUsd": 0.45,
+          "netSavedUsd": 2.55,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 2000000,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 2.997,
+        "totalRequests": 1,
+        "avgTokensPerReq": 100000
+      },
+      "expected": {
+        "readSavedUsd": 3.0,
+        "writePremiumUsd": 0.45,
+        "netSavedUsd": 2.55,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 2000000,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "known-zero-no-discount",
+      "note": "方案 §3.4 第 5 行：gpt-5.5-pro 读价、写价都等于输入价，读 1M、写 1M 既无折扣也无溢价。三项都是已知的 0，不是不可得。",
+      "rows": [
+        { "tool": "codex", "model": "gpt-5.5-pro", "inputTokens": 10000, "outputTokens": 2000, "cachedTokens": 2000000, "cacheWriteTokens": 1000000 }
+      ],
+      "summary": {
+        "totalTokens": 12000,
+        "inputTokens": 10000,
+        "outputTokens": 2000,
+        "cachedTokens": 2000000,
+        "cacheReadTokens": 1000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavedUsd": 0,
+        "cacheSavings": {
+          "readSavedUsd": 0,
+          "writePremiumUsd": 0,
+          "netSavedUsd": 0,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 60.66,
+        "totalRequests": 1,
+        "avgTokensPerReq": 12000
+      },
+      "expected": {
+        "readSavedUsd": 0,
+        "writePremiumUsd": 0,
+        "netSavedUsd": 0,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 0,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "known-zero-no-cache",
+      "note": "范围内没有缓存：读写拆分可证明（都是 0），缓存净节省是已知的 0。",
+      "rows": [
+        { "tool": "claude", "model": "claude-sonnet-4-6", "inputTokens": 1000, "outputTokens": 500, "cachedTokens": 0, "cacheWriteTokens": 0 }
+      ],
+      "summary": {
+        "totalTokens": 1500,
+        "inputTokens": 1000,
+        "outputTokens": 500,
+        "cachedTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "cacheSavedUsd": 0,
+        "cacheSavings": {
+          "readSavedUsd": 0,
+          "writePremiumUsd": 0,
+          "netSavedUsd": 0,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 0.0105,
+        "totalRequests": 1,
+        "avgTokensPerReq": 1500
+      },
+      "expected": {
+        "readSavedUsd": 0,
+        "writePremiumUsd": 0,
+        "netSavedUsd": 0,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 0,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "tiny-positive",
+      "note": "微小正值（方案 §4.7 T6）：读 3K、写 1K，净节省 0.00735，线上值不舍入，呈现为 <$0.01。方案 §3.4 第 7 行的「读 3K、写 0」在汇总里不会出现：有读取而写入为 0 的记录拆分不可证明，整个范围不可得。",
+      "rows": [
+        { "tool": "claude", "model": "claude-sonnet-4-6", "inputTokens": 200, "outputTokens": 50, "cachedTokens": 4000, "cacheWriteTokens": 1000 }
+      ],
+      "summary": {
+        "totalTokens": 250,
+        "inputTokens": 200,
+        "outputTokens": 50,
+        "cachedTokens": 4000,
+        "cacheReadTokens": 3000,
+        "cacheWriteTokens": 1000,
+        "cacheSavedUsd": 0.0081,
+        "cacheSavings": {
+          "readSavedUsd": 0.0081,
+          "writePremiumUsd": 0.00075,
+          "netSavedUsd": 0.00735,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 0.006,
+        "totalRequests": 1,
+        "avgTokensPerReq": 250
+      },
+      "expected": {
+        "readSavedUsd": 0.0081,
+        "writePremiumUsd": 0.00075,
+        "netSavedUsd": 0.00735,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 0,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "tiny-negative",
+      "note": "方案 §3.4 第 8 行：只写 10K、没有读取，净节省 −0.0075，呈现为 −<$0.01。",
+      "rows": [
+        { "tool": "claude", "model": "claude-sonnet-4-6", "inputTokens": 200, "outputTokens": 50, "cachedTokens": 10000, "cacheWriteTokens": 10000 }
+      ],
+      "summary": {
+        "totalTokens": 250,
+        "inputTokens": 200,
+        "outputTokens": 50,
+        "cachedTokens": 10000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 10000,
+        "cacheSavedUsd": 0,
+        "cacheSavings": {
+          "readSavedUsd": 0,
+          "writePremiumUsd": 0.0075,
+          "netSavedUsd": -0.0075,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 0.03885,
+        "totalRequests": 1,
+        "avgTokensPerReq": 250
+      },
+      "expected": {
+        "readSavedUsd": 0,
+        "writePremiumUsd": 0.0075,
+        "netSavedUsd": -0.0075,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 0,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "mixed-range-with-fallback",
+      "note": "同一范围混有列价与兜底单价：上面三行（sonnet、kimi、gpt-5.5-pro）相加。读取节省 24.60，写入溢价 1.20，净节省 23.40，兜底写入量 2M（kimi）。",
+      "rows": [
+        { "tool": "claude", "model": "claude-sonnet-4-6", "inputTokens": 100000, "outputTokens": 20000, "cachedTokens": 9000000, "cacheWriteTokens": 1000000 },
+        { "tool": "kimi", "model": "kimi-k2.6", "inputTokens": 80000, "outputTokens": 20000, "cachedTokens": 6000000, "cacheWriteTokens": 2000000 },
+        { "tool": "codex", "model": "gpt-5.5-pro", "inputTokens": 10000, "outputTokens": 2000, "cachedTokens": 2000000, "cacheWriteTokens": 1000000 }
+      ],
+      "summary": {
+        "totalTokens": 232000,
+        "inputTokens": 190000,
+        "outputTokens": 42000,
+        "cachedTokens": 17000000,
+        "cacheReadTokens": 13000000,
+        "cacheWriteTokens": 4000000,
+        "cacheSavedUsd": 24.6,
+        "cacheSavings": {
+          "readSavedUsd": 24.6,
+          "writePremiumUsd": 1.2,
+          "netSavedUsd": 23.4,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 2000000,
+          "priceBasis": "local-prices"
+        },
+        "totalCost": 70.407,
+        "totalRequests": 3,
+        "avgTokensPerReq": 77333
+      },
+      "expected": {
+        "readSavedUsd": 24.6,
+        "writePremiumUsd": 1.2,
+        "netSavedUsd": 23.4,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 2000000,
+        "priceBasis": "local-prices"
+      }
+    },
+    {
+      "name": "uploaded-prices-without-gross-field",
+      "note": "云端 B 期形状：按各设备上传时的价格表冻结（uploaded-prices），可以不带旧字段 cacheSavedUsd；未知附加键 futureBreakdown 忽略，不进入解析结果。",
+      "summary": {
+        "totalTokens": 120000,
+        "inputTokens": 100000,
+        "outputTokens": 20000,
+        "cachedTokens": 9000000,
+        "cacheReadTokens": 8000000,
+        "cacheWriteTokens": 1000000,
+        "cacheSavings": {
+          "readSavedUsd": 21.6,
+          "writePremiumUsd": 0.75,
+          "netSavedUsd": 20.85,
+          "fallbackPricedReadTokens": 0,
+          "fallbackPricedWriteTokens": 0,
+          "priceBasis": "uploaded-prices",
+          "futureBreakdown": { "oneHourWritePremiumUsd": 0.5 }
+        },
+        "totalCost": 6.75,
+        "totalRequests": 1,
+        "avgTokensPerReq": 120000
+      },
+      "expected": {
+        "readSavedUsd": 21.6,
+        "writePremiumUsd": 0.75,
+        "netSavedUsd": 20.85,
+        "fallbackPricedReadTokens": 0,
+        "fallbackPricedWriteTokens": 0,
+        "priceBasis": "uploaded-prices"
+      }
+    }
+  ]
+}
