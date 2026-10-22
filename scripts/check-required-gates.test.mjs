@@ -98,14 +98,13 @@ test('仓库里的 stats 回归 SQL 必须真的被门禁脚本执行，不能�
   assert.ok(gatesOf(['supabase/tests/custom_date_range_regression.sql']).includes('supabase-regression'));
 });
 
-test('T10.118c 的真实交付证据会被判为缺少必跑门禁', () => {
-  const evidence = readEvidence([
-    'docs/task-logs/T10.118c/dev/chart-quota-r1/evidence/gates.json',
-  ]);
+test('证据缺门禁时核对必须能指出缺口', () => {
+  // 开源发行版不发布历史交付证据，缺口核对改用内联夹具表达同一意图。
+  const evidence = new Set(['docs-check', 'commit-check', 'diff-check']);
   const required = gatesOf([
     'apps/android/app/src/main/java/com/jeidorf/tokenledger/mobile/LedgerDashboardV2Ui.kt',
   ]);
   const missing = required.filter((gate) => !evidence.has(gate));
   assert.ok(missing.includes('test:frontend'),
-    '这份历史证据只有 docs-check / commit-check / diff-check，核对必须能指出缺口');
+    '这份证据只有 docs-check / commit-check / diff-check，核对必须能指出缺口');
 });
