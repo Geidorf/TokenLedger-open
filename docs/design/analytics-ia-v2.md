@@ -1,3 +1,6 @@
+
+> 本文引用的 docs/task-logs/…、docs/BACKLOG.md 等路径是内部溯源标记，指向维护方私有仓库中未随本仓库发布的任务证据与待办，不是可点击的相对链接。发布范围说明见 [../internal-collaboration-materials.md](../internal-collaboration-materials.md)。
+
 # 总览与分析报表信息架构 v2（T10.156）
 
 > **实施状态（2026-10-17 按代码核对）**：部分实现。方案已拍板，总览与行为分析的大部分改版已在 main（T10.185、T10.200、T10.268）；行为分析 v1.3 预告字段（`toolDays`、`sessionSizes` 等）与提醒模块尚未实现。

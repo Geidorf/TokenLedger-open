@@ -1,8 +1,11 @@
+
+> 本文引用的 docs/task-logs/…、docs/BACKLOG.md 等路径是内部溯源标记，指向维护方私有仓库中未随本仓库发布的任务证据与待办，不是可点击的相对链接。发布范围说明见 [../internal-collaboration-materials.md](../internal-collaboration-materials.md)。
+
 # Android 视觉与动效系统（T10.79 规格）
 
 > **实施状态（2026-10-17 按代码核对）**：部分被取代。与 `android-visual-refresh-v2.md` 冲突的条目以后者为准；Compose 翻译任务 T10.80 仍受阻。
 
-> 本文是 Compose 侧的翻译规格，不是当前实现状态。实现状态以 `docs/TASKS.md` §3 为准。
+> 本文是 Compose 侧的翻译规格，不是当前实现状态。当前实现状态以源码与 `docs/DESIGN.md`、`docs/contracts/**` 为准（任务台账在维护方私有仓库，本仓库不发布）。
 >
 > 规范先在 `src/prototypes/**` 的 Web 原型上定死并逐项验证（本机 Gradle 不可用，
 > Compose 侧改不动也验不了），本文把验证过的结论翻译成 Compose 常量与做法。

@@ -1,3 +1,6 @@
+
+> 本文引用的 docs/task-logs/…、docs/BACKLOG.md 等路径是内部溯源标记，指向维护方私有仓库中未随本仓库发布的任务证据与待办，不是可点击的相对链接。发布范围说明见 [../internal-collaboration-materials.md](../internal-collaboration-materials.md)。
+
 # 桌面视觉与动效焕新 v2（T10.150）
 
 > **实施状态（2026-10-17 按代码核对）**：已实现并合入 main（T10.150）。

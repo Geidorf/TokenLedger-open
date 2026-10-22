@@ -37,8 +37,7 @@ TokenLedger 是跨平台 AI 工具 Token 消耗账本：桌面端扫描本地工
 ## 2. 文档地图
 
 ```text
-AGENTS.md                    Codex 与 Claude 共用的规则入口与速查
-CLAUDE.md                    Claude 短指针（指向 AGENTS.md）
+AGENTS.md                    智能体工作守则与硬性约束
 README.md                    面向使用者/贡献者的项目介绍
 CHANGELOG.md / VERSIONING.md 更新日志与版本规则
 MODEL_PRICING.md             价格口径说明
@@ -47,20 +46,15 @@ docs/
 ├─ PROJECT.md                公共事实、协作、平台边界、ADR
 ├─ REQUIREMENTS.md           编号化需求和验收标准
 ├─ DESIGN.md                 技术设计与跨端实现约束
-├─ task-logs/               派单简报与结构化证据（按任务分目录）
-├─ TASKS-archive.md          已完成行、已推送待平台验收行、旧认领与较早集成日志（脚本生成）
-├─ backlog/                  评审 P3 与轮末待选项（未登记，不是任务状态）
 ├─ contracts/                跨端机器/JSON 契约
 ├─ design/                   专题设计稿（文件头写实施状态）
 ├─ integrations/             外部能力研究与官方来源边界
-├─ plans/                    仍在执行的计划
-├─ runbooks/                 运维流程
-├─ audits/                   近期评审与测试报告（时间点证据）
-├─ task-logs/                派单 brief.md 与带结构化元数据的证据
-└─ archive/                  已结束的迭代计划、TEAM-v1 协作材料、旧评审与废止的契约/设计稿（只读）
+└─ internal-collaboration-materials.md  内部协作材料说明（哪些内容不随本仓库发布）
 ```
 
-`docs/task-logs/README.md` 定义新日志的 YAML front matter、superseded 与内容寻址证据格式。评审报告和日志是时间点证据，不是当前需求或架构事实源。
+本仓库是公开发布版。任务台账、逐任务派单与证据日志、内部评审与审计、迭代计划、运维流程等**内部协作材料不在本仓库发布**，原因与替代口径见 [`docs/internal-collaboration-materials.md`](internal-collaboration-materials.md)。公开仓库保留的是产品事实源：需求、设计、跨端契约与外部能力边界。
+
+设计文档中出现的 `docs/task-logs/...`、`docs/BACKLOG.md` 等路径是**内部溯源标记**，指向上述未发布的材料，不是可点击的相对链接。
 
 ## 3. 编号与状态
 

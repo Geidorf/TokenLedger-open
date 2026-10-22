@@ -1,3 +1,6 @@
+
+> 本文引用的 docs/task-logs/…、docs/BACKLOG.md 等路径是内部溯源标记，指向维护方私有仓库中未随本仓库发布的任务证据与待办，不是可点击的相对链接。发布范围说明见 [../internal-collaboration-materials.md](../internal-collaboration-materials.md)。
+
 # Android 全屏摆件多模式方案 v1
 
 > **实施状态（2026-10-17 按代码核对）**：已实现。五档摆件模式见 `AmbientMode.kt`（T6.5）；下文“草案”字样是当时的状态。

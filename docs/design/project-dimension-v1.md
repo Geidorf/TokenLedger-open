@@ -1,3 +1,6 @@
+
+> 本文引用的 docs/task-logs/…、docs/BACKLOG.md 等路径是内部溯源标记，指向维护方私有仓库中未随本仓库发布的任务证据与待办，不是可点击的相对链接。发布范围说明见 [../internal-collaboration-materials.md](../internal-collaboration-materials.md)。
+
 # 项目 / 工作目录维度方案 v1（T10.155，用户决定 D5②）
 
 > **实施状态（2026-10-17 按代码核对）**：已实现，默认关闭。实现见 `src-tauri/src/project_index/` 与设置页 `ProjectDimensionCard`（T10.165、T10.182）。

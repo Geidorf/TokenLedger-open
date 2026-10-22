@@ -192,7 +192,9 @@ TokenLedger 必须把以下三类数据明确分开：
 
 ### 7.1 额度 UI 证据边界
 
-| 开发 fixture | SHA-256 | 证明范围 |
+下表登记的是**内容寻址证据的哈希**：截图本身按项目规则不入库（见 `docs/task-logs/README.md` 的证据格式约定），因此在本仓库中无法直接查看图像，只能凭哈希核对内容一致性。证据文件保存在维护方的内部仓库，不随本仓库发布（见 [`../internal-collaboration-materials.md`](../internal-collaboration-materials.md)）。
+
+| 开发 fixture（文件不在本仓库） | SHA-256 | 证明范围 |
 |---|---|---|
 | `docs/task-logs/T3.3/evidence/20260715-codex-claude-local-authorized-1280x720.jpg` | `e6e17f7f30e7c883f519f071b640666095620daf0620f53270ac8d4dba5c84f4` | 1280×720 趋势优先层级及两张 Provider 卡的 React 呈现 |
 | `docs/task-logs/T3.3/evidence/20260715-codex-claude-local-authorized-all-windows-1280x720.jpg` | `f0c795ce2fc4d3ebfd24b34544d802b3402cf3b74fa660639f3854ef99dd70a4` | 四个 Codex/Claude fixture 窗口完整呈现 |

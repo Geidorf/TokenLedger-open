@@ -56,7 +56,9 @@ These are the rules the test suite enforces. If your change touches one of them,
 
 3. **No private consumer APIs.** Never scrape, reverse-engineer, or call undeclared internal endpoints of ChatGPT/Codex, Claude, or any other consumer product. Only official documented APIs, explicitly authorized local sources, or manual configuration are allowed. See [the compliance notes](docs/design/quota-source-compliance.md) for the reasoning and the allowed source classes.
 
-4. **Shared files have a single writer.** `docs/TASKS.md`, `docs/PROJECT.md`, `docs/REQUIREMENTS.md`, `docs/DESIGN.md`, `docs/contracts/**`, Supabase migration numbering, lockfiles, and version files are maintained by the coordinator. If your change needs one of them, say so in the PR and wait for the assignment — do not edit them in passing.
+4. **Some files have a single writer.** `docs/PROJECT.md`, `docs/REQUIREMENTS.md`, `docs/DESIGN.md`, `docs/contracts/**`, Supabase migration numbering, lockfiles, and version files are maintained by the coordinator. If your change needs one of them, say so in the PR and wait for the assignment — do not edit them in passing.
+
+   The project's internal task ledger is **not** published in this repository, so there is no `docs/TASKS.md` to claim a task in here. Open an issue to discuss anything beyond a small fix before you start. See [`docs/internal-collaboration-materials.md`](docs/internal-collaboration-materials.md) for what stays internal and why.
 
 ## Git conventions
 
