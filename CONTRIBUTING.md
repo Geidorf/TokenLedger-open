@@ -9,7 +9,7 @@ By participating you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md)
 ## Quick start
 
 ```bash
-git clone https://github.com/Geidorf/TokenLedger.git
+git clone https://github.com/Geidorf/TokenLedger-open.git
 cd TokenLedger
 npm install
 npm run dev
