@@ -34,8 +34,8 @@ test('前端、Rust、云端与文档各自命中自己的门禁集合', () => {
   assert.ok(gatesOf(['src-tauri/src/commands/mod.rs']).includes('lint:rust:clippy'));
   assert.ok(gatesOf(['supabase/migrations/20260906080642_add_dashboard_daily_costs.sql'])
     .includes('supabase-regression'));
-  assert.ok(gatesOf(['docs/TASKS.md']).includes('check:docs'));
-  assert.ok(gatesOf(['CLAUDE.md']).includes('check:docs'));
+  assert.ok(gatesOf(['docs/AGENTS.md']).includes('check:docs'));
+  assert.ok(gatesOf(['docs/PROJECT.md']).includes('check:docs'));
   assert.ok(gatesOf(['package-lock.json']).includes('version:check'));
 });
 
