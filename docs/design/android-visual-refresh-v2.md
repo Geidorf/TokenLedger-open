@@ -1,3 +1,6 @@
+
+> 本文引用的 docs/task-logs/…、docs/BACKLOG.md 等路径是内部溯源标记，指向维护方私有仓库中未随本仓库发布的任务证据与待办，不是可点击的相对链接。发布范围说明见 [../internal-collaboration-materials.md](../internal-collaboration-materials.md)。
+
 # Android 视觉焕新 v2（T10.173）
 
 > **实施状态（2026-10-17 按代码核对）**：部分实现。首批已在 main（T10.177、T10.208、T10.209、T10.217，`LedgerTokens.kt`）；A2–A10、C2–C8 按用户决定 U-20 留到下一轮（见 BACKLOG）。

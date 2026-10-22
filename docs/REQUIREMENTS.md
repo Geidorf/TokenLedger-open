@@ -1,6 +1,6 @@
 # TokenLedger · 产品需求与验收标准
 
-> 产品行为以本文件为准；架构和字段实现见 `DESIGN.md` 与 `contracts/`。任务状态与负责人只在 `TASKS.md` 维护；条目中的“现行…”“分期：…”“由 T10.xxx 实现”只说明现行产品与目标的差距及承接任务，由 root 在承接任务合入时同步更新。
+> 产品行为以本文件为准；架构和字段实现见 `DESIGN.md` 与 `contracts/`。条目中的“现行…”“分期：…”只说明现行产品与目标的差距。任务状态与负责人由维护方的内部台账维护，不随本仓库发布（见 [`internal-collaboration-materials.md`](internal-collaboration-materials.md)）。
 >
 > 版本：v1.5 ｜ 2026-10-17（按代码核对修订）
 
