@@ -156,12 +156,16 @@ try {
   }
   assertRepositoryState(channel);
   // Closed tasks move to docs/TASKS-archive.md (T10.211); the M10 exit reads both files.
+  // 开源发行版不发布任务台账：台账缺席时跳过台账门禁，其余发布前置仍然强制。
   const archivePath = path.join(root, 'docs', 'TASKS-archive.md');
-  assertReleaseLedgerForChannel(
-    channel,
-    fs.readFileSync(path.join(root, 'docs', 'TASKS.md'), 'utf8'),
-    fs.existsSync(archivePath) ? fs.readFileSync(archivePath, 'utf8') : null,
-  );
+  const tasksPath = path.join(root, 'docs', 'TASKS.md');
+  if (fs.existsSync(tasksPath)) {
+    assertReleaseLedgerForChannel(
+      channel,
+      fs.readFileSync(tasksPath, 'utf8'),
+      fs.existsSync(archivePath) ? fs.readFileSync(archivePath, 'utf8') : null,
+    );
+  }
   assertPublicConfiguration();
   if (platform === 'android') {
     assertAndroid();

@@ -597,10 +597,17 @@ export function runChecks() {
   problems.length = 0;
   warnings.length = 0;
 
-  const taskLines = readLines(TASKS);
   const projectText = fs.readFileSync(PROJECT, 'utf8');
 
   checkEnumsMatchProject(projectText);
+
+  // 开源发行版不随仓库发布任务台账与任务日志（内部协作材料）。台账缺席时，
+  // 只校验与台账无关的契约部分（枚举、跨端事实），台账专项整段跳过。
+  if (!fs.existsSync(TASKS)) {
+    return { problems: [...problems], warnings: [...warnings], rowCount: 0, archiveRowCount: 0 };
+  }
+
+  const taskLines = readLines(TASKS);
 
   const rows = parseTaskTable(taskLines);
   if (rows.length === 0) {
