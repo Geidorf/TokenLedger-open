@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  夜间模式下的启动窗口颜色，与 values/colors.xml 相同，都取 LedgerTokens 深色一套
+  （tl_paper = page，tl_primary = primary），由 LedgerTokensTest 比对。
+-->
+<resources>
+    <color name="tl_paper">#0D0F13</color>
+    <color name="tl_primary">#6B9DFF</color>
+</resources>

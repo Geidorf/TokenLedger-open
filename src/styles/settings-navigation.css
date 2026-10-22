@@ -1,0 +1,196 @@
+.settings-navigation-page {
+  align-items: flex-start;
+  gap: 28px;
+  width: min(100%, 1024px);
+}
+.settings-directory {
+  position: sticky;
+  top: 0;
+  flex: 0 0 240px;
+  padding: 16px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+}
+/* T10.126 删掉了页内「系统设置」标题块（顶栏已经写着「设置与云端」），只留保存说明。 */
+.settings-save-note {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+.settings-directory-search {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+  transition: border-color var(--motion-hover) var(--ease-out-quart), box-shadow var(--motion-hover) var(--ease-out-quart);
+}
+/* The field reaches over the 1px frame so the input itself is a 44px target (GLB-03). */
+.settings-directory-search input {
+  min-width: 0;
+  width: 100%;
+  height: calc(100% + 2px);
+  margin-block: -1px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+}
+.settings-directory-search button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  color: inherit;
+}
+.settings-directory-search:focus-within {
+  border-color: var(--color-primary-focus);
+  box-shadow: 0 0 0 3px var(--color-primary-soft-bg);
+}
+.settings-directory-list {
+  display: grid;
+  gap: 4px;
+  /* Sliding selection pill (useSegmentedIndicator, see SettingsTab.tsx): a soft
+     primary capsule glides behind the active destination instead of jumping. */
+  --seg-bg: var(--color-primary-soft-bg);
+  --seg-shadow: none;
+  --seg-radius: 8px;
+}
+.settings-directory-list > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: color var(--motion-hover) var(--ease-out-quart), background-color var(--motion-hover) var(--ease-out-quart);
+}
+.settings-directory-list > button:hover {
+  background: var(--color-bg-hover-soft);
+  color: var(--color-text-primary);
+}
+.settings-directory-list > button.is-active {
+  background: transparent;
+  color: var(--color-primary);
+}
+.settings-directory-list strong,
+.settings-directory-list small {
+  display: block;
+}
+.settings-directory-list small {
+  margin-top: 2px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.settings-directory-list em {
+  font-style: normal;
+}
+@media (min-width: 761px) {
+  .settings-directory-list > button {
+    column-gap: 8px;
+    row-gap: 2px;
+  }
+  .settings-directory-list > button > svg {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .settings-directory-list > button > span {
+    display: contents;
+  }
+  .settings-directory-list strong {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .settings-directory-list small {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    margin-top: 0;
+    line-height: 1.5;
+  }
+  .settings-directory-list em {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+.settings-directory-empty {
+  margin: 12px 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+.settings-directory-empty button {
+  margin-left: 4px;
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+.settings-save-note {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-faint);
+}
+.settings-navigation-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.settings-navigation-main > section {
+  animation: settings-section-enter var(--motion-enter) var(--ease-out-expo) backwards;
+}
+@keyframes settings-section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-navigation-main > section {
+    animation: none;
+  }
+}
+@media (max-width: 760px) {
+  .settings-navigation-page {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .settings-directory {
+    position: static;
+    box-sizing: border-box;
+    width: 100%;
+    flex-basis: auto;
+  }
+  .settings-directory-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settings-directory-list > button {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .settings-directory-list em {
+    display: none;
+  }
+  .settings-save-note {
+    display: none;
+  }
+}
+@media (max-width: 440px) {
+  .settings-directory-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settings-directory-list strong {font-size:14px;font-weight:500;}
+.settings-navigation-page .settings-section {scroll-margin-top:20px;}
+.settings-navigation-page .settings-navigation-main > section[hidden] {display:none;}

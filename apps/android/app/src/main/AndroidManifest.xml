@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="TokenLedger"
+        android:theme="@style/Theme.TokenLedger">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_file_paths" />
+        </provider>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 小组件配置 Activity（T8.5a）：桌面添加实例时由系统 AppWidgetHost 拉起。
+             exported=true 以便桌面进程能启动；excludeFromRecents 避免出现在最近任务。 -->
+        <activity
+            android:name=".widget.WidgetConfigureActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/widget_label"
+            android:theme="@style/Theme.TokenLedger">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <!-- 旧通用 Provider 必须永久保留组件名，确保升级前已固定在 Launcher 的实例不会消失。
+             provider-info 用 hide_from_picker 阻止新建，现有实例仍可更新与重新配置。 -->
+        <receiver
+            android:name=".widget.TokenLedgerWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/token_ledger_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件家族：选择器只公开三个固定产品形态，配置页只改来源/周期/主题。 -->
+        <receiver
+            android:name=".widget.TokenLedgerRingWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_ring_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/token_ledger_ring_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.TokenLedgerBarWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_bar_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/token_ledger_bar_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.TokenLedgerComboWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_combo_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/token_ledger_combo_widget_info" />
+        </receiver>
+    </application>
+</manifest>

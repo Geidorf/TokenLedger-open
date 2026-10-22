@@ -1,0 +1,110 @@
+{
+  "description": "供应商官方余额（ADR-018 U-108，T10.285）。upstreamSamples 是按官方文档字段构造的匿名响应及其应得金额；providers 是生产者输出的 envelope 与读取方应显示的金额文本。全部为匿名合成数据，不含 key、URL 或账户身份。",
+  "upstreamSamples": [
+    {
+      "host": "api.moonshot.cn",
+      "response": { "code": 0, "data": { "available_balance": 49.58894, "voucher_balance": 46.58893, "cash_balance": 3.00001 }, "scode": "0x0", "status": true },
+      "amounts": [{ "currency": "CNY", "remaining": 49.58894 }]
+    },
+    {
+      "host": "api.moonshot.ai",
+      "response": { "code": 0, "data": { "available_balance": 5, "voucher_balance": 0, "cash_balance": 5 }, "scode": "0x0", "status": true },
+      "amounts": [{ "currency": "USD", "remaining": 5 }]
+    },
+    {
+      "host": "api.deepseek.com",
+      "response": { "is_available": true, "balance_infos": [
+        { "currency": "CNY", "total_balance": "110.00", "granted_balance": "10.00", "topped_up_balance": "100.00" },
+        { "currency": "USD", "total_balance": "5.00", "granted_balance": "0.00", "topped_up_balance": "5.00" }
+      ] },
+      "amounts": [{ "currency": "CNY", "remaining": 110 }, { "currency": "USD", "remaining": 5 }]
+    },
+    {
+      "host": "openrouter.ai",
+      "response": { "data": { "total_credits": 100.5, "total_usage": 25.75 } },
+      "amounts": [{ "currency": "USD", "remaining": 74.75 }]
+    },
+    {
+      "host": "api.siliconflow.cn",
+      "response": { "code": 20000, "message": "OK", "status": true, "data": { "id": "userid", "name": "username", "email": "user_email_address", "balance": "0.88", "chargeBalance": "88.00", "totalBalance": "88.88" } },
+      "amounts": [{ "currency": "CNY", "remaining": 88.88 }]
+    },
+    {
+      "host": "api.deepseek.com",
+      "response": { "is_available": true, "balance_infos": [] },
+      "amounts": null
+    },
+    {
+      "host": "openrouter.ai",
+      "response": { "data": { "total_credits": 1, "total_usage": 2 } },
+      "amounts": null
+    }
+  ],
+  "providers": [
+    {
+      "envelope": {
+        "schemaVersion": 1, "providerId": "balance-moonshot", "displayName": "Moonshot 余额", "scope": "api-organization",
+        "mode": "automatic", "capability": "stable", "status": "ok",
+        "windows": [
+          { "providerId": "balance-moonshot", "windowId": "balance-cny", "windowLabel": "余额（CNY）", "scope": "api-organization", "source": "official-api", "status": "ok", "remaining": 12.34, "unit": "currency", "currency": "CNY", "observedAt": "2026-10-04T12:00:00+08:00", "fetchedAt": "2026-10-04T12:00:00+08:00", "staleAfterSeconds": 3600 }
+        ]
+      },
+      "display": ["¥12.34"]
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1, "providerId": "balance-deepseek", "displayName": "DeepSeek 余额", "scope": "api-organization",
+        "mode": "automatic", "capability": "stable", "status": "ok",
+        "windows": [
+          { "providerId": "balance-deepseek", "windowId": "balance-cny", "windowLabel": "余额（CNY）", "scope": "api-organization", "source": "official-api", "status": "ok", "remaining": 1234.5, "unit": "currency", "currency": "CNY", "observedAt": "2026-10-04T12:00:00+08:00", "fetchedAt": "2026-10-04T12:00:00+08:00", "staleAfterSeconds": 3600 },
+          { "providerId": "balance-deepseek", "windowId": "balance-usd", "windowLabel": "余额（USD）", "scope": "api-organization", "source": "official-api", "status": "ok", "remaining": 5, "unit": "currency", "currency": "USD", "observedAt": "2026-10-04T12:00:00+08:00", "fetchedAt": "2026-10-04T12:00:00+08:00", "staleAfterSeconds": 3600 }
+        ]
+      },
+      "display": ["¥1,234.50", "$5.00"]
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1, "providerId": "balance-openrouter", "displayName": "OpenRouter 余额", "scope": "api-organization",
+        "mode": "automatic", "capability": "stable", "status": "ok",
+        "windows": [
+          { "providerId": "balance-openrouter", "windowId": "balance-usd", "windowLabel": "余额（USD）", "scope": "api-organization", "source": "official-api", "status": "ok", "remaining": 74.75, "unit": "currency", "currency": "USD", "observedAt": "2026-10-04T12:00:00+08:00", "fetchedAt": "2026-10-04T12:00:00+08:00", "staleAfterSeconds": 3600 }
+        ]
+      },
+      "display": ["$74.75"]
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1, "providerId": "balance-siliconflow", "displayName": "SiliconFlow 余额", "scope": "api-organization",
+        "mode": "automatic", "capability": "stable", "status": "stale", "reasonCode": "balance_unavailable",
+        "windows": [
+          { "providerId": "balance-siliconflow", "windowId": "balance-cny", "windowLabel": "余额（CNY）", "scope": "api-organization", "source": "official-api", "status": "stale", "remaining": 88.88, "unit": "currency", "currency": "CNY", "observedAt": "2026-10-04T11:00:00+08:00", "fetchedAt": "2026-10-04T12:00:00+08:00", "staleAfterSeconds": 3600, "reasonCode": "balance_unavailable" }
+        ]
+      },
+      "display": ["¥88.88"]
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1, "providerId": "balance-relay-team-relay", "displayName": "团队中转 余额", "scope": "api-organization",
+        "mode": "automatic", "capability": "plan-dependent", "status": "ok",
+        "windows": [
+          { "providerId": "balance-relay-team-relay", "windowId": "balance-eur", "windowLabel": "余额（EUR）", "scope": "api-organization", "source": "official-api", "status": "ok", "remaining": 7, "unit": "currency", "currency": "EUR", "observedAt": "2026-10-04T12:00:00+08:00", "fetchedAt": "2026-10-04T12:00:00+08:00", "staleAfterSeconds": 3600 }
+        ]
+      },
+      "display": ["€7.00"]
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1, "providerId": "balance-deepseek", "displayName": "DeepSeek 余额", "scope": "api-organization",
+        "mode": "automatic", "capability": "stable", "status": "error", "reasonCode": "balance_unavailable", "windows": []
+      },
+      "display": []
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1, "providerId": "balance-openrouter", "displayName": "OpenRouter 余额", "scope": "api-organization",
+        "mode": "automatic", "capability": "stable", "status": "auth-required", "reasonCode": "api_key_required", "windows": []
+      },
+      "display": []
+    }
+  ]
+}

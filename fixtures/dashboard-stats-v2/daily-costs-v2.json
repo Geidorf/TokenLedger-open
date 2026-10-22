@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "totalTokens": 900,
+    "inputTokens": 600,
+    "outputTokens": 300,
+    "cachedTokens": 0,
+    "totalCost": 1.25,
+    "totalRequests": 3,
+    "avgTokensPerReq": 300
+  },
+  "tools": {},
+  "models": {},
+  "trends": [],
+  "heatmap": {
+    "2026-07-14": 500,
+    "2026-07-15": 400
+  },
+  "history": [],
+  "meta": {
+    "contractVersion": 2,
+    "generatedAt": "2026-07-15T09:30:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "range": "month",
+    "query": {
+      "range": "month",
+      "timezone": "Asia/Shanghai",
+      "machines": [],
+      "tools": [],
+      "models": [],
+      "search": null,
+      "tokenMode": "effective"
+    }
+  },
+  "dailyCosts": {
+    "coverage": {
+      "start": "2026-07-01",
+      "end": "2026-07-15",
+      "timezone": "Asia/Shanghai",
+      "state": "complete"
+    },
+    "days": [
+      {
+        "date": "2026-07-14",
+        "amountUsd": 0.42,
+        "status": "recorded-estimate"
+      },
+      {
+        "date": "2026-07-15",
+        "amountUsd": 0.83,
+        "status": "recorded-estimate"
+      }
+    ]
+  }
+}

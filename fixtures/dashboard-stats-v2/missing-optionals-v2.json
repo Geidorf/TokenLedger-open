@@ -1,0 +1,26 @@
+{
+  "summary": {
+    "totalTokens": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cachedTokens": 0,
+    "totalCost": 0,
+    "totalRequests": 0,
+    "avgTokensPerReq": 0
+  },
+  "tools": {},
+  "models": {},
+  "trends": [],
+  "heatmap": {},
+  "history": [],
+  "meta": {
+    "contractVersion": 2,
+    "timezone": "UTC",
+    "query": {
+      "range": "all",
+      "timezone": "UTC",
+      "tokenMode": "effective"
+    },
+    "capabilities": {}
+  }
+}

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="config_missing_message">当前 APK 未注入 Supabase URL 或 publishable key。请使用 apps/android/local.properties 配置后重新构建。</string>
+</resources>

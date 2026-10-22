@@ -1,0 +1,196 @@
+/* ==========================================================================
+   Motion primitives (T10.150)
+   --------------------------------------------------------------------------
+   One motion vocabulary for every desktop surface:
+
+   - Reveal animations play once, when an element mounts: switching tabs,
+     opening a dialog or popover, loading → loaded. Background refreshes keep
+     React identity (sameStatsSnapshot), so nothing replays on a poll
+     (GLB-05, DESIGN §4.4).
+   - Keyframes end on `transform: none` and use `backwards` fill, so a
+     finished animation never holds a transform over hover states, fixed
+     descendants or layout.
+   - Decelerating curves only (--ease-out-*). No overshoot on anything that
+     carries data; springiness is reserved for the selection indicator.
+   - The final prefers-reduced-motion block in index.css cuts every duration
+     and delay declared here to ~0 and stops infinite loops, so these rules
+     need no guard of their own.
+
+   Durations and curves come from tokens.css:
+     --motion-press 90ms · --motion-hover 160ms · --motion-indicator 360ms ·
+     --motion-enter 420ms · --motion-stagger 40ms · --ease-out-expo/quart.
+   ========================================================================== */
+
+@keyframes tl-enter-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tl-enter-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dialogs and sheets: rise and settle from 98%. */
+@keyframes tl-enter-scale {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Menus and popovers drop from their trigger. */
+@keyframes tl-pop-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Progress bars and data bars grow from their origin (set transform-origin). */
+@keyframes tl-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* A live status (scanning, syncing) breathes a soft ring; idle states are still. */
+@keyframes tl-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 var(--tl-pulse-color, var(--color-primary-glow));
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes tl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tl-shimmer {
+  from {
+    background-position: 180% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
+}
+
+@layer components {
+  /* Page entrance: every tab root is a direct child of the scroll container,
+     so a tab switch mounts a new child and plays this once. */
+  .app-content > * {
+    animation: tl-enter-up var(--motion-enter) var(--ease-out-expo) backwards;
+  }
+
+  /* Sliding selection indicator for segmented controls and navigation.
+     useSegmentedIndicator() measures the active option and writes
+     --seg-x/--seg-y/--seg-w/--seg-h on the container; the pill is a
+     pseudo-element so the control's DOM and accessibility tree are unchanged.
+     Components opt in with the `tl-seg` class and make their active option's
+     own background transparent so the moving pill shows through.
+     Optional --seg-inset-x/--seg-inset-y (default 0) draw the pill inside
+     the option's box, so an option can keep a 44px hit target (GLB-03)
+     while its pill reads smaller. */
+  .tl-seg {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .tl-seg::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: var(--seg-inset-y, 0px);
+    left: var(--seg-inset-x, 0px);
+    width: max(0px, calc(var(--seg-w, 0px) - 2 * var(--seg-inset-x, 0px)));
+    height: max(0px, calc(var(--seg-h, 0px) - 2 * var(--seg-inset-y, 0px)));
+    border-radius: var(--seg-radius, 7px);
+    background: var(--seg-bg, var(--color-bg-panel));
+    box-shadow: var(--seg-shadow, var(--shadow-sm));
+    opacity: var(--seg-opacity, 0);
+    transform: translate3d(var(--seg-x, 0px), var(--seg-y, 0px), 0);
+    pointer-events: none;
+    transition:
+      transform var(--motion-indicator) var(--ease-out-expo),
+      width var(--motion-indicator) var(--ease-out-expo),
+      height var(--motion-indicator) var(--ease-out-expo),
+      opacity var(--motion-hover) linear;
+  }
+
+  /* First placement lands without sliding in from the corner. */
+  .tl-seg:not([data-seg-ready])::before {
+    transition: none;
+  }
+
+  /* Tactile press feedback for buttons and clickable rows. */
+  .tl-press {
+    transition: transform var(--motion-press) var(--ease-out-quart);
+  }
+
+  .tl-press:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .tl-live-dot {
+    animation: tl-pulse-ring 1.8s var(--ease-out-quart) infinite;
+  }
+
+  .tl-spin {
+    animation: tl-spin 0.9s linear infinite;
+  }
+}
+
+/* The one-time reveal (KPI rise, bar growth) belongs to page switches. A scope,
+   device or account switch that has to reload unmounts the overview content
+   and mounts it again; a switch to an uncached range keeps the shown content
+   until the new range arrives (T10.181). Either way stats are cleared first,
+   and from then on DashboardTab marks the content data-entrance="settled", so
+   neither the remount nor rows mounted into the kept content replay the reveal
+   (T10.150 QA F7). Unlayered, so it also wins over the unlayered bar rules in
+   index.css. */
+.content-stack[data-entrance="settled"] :is(.metric-card, .quota-progress > span, .model-cost-meter-fill, .model-cache-segment-fill) {
+  animation: none;
+}
+
+/* A lazy tab's Suspense fallback holds the slot until its chunk arrives; only
+   the page that replaces it plays the entrance, so a first visit slides in
+   once, not twice (T10.150 QA F7). */
+.app-content > .skeleton-panel {
+  animation: none;
+}
+
+@media (forced-colors: active) {
+  .tl-seg::before {
+    background: Highlight;
+    box-shadow: none;
+    forced-color-adjust: none;
+  }
+}

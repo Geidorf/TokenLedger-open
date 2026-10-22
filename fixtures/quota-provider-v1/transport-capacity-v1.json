@@ -1,0 +1,704 @@
+{
+  "description": "匿名合成容量回归；8 为活跃 envelope/state 上限，墓碑保留且不占名额；网络/缓存仍受128KiB字节预算。",
+  "cases": [
+    {
+      "name": "eight-active-plus-tombstone-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": true,
+      "expectedProviderCount": 8,
+      "expectedActiveCount": 8,
+      "expectedStateCount": 9
+    },
+    {
+      "name": "delete-one-add-one-nine-states-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-9","displayName": "匿名来源 9","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-9","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"}
+        ]
+      },
+      "accepted": true,
+      "expectedProviderCount": 8,
+      "expectedActiveCount": 8,
+      "expectedStateCount": 9
+    },
+    {
+      "name": "tombstones-only-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [],
+        "providerStates": [
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": true,
+      "expectedProviderCount": 0,
+      "expectedActiveCount": 0,
+      "expectedStateCount": 10
+    },
+    {
+      "name": "nine-active-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-9","displayName": "匿名来源 9","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-9","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "active-capacity"
+    },
+    {
+      "name": "duplicate-tombstone-key-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "duplicate-key"
+    },
+    {
+      "name": "invalid-tombstone-shape-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "deleted-observation"
+    },
+    {
+      "name": "invalid-tombstone-generation-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 9007199254740992,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "generation-budget"
+    },
+    {
+      "name": "invalid-tombstone-time-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "invalid"}
+        ]
+      },
+      "accepted": false,
+      "reason": "invalid-time"
+    },
+    {
+      "name": "unknown-unit-with-tombstone-v2",
+      "response": {
+        "status": "ok",
+        "transportVersion": 2,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "future-unit","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "unknown-unit"
+    },
+    {
+      "name": "eight-active-plus-tombstone-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": true,
+      "expectedProviderCount": 8,
+      "expectedActiveCount": 8,
+      "expectedStateCount": 9
+    },
+    {
+      "name": "delete-one-add-one-nine-states-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-9","displayName": "匿名来源 9","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-9","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"}
+        ]
+      },
+      "accepted": true,
+      "expectedProviderCount": 8,
+      "expectedActiveCount": 8,
+      "expectedStateCount": 9
+    },
+    {
+      "name": "tombstones-only-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [],
+        "providerStates": [
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": true,
+      "expectedProviderCount": 0,
+      "expectedActiveCount": 0,
+      "expectedStateCount": 10
+    },
+    {
+      "name": "nine-active-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-9","displayName": "匿名来源 9","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-9","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "active-capacity"
+    },
+    {
+      "name": "duplicate-tombstone-key-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "duplicate-key"
+    },
+    {
+      "name": "invalid-tombstone-shape-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "deleted-observation"
+    },
+    {
+      "name": "invalid-tombstone-generation-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 9007199254740992,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "generation-budget"
+    },
+    {
+      "name": "invalid-tombstone-time-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "invalid"}
+        ]
+      },
+      "accepted": false,
+      "reason": "invalid-time"
+    },
+    {
+      "name": "unknown-unit-with-tombstone-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "future-unit","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": true,
+      "expectedProviderCount": 7,
+      "expectedActiveCount": 8,
+      "expectedStateCount": 9,
+      "reason": "unknown-unit"
+    },
+    {
+      "name": "nine-active-after-unknown-unit-pruning-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-9","displayName": "匿名来源 9","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-9","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "future-unit","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "active-capacity"
+    },
+    {
+      "name": "nine-active-state-only-v3",
+      "response": {
+        "status": "ok",
+        "transportVersion": 3,
+        "epoch": 7,
+        "revision": 12,
+        "generatedAt": "2026-07-15T00:06:00Z",
+        "providers": [
+          {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+          {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+        ],
+        "providerStates": [
+          {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-9","scope": "consumer-subscription","generation": 0,"deleted": false,"receivedAt": "2026-07-15T00:05:00Z","sourceObservedAt": "2026-07-15T00:00:00Z"},
+          {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+        ]
+      },
+      "accepted": false,
+      "reason": "active-capacity"
+    }
+  ],
+  "sqlInitialProviders": [
+    {"schemaVersion": 1,"providerId": "capacity-provider-1","displayName": "匿名来源 1","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-1","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+    {"schemaVersion": 1,"providerId": "capacity-provider-2","displayName": "匿名来源 2","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-2","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+    {"schemaVersion": 1,"providerId": "capacity-provider-3","displayName": "匿名来源 3","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-3","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+    {"schemaVersion": 1,"providerId": "capacity-provider-4","displayName": "匿名来源 4","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-4","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+    {"schemaVersion": 1,"providerId": "capacity-provider-5","displayName": "匿名来源 5","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-5","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+    {"schemaVersion": 1,"providerId": "capacity-provider-6","displayName": "匿名来源 6","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-6","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+    {"schemaVersion": 1,"providerId": "capacity-provider-7","displayName": "匿名来源 7","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-7","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+    {"schemaVersion": 1,"providerId": "capacity-provider-8","displayName": "匿名来源 8","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-8","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]}
+  ],
+  "sqlReplacementProvider": {"schemaVersion": 1,"providerId": "capacity-provider-9","displayName": "匿名来源 9","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-9","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+  "uploadTombstone": {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+  "uploadProvider": {"schemaVersion": 1,"providerId": "capacity-provider-0","displayName": "匿名来源 0","scope": "consumer-subscription","mode": "automatic","capability": "stable","status": "ok","windows": [{"providerId": "capacity-provider-0","windowId": "codex:primary","windowLabel": "5 hour window","scope": "consumer-subscription","source": "local-authorized","status": "ok","used": 38,"limit": 100,"remaining": 62,"unit": "percent","windowMinutes": 300,"observedAt": "2026-07-15T00:00:00Z","fetchedAt": "2026-07-15T00:00:01Z","staleAfterSeconds": 900}]},
+  "historicalOverflowClearResponse": {
+    "status": "ok",
+    "transportVersion": 2,
+    "epoch": 8,
+    "revision": 13,
+    "generatedAt": "2026-07-15T00:06:00Z",
+    "providers": [],
+    "providerStates": [
+      {"providerId": "capacity-provider-0","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-1","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-2","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-3","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-4","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-5","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-6","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-7","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"},
+      {"providerId": "capacity-provider-8","scope": "consumer-subscription","generation": 2,"deleted": true,"receivedAt": "2026-07-15T00:05:00Z"}
+    ],
+    "clearedProviderCount": 9
+  }
+}

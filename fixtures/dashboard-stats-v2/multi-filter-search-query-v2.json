@@ -1,0 +1,117 @@
+{
+  "fixtureVersion": 1,
+  "input": {
+    "range": "month",
+    "timezone": "Asia/Shanghai",
+    "machines": [" Studio-PC ", "MacBook-Pro", "Studio-PC"],
+    "tools": ["codex", " claude ", "codex"],
+    "models": ["gpt-5-codex", "𐀀", "claude-sonnet-4", "", "gpt-5-codex"],
+    "search": "  Session_42%  ",
+    "tokenMode": "effective"
+  },
+  "normalized": {
+    "range": "month",
+    "timezone": "Asia/Shanghai",
+    "machines": ["MacBook-Pro", "Studio-PC"],
+    "tools": ["claude", "codex"],
+    "models": ["claude-sonnet-4", "gpt-5-codex", "", "𐀀"],
+    "search": "Session_42%",
+    "tokenMode": "effective"
+  },
+  "searchCases": [
+    {
+      "query": "Session_42%",
+      "candidates": [
+        { "id": "literal-hit", "tool": "codex", "model": "gpt", "machineId": "mac", "sessionId": "prefix-session_42%-suffix" },
+        { "id": "wildcard-miss", "tool": "codex", "model": "gpt", "machineId": "mac", "sessionId": "prefix-sessionX42-anything" }
+      ],
+      "matchingIds": ["literal-hit"]
+    },
+    {
+      "query": "CODEX",
+      "candidates": [
+        { "id": "ascii-case-hit", "tool": "codex", "model": "gpt", "machineId": "mac", "sessionId": "s1" },
+        { "id": "ascii-miss", "tool": "claude", "model": "gpt", "machineId": "mac", "sessionId": "s2" }
+      ],
+      "matchingIds": ["ascii-case-hit"]
+    },
+    {
+      "query": "\\",
+      "candidates": [
+        { "id": "slash-hit", "tool": "codex", "model": "path\\model", "machineId": "mac", "sessionId": "s3" },
+        { "id": "slash-miss", "tool": "codex", "model": "path/model", "machineId": "mac", "sessionId": "s4" }
+      ],
+      "matchingIds": ["slash-hit"]
+    },
+    {
+      "query": "模型A",
+      "candidates": [
+        { "id": "unicode-exact-hit", "tool": "codex", "model": "模型A", "machineId": "mac", "sessionId": "s5" },
+        { "id": "unicode-case-miss", "tool": "codex", "model": "模型a", "machineId": "mac", "sessionId": "s6" }
+      ],
+      "matchingIds": ["unicode-exact-hit"]
+    }
+  ],
+  "invalidCases": [
+    {
+      "name": "empty item after ASCII trim",
+      "input": {
+        "range": "today",
+        "timezone": "Asia/Shanghai",
+        "machines": ["mac", " \t\r\n"],
+        "tools": [],
+        "models": [],
+        "search": null,
+        "tokenMode": "effective"
+      },
+      "outcome": "reject",
+      "expectedError": "empty-item"
+    },
+    {
+      "name": "legacy sentinel inside plural machines",
+      "input": {
+        "range": "today",
+        "timezone": "Asia/Shanghai",
+        "machines": ["all_cloud"],
+        "tools": [],
+        "models": [],
+        "search": null,
+        "tokenMode": "effective"
+      },
+      "outcome": "reject",
+      "expectedError": "illegal-machine-sentinel"
+    }
+  ],
+  "preservedWhitespaceCase": {
+    "input": {
+      "range": "today",
+      "timezone": "Asia/Shanghai",
+      "machines": ["\u00a0mac\u00a0"],
+      "tools": ["\u000bcodex\u000b"],
+      "models": [],
+      "search": "\u00a0query\u00a0",
+      "tokenMode": "effective"
+    },
+    "normalized": {
+      "range": "today",
+      "timezone": "Asia/Shanghai",
+      "machines": ["\u00a0mac\u00a0"],
+      "tools": ["\u000bcodex\u000b"],
+      "models": [],
+      "search": "\u00a0query\u00a0",
+      "tokenMode": "effective"
+    }
+  },
+  "entityRequest": {
+    "entity": { "kind": "model", "id": "gpt-5-codex" },
+    "query": {
+      "range": "month",
+      "timezone": "Asia/Shanghai",
+      "machines": ["Studio-PC"],
+      "tools": ["codex"],
+      "models": [],
+      "search": "Session_42%",
+      "tokenMode": "effective"
+    }
+  }
+}

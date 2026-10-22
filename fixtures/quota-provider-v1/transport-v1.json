@@ -1,0 +1,185 @@
+{
+  "replaceRequest": {
+    "p_transport_version": 1,
+    "p_epoch": 7,
+    "p_providers": [
+      {
+        "schemaVersion": 1,
+        "providerId": "openai-codex-local",
+        "displayName": "Codex",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "openai-codex-local",
+            "windowId": "codex:primary",
+            "windowLabel": "5 hour window",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "used": 38,
+            "limit": 100,
+            "remaining": 62,
+            "unit": "percent",
+            "windowMinutes": 300,
+            "resetsAt": "2026-07-15T10:00:00+08:00",
+            "observedAt": "2026-07-15T08:30:00+08:00",
+            "fetchedAt": "2026-07-15T08:30:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "providerId": "anthropic-claude-consumer",
+        "displayName": "Claude",
+        "scope": "consumer-subscription",
+        "mode": "unsupported",
+        "capability": "unsupported",
+        "status": "unsupported",
+        "windows": [],
+        "reasonCode": "consumer_api_unavailable"
+      }
+    ]
+  },
+  "replaceExpected": {
+    "status": "ok",
+    "transportVersion": 1,
+    "epoch": 7,
+    "revision": 12,
+    "replacedProviderCount": 2,
+    "generatedAt": "2026-07-15T08:31:00+08:00",
+    "storedProviderKeys": [
+      "openai-codex-local:consumer-subscription",
+      "anthropic-claude-consumer:consumer-subscription"
+    ],
+    "deletePreviouslyStoredButOmitted": true,
+    "maxProviders": 8,
+    "maxWindowsPerProvider": 16,
+    "producerMaxCompactUtf8Bytes": 61440,
+    "serverMaxJsonbTextUtf8Bytes": 65536,
+    "maxStringUtf8Bytes": 512,
+    "maxStableIdUtf8Bytes": 128,
+    "serverRejectsFields": [
+      "action",
+      "windows[].accountLabel",
+      "unknown"
+    ]
+  },
+  "readResponse": {
+    "status": "ok",
+    "transportVersion": 1,
+    "epoch": 7,
+    "revision": 12,
+    "generatedAt": "2026-07-15T08:31:00+08:00",
+    "providers": [
+      {
+        "schemaVersion": 1,
+        "providerId": "openai-codex-local",
+        "displayName": "Codex",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "stable",
+        "status": "ok",
+        "windows": [
+          {
+            "providerId": "openai-codex-local",
+            "windowId": "codex:primary",
+            "windowLabel": "5 hour window",
+            "scope": "consumer-subscription",
+            "source": "local-authorized",
+            "status": "ok",
+            "used": 38,
+            "limit": 100,
+            "remaining": 62,
+            "unit": "percent",
+            "windowMinutes": 300,
+            "resetsAt": "2026-07-15T10:00:00+08:00",
+            "observedAt": "2026-07-15T08:30:00+08:00",
+            "fetchedAt": "2026-07-15T08:30:01+08:00",
+            "staleAfterSeconds": 900
+          }
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "providerId": "anthropic-claude-consumer",
+        "displayName": "Claude",
+        "scope": "consumer-subscription",
+        "mode": "unsupported",
+        "capability": "unsupported",
+        "status": "unsupported",
+        "windows": [],
+        "reasonCode": "consumer_api_unavailable"
+      }
+    ]
+  },
+  "projectionCase": {
+    "localOnlyFields": [
+      "providers[].action",
+      "providers[].windows[].accountLabel"
+    ],
+    "producerOutcome": "remove-before-rpc",
+    "serverOutcomeIfPresent": "reject-entire-replace"
+  },
+  "hardTtlCases": [
+    {
+      "serverAgeSeconds": 86399,
+      "readOutcome": "include-and-client-recomputes-window-staleness"
+    },
+    {
+      "serverAgeSeconds": 86400,
+      "readOutcome": "exclude",
+      "physicalDeleteDeadlineSeconds": 90000
+    }
+  ],
+  "clearRequest": {
+    "p_transport_version": 1
+  },
+  "clearResponse": {
+    "status": "ok",
+    "transportVersion": 1,
+    "epoch": 8,
+    "revision": 13,
+    "clearedProviderCount": 2,
+    "generatedAt": "2026-07-15T08:32:00+08:00"
+  },
+  "raceCases": [
+    {
+      "name": "replace-locks-before-clear",
+      "replaceEpoch": 7,
+      "finalEpoch": 8,
+      "replaceOutcome": "commit-before-clear",
+      "finalProviders": []
+    },
+    {
+      "name": "clear-locks-before-late-replace",
+      "replaceEpoch": 7,
+      "finalEpoch": 8,
+      "replaceOutcome": "reject-stale-epoch",
+      "finalProviders": []
+    }
+  ],
+  "errorResponses": [
+    {
+      "httpStatus": 400,
+      "body": {
+        "code": "22023",
+        "message": "quota_snapshot_stale_epoch",
+        "details": null,
+        "hint": null
+      }
+    },
+    {
+      "httpStatus": 400,
+      "body": {
+        "code": "22023",
+        "message": "quota_snapshot_payload_too_large",
+        "details": null,
+        "hint": null
+      }
+    }
+  ]
+}

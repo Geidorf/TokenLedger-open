@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "totalTokens": 3,
+    "inputTokens": 1,
+    "outputTokens": 2,
+    "cachedTokens": 0,
+    "totalCost": 0,
+    "totalRequests": 1,
+    "avgTokensPerReq": 3,
+    "futureSummaryMetric": 99
+  },
+  "tools": {},
+  "models": {},
+  "trends": [],
+  "heatmap": {},
+  "history": [],
+  "machines": [],
+  "futureTopLevelEnvelope": { "schema": 3 },
+  "meta": {
+    "contractVersion": 2,
+    "timezone": "Pacific/Auckland",
+    "range": "week",
+    "futureMetaFlag": true,
+    "capabilities": {
+      "comparison": false,
+      "detailPagination": true,
+      "entityDashboard": false,
+      "quotaSnapshots": false,
+      "futureCapability": true
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# label|accepted|key
+publishable fixture|true|sb_publishable_ci_fixture
+publishable hyphen|true|sb_publishable_abCD-1234_xyz
+legacy anon|true|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIn0.c2lnbmF0dXJl
+legacy service role|false|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UifQ.c2lnbmF0dXJl
+legacy authenticated role|false|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYXV0aGVudGljYXRlZCJ9.c2lnbmF0dXJl
+legacy missing role|false|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.c2lnbmF0dXJl
+legacy none algorithm|false|eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIn0.c2lnbmF0dXJl
+legacy malformed payload|false|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.bm90LWpzb24.c2lnbmF0dXJl
+legacy malformed segments|false|abc.def
+legacy invalid base64url|false|eyJhbGciOiJIUzI1NiJ9.@@.c2lnbmF0dXJl
+secret key|false|sb_secret_do_not_embed
+unknown opaque key|false|eyUnknownOpaqueKey
+empty key|false|
+leading whitespace|false| sb_publishable_ci_fixture

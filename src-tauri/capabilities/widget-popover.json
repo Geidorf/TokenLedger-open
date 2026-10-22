@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "widget-popover",
+  "description": "allows only the tray popover to dismiss itself and report pointer hover",
+  "windows": [
+    "widget"
+  ],
+  "permissions": [
+    "allow-hide-widget-window",
+    "allow-widget-pointer-hover"
+  ]
+}

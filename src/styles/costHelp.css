@@ -1,0 +1,90 @@
+/* 「预估费用 ⓘ」帮助按钮与说明弹层（T10.154 §4.2）。按钮只占 18px，不撑高 KPI 标签行；
+   ::before 把可点区扩到 44px。弹层是非模态的，挂在 body 或专属看板对话框里，按视口定位。 */
+.metric-label-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.cost-help-button {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: -2px 0;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: color var(--motion-hover) var(--ease-out-quart);
+}
+
+.cost-help-button::before {
+  content: '';
+  position: absolute;
+  inset: -13px;
+}
+
+.cost-help-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cost-help-button:hover,
+.cost-help-button[aria-expanded='true'] {
+  color: var(--color-text-primary);
+}
+
+.cost-help-button:focus-visible {
+  outline: 2px solid var(--color-primary-focus);
+  outline-offset: 1px;
+}
+
+.cost-help-popover {
+  position: fixed;
+  z-index: 1100;
+  width: min(320px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-float);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  transform-origin: top left;
+  animation: tl-pop-in 180ms var(--ease-out-quart) backwards;
+}
+
+.cost-help-popover:focus {
+  outline: none;
+}
+
+.cost-help-popover:focus-visible {
+  outline: 2px solid var(--color-primary-focus);
+  outline-offset: 2px;
+}
+
+.cost-help-popover p {
+  margin: 0;
+}
+
+.cost-help-popover p + p {
+  margin-top: 6px;
+}
+
+.cost-help-popover strong {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-label);
+}
+
+@media (forced-colors: active) {
+  .cost-help-popover {
+    border-color: ButtonText;
+  }
+}

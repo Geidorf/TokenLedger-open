@@ -1,0 +1,105 @@
+/* ==========================================================================
+   Overview day drill-down, model cost list and quadrant empty state
+   (T10.158, audit P0-1/P0-2 and its review fix round)
+   --------------------------------------------------------------------------
+   Task-private rules on the T10.150 tokens, imported only by the components
+   that render these classes. Unlayered on purpose: they refine the layered
+   .ghost-inline / .anomaly-item-action primitives without raising specificity.
+   Hit targets stay on the shared 44px floor that .ghost-inline and
+   .secondary-inline already carry; nothing here animates, so reduced motion
+   needs no override, and forced colors map through the tokens.
+   ========================================================================== */
+
+/* Model cost distribution: the row under the default eight models. */
+.model-cost-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border-row);
+}
+
+.model-cost-more-toggle {
+  padding-inline: var(--space-2);
+  color: var(--color-primary);
+}
+
+.model-cost-more-toggle:hover:not(:disabled) {
+  color: var(--color-primary);
+}
+
+/* Unknown cost is not $0 (GLB-01): an empty dashed slot instead of a bar. */
+.model-cost-meter.is-unavailable {
+  background: transparent;
+  border: 1px dashed var(--color-border-strong);
+}
+
+.model-cost-more-summary {
+  min-width: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Usage/cost quadrant with fewer than two plottable models: say why instead of vanishing. */
+.quadrant-empty {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.quadrant-empty-requirement {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-label);
+  overflow-wrap: anywhere;
+}
+
+.quadrant-empty-detail {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Details page: which single day is shown, and the way back. */
+.details-day-drill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-primary-soft-border);
+  border-radius: var(--radius-chip);
+  background: var(--color-primary-soft-bg);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+}
+
+.details-day-drill-icon {
+  flex: none;
+  color: var(--color-primary-soft-icon);
+}
+
+.details-day-drill-text {
+  flex: 1 1 12em;
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-label);
+  overflow-wrap: anywhere;
+}
+
+.details-day-drill-origin {
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-regular);
+}
+
+.details-day-drill-return {
+  flex: none;
+}
+
+/* Spike cards whose day cannot be opened in the current scope. */
+.anomaly-item-action.is-unavailable {
+  color: var(--color-text-tertiary);
+}

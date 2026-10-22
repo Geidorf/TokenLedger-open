@@ -1,0 +1,31 @@
+{
+  "$schema": "tool-display-names-v1",
+  "note": "Single source for tool id -> display name (TOKE-12). The dashboard (src/utils/toolDisplayName.ts), the desktop widget (src/components/widget/cardModel.ts) and the static wallpaper (src-tauri/src/wallpaper.rs tool_display_name) all read this file. Lookup: trim with the ECMAScript WhiteSpace+LineTerminator set, lower-case, then names[id], else names[aliases[id]], else capitalize the first character of the trimmed original. An empty name uses emptyLabel. Spellings follow the Chinese UI's existing brand names (OpenCode, MiniMax); they are not translations. Scanner tool ids are not rewritten. reasonix is the one registered id whose previous fallback spelling (Reasonix) disagreed with the repo's own ReasoniX.",
+  "emptyLabel": "未命名工具",
+  "names": {
+    "antigravity": "Antigravity",
+    "gemini": "Gemini",
+    "codex": "Codex",
+    "marvis": "Marvis",
+    "hermes": "Hermes",
+    "pi": "Pi",
+    "opencode": "OpenCode",
+    "workbuddy": "WorkBuddy",
+    "reasonix": "ReasoniX",
+    "deepseek": "DeepSeek",
+    "grok": "Grok",
+    "claude": "Claude",
+    "qclaw": "QClaw",
+    "kilo": "Kilo",
+    "kimi": "Kimi",
+    "trae": "Trae",
+    "minimax": "MiniMax",
+    "zcode": "ZCode"
+  },
+  "aliases": {
+    "deepseekgui": "deepseek",
+    "dsh": "deepseek",
+    "kimidesktop": "kimi",
+    "mavis": "marvis"
+  }
+}

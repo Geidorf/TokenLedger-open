@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokenledger.invalid/schemas/release-manifest-v1.json",
+  "title": "TokenLedger release manifest",
+  "description": "Content-addressed evidence for one immutable TokenLedger build.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "channel",
+    "version",
+    "sourceSha",
+    "builtAt",
+    "supabaseMigrationHead",
+    "artifacts",
+    "evidence",
+    "validationRefs"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "channel": {
+      "enum": [
+        "internal",
+        "private-signed",
+        "public-rc"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "sourceSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "builtAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "supabaseMigrationHead": {
+      "type": "string",
+      "pattern": "^[0-9]{14}_[a-z0-9_]+$"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "previousRelease": {
+      "description": "Older MAJOR.MINOR.PATCH release the public RC proves an in-place upgrade from; null on the first public release. Resolved by scripts/release-lineage.mjs.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "validationRefs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "enum": [
+              "private-signed",
+              "public-rc"
+            ]
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "then": {
+        "properties": {
+          "artifacts": {
+            "items": {
+              "properties": {
+                "signature": {
+                  "const": "verified"
+                }
+              },
+              "required": [
+                "signature"
+              ]
+            }
+          },
+          "evidence": {
+            "contains": {
+              "properties": {
+                "kind": {
+                  "const": "production-migration-history"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "minContains": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "public-rc"
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "then": {
+        "properties": {
+          "artifacts": {
+            "minItems": 4,
+            "maxItems": 4,
+            "allOf": [
+              {
+                "contains": {
+                  "properties": {
+                    "platform": {
+                      "const": "macos"
+                    },
+                    "arch": {
+                      "const": "arm64"
+                    },
+                    "kind": {
+                      "const": "dmg"
+                    }
+                  },
+                  "required": [
+                    "platform",
+                    "arch",
+                    "kind"
+                  ]
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "properties": {
+                    "platform": {
+                      "const": "windows"
+                    },
+                    "arch": {
+                      "const": "x86_64"
+                    },
+                    "kind": {
+                      "const": "msi"
+                    }
+                  },
+                  "required": [
+                    "platform",
+                    "arch",
+                    "kind"
+                  ]
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "properties": {
+                    "platform": {
+                      "const": "android"
+                    },
+                    "arch": {
+                      "const": "universal"
+                    },
+                    "kind": {
+                      "const": "apk"
+                    }
+                  },
+                  "required": [
+                    "platform",
+                    "arch",
+                    "kind"
+                  ]
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "properties": {
+                    "platform": {
+                      "const": "android"
+                    },
+                    "arch": {
+                      "const": "universal"
+                    },
+                    "kind": {
+                      "const": "aab"
+                    }
+                  },
+                  "required": [
+                    "platform",
+                    "arch",
+                    "kind"
+                  ]
+                },
+                "minContains": 1
+              }
+            ]
+          },
+          "evidence": {
+            "allOf": [
+              {
+                "contains": {
+                  "properties": {
+                    "kind": {
+                      "const": "android-upgrade"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "properties": {
+                    "kind": {
+                      "const": "signature"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "minContains": 4
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "file",
+        "sizeBytes",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "signature",
+            "production-migration-history",
+            "android-upgrade"
+          ]
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\]+$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "arch",
+        "kind",
+        "file",
+        "artifactVersion",
+        "sizeBytes",
+        "sha256",
+        "signature",
+        "signingIdentity",
+        "buildEnvironment"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "macos",
+            "windows",
+            "android"
+          ]
+        },
+        "arch": {
+          "enum": [
+            "arm64",
+            "x86_64",
+            "universal"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "dmg",
+            "msi",
+            "apk",
+            "aab"
+          ]
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\]+$"
+        },
+        "artifactVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "signature": {
+          "enum": [
+            "verified",
+            "unverified",
+            "unsigned"
+          ]
+        },
+        "signingIdentity": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512
+        },
+        "signatureEvidenceRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "buildEnvironment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "signature": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "signature"
+            ]
+          },
+          "then": {
+            "properties": {
+              "signingIdentity": {
+                "type": "string",
+                "minLength": 1
+              },
+              "signatureEvidenceRef": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "signatureEvidenceRef"
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "signature": {
+                  "const": "verified"
+                }
+              },
+              "required": [
+                "signature"
+              ]
+            }
+          },
+          "then": {
+            "properties": {
+              "signingIdentity": {
+                "const": null
+              }
+            },
+            "not": {
+              "required": [
+                "signatureEvidenceRef"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

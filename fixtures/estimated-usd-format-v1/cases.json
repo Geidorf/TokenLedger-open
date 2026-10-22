@@ -1,0 +1,41 @@
+{
+  "schema": "estimated-usd-format-v1",
+  "title": "汇总级预估费用的写法（T10.154 §4.1）：前端看板与 Rust 托盘共用的黄金用例（T10.191）",
+  "consumers": [
+    "src/utils/format.test.ts：formatEstimatedUsd(value, 'summary')",
+    "src-tauri/src/widget_window.rs 的测试：format_estimated_usd（托盘悬停提示与 macOS 菜单栏标题）"
+  ],
+  "rules": "≈$ + 千分位 + 两位小数；0 < v < 0.01 写 <$0.01（不带 ≈）；已知 0（含 -0）写 ≈$0.00；读不到、非有限或为负写「不可得」（GLB-01）。舍入与 Intl.NumberFormat 相同：取最短往返十进制串，在第三位小数上四舍五入（半数远离 0），不按二进制精确值舍入。",
+  "inputEncoding": "input 是十进制字符串，两端各用语言内建的正确舍入解析（JS Number()、Rust str::parse::<f64>()），不经过两套 JSON 数字解析器，也能写出 NaN、Infinity 与 -0；null 表示读不到（字段缺失或为 null）。",
+  "cases": [
+    { "input": null, "expected": "不可得", "note": "读不到费用，不写 $0（GLB-01）" },
+    { "input": "NaN", "expected": "不可得", "note": "非有限" },
+    { "input": "Infinity", "expected": "不可得", "note": "非有限" },
+    { "input": "-Infinity", "expected": "不可得", "note": "非有限" },
+    { "input": "-0.5", "expected": "不可得", "note": "负数不是可验证的费用" },
+    { "input": "-1e-9", "expected": "不可得", "note": "极小的负数同样不可得" },
+    { "input": "0", "expected": "≈$0.00", "note": "已知为 0" },
+    { "input": "-0", "expected": "≈$0.00", "note": "-0 按已知 0，不写 ≈$-0.00" },
+    { "input": "5e-324", "expected": "<$0.01", "note": "最小的正数也不写成 0" },
+    { "input": "1e-9", "expected": "<$0.01", "note": "微小正数" },
+    { "input": "0.004", "expected": "<$0.01", "note": "旧托盘 {:.2} 写成 ≈$0.00" },
+    { "input": "0.005", "expected": "<$0.01", "note": "小于 0.01 一律 <$0.01，不进位成 ≈$0.01" },
+    { "input": "0.00999", "expected": "<$0.01", "note": "同上" },
+    { "input": "0.01", "expected": "≈$0.01", "note": "0.01 本身不再是 <$0.01" },
+    { "input": "0.015", "expected": "≈$0.02", "note": "最短十进制 0.015 半数进位；二进制值是 0.01499…，{:.2} 写 0.01" },
+    { "input": "0.125", "expected": "≈$0.13", "note": "二进制恰好居中；{:.2} 取偶写 0.12" },
+    { "input": "1", "expected": "≈$1.00" },
+    { "input": "1.004999", "expected": "≈$1.00", "note": "不到半数，舍去" },
+    { "input": "1.005", "expected": "≈$1.01", "note": "二进制值是 1.00499…，{:.2} 写 1.00；看板按最短十进制 1.005 写 1.01" },
+    { "input": "2.675", "expected": "≈$2.68", "note": "同上，{:.2} 写 2.67" },
+    { "input": "12.345", "expected": "≈$12.35" },
+    { "input": "999.994", "expected": "≈$999.99" },
+    { "input": "999.995", "expected": "≈$1,000.00", "note": "进位到千位，同时补千分位" },
+    { "input": "1234.5", "expected": "≈$1,234.50", "note": "旧托盘没有千分位：≈$1234.50" },
+    { "input": "1422.78", "expected": "≈$1,422.78" },
+    { "input": "1e6", "expected": "≈$1,000,000.00" },
+    { "input": "999999.995", "expected": "≈$1,000,000.00", "note": "进位穿过整数各位" },
+    { "input": "123456789.123", "expected": "≈$123,456,789.12" },
+    { "input": "1e21", "expected": "≈$1,000,000,000,000,000,000,000.00", "note": "写全位数，不转科学计数" }
+  ]
+}

@@ -1,0 +1,89 @@
+/* 报表 ⓘ 悬停提示（U-102，T10.278）。按钮 18px、::before 把命中区扩到 44px；提示常驻 DOM，
+   未打开时 visibility: hidden（不进入可见文字，但 aria-describedby 仍能读到）。 */
+.info-tip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-inline-start: var(--space-1);
+  vertical-align: middle;
+}
+
+.info-tip-button {
+  position: relative;
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  margin: -2px 0;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: help;
+  transition: color var(--motion-hover) var(--ease-out-quart);
+}
+
+.info-tip-button::before {
+  content: '';
+  position: absolute;
+  inset: -13px;
+}
+
+.info-tip-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.info-tip-button:hover,
+.info-tip-button:focus-visible {
+  color: var(--color-text-primary);
+}
+
+.info-tip-button:focus-visible {
+  outline: 2px solid var(--color-primary-focus);
+  outline-offset: 1px;
+}
+
+.info-tip-bubble {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1100;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-float);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.55;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.info-tip-bubble[data-open='true'] {
+  visibility: visible;
+  animation: tl-pop-in 160ms var(--ease-out-quart) backwards;
+}
+
+.info-tip-bubble > span {
+  display: block;
+}
+
+.info-tip-bubble > span + span {
+  margin-top: var(--space-1);
+}
+
+@media (forced-colors: active) {
+  .info-tip-bubble {
+    border-color: ButtonText;
+  }
+}

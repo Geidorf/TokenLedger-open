@@ -1,0 +1,278 @@
+/* 托盘挂件与桌面小组件：方向 B「账本圆环」卡片（T10.192；T10.190 方案 §5.2、§6.3、§6.4、§6.6）。
+   窗口的透明、圆角、阴影与按板式定尺寸归 T10.193（方案 §6.5）；这里只画窗口里的这张卡。
+   设置页「桌面挂件」的静态预览也用这套样式（`.widget-root.is-preview`）。 */
+html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'] #root {
+  height: 100%; min-height: 0; overflow: hidden; background: transparent;
+}
+
+/* ── 卡片令牌（方案 §6.3）：按卡片自己的主题取值，与主窗口主题无关。深色为默认。 ── */
+.widget-root {
+  --wl-bg: #0e1116;
+  --wl-hair: rgba(255, 255, 255, 0.08);
+  --wl-text: #f2f4f7;
+  --wl-text-2: #c3c8d2;
+  --wl-text-3: #9aa2b0;
+  --wl-ok: #6b9dff;
+  --wl-warn: #fbbf24;
+  --wl-warn-text: #fbbf24;
+  --wl-danger: #fb7185;
+  --wl-danger-text: #fb7185;
+  --wl-track: rgba(255, 255, 255, 0.1);
+  --wl-axis: #8f97a5;
+  --wl-grid: rgba(255, 255, 255, 0.07);
+  --wl-other: #a5acb9;
+  --wl-chip: rgba(255, 255, 255, 0.08);
+  --wl-seg: rgba(255, 255, 255, 0.07);
+  --wl-seg-on: rgba(255, 255, 255, 0.12);
+  --wl-seg-on-shadow: none;
+  --wl-hover: rgba(255, 255, 255, 0.1);
+  --wl-face: #1c2028;
+  --wl-radius: 16px;
+  --wl-font-num: 'Segoe UI Variable Display', var(--font-display);
+  color-scheme: dark;
+}
+.widget-root[data-card-theme='light'] {
+  --wl-bg: #ffffff;
+  --wl-hair: rgba(15, 23, 42, 0.08);
+  --wl-text: #0f1729;
+  --wl-text-2: #3b4556;
+  --wl-text-3: #5d6778;
+  --wl-ok: #1f5fd6;
+  --wl-warn: #a15c07;
+  --wl-warn-text: #8a4b00;
+  --wl-danger: #c81e3c;
+  --wl-danger-text: #c81e3c;
+  --wl-track: rgba(15, 23, 42, 0.09);
+  --wl-axis: #5d6778;
+  --wl-grid: rgba(15, 23, 42, 0.07);
+  --wl-other: #586273;
+  --wl-chip: rgba(15, 23, 42, 0.06);
+  --wl-seg: rgba(15, 23, 42, 0.05);
+  --wl-seg-on: #ffffff;
+  --wl-seg-on-shadow: 0 1px 2px rgba(16, 24, 40, 0.14);
+  --wl-hover: rgba(15, 23, 42, 0.06);
+  --wl-face: #f1f3f6;
+  color-scheme: light;
+}
+
+/* ── 卡片外壳：浅色不透明；深色默认不透明，只在有原生材质承托时降到 90%（见文件末）。 ── */
+.widget-root {
+  position: relative; box-sizing: border-box; display: flex; flex-direction: column;
+  width: 100%; height: 100vh; overflow: hidden;
+  color: var(--wl-text); background: var(--wl-bg);
+  border-radius: var(--wl-radius);
+  box-shadow: inset 0 0 0 1px var(--wl-hair);
+  font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 400;
+  user-select: none; -webkit-user-select: none;
+}
+.widget-root *, .widget-root *::before, .widget-root *::after { box-sizing: border-box; }
+.widget-root[data-mode='desktop'] { cursor: grab; }
+.widget-root[data-mode='desktop']:active { cursor: grabbing; }
+
+/* 卡片按方案 §6.4 的桌面小组件高度排版；窗口现在按 T10.193 的尺寸表精确改尺寸，不再留空。
+   宽度随窗口走（364；设置页静态预览按需整体缩放）。 */
+.widget-root[data-layout='usage'] { --wl-card-h: 388px; }
+.widget-root[data-layout='combo'] { --wl-card-h: 172px; }
+.widget-root[data-layout='quota'] { --wl-card-h: 272px; }
+.widget-root[data-layout='compact'] { --wl-card-h: 104px; }
+.wl-card { position: relative; display: flex; flex-direction: column; flex: none; height: var(--wl-card-h, 100%); min-width: 0; padding: 16px 18px; }
+/* 托盘挂件：顶栏（12px 上边距 + 30px）替掉卡片顶部 16px 内边距，整体比桌面小组件高 26px。 */
+.widget-root[data-mode='popover'] .wl-card { height: calc(var(--wl-card-h, 100%) - 16px); padding-top: 0; }
+/* 桌面小组件：22px 圆角、1px 内描边（沿用上面 .widget-root 的 inset box-shadow）、不画外阴影
+   （窗口本身 shadow(false) + transparent(true)，角上露出真实桌面，T10.193，方案 §6.5）。 */
+.widget-root[data-mode='desktop'] { --wl-radius: 22px; }
+
+/* ── 通用字样 ── */
+.wl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.wl-cap { display: block; min-width: 0; overflow: hidden; color: var(--wl-text-2); font-size: 12px; font-weight: 500; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.wl-meta { display: block; min-width: 0; overflow: hidden; color: var(--wl-text-3); font-size: 11px; font-weight: 400; line-height: 15px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.wl-meta .wl-meta { display: inline; }
+.wl-meta.is-error { color: var(--wl-danger-text); }
+.wl-title { flex: none; }
+.wl-title > .wl-cap { flex: none; }
+/* 数字：系统显示字体、等宽数字、600，本身不染色（方案 §6.3）。 */
+.wl-num { display: block; color: var(--wl-text); font-family: var(--wl-font-num); font-weight: 600; letter-spacing: -0.03em; line-height: 1.02; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 较上期同期胶囊：中性色，不用红绿表达好坏。 */
+.wl-chip { display: inline-block; flex: none; max-width: 100%; overflow: hidden; padding: 2px 7px; border-radius: 999px; background: var(--wl-chip); color: var(--wl-text-2); font-size: 11px; font-weight: 500; line-height: 15px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.wl-hr { flex: none; height: 1px; margin: 0; border: 0; background: var(--wl-hair); }
+.wl-vr { flex: none; align-self: stretch; width: 1px; background: var(--wl-hair); }
+.wl-num-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 4px; }
+
+/* ── 用量详情 364×388：16 + 标题 16 + 6 + 大数字行 70 + 12 + 走势 74 + 10 + 分列 38 + 12 + 条 8 + 8
+      + 图例 15（两行 33）+ 12 + 1 + 12 + 圆环 44 + 16 = 370（图例折行时 388）。
+      图例一行时多出的 18px 均匀摊进各段间距（space-between），折成两行时正好用完。 ── */
+.wl-card[data-layout='usage'] { justify-content: space-between; }
+.wl-hero { display: flex; flex: none; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.wl-hero-main { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.wl-hero-num { font-size: 44px; line-height: 45px; }
+.wl-hero-main .wl-chip { margin-top: 6px; }
+.wl-hero-side { display: flex; flex: none; flex-direction: column; align-items: flex-end; text-align: right; }
+.wl-hero-cost { margin-top: 3px; font-size: 22px; line-height: 23px; }
+.wl-hero-side .wl-hero-cost + .wl-meta { margin-top: 5px; }
+
+.wl-trend { flex: none; height: 74px; margin-top: 12px; }
+.wl-trend svg { display: block; overflow: visible; }
+.wl-trend.is-empty { display: grid; place-items: center; border-bottom: 1px solid var(--wl-grid); color: var(--wl-text-3); font-size: 11px; }
+.wl-trend-grid { stroke: var(--wl-grid); stroke-width: 1; }
+.wl-trend-prev { fill: none; stroke: var(--wl-axis); stroke-width: 1.25; stroke-dasharray: 3 3; opacity: 0.75; }
+.wl-trend-stop { stop-color: var(--wl-ok); }
+.wl-trend-line { fill: none; stroke: var(--wl-ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wl-trend-dot { fill: var(--wl-ok); stroke: var(--wl-bg); stroke-width: 1.5; }
+.wl-trend-tick { fill: var(--wl-axis); font-family: var(--font-sans); font-size: 10px; }
+
+.wl-kv { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 10px 0 0; }
+.wl-kv > div { min-width: 0; }
+.wl-kv dt { overflow: hidden; color: var(--wl-text-3); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.wl-kv dd { margin: 3px 0 0; overflow: hidden; color: var(--wl-text); font-size: 15px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+
+.wl-tools { flex: none; margin-top: 12px; }
+.wl-tools-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; }
+.wl-tools.is-empty .wl-tools-bar { background: var(--wl-track); }
+.wl-tools-bar > i { flex: 0 1 0; min-width: 2px; height: 8px; border-radius: 4px; }
+.wl-legend { display: flex; flex-wrap: wrap; gap: 3px 12px; max-height: 33px; margin: 8px 0 0; padding: 0; overflow: hidden; color: var(--wl-text); font-size: 11px; line-height: 15px; list-style: none; font-variant-numeric: tabular-nums; }
+.wl-legend li { display: flex; align-items: center; min-width: 0; max-width: 100%; white-space: nowrap; }
+.wl-legend li > i { flex: none; width: 8px; height: 8px; margin-right: 5px; border-radius: 3px; }
+.wl-legend-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wl-legend-share { flex: none; }
+.wl-legend-empty { height: 15px; margin: 8px 0 0; color: var(--wl-text-3); font-size: 11px; line-height: 15px; }
+
+.wl-card[data-layout='usage'] > .wl-hr { margin: 12px 0; }
+.wl-minis { display: grid; flex: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; height: 44px; margin: 0; padding: 0; list-style: none; }
+.wl-minis.is-notice { display: flex; align-items: center; }
+.wl-mini { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.wl-mini-text { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+/* 窗口名最多两行（「Claude · Claude Pro / Max 5 小时」这类长名），两行正好 44px 圆环高。
+   只在空格处折行（不把「本月」拆成「本 / 月」），一个词本身放不下时才在词内断开。 */
+.wl-mini .wl-who { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 14px; word-break: keep-all; overflow-wrap: anywhere; }
+.wl-mini .wl-st { margin-top: 1px; }
+
+/* ── 圆环（方案 §5.2）：环 = 可用百分比，按档位只用 primary / warning / danger；环心数字不染色。 ── */
+.wl-ring { position: relative; display: block; flex: none; }
+.wl-ring svg { display: block; }
+.wl-ring-track { fill: none; stroke: var(--wl-track); }
+.wl-ring-arc { fill: none; stroke: var(--wl-ok); stroke-linecap: round; }
+.wl-ring[data-level='warn'] .wl-ring-arc { stroke: var(--wl-warn); }
+.wl-ring[data-level='critical'] .wl-ring-arc { stroke: var(--wl-danger); }
+/* 历史快照：弧改用轴线灰（“淡化”），环外写「待刷新」（DESIGN §6.4）。 */
+.wl-ring[data-stale='true'] .wl-ring-arc { stroke: var(--wl-axis); }
+.wl-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.wl-ring-num { color: var(--wl-text); font-family: var(--wl-font-num); font-weight: 600; line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wl-ring-num small { margin-left: 1px; font-size: 0.55em; font-weight: 500; }
+.wl-ring-sub { margin-top: 3px; color: var(--wl-text-3); font-size: 10px; line-height: 12px; }
+
+.wl-who { display: block; max-width: 100%; color: var(--wl-text); font-size: 12px; font-weight: 500; line-height: 16px; }
+.wl-st { display: block; max-width: 100%; overflow: hidden; color: var(--wl-text-3); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* 档位字：充足用次级文字色，偏紧、告急用各自的文字色（方案 §6.3）。 */
+.wl-tier { color: var(--wl-text-2); }
+.wl-tier[data-level='warn'] { color: var(--wl-warn-text); }
+.wl-tier[data-level='critical'] { color: var(--wl-danger-text); }
+/* 窗口名：窄格子里只截前半（来源、分组），窗口短名永远写全。 */
+.wl-wname { display: inline-flex; min-width: 0; max-width: 100%; white-space: nowrap; }
+.wl-wname-head { flex: 0 1 auto; min-width: 1.5em; overflow: hidden; text-overflow: ellipsis; }
+.wl-wname-tail { flex: none; }
+
+/* ── 额度与用量 364×172：左 118px 圆环格（92 + 7 + 16 + 2 + 15 = 132），右栏两端对齐。 ── */
+.wl-card[data-layout='combo'] { flex-direction: row; align-items: stretch; gap: 16px; }
+.wl-combo-ring { display: flex; flex: none; flex-direction: column; align-items: center; justify-content: center; width: 118px; min-width: 0; text-align: center; }
+.wl-combo-ring .wl-who { display: flex; justify-content: center; margin-top: 7px; }
+.wl-combo-ring .wl-st { margin-top: 2px; }
+.wl-combo-main { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: space-between; min-width: 0; }
+.wl-combo-num { font-size: 32px; line-height: 33px; }
+.wl-combo-cost { margin-top: 3px; font-size: 20px; line-height: 21px; }
+.wl-combo-meta { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; }
+
+/* ── 额度总览 364×272：14 + 标题 16 + 10 + 两行 × 100（64 + 6 + 15 + 1 + 14）+ 12 + 16 = 268。 ── */
+.wl-card[data-layout='quota'] { padding-top: 14px; }
+.widget-root[data-mode='popover'] .wl-card[data-layout='quota'] { padding-top: 0; }
+.wl-quota-grid { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.wl-cell { display: flex; flex-direction: column; align-items: center; min-width: 0; text-align: center; }
+.wl-cell .wl-who { margin-top: 6px; overflow: hidden; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.wl-cell .wl-st { display: flex; justify-content: center; margin-top: 1px; line-height: 14px; }
+.wl-st-tier { flex: none; }
+
+/* ── 单行消耗 364×104：有效 Token + 胶囊 │ 118px 预估费用，内容区 72px 里竖直居中。 ── */
+.wl-card[data-layout='compact'] { flex-direction: row; align-items: center; gap: 16px; }
+.wl-compact-main { flex: 1 1 auto; min-width: 0; }
+.wl-compact-num { font-size: 34px; line-height: 35px; }
+.wl-compact-main > .wl-meta { margin-top: 2px; }
+.wl-compact-side { flex: none; width: 118px; min-width: 0; }
+.wl-compact-cost { margin-top: 6px; font-size: 22px; line-height: 23px; }
+
+/* ── 额度提示（读取中 / 没有可读额度 / 钉住的来源读不到）。 ── */
+.wl-notice { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; color: var(--wl-text-2); font-size: 12px; line-height: 16px; }
+.wl-notice > span { display: -webkit-box; min-width: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.wl-combo-ring .wl-notice, .wl-quota-grid .wl-notice { flex-direction: column; justify-content: center; text-align: center; }
+.wl-combo-ring .wl-notice > span { -webkit-line-clamp: 4; }
+.wl-quota-grid.is-notice { display: flex; min-height: 200px; }
+/* 链接式按钮不垫底色：深色 90% 叠在亮背景上时，主色字压在胶囊底上只剩 4.3:1。 */
+.wl-link { position: relative; flex: none; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--wl-ok); font: inherit; font-weight: 500; cursor: pointer; }
+.wl-link::after { content: ''; position: absolute; inset: -10px -4px; }
+.wl-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── 托盘挂件顶栏：范围分段 + 四个图标。视觉 30px，命中区 44×44（GLB-03）。 ── */
+.wl-bar { position: relative; z-index: 1; display: flex; flex: none; align-items: flex-start; justify-content: space-between; gap: 8px; height: 42px; padding: 12px 18px 0; }
+.wl-seg { display: flex; flex: none; padding: 2px; border-radius: 9px; background: var(--wl-seg); --seg-bg: var(--wl-seg-on); --seg-shadow: var(--wl-seg-on-shadow); --seg-radius: 7px; }
+.wl-seg-btn { position: relative; display: block; min-width: 44px; height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--wl-text-3); font: inherit; font-size: 12px; font-weight: 500; line-height: 26px; text-align: center; white-space: nowrap; cursor: pointer; transition: color var(--motion-hover, 120ms) ease-out; }
+/* 命中区向上扩到窗口顶边、向下扩 4px：44 高，不压下面的标题行。 */
+.wl-seg-btn::after { content: ''; position: absolute; top: -14px; right: 0; bottom: -4px; left: 0; }
+.wl-seg-btn[aria-pressed='true'], .wl-seg-btn[data-active='true'] { color: var(--wl-text); }
+.wl-seg:not(.tl-seg) .wl-seg-btn[data-active='true'] { background: var(--wl-seg-on); box-shadow: var(--wl-seg-on-shadow); }
+.wl-icons { display: flex; flex: none; gap: 14px; }
+.wl-icon-btn { position: relative; display: grid; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--wl-text-2); cursor: pointer; transition: background-color var(--motion-hover, 120ms) ease-out, color var(--motion-hover, 120ms) ease-out; }
+.wl-icon-btn::after { content: ''; position: absolute; inset: -7px; }
+.wl-bar .wl-icon-btn::after { top: -12px; bottom: -2px; }
+.wl-icon-btn:hover { background: var(--wl-hover); color: var(--wl-text); }
+.wl-icon-btn:disabled { cursor: default; opacity: 0.5; }
+.widget-root button:focus-visible { outline: 2px solid var(--wl-ok); outline-offset: 1px; }
+
+/* ── 桌面小组件悬停工具条（方案 §6.6）：平时隐藏；指针移入 120ms 淡入，盖住“更新于”，不盖大数字。 ── */
+.wl-toolbar { position: absolute; z-index: 2; top: 9px; right: 18px; display: flex; gap: 14px; opacity: 0; visibility: hidden; transition: opacity 120ms ease-out, visibility 0s linear 120ms; }
+.wl-toolbar[data-shown='true'] { opacity: 1; visibility: visible; transition: opacity 120ms ease-out, visibility 0s linear 0s; }
+.wl-toolbar .wl-icon-btn { background: var(--wl-face); box-shadow: inset 0 0 0 1px var(--wl-hair); cursor: pointer; }
+.wl-toolbar .wl-icon-btn:hover { background: var(--wl-hover); }
+.widget-root[data-layout='quota'] .wl-toolbar { top: 7px; }
+.widget-root[data-layout='compact'] .wl-toolbar { top: 7px; }
+.wl-toolbar[data-at='bottom'] { top: auto; bottom: 8px; }
+.wl-under-toolbar { transition: opacity 120ms ease-out; }
+.widget-root[data-toolbar='shown'] .wl-under-toolbar { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .wl-toolbar, .wl-toolbar[data-shown='true'], .wl-under-toolbar, .wl-icon-btn, .wl-seg-btn { transition: none; }
+}
+
+/* ── 设置页静态预览（P12）：按 §6.4 尺寸画，设置页窄时整体等比缩小。 ── */
+.wl-preview { margin: 8px 0 0; }
+.wl-preview-frame { position: relative; overflow: hidden; }
+.widget-root.is-preview { flex: none; transform-origin: top left; cursor: default; }
+.wl-preview-caption { margin: 6px 0 0 4px; color: var(--color-text-tertiary); font-size: 11px; line-height: 15px; }
+
+/* ── macOS 托盘挂件由原生 Popover 材质承托：深色卡片底 90%，浅色不透明（方案 §6.5；U-12）。
+      减弱透明度时回到不透明。圆角保持基准的 16px（原生 Popover 材质自带圆角，T10.193）。 ── */
+:root[data-view='widget'][data-platform='macos'] .widget-root[data-mode='popover'][data-card-theme='dark'] {
+  background: rgba(14, 17, 22, 0.9);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-view='widget'][data-platform='macos'] .widget-root[data-mode='popover'][data-card-theme='dark'] { background: var(--wl-bg); }
+}
+
+/* ── Windows 托盘挂件：窗口保持系统阴影与 DWM 约 8px 圆角，CSS 圆角同步改 8px 对齐，
+      消除两层边角之间露出画布底色的问题（T10.193，方案 §6.5）。 ── */
+:root[data-view='widget'][data-platform='other'] .widget-root[data-mode='popover'] {
+  --wl-radius: 8px;
+}
+
+@media (forced-colors: active) {
+  .widget-root { background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
+  .wl-cap, .wl-meta, .wl-who, .wl-st, .wl-tier, .wl-kv dt, .wl-kv dd, .wl-legend, .wl-num, .wl-ring-num, .wl-ring-sub { color: CanvasText; }
+  .wl-chip, .wl-link, .wl-seg, .wl-toolbar .wl-icon-btn { border: 1px solid CanvasText; }
+  .wl-ring-track, .wl-trend-grid, .wl-trend-prev { stroke: GrayText; }
+  .wl-ring-arc, .wl-ring[data-level] .wl-ring-arc, .wl-trend-line { stroke: Highlight; }
+  .wl-trend-dot { fill: Highlight; stroke: Canvas; }
+  .wl-trend-area { display: none; }
+  .wl-trend-tick { fill: CanvasText; }
+  .wl-tools-bar > i, .wl-legend li > i { forced-color-adjust: none; background: CanvasText !important; }
+  .widget-root button:focus-visible { outline-color: Highlight; }
+}
+
+/* ── T10.192 修复轮 P2-1：额度整次读取失败画虚线空槽，与「没有来源」的纯文字提示区分
+      （DESIGN §6.4、T10.190 方案 §5）。只加这一条，不改上面任何既有规则。 ── */
+.wl-ring[data-unavailable='true'] .wl-ring-track { stroke-dasharray: 3 3; }

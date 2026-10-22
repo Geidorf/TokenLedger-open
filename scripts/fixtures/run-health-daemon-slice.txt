@@ -1,0 +1,53 @@
+# TokenLedger run 健康探针受控快照（非实时日志；逐行取自真实 daemon.log 的切片，未改写任何一行）
+#
+# anchor-date: 2026-09-17
+#
+# anchor-date = 本文件最后一行（文件序）所属的机器本地自然日。快照自带该锚点，因此 clone/checkout
+# （会重写 mtime）之后判定不变，不继承文件 mtime。
+#
+# source: ~/.multica/profiles/desktop-api.multica.ai/daemon.log（daemon 本机日志，不入库）
+# source-env: <host> / Windows；daemon profile desktop-api.multica.ai；日志时间为机器本地时间（UTC+8）
+# extracted-at: 2026-09-17（提取时源文件 77976 行；实时日志会继续增长，本切片内容不变）
+# provenance: real-platform
+# windows（源文件 1-based 行号，按文件序拼接；可用 sed -n '<a>,<b>p' <源文件> 逐段复核）：
+#   9800-9803    真跨零点：23:59:52.202 → 00:00:04.228（回退 86394.324s）
+#   27076-27078  JEID-37 run 01a0adb4 的接收与认领（含 issue=01a0ad93-55db-7ef1-8ddb-cc28b3e5f662）
+#   27138-27149  该 run 的最后活动块：12:51:41.946 last_seq=17，此后本 run 再无任何行
+#   31209-31213  服务器侧终态与本地收尾（14:35:01.581 status=cancelled）
+#   31225-31227  worktree 收尾行与 task_phase=finished
+#   71708-71709  并发写入造成的毫秒逆序行（19:45:11.015 → 19:45:11.014）——
+#                 旧口径（任何回退即加一天）正是被这一行触发，把健康 run 的活动时刻往前推一天
+#
+# 判定回放（见 docs/runbooks/run-stall-recovery.md §2）：
+#   node scripts/check-run-health.mjs --issue 01a0ad93-55db-7ef1-8ddb-cc28b3e5f662 --run 01a0adb4 --runs-json scripts/fixtures/run-health-jeid37-runs.json --daemon-log scripts/fixtures/run-health-daemon-slice.txt --sessions-dir scripts/fixtures/run-health-no-sessions --now 2026-09-17T06:30:00Z
+#   → stalled（exit 1，停滞 5898s，最后活动 2026-09-17T04:51:41.946Z，last_seq 17）
+#   同一条命令把 --now 换成 2026-09-17T04:55:00Z → healthy（exit 0，停滞 198s）
+23:59:52.202 DBG heartbeat: skipping HTTP tick, WS recently acked component=daemon runtime_id=5e51625c-1067-4ac7-a6e2-0a5fe992bfe5
+23:59:56.330 DBG heartbeat: skipping HTTP tick, WS recently acked component=daemon runtime_id=305c60b7-d8d3-4b94-b5c5-8ccc7cb66898
+23:59:58.552 DBG heartbeat: skipping HTTP tick, WS recently acked component=daemon runtime_id=3850dbfb-5a7d-4569-8dee-20ea68544b2d
+00:00:04.228 DBG heartbeat: skipping HTTP tick, WS recently acked component=daemon runtime_id=311d78a6-930d-4602-94b3-84516e06d3fc
+12:51:26.368 INF task received component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 target=01a0ad93-55db-7ef1-8ddb-cc28b3e5f662
+12:51:26.368 INF task phase recorded component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 task_id=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 runtime_id=5e51625c-1067-4ac7-a6e2-0a5fe992bfe5 task_phase=claimed phase_elapsed_ms=0 total_elapsed_ms=0
+12:51:26.368 INF picked task component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 issue=01a0ad93-55db-7ef1-8ddb-cc28b3e5f662 agent=验完再发｜质量发布 provider=pi
+12:51:39.294 INF tool_result observed component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 seq=11 tool=bash call_id=call_01_mRWQTnGJKkzk4JWGAoGG1930|27589b02-4f8a-4674-95b4-5f829b7a48f6
+12:51:39.318 INF tool_result observed component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 seq=12 tool=bash call_id=call_00_KRAD5ORk11aKtA3kEi3K7567|939b494a-a65d-4436-b094-a607aa7e099a
+12:51:39.468 DBG reported task messages component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 count=1 last_seq=8
+12:51:40.013 DBG reported task messages component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 count=4 last_seq=12
+12:51:40.186 INF tool_result observed component=daemon task=01a0ada9-a063-7005-a91d-f6e9f1c00590 seq=437 tool=bash call_id=call_00_tExSvtYLYgGusFBdIzsQ3569|a6d19274-a37e-43fa-a2c4-16fdcd5669a0
+12:51:41.196 DBG reported task messages component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 count=1 last_seq=13
+12:51:41.196 DBG reported task messages component=daemon task=01a0ada9-a063-7005-a91d-f6e9f1c00590 count=1 last_seq=437
+12:51:41.276 INF tool #5: bash component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292
+12:51:41.276 INF tool #6: bash component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292
+12:51:41.423 INF tool_result observed component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 seq=17 tool=bash call_id=call_01_8QZg7pZvLaTsxNM4mVPq2738|bbc8dd18-a319-4f73-8d07-979cd096a939
+12:51:41.511 DBG reported task messages component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 count=1 last_seq=14
+12:51:41.946 DBG reported task messages component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 count=3 last_seq=17
+14:35:01.581 INF task reached terminal state server-side, interrupting agent component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 status=cancelled
+14:35:01.582 INF task phase recorded component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 task_id=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 runtime_id=5e51625c-1067-4ac7-a6e2-0a5fe992bfe5 task_phase=turn_completed phase_elapsed_ms=6206895 total_elapsed_ms=6215213
+14:35:01.582 INF agent finished component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 status=cancelled duration=1h43m29s tools=6
+14:35:01.582 DBG agent result detail component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 status=cancelled output_bytes=0 session_id="" models_with_usage=0 agent_error="task cancelled by upstream context (server cancel or daemon shutdown)"
+14:35:01.591 INF execenv: waiting for another task's git section on this repository component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 git_root=D:\work\TokenLedger lock=D:\work\TokenLedger\.git\multica-worktree.lock
+14:35:02.846 INF execenv: local worktree finalized component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 git_root=D:\work\TokenLedger branch="" auto_committed=false produced_work=false continued=false
+14:35:02.846 INF task cancelled during execution, discarding result component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 branch_name="" error=<nil>
+14:35:03.053 INF task phase recorded component=daemon task=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 task_id=01a0adb4-8ecc-7f1c-b348-d0f29fd98292 runtime_id=5e51625c-1067-4ac7-a6e2-0a5fe992bfe5 task_phase=finished phase_elapsed_ms=1470 total_elapsed_ms=6216684
+19:45:11.015 DBG reported task messages component=daemon task=01a0af2b-9a84-7a63-85e0-0ce872530458 count=1 last_seq=168
+19:45:11.014 DBG reported task messages component=daemon task=01a0af2f-4a5a-7f08-8cfe-e1248bd18375 count=3 last_seq=4

@@ -1,0 +1,12 @@
+{
+  "$schema": "tool-chart-slots-v1/palette-b",
+  "note": "Colour-vision-safe palette B (user decision U-4, 2026-09-25, T10.187). Every desktop copy of the 8 chart-slot colours plus the neutral 'other' colour, for both themes, checked against this one file: tests/frontend-contracts.test.mjs checks src/styles/tokens.css (--chart-1..8, both themes), src/types.ts (CHART_SLOT_COLORS_DARK/LIGHT and TOOL_COLOR_OTHER_DARK/LIGHT, read indirectly through the exported colorsForToolsInView) and src/utils/chartTheme.ts (CHART_SERIES_FALLBACK, read through getChartThemeTokens()'s no-DOM branch); src-tauri/src/wallpaper.rs's tool_chart_slot_tests checks TOOL_CHART_SLOT_COLORS_DARK and TOOL_CHART_COLOR_OTHER_DARK. A change to any one copy that is not made to all of them turns a test red (T10.187 review P2-1, root decision R-39). At merge, root extends this same fixture check to Android LedgerTokens.kt (R-30); this file does not have a Kotlin reader yet.",
+  "dark": {
+    "slots": ["#6b9dff", "#907adc", "#2dd4bf", "#fbbf24", "#fb7185", "#3fe480", "#3dbdf7", "#fb923c"],
+    "other": "#a5acb9"
+  },
+  "light": {
+    "slots": ["#2f6be6", "#8972fe", "#0d9488", "#d57501", "#d41340", "#16a34a", "#1d85c3", "#d34c04"],
+    "other": "#586273"
+  }
+}

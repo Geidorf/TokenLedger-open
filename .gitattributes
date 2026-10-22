@@ -1,0 +1,19 @@
+# Ensure consistent line endings across Windows and macOS
+* text=auto
+*.sql text eol=lf
+*.rs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+/src-tauri/Cargo.toml text eol=lf
+# run 健康快照要按字节核验（SHA-256 与仓库内容一致），不能随平台换成 CRLF
+scripts/fixtures/run-health-daemon-slice.txt text eol=lf
+# 清点证据同样按字节核验：日志的 evidence_manifest 记的是 blob 内容哈希，
+# 工作副本若被换成 CRLF，Windows 检出上的 sha256sum 就对不上了（JEID-67 首轮清点）。
+# 只收本轮目录：`docs/task-logs/**/evidence/**` 这类全仓通配会把既有 evidence 目录里的
+# png/gz/zip 一起纳入匹配（复算：base 的 3342 个跟踪文件里 765 个 eol 被改写，含 656 个二进制；
+# 质量位口径 772/656），以后新增 evidence 目录请一行一目录，或用扩展名白名单（*.txt / *.json / *.log）。
+docs/task-logs/T10.148/evidence/** text eol=lf

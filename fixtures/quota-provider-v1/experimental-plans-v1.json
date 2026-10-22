@@ -1,0 +1,155 @@
+{
+  "description": "实验性套餐用量（ADR-018 U-109，T10.286）。三家接口均无公开文档，端点与字段由第三方客户端二进制字符串推断；upstreamSamples 是按推断字段构造的匿名响应及应得窗口（windows 为 null 表示必须 fail closed），providers 是生产者输出的 envelope 与读取方应显示的窗口文本。全部为匿名合成数据，不含 key、URL 或账户身份。",
+  "now": "2026-10-04T12:00:00Z",
+  "riskVersion": 1,
+  "upstreamSamples": [
+    {
+      "name": "zhipu-token-limit",
+      "providerId": "zhipu-glm-plan",
+      "response": { "code": 200, "msg": "ok", "success": true, "data": { "level": "pro", "limits": [
+        { "type": "TOKENS_LIMIT", "unit": 3, "number": 5, "percentage": 12.5, "nextResetTime": 1791126000000 },
+        { "type": "TIME_LIMIT", "unit": 5, "number": 1, "usage": 100, "currentValue": 3, "remaining": 97, "percentage": 3 }
+      ] } },
+      "windows": [{ "windowId": "glm:tokens:3-5", "used": 12.5, "windowMinutes": 300, "resetsAt": "2026-10-04T15:00:00.000Z" }]
+    },
+    {
+      "name": "zhipu-percentage-out-of-range",
+      "providerId": "zhipu-glm-plan",
+      "response": { "code": 200, "success": true, "data": { "limits": [{ "type": "TOKENS_LIMIT", "unit": 3, "number": 5, "percentage": 101 }] } },
+      "windows": null
+    },
+    {
+      "name": "zhipu-missing-limits",
+      "providerId": "zhipu-glm-plan",
+      "response": { "code": 200, "success": true, "data": {} },
+      "windows": null
+    },
+    {
+      "name": "zhipu-reset-too-far",
+      "providerId": "zhipu-glm-plan",
+      "response": { "code": 200, "success": true, "data": { "limits": [{ "type": "TOKENS_LIMIT", "unit": 3, "number": 5, "percentage": 1, "nextResetTime": 1798761600000 }] } },
+      "windows": null
+    },
+    {
+      "name": "minimax-interval-and-weekly",
+      "providerId": "minimax-plan",
+      "response": { "base_resp": { "status_code": 0, "status_msg": "success" }, "model_remains": [{
+        "model_name": "MiniMax-M2",
+        "start_time": 1791108000000, "end_time": 1791126000000,
+        "current_interval_total_count": 1500, "current_interval_remaining_percent": 80,
+        "weekly_start_time": 1790553600000, "weekly_end_time": 1791158400000,
+        "current_weekly_total_count": 15000, "current_weekly_remaining_percent": 55.5
+      }] },
+      "windows": [
+        { "windowId": "minimax:MiniMax-M2:interval", "used": 20, "windowMinutes": 300, "resetsAt": "2026-10-04T15:00:00.000Z" },
+        { "windowId": "minimax:MiniMax-M2:weekly", "used": 44.5, "windowMinutes": 10080, "resetsAt": "2026-10-05T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "minimax-upstream-error",
+      "providerId": "minimax-plan",
+      "response": { "base_resp": { "status_code": 1004, "status_msg": "authorized failed" }, "model_remains": [] },
+      "windows": null
+    },
+    {
+      "name": "minimax-missing-model-name",
+      "providerId": "minimax-plan",
+      "response": { "base_resp": { "status_code": 0 }, "model_remains": [{ "current_interval_remaining_percent": 80 }] },
+      "windows": null
+    },
+    {
+      "name": "kimi-usage-and-rate-limit",
+      "providerId": "kimi-code-plan",
+      "response": {
+        "usage": { "limit": "100", "used": "25", "remaining": "75", "resetTime": "2026-10-08T00:00:00Z" },
+        "limits": [{ "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" }, "detail": { "limit": "100", "remaining": "90", "resetTime": "2026-10-04T14:00:00Z" } }]
+      },
+      "windows": [
+        { "windowId": "kimi:usage", "used": 25, "windowMinutes": null, "resetsAt": "2026-10-08T00:00:00.000Z" },
+        { "windowId": "kimi:limit:300m", "used": 10, "windowMinutes": 300, "resetsAt": "2026-10-04T14:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "kimi-used-over-limit",
+      "providerId": "kimi-code-plan",
+      "response": { "usage": { "limit": "100", "used": "130" } },
+      "windows": null
+    },
+    {
+      "name": "kimi-limit-missing-detail",
+      "providerId": "kimi-code-plan",
+      "response": { "limits": [{ "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" } }] },
+      "windows": null
+    }
+  ],
+  "providers": [
+    {
+      "envelope": {
+        "schemaVersion": 1,
+        "providerId": "zhipu-glm-plan",
+        "displayName": "智谱 GLM 套餐",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "experimental",
+        "status": "ok",
+        "windows": [{
+          "providerId": "zhipu-glm-plan", "windowId": "glm:tokens:3-5", "windowLabel": "5 小时额度",
+          "scope": "consumer-subscription", "source": "official-api", "status": "ok",
+          "used": 12.5, "limit": 100, "remaining": 87.5, "unit": "percent",
+          "windowMinutes": 300, "resetsAt": "2026-10-04T15:00:00.000Z",
+          "observedAt": "2026-10-04T11:55:00.000Z", "fetchedAt": "2026-10-04T11:55:00.000Z", "staleAfterSeconds": 900
+        }]
+      },
+      "display": ["5 小时额度 · 剩余 87%"]
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1,
+        "providerId": "minimax-plan",
+        "displayName": "MiniMax 套餐",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "experimental",
+        "status": "stale",
+        "reasonCode": "upstream_unavailable",
+        "windows": [{
+          "providerId": "minimax-plan", "windowId": "minimax:MiniMax-M2:weekly", "windowLabel": "MiniMax-M2 · 每周额度",
+          "scope": "consumer-subscription", "source": "official-api", "status": "stale",
+          "used": 44.5, "limit": 100, "remaining": 55.5, "unit": "percent",
+          "windowMinutes": 10080, "resetsAt": "2026-10-05T00:00:00.000Z",
+          "observedAt": "2026-10-04T10:00:00.000Z", "fetchedAt": "2026-10-04T11:55:00.000Z", "staleAfterSeconds": 900,
+          "reasonCode": "upstream_unavailable"
+        }]
+      },
+      "display": ["MiniMax-M2 · 每周额度 · 剩余 55%"]
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1,
+        "providerId": "kimi-code-plan",
+        "displayName": "Kimi Code 套餐",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "experimental",
+        "status": "auth-required",
+        "reasonCode": "experimental_consent_required",
+        "windows": []
+      },
+      "display": []
+    },
+    {
+      "envelope": {
+        "schemaVersion": 1,
+        "providerId": "zhipu-glm-plan",
+        "displayName": "智谱 GLM 套餐",
+        "scope": "consumer-subscription",
+        "mode": "automatic",
+        "capability": "experimental",
+        "status": "auth-required",
+        "reasonCode": "api_key_required",
+        "windows": []
+      },
+      "display": []
+    }
+  ]
+}
