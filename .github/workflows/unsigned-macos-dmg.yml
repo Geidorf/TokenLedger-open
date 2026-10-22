@@ -48,6 +48,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           targets: aarch64-apple-darwin
+          # `targets` 与 `components` 必须同时声明：只写 targets 会把 toolchain 换成
+          # 目标专用的 minimal profile，clippy/rustfmt 不会被装上（见 release-rc.yml 同处注释）。
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
