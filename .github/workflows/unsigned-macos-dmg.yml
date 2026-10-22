@@ -22,7 +22,9 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  # 上传 release 资产需要 contents: write；只读权限会在上传时报
+  # “Resource not accessible by integration”。
+  contents: write
 
 concurrency:
   group: tokenledger-unsigned-macos-${{ github.ref }}
