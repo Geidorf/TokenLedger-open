@@ -91,7 +91,10 @@ internal fun V2HeroCard(
     val tokenCapsule = heroChangeCapsule(comparison, comparison?.delta?.tokens)
     val costCapsule = heroChangeCapsule(comparison, comparison?.delta?.cost)
     val displayedTokens = displayedTokenCount(tokenDisplayMode, summary.effectiveTokens, summary.cachedTokens)
-    val stackValues = shouldStackDashboardHeroValues(LocalDensity.current.fontScale, LocalConfiguration.current.screenWidthDp)
+    val costText = v2FormatMoney(LocalContext.current, summary.totalCost, LocalCostMaskEnabled.current, LocalDashboardCurrency.current)
+    // 半宽格放不下长金额（如 ¥1,234,567.89）时整卡改为上下排，金额不截断。
+    val stackValues = shouldStackDashboardHeroValues(LocalDensity.current.fontScale, LocalConfiguration.current.screenWidthDp) ||
+        costText.length > HERO_COST_INLINE_MAX_CHARS
     val baseline = heroBaselineCaption(comparison)
     val subline = heroTokenSubline(summary, tokenDisplayMode)
     val peak = todayPeakLabel(stats)
@@ -164,6 +167,9 @@ internal fun V2HeroCard(
         }
     }
 }
+
+/** 半宽费用格在 360dp 级屏幕上能完整放下的金额字符数（含币种符号、千分位与小数点）。 */
+internal const val HERO_COST_INLINE_MAX_CHARS = 10
 
 /** 汇总卡格间的横向发丝线。 */
 @Composable
