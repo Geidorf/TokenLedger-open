@@ -56,4 +56,18 @@ describe('PeerSyncCard', () => {
     expect(await screen.findByText(/已导入 1 个供应商，1 个 API key/)).toBeInTheDocument();
     expect(vi.mocked(invoke)).toHaveBeenCalledWith('peer_sync_import_providers', { peerIds: ['deepseek'] });
   });
+
+  it('保存设置后清掉旧预览，必须重新读取才能导入', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'peer_sync_preview') return preview;
+      return { url: 'https://dav.example/dav', user: 'me', hasPassword: true, hasPassphrase: true };
+    });
+    render(<PeerSyncCard />);
+    const read = await screen.findByRole('button', { name: '读取外部网关备份' });
+    await waitFor(() => expect(read).toBeEnabled());
+    fireEvent.click(read);
+    expect(await screen.findByRole('button', { name: '导入选中的 1 个供应商' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /导入选中的/ })).not.toBeInTheDocument());
+  });
 });

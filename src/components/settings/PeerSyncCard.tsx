@@ -104,6 +104,9 @@ export function PeerSyncCard() {
       },
     });
     apply(next);
+    // 旧预览来自之前的地址或密码，导入会按新设置重新下载，必须重新读取。
+    setPreview(null);
+    setPicked(new Set());
     setPassword('');
     setPassphrase('');
     setNote('已保存。密码与同步密码只存在系统钥匙串里。');
