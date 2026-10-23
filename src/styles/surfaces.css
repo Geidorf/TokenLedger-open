@@ -135,3 +135,139 @@
     background: Canvas;
   }
 }
+
+/* ----- KPI strip -----------------------------------------------------------
+   One card split by hairlines instead of four floating cards: the number
+   first, its name under it, the context in small grey. The icon tile, the
+   hero tint and the rise animation stay out. */
+.metrics-grid {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-panel);
+}
+
+.metrics-grid > .metric-card {
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: -1px 0 0 var(--color-border), 0 -1px 0 var(--color-border);
+  padding: 13px 16px 12px;
+  animation: none;
+}
+
+.metrics-grid > .metric-card::before,
+.metrics-grid > .metric-card .metric-icon {
+  display: none;
+}
+
+.metrics-grid > .metric-card > .min-w-0 {
+  display: flex;
+  flex-direction: column;
+}
+
+.metrics-grid .metric-value {
+  order: -1;
+  font-size: 24px;
+  font-weight: var(--weight-title);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.metrics-grid .metric-value.is-long { font-size: 22px; }
+.metrics-grid .metric-value.is-longer { font-size: 20px; }
+.metrics-grid .metric-value.is-longest { font-size: 18px; }
+
+.metrics-grid .metric-label,
+.metrics-grid .metric-label-row {
+  margin-top: 3px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-label);
+}
+
+.metrics-grid .metric-label-row .metric-label {
+  margin-top: 0;
+}
+
+.metrics-grid .metric-change,
+.metrics-grid .metric-sub {
+  margin-top: 3px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.metrics-grid .metric-io-bar {
+  height: 3px;
+  margin-top: 8px;
+}
+
+/* ----- Panel heads ---------------------------------------------------------
+   A card is headed by its words alone: no tinted icon tile. */
+.panel-icon {
+  display: none;
+}
+
+/* The page's own refresh is a quiet text button, not a raised one: the bar
+   already carries the primary scan. */
+.dashboard-refresh-status .secondary-inline {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-control-fg);
+}
+
+.dashboard-refresh-status .secondary-inline:hover:not(:disabled) {
+  background: var(--shell-hover);
+  color: var(--color-text-primary);
+}
+
+/* Sessions and Requests summaries take the same strip: one card, hairline
+   cells, the number above its name. */
+.behavior-summary-grid,
+.details-summary {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-panel);
+}
+
+.behavior-summary-grid > .behavior-stat,
+.details-summary > div {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: -1px 0 0 var(--color-border), 0 -1px 0 var(--color-border);
+  padding: 13px 16px 12px;
+}
+
+.behavior-stat-icon {
+  display: none;
+}
+
+.behavior-stat-text,
+.details-summary > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.behavior-stat-text strong,
+.details-summary > div > strong {
+  order: -1;
+  color: var(--color-text-primary);
+  font-size: 22px;
+  font-weight: var(--weight-title);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.behavior-stat-label,
+.details-summary > div > span {
+  margin-top: 3px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-label);
+}
