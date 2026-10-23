@@ -114,6 +114,9 @@ jobs:
           shasum -a 256 "$STAGE"/*.dmg "$STAGE"/*.zip | tee "$STAGE/macos-sha256.txt"
 
       - name: Verify the staged artifacts contain no forbidden strings
+        env:
+          # 维护者标识清单从 secret 注入；未配置时脚本只跑通用规则并给出警告。
+          TOKENLEDGER_FORBIDDEN_JSON: ${{ secrets.RELEASE_FORBIDDEN_JSON }}
         run: node scripts/verify-release-artifact-clean.mjs release-stage/macos/*.dmg release-stage/macos/*.zip
 
       - uses: actions/upload-artifact@v4
