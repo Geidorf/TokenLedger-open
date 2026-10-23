@@ -312,7 +312,7 @@ fn ledger_paths(db_path: &Path) -> Vec<PathBuf> {
 }
 
 /// Presence is detected without inventing an accounting database for scan-only installs.
-fn accounting_present(db_path: &Path) -> bool {
+pub(super) fn accounting_present(db_path: &Path) -> bool {
     let present = |path: &Path| {
         fs::symlink_metadata(path).map_or_else(
             |error| error.kind() != std::io::ErrorKind::NotFound,

@@ -242,7 +242,7 @@ pub(crate) fn parse_usage(path: &Path) -> Result<(Vec<ImportedCall>, ParseCounts
     Ok((calls, counts))
 }
 
-fn store_dir(db_path: &Path) -> PathBuf {
+pub(super) fn store_dir(db_path: &Path) -> PathBuf {
     db_path
         .parent()
         .unwrap_or_else(|| Path::new("."))

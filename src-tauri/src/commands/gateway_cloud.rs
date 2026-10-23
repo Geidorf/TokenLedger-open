@@ -243,9 +243,15 @@ pub(super) fn plan(
             plan.mark_ids.extend(pending);
         }
         plan.hours.insert(hour.clone());
-        plan.next_state
-            .hours
-            .insert(hour.clone(), HourState { fingerprint, keys });
+        if rows.iter().any(|row| row.gateway || row.superseded) {
+            plan.next_state
+                .hours
+                .insert(hour.clone(), HourState { fingerprint, keys });
+        } else {
+            // Back to scan-only and uploaded as such above: the scan-only
+            // aggregation owns the hour again.
+            plan.next_state.hours.remove(hour);
+        }
     }
     plan
 }
@@ -273,11 +279,24 @@ fn collect_hours_with_scan_hook(
     after_candidates: impl FnOnce(),
 ) -> Result<BTreeMap<String, Vec<HourRow>>, String> {
     let mut hours: BTreeMap<String, Vec<HourRow>> = BTreeMap::new();
-    let Some(signature) = gateway_overlay::ledger_signature(db_path) else {
-        return Ok(hours);
+    // Hours uploaded from merged rows before stay touched even when their
+    // gateway or imported rows are gone (an import removed or replaced, a row
+    // now held): they are re-aggregated, so stale merged keys are deleted and
+    // the scan-only totals restored rather than left in the cloud.
+    let state = load_state(db_path);
+    let previous: Vec<String> = if state.version == STATE_VERSION
+        && state.user_id == user_id
+        && state.machine_id == fallback_machine
+    {
+        state.hours.keys().cloned().collect()
+    } else {
+        Vec::new()
     };
-    let gateway = gateway_overlay::gateway_rows_cached(db_path, &signature)?;
-    if gateway.is_empty() {
+    let gateway = match gateway_overlay::ledger_signature(db_path) {
+        Some(signature) => gateway_overlay::gateway_rows_cached(db_path, &signature)?,
+        None => std::sync::Arc::new(Vec::new()),
+    };
+    if gateway.is_empty() && previous.is_empty() {
         return Ok(hours);
     }
     let mut conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
@@ -300,8 +319,13 @@ fn collect_hours_with_scan_hook(
             .filter(|scan| superseded.contains(&scan.id))
             .map(|scan| hour_bucket(&scan.timestamp)),
     );
+    touched.extend(previous);
 
     let touched: Vec<String> = touched.into_iter().collect();
+    // An hour left with no rows at all still needs its uploaded keys deleted.
+    for hour in &touched {
+        hours.entry(hour.clone()).or_default();
+    }
     for chunk in touched.chunks(HOURS_PER_QUERY) {
         let sql = format!(
             "SELECT id, tool, model, input_tokens, output_tokens, COALESCE(cached_tokens, 0),
@@ -384,15 +408,34 @@ pub(super) fn postgrest_in_filter(keys: &[String]) -> String {
     format!("in.({})", quoted.join(","))
 }
 
-fn state_path(db_path: &Path) -> PathBuf {
+fn gateway_state_path(db_path: &Path) -> PathBuf {
     gateway_overlay::gateway_dir(db_path).join(STATE_FILE)
+}
+
+/// Where an install whose merged rows are only imported ones (no gateway)
+/// keeps its state: a state file in the gateway folder is legacy-history
+/// evidence to the accounting store (§2.5), which must not be faked.
+fn import_state_path(db_path: &Path) -> PathBuf {
+    super::magpie_import::store_dir(db_path).join(STATE_FILE)
+}
+
+fn state_path(db_path: &Path) -> PathBuf {
+    if gateway_overlay::accounting_present(db_path) {
+        gateway_state_path(db_path)
+    } else {
+        import_state_path(db_path)
+    }
 }
 
 /// A missing or unreadable state only costs one extra upload.
 pub(super) fn load_state(db_path: &Path) -> CloudState {
-    fs::read(state_path(db_path))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    let read = |path: PathBuf| {
+        fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    };
+    read(state_path(db_path))
+        .or_else(|| read(import_state_path(db_path)))
         .unwrap_or_default()
 }
 
@@ -402,10 +445,18 @@ pub(super) fn save_state(db_path: &Path, state: &CloudState) -> Result<(), Strin
         return Ok(());
     }
     let body = serde_json::to_vec(state).map_err(|error| error.to_string())?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|error| format!("写入网关云同步状态失败：{error}"))?;
+    }
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, body)
         .and_then(|_| fs::rename(&tmp, &path))
-        .map_err(|error| format!("写入网关云同步状态失败：{error}"))
+        .map_err(|error| format!("写入网关云同步状态失败：{error}"))?;
+    if path == gateway_state_path(db_path) {
+        // The gateway's state now carries the imported hours too.
+        let _ = fs::remove_file(import_state_path(db_path));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
