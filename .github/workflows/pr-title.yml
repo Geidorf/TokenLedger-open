@@ -28,3 +28,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: node scripts/check-commit-message.mjs --subject "$PR_TITLE"
+
+      # squash 合并后 PR 标题与正文会进入 main 的提交消息，同样不得出现竞品信息。
+      - name: Verify PR title and body carry no competitor names
+        run: node scripts/check-sensitive-terms.mjs --pr-event "$GITHUB_EVENT_PATH"
