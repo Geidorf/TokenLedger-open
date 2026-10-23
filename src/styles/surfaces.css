@@ -1,0 +1,495 @@
+/* ==========================================================================
+   Shared surfaces for the desktop visual refresh
+   --------------------------------------------------------------------------
+   Segmented controls are a quiet track with one white thumb, page toolbars sit on the page instead of in a card, and summary
+   lines are plain text. Hit targets stay 44px (GLB-03): the track, thumb and
+   hover fill are drawn inset. Unlayered and imported after index.css.
+   ========================================================================== */
+
+.segmented {
+  --seg-radius: 6px;
+  --seg-inset-y: 8px;
+  --seg-bg: var(--shell-thumb);
+  --seg-shadow: var(--shell-thumb-edge);
+  position: relative;
+  isolation: isolate;
+  gap: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0 2px;
+}
+
+.segmented::after {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 6px 0;
+  border-radius: 8px;
+  background: var(--shell-track);
+  pointer-events: none;
+}
+
+.segmented button {
+  gap: 5px;
+  padding: 0 11px;
+  color: var(--shell-control-fg);
+  font-weight: var(--weight-regular);
+}
+
+.segmented button.active,
+.segmented button[aria-pressed='true'],
+.segmented button[aria-selected='true'] {
+  font-weight: var(--weight-label);
+}
+
+.segmented button > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.segmented button:hover:not(.active):not([aria-pressed='true']):not([aria-selected='true'])::before {
+  background: transparent;
+}
+
+/* Page toolbars: controls straight on the page. */
+.usage-toolbar {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The one-line conclusion reads as a note, the estimate as a quiet
+   figure at the head's right. */
+.usage-summary {
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.usage-summary::before {
+  display: none;
+}
+
+.usage-summary .usage-conclusion {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.usage-summary .usage-conclusion b {
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-label);
+}
+
+.usage-cost {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.usage-cost b {
+  color: var(--color-text-primary);
+  font-size: 17px;
+  font-weight: var(--weight-title);
+  letter-spacing: -0.01em;
+}
+
+/* Cards are still: no lift or glow on hover, one hairline edge. */
+.metric-card:hover,
+.panel:hover {
+  transform: none;
+}
+
+/* Theme: an icon, its mode in the tooltip. */
+.app-header .theme-toggle > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.app-header .theme-toggle {
+  position: relative;
+  isolation: isolate;
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+  color: var(--shell-control-fg);
+}
+
+/* Hover fill drawn inside the 44px target (GLB-03). */
+.app-header .theme-toggle::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 7px;
+  border-radius: 7px;
+  background: transparent;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
+.app-header .theme-toggle:hover {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+.app-header .theme-toggle:hover::after {
+  background: var(--shell-hover);
+}
+
+@media (forced-colors: active) {
+  .segmented::after {
+    border: 1px solid ButtonText;
+    background: Canvas;
+  }
+}
+
+/* ----- KPI strip -----------------------------------------------------------
+   One card split by hairlines instead of four floating cards: the number
+   first, its name under it, the context in small grey. The icon tile, the
+   hero tint and the rise animation stay out. */
+.metrics-grid {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-panel);
+}
+
+.metrics-grid > .metric-card {
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: -1px 0 0 var(--color-border), 0 -1px 0 var(--color-border);
+  padding: 13px 16px 12px;
+  animation: none;
+}
+
+.metrics-grid > .metric-card::before,
+.metrics-grid > .metric-card .metric-icon {
+  display: none;
+}
+
+.metrics-grid > .metric-card > .min-w-0 {
+  display: flex;
+  flex-direction: column;
+}
+
+.metrics-grid .metric-value {
+  order: -1;
+  font-size: 24px;
+  font-weight: var(--weight-title);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.metrics-grid .metric-value.is-long { font-size: 22px; }
+.metrics-grid .metric-value.is-longer { font-size: 20px; }
+.metrics-grid .metric-value.is-longest { font-size: 18px; }
+
+.metrics-grid .metric-label,
+.metrics-grid .metric-label-row {
+  margin-top: 3px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-label);
+}
+
+.metrics-grid .metric-label-row .metric-label {
+  margin-top: 0;
+}
+
+.metrics-grid .metric-change,
+.metrics-grid .metric-sub {
+  margin-top: 3px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.metrics-grid .metric-io-bar {
+  height: 3px;
+  margin-top: 8px;
+}
+
+/* ----- Panel heads ---------------------------------------------------------
+   A card is headed by its words alone: no tinted icon tile. */
+.panel-icon {
+  display: none;
+}
+
+/* The page's own refresh is a quiet text button, not a raised one: the bar
+   already carries the primary scan. */
+.dashboard-refresh-status .secondary-inline {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-control-fg);
+}
+
+.dashboard-refresh-status .secondary-inline:hover:not(:disabled) {
+  background: var(--shell-hover);
+  color: var(--color-text-primary);
+}
+
+/* Sessions and Requests summaries take the same strip: one card, hairline
+   cells, the number above its name. */
+.behavior-summary-grid,
+.details-summary {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-panel);
+}
+
+.behavior-summary-grid > .behavior-stat,
+.details-summary > div {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: -1px 0 0 var(--color-border), 0 -1px 0 var(--color-border);
+  padding: 13px 16px 12px;
+}
+
+.behavior-stat-icon {
+  display: none;
+}
+
+.behavior-stat-text,
+.details-summary > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.behavior-stat-text strong,
+.details-summary > div > strong {
+  order: -1;
+  color: var(--color-text-primary);
+  font-size: 22px;
+  font-weight: var(--weight-title);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.behavior-stat-label,
+.details-summary > div > span {
+  margin-top: 3px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-label);
+}
+
+/* ----- Model pages: segmented switches -------------------------------------
+   The protocol and language switches read as the bar's switch: a quiet track
+   with one white thumb. The 44px rows stay; track and thumb are drawn inset. */
+.app-shell .mw-seg {
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  padding: 0 2px;
+  background: transparent;
+}
+
+.app-shell .mw-seg::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 6px 0;
+  border-radius: 8px;
+  background: var(--shell-track);
+  pointer-events: none;
+}
+
+.app-shell .mw-seg button {
+  position: relative;
+  border-radius: 6px;
+  padding: 0 12px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-control-fg);
+}
+
+.app-shell .mw-connect > .mw-seg {
+  justify-self: start;
+}
+
+.app-shell .mw-seg.is-sm button {
+  padding: 0 10px;
+}
+
+.app-shell .mw-seg button::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 8px 0;
+  border-radius: 6px;
+  background: transparent;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
+.app-shell .mw-seg button.is-on {
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-label);
+}
+
+.app-shell .mw-seg button.is-on::after {
+  background: var(--shell-thumb);
+  box-shadow: var(--shell-thumb-edge);
+}
+
+.app-shell .mw-seg button:focus-visible {
+  outline-offset: -6px;
+}
+
+/* ----- Model pages: buttons ------------------------------------------------
+   Secondary actions are quiet: the outline and hover fill sit inside the 44px
+   target, so a row of them no longer reads as a stack of boxes. */
+.app-shell .mw-btn.is-ghost,
+.app-shell .mw-btn.is-danger-ghost,
+.app-shell .mw-btn.is-primary {
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .mw-btn.is-ghost::before,
+.app-shell .mw-btn.is-danger-ghost::before,
+.app-shell .mw-btn.is-primary::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px 0;
+  border-radius: 7px;
+  pointer-events: none;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
+.app-shell .mw-btn.is-ghost::before {
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.app-shell .mw-btn.is-ghost:hover:not(:disabled) {
+  background: transparent;
+}
+
+.app-shell .mw-btn.is-ghost:hover:not(:disabled)::before {
+  background: var(--shell-hover);
+}
+
+.app-shell .mw-btn.is-danger-ghost::before {
+  box-shadow: inset 0 0 0 1px var(--color-danger-soft-border);
+}
+
+.app-shell .mw-btn.is-danger-ghost:hover:not(:disabled) {
+  background: transparent;
+}
+
+.app-shell .mw-btn.is-danger-ghost:hover:not(:disabled)::before {
+  background: var(--color-danger-soft-bg);
+}
+
+.app-shell .mw-btn.is-primary::before {
+  background: var(--color-primary-fill);
+}
+
+.app-shell .mw-btn.is-primary:hover:not(:disabled) {
+  background: transparent;
+}
+
+.app-shell .mw-btn.is-primary:hover:not(:disabled)::before {
+  background: var(--color-primary-fill-hover);
+}
+
+.app-shell .mw-panel-head > .mw-btn {
+  align-self: center;
+}
+
+.app-shell .mw-btn:focus-visible {
+  outline-offset: -6px;
+}
+
+.app-shell .mw-icon-btn:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+/* ----- Model pages: fields ------------------------------------------------
+   Search boxes, selects and the model picker sit on the card as outlined
+   fields instead of grey slabs; focus keeps the shared ring. */
+.app-shell .mw-search,
+.app-shell .mw-native-select,
+.app-shell .mw-select,
+.app-shell .mw-value-btn {
+  border-color: var(--color-border);
+  background: var(--shell-field);
+}
+
+.app-shell .mw-value-btn:hover,
+.app-shell .mw-select:hover,
+.app-shell .mw-native-select:hover {
+  border-color: var(--color-border-strong);
+}
+
+.app-shell .mw-value-btn.is-open {
+  border-color: var(--color-primary-focus);
+}
+
+/* The code sample reads as one quiet block: its head shares the fill. */
+.app-shell .mw-code-head {
+  border-bottom-color: transparent;
+}
+
+/* ----- Settings directory --------------------------------------------------
+   The open section is marked like a list selection, not tinted: the same
+   white thumb as the switches, with the label in primary text. */
+.app-shell .settings-directory-list {
+  --seg-bg: var(--shell-thumb);
+  --seg-shadow: var(--shell-thumb-edge);
+}
+
+.app-shell .settings-directory-list > button.is-active {
+  color: var(--color-text-primary);
+}
+
+/* ----- Settings rows -------------------------------------------------------
+   A row is named by its words; its glyph stays as a quiet grey mark instead of
+   a tinted tile. */
+.app-shell .settings-row-icon {
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+
+@media (forced-colors: active) {
+  .app-shell .mw-seg::before {
+    border: 1px solid ButtonText;
+    background: Canvas;
+  }
+
+  .app-shell .mw-seg button.is-on::after {
+    background: Highlight;
+  }
+
+  .app-shell .mw-btn.is-ghost::before,
+  .app-shell .mw-btn.is-danger-ghost::before {
+    border: 1px solid ButtonText;
+  }
+
+  .app-shell .mw-btn.is-primary::before {
+    background: ButtonText;
+  }
+}

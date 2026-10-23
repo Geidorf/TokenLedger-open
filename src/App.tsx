@@ -728,6 +728,7 @@ function MainApp() {
           onCloudScope={selectCloudScopeLeavingDayDrill}
           themeMode={theme.mode}
           onThemeChange={theme.set}
+          onTabChange={changeTab}
           dataStatus={{
             loading: statsHook.statsLoading || busy.scan || busy.sync,
             stale: Boolean(statsHook.stats?.meta?.stale),

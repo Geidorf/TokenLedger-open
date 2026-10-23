@@ -2802,6 +2802,9 @@
 
   .sf-switch[aria-checked="true"]::after {
     transform: translateX(16px);
+    /* The on-fill foreground keeps the thumb readable on either theme's fill
+       (white on the light indigo, ink on the pale dark-theme indigo). */
+    background: var(--color-text-on-primary);
   }
 
   .sf-switch:focus-visible {
