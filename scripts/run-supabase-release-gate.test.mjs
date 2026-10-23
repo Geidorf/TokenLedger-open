@@ -96,6 +96,7 @@ cp.spawnSync = (command, args, options = {}) => {
     if (fail === 'compose-label') item.Config.Labels['com.docker.compose.project'] = 'tokenledger';
     if (fail === 'image-major' || (reset && fail === 'post-image')) item.Config.Image = 'public.ecr.aws/supabase/postgres:16.6.1.143';
     if (fail === 'image-registry') item.Config.Image = 'untrusted.invalid/supabase/postgres:17.6.1.143';
+    if (fail === 'image-ghcr') item.Config.Image = 'ghcr.io/supabase/postgres:17.6.1.143';
     if (fail === 'stopped') item.State.Running = false;
     if (fail === 'port') item.HostConfig.PortBindings['5432/tcp'][0].HostPort = '54322';
     if (fail === 'active-port' || (reset && fail === 'post-port')) item.NetworkSettings.Ports['5432/tcp'][0].HostPort = '54322';
@@ -178,6 +179,8 @@ test('explicit verified isolation always resets, rebinds recreated ID, executes 
   assert.match(result.stdout, /Supabase release gate passed/);
   const emptyOptions = simulateGate({ failure: 'volume-empty-options' });
   assert.equal(emptyOptions.result.status, 0, emptyOptions.result.stderr);
+  const ghcrMirror = simulateGate({ failure: 'image-ghcr' });
+  assert.equal(ghcrMirror.result.status, 0, ghcrMirror.result.stderr);
 });
 
 test('missing explicit isolation and user repository/project/container targets fail before destructive commands', () => {
