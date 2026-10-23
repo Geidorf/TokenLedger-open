@@ -27,4 +27,30 @@ class QuotaPaceTest {
         assertNull(quotaPaceRemainingFraction(300, null, now))
         assertNull(quotaPaceRemainingFraction(300, "不是时间", now))
     }
+
+    @Test
+    fun projectsShortfallFromAverageRateSinceWindowStart() {
+        // 5 小时窗口已过 3 小时用掉 80%，剩 20% 按同速 45 分钟用完，而重置还要 2 小时：早 75 分钟。
+        assertEquals(75L, quotaProjectedShortfallMinutes(300, "2026-09-07T04:00:00Z", 0.2f, now))
+        assertEquals(
+            "照现在的速度，5 小时额度会比重置早 1 小时 15 分钟用完。",
+            quotaShortfallNote("5 小时额度", 75L)
+        )
+    }
+
+    @Test
+    fun noShortfallWhenOnPaceExhaustedOrTooEarly() {
+        assertNull(quotaProjectedShortfallMinutes(300, "2026-09-07T04:00:00Z", 0.5f, now))
+        assertNull(quotaProjectedShortfallMinutes(300, "2026-09-07T04:00:00Z", 0f, now))
+        // 窗口才开 5 分钟，样本太少不外推。
+        assertNull(quotaProjectedShortfallMinutes(300, "2026-09-07T06:55:00Z", 0.5f, now))
+        assertNull(quotaProjectedShortfallMinutes(null, "2026-09-07T04:00:00Z", 0.2f, now))
+    }
+
+    @Test
+    fun shortfallNoteUsesCoarsestUnit() {
+        assertEquals("照现在的速度，每周额度会比重置早 25 分钟用完。", quotaShortfallNote("每周额度", 25L))
+        assertEquals("照现在的速度，每周额度会比重置早 2 小时用完。", quotaShortfallNote("每周额度", 120L))
+        assertEquals("照现在的速度，每周额度会比重置早 3 天用完。", quotaShortfallNote("每周额度", 3L * 24L * 60L + 30L))
+    }
 }

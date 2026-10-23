@@ -274,6 +274,14 @@ internal fun V2ProviderWindowRow(
         "${if (value == null) "上次记录重置" else "重置"} ${v2RelativeReset(window.resetsAt, LocalLedgerNow.current())}"
     val severity = (value as? QuotaDisplayValue.Progress)
         ?.let { quotaSeverityForFraction(v2QuotaRemainingFraction(it)) }
+    val shortfallNote = (value as? QuotaDisplayValue.Progress)
+        ?.takeIf { presentation.status == QuotaWindowStatus.Ok }
+        ?.let { progress ->
+            quotaProjectedShortfallMinutes(
+                window.windowMinutes, window.resetsAt, v2QuotaRemainingFraction(progress), LocalLedgerNow.current()
+            )
+        }
+        ?.let { quotaShortfallNote(name, it) }
     val statusColor = when {
         presentation.status == QuotaWindowStatus.Stale ||
             presentation.status == QuotaWindowStatus.AuthRequired -> palette.amber
@@ -291,7 +299,7 @@ internal fun V2ProviderWindowRow(
                     provider.localizedDisplayName(), name, presentation.status.localizedLabel(),
                     quotaValueLabel(value)?.let { label -> severity?.let { "$label（${it.label}）" } ?: label },
                     resetText, quotaFullTimestamp(window.observedAt)
-                )
+                ) + shortfallNote?.let { "，$it" }.orEmpty()
             },
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -359,6 +367,9 @@ internal fun V2ProviderWindowRow(
                     style = LedgerType.caption
                 )
             }
+        }
+        shortfallNote?.let {
+            Text(it, color = palette.amber, style = LedgerType.caption)
         }
     }
 }

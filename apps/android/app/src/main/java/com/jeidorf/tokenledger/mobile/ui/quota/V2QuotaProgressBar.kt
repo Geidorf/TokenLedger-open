@@ -138,6 +138,42 @@ internal fun quotaPaceRemainingFraction(windowMinutes: Int?, resetsAt: String?, 
 }
 
 /**
+ * 用尽预测（重构 R3，对齐参考设计）：按窗口开始到现在的平均速度外推，返回会比重置早多少分钟用完。
+ * 不会提前用完、已经用完或刚开窗（已过不足 10 分钟或窗口的 5%，样本太少）时返回 null。
+ */
+internal fun quotaProjectedShortfallMinutes(
+    windowMinutes: Int?,
+    resetsAt: String?,
+    remainingFraction: Float,
+    now: Instant
+): Long? {
+    val pace = quotaPaceRemainingFraction(windowMinutes, resetsAt, now) ?: return null
+    val minutes = windowMinutes?.toDouble() ?: return null
+    val remaining = remainingFraction.toDouble()
+    if (remaining <= 0.0 || remaining >= 1.0) return null
+    val left = pace * minutes
+    val elapsed = minutes - left
+    if (left <= 0.0 || elapsed < maxOf(QUOTA_PROJECTION_MIN_ELAPSED_MINUTES, minutes * 0.05)) return null
+    val toExhaust = remaining * elapsed / (1.0 - remaining)
+    return Math.round(left - toExhaust).takeIf { it >= 1L }
+}
+
+private const val QUOTA_PROJECTION_MIN_ELAPSED_MINUTES = 10.0
+
+/** 「照现在的速度，5 小时额度会比重置早 25 分钟用完。」时长按分钟、小时、天取最粗的一级。 */
+internal fun quotaShortfallNote(windowLabel: String, shortfallMinutes: Long): String {
+    val duration = when {
+        shortfallMinutes < 60L -> "$shortfallMinutes 分钟"
+        shortfallMinutes < 60L * 24L -> {
+            val rest = shortfallMinutes % 60L
+            "${shortfallMinutes / 60L} 小时" + if (rest > 0L) " $rest 分钟" else ""
+        }
+        else -> "${shortfallMinutes / (60L * 24L)} 天"
+    }
+    return "照现在的速度，${windowLabel}会比重置早 $duration 用完。"
+}
+
+/**
  * 相对重置时间。外层只需要「什么时候回血」这个量级；精确时间戳留在详情抽屉里。
  * 解析不出来时退回原字符串，不编造。
  */
