@@ -23,6 +23,10 @@ const MAX_RULES: usize = 32;
 const MAX_TTL_SECS: u64 = 7 * 24 * 3600;
 const MAX_AFFINITY_ENTRIES: usize = 10_000;
 const MAX_DECISIONS: usize = 200;
+/// A member that failed (connect error, 5xx, 429) moves behind the others
+/// for 30 s, doubling per consecutive failure up to 5 min.
+const COOLDOWN_BASE_SECS: u64 = 30;
+const COOLDOWN_MAX_SECS: u64 = 300;
 const MAX_SCAN_DEPTH: usize = 64;
 const MAX_WEIGHT: u32 = 100;
 /// Group levels below the requested one: group → subgroup → sub-subgroup.
@@ -691,6 +695,8 @@ pub struct Router {
     groups: RwLock<Vec<RoutingGroup>>,
     affinity: Mutex<HashMap<(String, String), (String, Instant)>>,
     rotation: Mutex<HashMap<String, usize>>,
+    /// Member → (cooling until, consecutive failures).
+    cooldown: Mutex<HashMap<String, (Instant, u32)>>,
     decisions: Mutex<VecDeque<RouteDecision>>,
     pub load_error: Option<String>,
 }
@@ -713,6 +719,7 @@ impl Router {
             groups: RwLock::new(groups),
             affinity: Mutex::new(HashMap::new()),
             rotation: Mutex::new(HashMap::new()),
+            cooldown: Mutex::new(HashMap::new()),
             decisions: Mutex::new(VecDeque::new()),
             load_error,
         }
@@ -821,13 +828,15 @@ impl Router {
                 && (plan.reason == "affinity" || plan.candidates.iter().any(|m| m == leaf))
         });
         let Some(leaf) = pinned else {
-            return self.plan_level(
+            let mut plan = self.plan_level(
                 group,
                 features,
                 affinity.as_deref(),
                 &mut vec![group.id.clone()],
                 true,
             );
+            self.demote_cooling(&mut plan);
+            return plan;
         };
         if plan.reason != "affinity" {
             if let Some(index) = plan.candidates.iter().position(|m| *m == leaf) {
@@ -842,7 +851,76 @@ impl Router {
                 plan.reason = "affinity";
             }
         }
+        self.demote_cooling(&mut plan);
         plan
+    }
+
+    /// Moves cooling members behind the rest, keeping both orders; they stay
+    /// as a last resort rather than being dropped.
+    fn demote_cooling(&self, plan: &mut Plan) {
+        let now = Instant::now();
+        let cooling: Vec<bool> = {
+            let map = lock(&self.cooldown);
+            plan.candidates
+                .iter()
+                .map(|m| map.get(m).is_some_and(|(until, _)| *until > now))
+                .collect()
+        };
+        if !cooling.contains(&true) || !cooling.contains(&false) {
+            return;
+        }
+        let first_cooling = cooling[0].then(|| plan.candidates[0].clone());
+        let (mut candidates, mut via, mut tail, mut tail_via) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for ((member, from), cool) in plan
+            .candidates
+            .drain(..)
+            .zip(plan.via.drain(..))
+            .zip(cooling)
+        {
+            if cool {
+                tail.push(member);
+                tail_via.push(from);
+            } else {
+                candidates.push(member);
+                via.push(from);
+            }
+        }
+        candidates.extend(tail);
+        via.extend(tail_via);
+        plan.candidates = candidates;
+        plan.via = via;
+        if let Some(member) = first_cooling {
+            plan.detail = format!("{}；{member} 冷却中，已后移", plan.detail);
+        }
+    }
+
+    /// Called after a retryable failure of `member`.
+    pub fn cool(&self, member: &str) {
+        let mut map = lock(&self.cooldown);
+        if map.len() >= MAX_AFFINITY_ENTRIES {
+            map.clear();
+        }
+        let strikes = map.get(member).map_or(0, |(_, strikes)| *strikes) + 1;
+        let secs = COOLDOWN_BASE_SECS
+            .saturating_mul(1 << (strikes - 1).min(16))
+            .min(COOLDOWN_MAX_SECS);
+        map.insert(
+            member.to_string(),
+            (Instant::now() + Duration::from_secs(secs), strikes),
+        );
+    }
+
+    /// Called after `member` answered; ends its cooldown.
+    pub fn recover(&self, member: &str) {
+        lock(&self.cooldown).remove(member);
+    }
+
+    #[cfg(test)]
+    fn cooldown_secs(&self, member: &str) -> Option<u64> {
+        lock(&self.cooldown)
+            .get(member)
+            .map(|(until, _)| until.saturating_duration_since(Instant::now()).as_secs() + 1)
     }
 
     fn plan_level(
@@ -1427,6 +1505,46 @@ mod tests {
         assert_eq!(
             (pool_row.verdict, pool_row.reasons.as_slice()),
             ("excluded", ["disabled"].as_slice())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_members_cool_down_behind_the_rest() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-cool-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let router = Router::new(&dir);
+        let g = group(Strategy::Failover, vec![]);
+        let none = Features::default();
+        router.cool("a/m1");
+        let plan = router.plan(&g, &none, None);
+        assert_eq!(plan.candidates, ["b/m2", "c/m3", "a/m1"]);
+        assert!(plan.detail.contains("a/m1 冷却中"));
+        assert_eq!(router.cooldown_secs("a/m1"), Some(30));
+        router.cool("a/m1");
+        assert_eq!(router.cooldown_secs("a/m1"), Some(60));
+        for _ in 0..10 {
+            router.cool("a/m1");
+        }
+        assert_eq!(router.cooldown_secs("a/m1"), Some(300));
+
+        router.cool("c/m3");
+        assert_eq!(
+            router.plan(&g, &none, None).candidates,
+            ["b/m2", "a/m1", "c/m3"]
+        );
+        router.cool("b/m2");
+        let all = router.plan(&g, &none, None);
+        assert_eq!(
+            all.candidates,
+            ["a/m1", "b/m2", "c/m3"],
+            "all cooling: order kept"
+        );
+        router.recover("a/m1");
+        router.recover("c/m3");
+        assert_eq!(
+            router.plan(&g, &none, None).candidates,
+            ["a/m1", "c/m3", "b/m2"]
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

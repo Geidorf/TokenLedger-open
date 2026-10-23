@@ -894,6 +894,7 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
                     error: None,
                 });
                 if ok {
+                    shared.router.recover(member);
                     chosen = Some(member.clone());
                     if !plan.is_rule() {
                         shared
@@ -910,6 +911,9 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
                 status,
                 error,
             } => {
+                if outcome == "failed" {
+                    shared.router.cool(member);
+                }
                 attempts.push(RouteAttempt {
                     member: member.clone(),
                     outcome,
