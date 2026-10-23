@@ -326,8 +326,8 @@ internal fun LedgerDashboardV2Screen(
     onOpenDay: (String) -> Boolean = { false },
     onOpenTrendBucket: (String, DashboardSection) -> Boolean = { _, _ -> false },
     onReturnFromDay: () -> Unit = {},
-    initialDestination: MobileDestination = MobileDestination.Overview,
-    initialInsightPane: InsightPane = InsightPane.Trend,
+    initialDestination: MobileDestination = MobileDestination.Usage,
+    initialInsightPane: InsightPane = InsightPane.Overview,
     initialSettingsVisible: Boolean = false
 ) {
     ModularLedgerDashboardV2Screen(

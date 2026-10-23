@@ -941,12 +941,12 @@ test('Android day review connects local navigation, system Back and complete que
   assert.doesNotMatch(back, /dayReviewReturn|returnFromDayReview/);
   const destination = block('fun selectDestination(', 'fun selectInsight(');
   assert.match(destination, /if \(dayReviewOpen \|\| state\.dayReviewReturn != null\) \{\s*dayReviewOpen = false\s*onReturnFromDay\(\)\s*insightPane = dayReviewOriginPane\s*\}[\s\S]*?destination = next/);
-  // 额度与展示仍然不写回旧 DashboardSection。T10.143c 把原先内联的
+  // 路由、额度与我的不写回旧 DashboardSection（重构方案 v2 四分区）。T10.143c 把原先内联的
   // `MobileDestination.Quota, MobileDestination.Widget -> Unit` 分支收进
   // MobileDestination.dashboardSection(insightPane)，改为映射成 null 后由 `?.let` 跳过
   // （T10.143c 交付日志：「额度与展示不写回旧 section」）；两处一起守，语义不变。
   assert.match(destination, /next\.dashboardSection\(insightPane\)\?\.let\(onSectionChange\)/);
-  assert.match(androidUiDeclaration('MobileDestination.dashboardSection'), /MobileDestination\.Quota, MobileDestination\.Widget -> null/);
+  assert.match(androidUiDeclaration('MobileDestination.dashboardSection'), /MobileDestination\.Routing, MobileDestination\.Quota, MobileDestination\.Me -> null/);
   const insight = block('fun selectInsight(', 'CompositionLocalProvider(');
   assert.match(insight, /if \(\(dayReviewOpen \|\| state\.dayReviewReturn != null\) && next != InsightPane\.Details\) \{\s*dayReviewOpen = false\s*onReturnFromDay\(\)\s*\}/);
   assert.match(ui, /onOpenDay = openDayReview/);

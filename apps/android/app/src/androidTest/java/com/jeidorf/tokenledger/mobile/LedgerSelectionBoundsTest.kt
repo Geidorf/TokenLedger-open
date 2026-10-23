@@ -92,7 +92,7 @@ class LedgerSelectionBoundsTest(private val appearance: LedgerAppearance, privat
     }
 
     @Test fun dateChoicesAndRefreshDisabledKeepBounds() {
-        val host = mount(MobileDestination.Overview)
+        val host = mount(MobileDestination.Usage, InsightPane.Overview)
         val controls = rangeNodes()
         choice(RangeKey.Today.label).assertIsSelected()
         controls.values.forEach { it.assertIsEnabled() }
@@ -120,7 +120,7 @@ class LedgerSelectionBoundsTest(private val appearance: LedgerAppearance, privat
     }
 
     @Test fun insightPaneSelectionKeepsStripAndRangeAnchor() {
-        mount(MobileDestination.Insights)
+        mount(MobileDestination.Usage)
         val controls = paneNodes()
         touchTargets(controls)
         val before = boxes(controls)
@@ -159,7 +159,7 @@ class LedgerSelectionBoundsTest(private val appearance: LedgerAppearance, privat
     ).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
     @Test fun metricAndCurrencySelectionKeepControlsAndDownstreamLayout() {
-        mount(MobileDestination.Insights)
+        mount(MobileDestination.Usage)
         val metrics = metricNodes()
         touchTargets(metrics)
         val before = metricFrame()

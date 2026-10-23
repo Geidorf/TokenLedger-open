@@ -78,7 +78,7 @@ fun LedgerDashboardLongSourceIdentitiesLargeTextScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
         state = ledgerLongSourceIdentitySnapshotFixture(),
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Sources
     )
 }
@@ -153,7 +153,7 @@ fun LedgerDashboardLongDetailIdentitiesScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
         state = ledgerLongDetailIdentitySnapshotFixture(),
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Details
     )
 }
@@ -172,7 +172,7 @@ fun LedgerDashboardLongDetailIdentitiesLargeTextScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
         state = ledgerLongDetailIdentitySnapshotFixture(),
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Details
     )
 }
@@ -793,7 +793,7 @@ fun LedgerDashboardLandscapeScreenshot() {
 fun LedgerDashboardInsightsScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Trend
     )
 }
@@ -811,7 +811,7 @@ fun LedgerDashboardInsightsScreenshot() {
 fun LedgerDashboardInsightsDataBarsScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Trend
     )
 }
@@ -828,7 +828,7 @@ fun LedgerDashboardInsightsDataBarsScreenshot() {
 fun LedgerDashboardInsightsSourcesScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Sources
     )
 }
@@ -845,7 +845,7 @@ fun LedgerDashboardInsightsSourcesScreenshot() {
 fun LedgerDashboardInsightsSourcesCompactScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Sources
     )
 }
@@ -892,7 +892,7 @@ fun LedgerDashboardModelMetricToggleLargeTextScreenshot() {
 fun LedgerDashboardInsightsCalendarScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Calendar
     )
 }
@@ -965,7 +965,7 @@ fun LedgerDashboardInsightsCalendarUntrustedTimezoneScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
         state = state,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Calendar
     )
 }
@@ -983,7 +983,7 @@ fun LedgerDashboardInsightsPaginationErrorScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
         state = ledgerPaginationErrorSnapshotFixture(),
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Details
     )
 }
@@ -1292,7 +1292,7 @@ fun LedgerDashboardV2EntityComparisonsScreenshot() {
 fun LedgerDashboardEInkWidgetScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.EInk,
-        destination = MobileDestination.Widget,
+        destination = MobileDestination.Me,
         ambientMode = AmbientMode.Ledger
     )
 }
@@ -1310,7 +1310,7 @@ fun LedgerDashboardEInkWidgetScreenshot() {
 fun LedgerDashboardWidgetFontScale200Screenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
-        destination = MobileDestination.Widget,
+        destination = MobileDestination.Me,
         ambientMode = AmbientMode.Console
     )
 }

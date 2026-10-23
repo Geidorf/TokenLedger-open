@@ -274,6 +274,7 @@ class Milestone1Challenger2StressTest {
         val overviewState = LazyListState(firstVisibleItemIndex = 12, firstVisibleItemScrollOffset = 150)
         val quotaState = LazyListState(firstVisibleItemIndex = 3, firstVisibleItemScrollOffset = 45)
         val widgetState = LazyListState(firstVisibleItemIndex = 0, firstVisibleItemScrollOffset = 0)
+        val routingState = LazyListState(firstVisibleItemIndex = 0, firstVisibleItemScrollOffset = 0)
         val trendState = LazyListState(firstVisibleItemIndex = 8, firstVisibleItemScrollOffset = 210)
         val sourcesState = LazyListState(firstVisibleItemIndex = 1, firstVisibleItemScrollOffset = 20)
         val calendarState = LazyListState(firstVisibleItemIndex = 25, firstVisibleItemScrollOffset = 300)
@@ -281,42 +282,43 @@ class Milestone1Challenger2StressTest {
 
         fun resolveState(destination: MobileDestination, pane: InsightPane): LazyListState {
             return when (destination) {
-                MobileDestination.Overview -> overviewState
-                MobileDestination.Insights -> when (pane) {
+                MobileDestination.Usage -> when (pane) {
+                    InsightPane.Overview -> overviewState
                     InsightPane.Trend -> trendState
                     InsightPane.Sources -> sourcesState
                     InsightPane.Calendar -> calendarState
                     InsightPane.Details -> detailsState
                 }
+                MobileDestination.Routing -> routingState
                 MobileDestination.Quota -> quotaState
-                MobileDestination.Widget -> widgetState
+                MobileDestination.Me -> widgetState
             }
         }
 
         // Test exact initial values
-        assertEquals(12, resolveState(MobileDestination.Overview, InsightPane.Trend).firstVisibleItemIndex)
-        assertEquals(150, resolveState(MobileDestination.Overview, InsightPane.Trend).firstVisibleItemScrollOffset)
+        assertEquals(12, resolveState(MobileDestination.Usage, InsightPane.Overview).firstVisibleItemIndex)
+        assertEquals(150, resolveState(MobileDestination.Usage, InsightPane.Overview).firstVisibleItemScrollOffset)
 
         assertEquals(3, resolveState(MobileDestination.Quota, InsightPane.Trend).firstVisibleItemIndex)
         assertEquals(45, resolveState(MobileDestination.Quota, InsightPane.Trend).firstVisibleItemScrollOffset)
 
-        assertEquals(8, resolveState(MobileDestination.Insights, InsightPane.Trend).firstVisibleItemIndex)
-        assertEquals(210, resolveState(MobileDestination.Insights, InsightPane.Trend).firstVisibleItemScrollOffset)
+        assertEquals(8, resolveState(MobileDestination.Usage, InsightPane.Trend).firstVisibleItemIndex)
+        assertEquals(210, resolveState(MobileDestination.Usage, InsightPane.Trend).firstVisibleItemScrollOffset)
 
-        assertEquals(1, resolveState(MobileDestination.Insights, InsightPane.Sources).firstVisibleItemIndex)
-        assertEquals(25, resolveState(MobileDestination.Insights, InsightPane.Calendar).firstVisibleItemIndex)
-        assertEquals(50, resolveState(MobileDestination.Insights, InsightPane.Details).firstVisibleItemIndex)
+        assertEquals(1, resolveState(MobileDestination.Usage, InsightPane.Sources).firstVisibleItemIndex)
+        assertEquals(25, resolveState(MobileDestination.Usage, InsightPane.Calendar).firstVisibleItemIndex)
+        assertEquals(50, resolveState(MobileDestination.Usage, InsightPane.Details).firstVisibleItemIndex)
 
         // Rapid switching loop: Overview -> Quota -> Insights -> Overview 1,000 times
         val destinations = listOf(
-            MobileDestination.Overview to InsightPane.Trend,
+            MobileDestination.Usage to InsightPane.Overview,
             MobileDestination.Quota to InsightPane.Trend,
-            MobileDestination.Insights to InsightPane.Trend,
-            MobileDestination.Insights to InsightPane.Sources,
-            MobileDestination.Insights to InsightPane.Calendar,
-            MobileDestination.Insights to InsightPane.Details,
-            MobileDestination.Widget to InsightPane.Trend,
-            MobileDestination.Overview to InsightPane.Trend
+            MobileDestination.Usage to InsightPane.Trend,
+            MobileDestination.Usage to InsightPane.Sources,
+            MobileDestination.Usage to InsightPane.Calendar,
+            MobileDestination.Usage to InsightPane.Details,
+            MobileDestination.Me to InsightPane.Trend,
+            MobileDestination.Usage to InsightPane.Overview
         )
 
         for (i in 0 until 1000) {
@@ -329,7 +331,7 @@ class Milestone1Challenger2StressTest {
         }
 
         // Final verification: Overview state is still intact
-        val finalOverview = resolveState(MobileDestination.Overview, InsightPane.Trend)
+        val finalOverview = resolveState(MobileDestination.Usage, InsightPane.Overview)
         assertEquals(12, finalOverview.firstVisibleItemIndex)
         assertEquals(150, finalOverview.firstVisibleItemScrollOffset)
     }

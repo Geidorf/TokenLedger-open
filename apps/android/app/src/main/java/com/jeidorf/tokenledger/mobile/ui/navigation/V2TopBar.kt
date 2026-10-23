@@ -72,21 +72,17 @@ import com.jeidorf.tokenledger.mobile.ui.foundation.V2_TOUCH_TARGET
 import com.jeidorf.tokenledger.mobile.ui.foundation.pressScale
 
 /**
- * 顶栏标题（§4.1、design 关闭决定 #5）：设置页固定「设置」；专属看板用实体自己的名字；
- * 「今日」这个目的地的标题跟随所选范围（今日/本周/本月…）——导航项本身仍固定叫「今日」，
- * 二者不是一回事（调用方传的 [rangeLabel] 只用在这一支，不影响导航项文字）。其余目的地
- * 标题就是目的地自己的名字。抽成纯函数单独测，避免以后改「标题」时把两件事都改了。
+ * 顶栏标题（§4.1）：设置页固定「设置」；专属看板用实体自己的名字；其余就是一级分区自己的名字
+ * （重构方案 v2：「用量」不再随所选范围改名，范围由页内的范围控件呈现）。抽成纯函数单独测。
  */
 internal fun v2TopBarTitle(
     showSettings: Boolean,
     entityMode: Boolean,
     destination: MobileDestination,
-    entityLabel: String,
-    rangeLabel: String
+    entityLabel: String
 ): String = when {
     showSettings -> "设置"
     entityMode -> entityLabel
-    destination == MobileDestination.Overview -> rangeLabel
     else -> destination.label
 }
 
@@ -110,6 +106,7 @@ internal fun v2TopBarSubtitle(
         val kindPrefix = entityKind?.let { "${entityKindLabel(it)} · " }.orEmpty()
         "$kindPrefix$entityLabel · $querySummary"
     }
+    destination == MobileDestination.Routing -> ""
     destination == MobileDestination.Quota -> ""
     else -> querySummary
 }
