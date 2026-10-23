@@ -31,7 +31,9 @@ const NOT_DEPLOYED_RETRY: Duration = Duration::from_secs(300);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 const MAX_FLOWS: usize = 24;
 const MAX_HOPS: usize = 8;
-const MAX_SNAPSHOT_BYTES: usize = 16 * 1024;
+// The server measures `jsonb::text`, which adds a space after every `:` and `,`,
+// so the compact local form keeps headroom under the 16 KiB contract limit.
+const MAX_SNAPSHOT_BYTES: usize = 15_000;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024;
 const FLOW_WINDOW_SECS: i64 = 600;
 const FEED_LIMIT: usize = 30;
