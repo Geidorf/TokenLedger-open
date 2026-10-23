@@ -150,7 +150,7 @@ describe('颜色（方案 §6.3）', () => {
 });
 
 describe('尺寸（方案 §6.4）', () => {
-  it.each(['usage', 'combo', 'quota', 'compact'] as const)('「%s」卡片高度与 §6.4 的桌面小组件高度一致', (layout) => {
+  it.each(['usage', 'combo', 'quota', 'compact', 'routing'] as const)('「%s」卡片高度与 §6.4 的桌面小组件高度一致', (layout) => {
     expect(px(decl(`.widget-root[data-layout='${layout}']`, '--wl-card-h'))).toBe(widgetCardSize('desktop', layout).height);
   });
 

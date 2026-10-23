@@ -11,7 +11,7 @@ import type { QuotaWindowHighlight } from './quotaOverview';
  */
 
 export type WidgetSurface = 'popover' | 'desktop';
-export type WidgetLayout = 'usage' | 'combo' | 'quota' | 'compact';
+export type WidgetLayout = 'usage' | 'combo' | 'quota' | 'compact' | 'routing';
 export type WidgetThemeMode = 'system' | 'light' | 'dark';
 /** 挂件只提供主看板范围的一个子集；写成 `Extract` 是为了两边不会各自漂移。 */
 export type WidgetRange = Extract<RangeKey, 'today' | 'week' | 'month'>;
@@ -33,6 +33,7 @@ export const WIDGET_LAYOUTS: ReadonlyArray<{
   { id: 'combo', label: '额度与用量', description: '额度在上，用量在下' },
   { id: 'quota', label: '额度总览', description: '只看额度，按吃紧程度排列' },
   { id: 'compact', label: '单行消耗', description: '只有大数字与预估费用' },
+  { id: 'routing', label: '实时路由', description: 'Agent → 网关 → 上游，失败切换实时可见' },
 ];
 
 // 主题三个取值的名字已经说尽了它们的行为，不再配 description：

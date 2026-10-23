@@ -75,6 +75,7 @@ html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'
 .widget-root[data-layout='combo'] { --wl-card-h: 172px; }
 .widget-root[data-layout='quota'] { --wl-card-h: 272px; }
 .widget-root[data-layout='compact'] { --wl-card-h: 104px; }
+.widget-root[data-layout='routing'] { --wl-card-h: 300px; }
 .wl-card { position: relative; display: flex; flex-direction: column; flex: none; height: var(--wl-card-h, 100%); min-width: 0; padding: 16px 18px; }
 /* 托盘挂件：顶栏（12px 上边距 + 30px）替掉卡片顶部 16px 内边距，整体比桌面小组件高 26px。 */
 .widget-root[data-mode='popover'] .wl-card { height: calc(var(--wl-card-h, 100%) - 16px); padding-top: 0; }
@@ -198,6 +199,20 @@ html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'
 .wl-compact-side { flex: none; width: 118px; min-width: 0; }
 .wl-compact-cost { margin-top: 6px; font-size: 22px; line-height: 23px; }
 
+/* ── 实时路由 364×300：14 + 标题 16 + 8 + 舞台（最多 5 行，约 170）+ 说明两行 33 + 16，余量给舞台居中。
+      舞台（RoutingStage）只认 tokens.css 的变量，这里换成卡片自己的深浅色，与挂件主题一致。 ── */
+.wl-card[data-layout='routing'] {
+  gap: 8px; padding-top: 14px;
+  --color-bg-elevated: var(--wl-face);
+  --color-border: var(--wl-track);
+  --color-text-primary: var(--wl-text);
+  --color-text-secondary: var(--wl-text-2);
+  --color-text-muted: var(--wl-text-3);
+  --color-danger: var(--wl-danger);
+}
+.widget-root[data-mode='popover'] .wl-card[data-layout='routing'] { padding-top: 0; }
+.wl-routing { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: center; min-height: 0; }
+
 /* ── 额度提示（读取中 / 没有可读额度 / 钉住的来源读不到）。 ── */
 .wl-notice { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; color: var(--wl-text-2); font-size: 12px; line-height: 16px; }
 .wl-notice > span { display: -webkit-box; min-width: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -232,6 +247,7 @@ html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'
 .wl-toolbar .wl-icon-btn:hover { background: var(--wl-hover); }
 .widget-root[data-layout='quota'] .wl-toolbar { top: 7px; }
 .widget-root[data-layout='compact'] .wl-toolbar { top: 7px; }
+.widget-root[data-layout='routing'] .wl-toolbar { top: 7px; }
 .wl-toolbar[data-at='bottom'] { top: auto; bottom: 8px; }
 .wl-under-toolbar { transition: opacity 120ms ease-out; }
 .widget-root[data-toolbar='shown'] .wl-under-toolbar { opacity: 0; }

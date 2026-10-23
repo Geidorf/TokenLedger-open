@@ -262,6 +262,54 @@ describe('WidgetView', () => {
     expect(container.querySelector('.wl-compact-num')).toHaveTextContent('123.5K');
   });
 
+  it('「实时路由」读脱敏的网关视图画失败切换，不读额度、不出现范围分段', async () => {
+    settings.widget_popover_layout = 'routing';
+    const at = new Date(Date.now() - 1_000).toISOString();
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === 'get_settings') return settings;
+      if (command === 'get_cached_stats') return buildStats((payload as { range: 'today' }).range, 123_456);
+      if (command === 'gateway_routing_feed') {
+        return {
+          running: true,
+          decisions: [{ ts: at, requestId: 'r1', group: 'coding', chosen: 'deepseek/deepseek-chat', attempts: [
+            { member: 'openai/gpt-5', outcome: 'failed', status: 429 },
+            { member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 },
+          ] }],
+          requests: [{ ts: at, requestId: 'a2', logicalRequestId: 'r1', agent: 'codex', provider: 'deepseek', requestedModel: 'group/coding', upstreamModel: 'deepseek-chat', group: 'coding', status: 200, ok: true }],
+        };
+      }
+      return null;
+    });
+    const { container } = render(<WidgetView />);
+    const stage = await screen.findByRole('figure', { name: '实时路由动画' });
+    expect(container.querySelector('.widget-root')).toHaveAttribute('data-layout', 'routing');
+    expect(stage.querySelector('.rs-tag')).toHaveTextContent('429');
+    expect(screen.getByText('在途 0 · 已改道 1 · 失败 0')).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith('gateway_routing_feed', { limit: 30 });
+    expect(invokeMock).not.toHaveBeenCalledWith('get_local_quota_providers');
+    expect(invokeMock.mock.calls.some(([command]) => command === 'gateway_recent_route_decisions' || command === 'gateway_status')).toBe(false);
+    expect(screen.queryByRole('button', { name: '本周' })).not.toBeInTheDocument();
+  });
+
+  it('「实时路由」网关没运行时只给空态，不画动画', async () => {
+    settings.widget_popover_layout = 'routing';
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'get_settings') return settings;
+      if (command === 'gateway_routing_feed') return { running: false, decisions: [], requests: [] };
+      return null;
+    });
+    const { container } = render(<WidgetView />);
+    expect(await screen.findByText(/暂无实时路由数据/)).toBeInTheDocument();
+    expect(container.querySelector('.rs-packet')).toBeNull();
+  });
+
+  it('换到别的板式就不再轮询网关', async () => {
+    const { container } = render(<WidgetView />);
+    await screen.findByText('123.5K');
+    expect(container.querySelector('.wl-routing')).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith('gateway_routing_feed', expect.anything());
+  });
+
   it('「单行消耗」只留有效 Token 与预估费用，也不去读额度（T10.154 D51）', async () => {
     settings.widget_popover_layout = 'compact';
     const { container } = render(<WidgetView />);

@@ -290,7 +290,7 @@ fn default_tray_hover_delay_ms() -> u64 {
 
 /// 挂件板式的闭合取值。前端 `src/utils/widgetConfig.ts` 用同一组字符串；
 /// 两端都以「未知即回落到默认」为准，不做静默丢弃。
-pub const WIDGET_LAYOUTS: [&str; 4] = ["usage", "combo", "quota", "compact"];
+pub const WIDGET_LAYOUTS: [&str; 5] = ["usage", "combo", "quota", "compact", "routing"];
 pub const WIDGET_THEMES: [&str; 3] = ["system", "light", "dark"];
 pub const WIDGET_RANGES: [&str; 3] = ["today", "week", "month"];
 

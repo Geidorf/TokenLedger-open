@@ -10,6 +10,7 @@ import {
 } from '../../utils/widgetConfig';
 import { buildCardModel, widgetCardSize, WIDGET_CARD_WIDTH, type CardQuota, type CardQuotaItem, type CardTheme } from './cardModel';
 import { LedgerCard } from './LedgerCard';
+import { RoutingCard } from './RoutingCard';
 import { TrayTopBar } from './WidgetChrome';
 import '../../styles/widget.css';
 
@@ -215,9 +216,12 @@ export function WidgetPreview({ surface, config }: { surface: WidgetSurface; con
           style={{ width: size.width, height: size.height, transform: scale < 1 ? `scale(${scale})` : undefined }}
         >
           {surface === 'popover' && (
-            <TrayTopBar range={config.range} showRange={config.layout !== 'quota'} actions={null} staticPreview />
+            <TrayTopBar range={config.range} showRange={config.layout !== 'quota' && config.layout !== 'routing'} actions={null} staticPreview />
           )}
-          <LedgerCard layout={config.layout} model={model} now={now} />
+          {/* 实时路由没有可信的示例数据可画：预览只说明这块会显示什么，不放示意动画。 */}
+          {config.layout === 'routing'
+            ? <RoutingCard scene={null} loaded={false} />
+            : <LedgerCard layout={config.layout} model={model} now={now} />}
         </div>
       </div>
       <figcaption className="wl-preview-caption">

@@ -45,7 +45,7 @@ describe('widgetConfig', () => {
   it('合法取值与 Rust 侧的闭合集合逐字对齐', () => {
     // settings.rs 的 WIDGET_LAYOUTS / WIDGET_THEMES / WIDGET_RANGES 是同一组字符串，
     // 两端任何一边加了取值而另一边没加，都会在这里显形。
-    expect(WIDGET_LAYOUTS.map((item) => item.id)).toEqual(['usage', 'combo', 'quota', 'compact']);
+    expect(WIDGET_LAYOUTS.map((item) => item.id)).toEqual(['usage', 'combo', 'quota', 'compact', 'routing']);
     expect(WIDGET_THEMES.map((item) => item.id)).toEqual(['system', 'light', 'dark']);
     expect(WIDGET_RANGES.map((item) => item.id)).toEqual(['today', 'week', 'month']);
   });
