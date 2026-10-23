@@ -2398,6 +2398,16 @@ export function installDevMockTauri() {
       case 'magpie_import_clear':
         mockMagpieImport = null;
         return null;
+      case 'peer_sync_export_preview':
+        return { providers: [] };
+      case 'peer_sync_export_providers':
+        return { added: [], updated: [], skipped: [], savedAs: '' };
+      case 'peer_sync_get_config':
+        return { url: '', user: '', hasPassword: false, hasPassphrase: false };
+      case 'peer_sync_save_config': {
+        const input = (payload.input ?? {}) as Record<string, unknown>;
+        return { url: String(input.url ?? ''), user: String(input.user ?? ''), hasPassword: Boolean(input.password), hasPassphrase: Boolean(input.passphrase) };
+      }
       default: {
         const gatewayResult = handleGatewayMock(cmd, payload);
         if (gatewayResult !== undefined) return gatewayResult;

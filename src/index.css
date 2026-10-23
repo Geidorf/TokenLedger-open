@@ -2551,6 +2551,40 @@
     line-height: 1.5;
   }
 
+  .settings-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+  }
+
+  .settings-peer-list {
+    margin: 0;
+    padding: 4px 16px 8px;
+    list-style: none;
+  }
+
+  .settings-peer-list label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: var(--font-size-sm);
+  }
+
+  .settings-peer-meta {
+    color: var(--color-text-secondary);
+  }
+
   .settings-group {
     overflow: hidden;
     border: 1px solid var(--color-border);
