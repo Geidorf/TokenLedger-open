@@ -152,16 +152,19 @@ pub fn recent_routes(lines: &[u8]) -> Vec<RecentRoute> {
         } else {
             format!("line-{index}")
         };
+        // Older peer versions mark a local rejection only by leaving the
+        // provider empty, as the usage import reads them too.
+        let rejected = raw.rejected || (raw.provider.is_empty() && raw.status >= 400);
         let attempt = RouteAttempt {
             provider: clip(&raw.provider, 64),
-            outcome: if raw.rejected {
+            outcome: if rejected {
                 "rejected"
             } else if (200..300).contains(&raw.status) {
                 "ok"
             } else {
                 "failed"
             },
-            status: (!raw.rejected && !(200..300).contains(&raw.status))
+            status: (!rejected && !(200..300).contains(&raw.status))
                 .then(|| u16::try_from(raw.status).ok())
                 .flatten()
                 .filter(|status| *status > 0),
@@ -394,6 +397,14 @@ mod tests {
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].attempts.len(), 1);
         assert_eq!(routes[0].attempts[0].provider, "here");
+    }
+
+    #[test]
+    fn an_old_rejection_without_a_provider_is_a_rejection() {
+        let line = r#"{"t":"2026-10-23T13:00:00Z","status":429}"#;
+        let routes = recent_routes(line.as_bytes());
+        assert_eq!(routes[0].attempts[0].outcome, "rejected");
+        assert_eq!(routes[0].attempts[0].status, None);
     }
 
     #[test]
