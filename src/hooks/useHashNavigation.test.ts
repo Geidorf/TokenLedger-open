@@ -20,7 +20,7 @@ describe('directTabFromHash', () => {
     expect(directTabFromHash('#providers')).toBe('providers');
     expect(directTabFromHash('#gateway')).toBe('gateway');
     expect(directTabFromHash('#routing')).toBe('routing');
-    expect(directTabFromHash('#records')).toBe('records');
+    expect(directTabFromHash('#records')).toBe('logs');
     expect(directTabFromHash('#behavior')).toBe('behavior');
     expect(directTabFromHash('#settings-cloud')).toBe('settings');
     expect(directTabFromHash('#settings-not-registered')).toBeNull();
@@ -43,7 +43,7 @@ describe('useHashNavigation', () => {
     const changeTab = vi.fn();
     renderHook(() => useHashNavigation(changeTab));
     goTo('#records');
-    expect(changeTab).toHaveBeenLastCalledWith('records');
+    expect(changeTab).toHaveBeenLastCalledWith('logs');
     goTo('#behavior');
     expect(changeTab).toHaveBeenLastCalledWith('behavior');
     goTo('#settings-api-profiles');

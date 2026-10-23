@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppHeader, formatHeaderFreshnessLabel } from './AppHeader';
+import { UsageToolbar } from './usage/UsageToolbar';
 import type { CustomDateRange, DataScope, RangeKey, Tab } from '../types';
 
 beforeAll(() => {
@@ -21,7 +22,8 @@ const FIXTURE_LOCAL_STAMP =
 
 function renderHeader({
   stale = false,
-  // 范围、口径与战报现在只在活动明细的顶栏（T10.276），控件类用例默认渲染这一面。
+  // 范围、口径与战报在页内工具行（T10.276）；控件类用例把请求子页的工具行接在顶栏后面，
+  // 检验顶栏浮层与页内控件之间的焦点往来。
   activeTab = 'logs' as Tab,
   dataScope = 'local',
   range = 'today',
@@ -48,21 +50,11 @@ function renderHeader({
     <AppHeader
       activeTab={activeTab}
       dataScope={dataScope}
-      range={range}
-      customRange={customRange}
-      now={now}
-      deviceFilter="all_cloud"
-      deviceList={[]}
       cloudStatus={{ configured: true, authenticated: true, email: 'user@example.invalid', userId: 'user-1' }}
       onScopeChange={vi.fn()}
       onCloudScope={vi.fn()}
-      onDeviceFilterChange={vi.fn()}
-      onRangeChange={onRangeChange}
-      showTotalTokens={false}
-      onToggleTokenMode={vi.fn()}
       themeMode="auto"
       onThemeChange={onThemeChange}
-      onOpenShareCard={vi.fn()}
       dataStatus={{
         loading,
         stale,
@@ -73,34 +65,41 @@ function renderHeader({
       }}
     />
     {afterHeader}
+    {activeTab !== 'settings' && <UsageToolbar
+      variant="overview"
+      dataScope={dataScope}
+      range={range}
+      customRange={customRange}
+      onRangeChange={onRangeChange}
+      deviceFilter="all_cloud"
+      deviceList={[]}
+      onDeviceFilterChange={vi.fn()}
+      showTotalTokens={false}
+      onToggleTokenMode={vi.fn()}
+      onOpenShareCard={vi.fn()}
+      now={now}
+    />}
   </>);
   return { onThemeChange, onRangeChange };
 }
 
 describe('AppHeader', () => {
-  it('用量三个子页的顶栏不放范围、口径、设备与战报，这些在页内工具行（T10.276）', () => {
-    for (const activeTab of ['dashboard', 'records', 'behavior'] as Tab[]) {
+  it('用量四个子页的顶栏不放范围、口径、设备与战报，这些在页内工具行（T10.276）', () => {
+    for (const activeTab of ['dashboard', 'logs', 'behavior', 'allowances'] as Tab[]) {
       renderHeader({ activeTab, dataScope: 'cloud' });
-      expect(screen.getByRole('group', { name: '数据范围' })).toBeInTheDocument();
-      expect(screen.queryByRole('group', { name: '统计时间范围' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('group', { name: '概览 Token 口径' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('combobox', { name: '云端设备筛选' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: '生成并分享数据战报图片' })).not.toBeInTheDocument();
+      const header = document.querySelector('header')!;
+      expect(within(header).getByRole('group', { name: '数据范围' })).toBeInTheDocument();
+      expect(within(header).queryByRole('group', { name: '统计时间范围' })).not.toBeInTheDocument();
+      expect(within(header).queryByRole('group', { name: '概览 Token 口径' })).not.toBeInTheDocument();
+      expect(within(header).queryByRole('combobox', { name: '云端设备筛选' })).not.toBeInTheDocument();
+      expect(within(header).queryByRole('button', { name: '生成并分享数据战报图片' })).not.toBeInTheDocument();
       cleanup();
     }
   });
 
-  it('活动明细的顶栏保留范围、口径、设备与战报（T10.276 不改其他页）', () => {
-    renderHeader({ activeTab: 'logs', dataScope: 'cloud' });
-    expect(screen.getByRole('group', { name: '统计时间范围' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: '概览 Token 口径' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: '云端设备筛选' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '生成并分享数据战报图片' })).toBeInTheDocument();
-  });
-
-  it('用量三个子页顶栏元素相同，只有面包屑的子页名不同（T10.276、U-101）', () => {
-    const crumbs: Record<string, string> = { dashboard: '概览', records: '记录', behavior: '行为分析' };
-    const markup = (['dashboard', 'records', 'behavior'] as Tab[]).map((activeTab) => {
+  it('用量四个子页顶栏元素相同，只有面包屑的子页名不同（T10.276、U-101）', () => {
+    const crumbs: Record<string, string> = { dashboard: '概览', logs: '请求', behavior: '会话', allowances: '额度' };
+    const markup = (['dashboard', 'logs', 'behavior', 'allowances'] as Tab[]).map((activeTab) => {
       renderHeader({ activeTab, loading: true });
       const header = document.querySelector('header');
       expect(header).toHaveAttribute('data-surface', 'usage');
@@ -116,13 +115,12 @@ describe('AppHeader', () => {
       return html;
     });
     expect(markup[0]).toContain('CRUMB');
-    expect(markup[1]).toBe(markup[0]);
-    expect(markup[2]).toBe(markup[0]);
+    for (const html of markup.slice(1)) expect(html).toBe(markup[0]);
   });
 
   it('非用量页的标题不带面包屑', () => {
-    renderHeader({ activeTab: 'logs' });
-    expect(document.querySelector('.toolbar-title')).toHaveTextContent(/^活动明细$/);
+    renderHeader({ activeTab: 'settings' });
+    expect(document.querySelector('.toolbar-title')).toHaveTextContent(/^设置与云端$/);
     expect(document.querySelector('.toolbar-title-crumb')).toBeNull();
   });
 
@@ -485,40 +483,4 @@ describe('AppHeader', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('displays zero-cache mode tooltip on token switcher when cachedTokens is 0', () => {
-    const onToggle = vi.fn();
-    render(
-      <AppHeader
-        activeTab="logs"
-        dataScope="local"
-        range="today"
-        deviceFilter="all_cloud"
-        deviceList={[]}
-        cloudStatus={{ configured: true, authenticated: true, email: 'user@example.invalid', userId: 'user-1' }}
-        onScopeChange={vi.fn()}
-        onCloudScope={vi.fn()}
-        onDeviceFilterChange={vi.fn()}
-        onRangeChange={vi.fn()}
-        showTotalTokens={false}
-        onToggleTokenMode={onToggle}
-        cachedTokens={0}
-        themeMode="auto"
-        onThemeChange={vi.fn()}
-        dataStatus={{
-          loading: false,
-          stale: false,
-          lastRefreshedAt: FIXTURE_REFRESHED_AT,
-          unsyncedRecords: 0,
-          cloudCapabilityVerified: true,
-          cloudFirstSyncCompleted: true,
-        }}
-      />,
-    );
-
-    const effectiveBtn = screen.getByRole('button', { name: '概览有效' });
-    const cachedBtn = screen.getByRole('button', { name: '概览含缓存' });
-
-    expect(effectiveBtn).toHaveAttribute('title', '当前周期未记录到缓存 Token；概览指标使用输入 + 输出 Token');
-    expect(cachedBtn).toHaveAttribute('title', '当前周期未记录到缓存 Token，概览有效与含缓存数值相同');
-  });
 });

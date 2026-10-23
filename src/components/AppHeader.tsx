@@ -8,9 +8,8 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useSegmentedIndicator } from '../hooks/useSegmentedIndicator';
-import { isUsageTab, type CloudStatus, type CustomDateRange, type DataScope, type RangeKey, type Tab } from '../types';
+import { isUsageTab, type CloudStatus, type DataScope, type Tab } from '../types';
 import { focusAfterPopoverTrigger, useAnchoredPopover } from './anchoredPopover';
-import { CloudDeviceSelect, RangeControl, ShareCardButton, TokenModeToggle } from './RangeControls';
 import { usageSubLabelForTab } from './usage/UsagePage';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
@@ -42,25 +41,12 @@ export interface HeaderDataStatus {
 interface AppHeaderProps {
   activeTab?: Tab;
   dataScope: DataScope;
-  range: RangeKey;
-  /** range === 'custom' 时的日期闭区间；触发按钮据此显示已选范围。 */
-  customRange?: CustomDateRange | null;
-  deviceFilter: string;
-  deviceList: string[];
   cloudStatus: CloudStatus;
   onScopeChange: (scope: DataScope) => void;
   onCloudScope: () => void;
-  onDeviceFilterChange: (filter: string) => void;
-  onRangeChange: (range: RangeKey, bounds?: CustomDateRange | null) => void;
-  showTotalTokens: boolean;
-  onToggleTokenMode: () => void;
-  cachedTokens?: number;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
   dataStatus: HeaderDataStatus;
-  onOpenShareCard?: () => void;
-  /** 注入“今天”：预设区间与日期上限据此计算，测试可固定时间。 */
-  now?: () => Date;
 }
 
 // This is the single window-drag contract for the desktop shell. Tauri's
@@ -155,23 +141,12 @@ export function formatHeaderFreshnessLabel(
 export function AppHeader({
   activeTab = 'dashboard',
   dataScope,
-  range,
-  customRange = null,
-  deviceFilter,
-  deviceList,
   cloudStatus,
   onScopeChange,
   onCloudScope,
-  onDeviceFilterChange,
-  onRangeChange,
-  showTotalTokens,
-  onToggleTokenMode,
-  cachedTokens,
   themeMode,
   onThemeChange,
   dataStatus,
-  onOpenShareCard,
-  now,
 }: AppHeaderProps) {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
@@ -184,20 +159,15 @@ export function AppHeader({
   // One sliding selection pill per segmented group (T10.150); aria-pressed stays the source of truth.
   const scopeIndicatorRef = useSegmentedIndicator<HTMLDivElement>();
   const isSettingsSurface = activeTab === 'settings';
-  const hostsRangeControls = activeTab === 'logs';
   const usageSurface = isUsageTab(activeTab);
   // 用量三个子页共用一个顶栏：元素、健康状态与命令不随子页变化（T10.276），标题是「用量 · 子页」
   // 面包屑（U-101，T10.277）。子页部分对读屏隐藏：内容区已用同一名称作可访问名称。
   const usageCrumb = usageSurface ? usageSubLabelForTab(activeTab) : null;
-  const headerTitle = activeTab === 'settings'
-    ? '设置与云端'
-    : activeTab === 'logs'
-      ? '活动明细'
-      : '用量';
+  const headerTitle = activeTab === 'settings' ? '设置与云端' : '用量';
   // 副标题只保留标题给不出的信息。原来三种取值分别是「连接、额度、壁纸与数据管理」
   // 「检索本地与云端的完整使用记录」「仅此电脑的使用记录」——都是把标题换句话再说一遍，
   // 叠在页内标题上就变成同一件事写四行。登录后的邮箱是标题里没有的，留下。
-  const headerSubtitle = !isSettingsSurface && activeTab !== 'logs' && cloudStatus.authenticated
+  const headerSubtitle = !isSettingsSurface && cloudStatus.authenticated
     ? cloudStatus.email
     : '';
   const headerControlsLabel = isSettingsSurface
@@ -249,11 +219,6 @@ export function AppHeader({
     scrollHeaderElement(controls, 0, 'auto');
   }, [activeTab]);
 
-  // 提取成变量而不是写在依赖数组里：依赖项必须能被 react-hooks/exhaustive-deps
-  // 静态核对，数组里的表达式它一律拒绝。语义不变——重算滚动提示只关心「分享入口
-  // 在不在」，不关心回调身份。
-  const shareCardActionAvailable = Boolean(onOpenShareCard);
-
   useEffect(() => {
     const controls = headerControlsRef.current;
     if (!controls) return undefined;
@@ -291,7 +256,7 @@ export function AppHeader({
       window.removeEventListener('resize', updateScrollHint);
       resizeObserver?.disconnect();
     };
-  }, [activeTab, dataScope, deviceList.length, shareCardActionAvailable]);
+  }, [activeTab, dataScope]);
 
   const scrollHeaderControlsForward = () => {
     const controls = headerControlsRef.current;
@@ -445,19 +410,6 @@ export function AppHeader({
             云端汇总
           </button>
         </div>
-
-        {/* 范围、口径、设备与战报只有活动明细放在顶栏；用量三个子页放在各自的页内工具行（T10.276）。 */}
-        {hostsRangeControls && onOpenShareCard && <ShareCardButton onOpenShareCard={onOpenShareCard} />}
-
-        {hostsRangeControls && dataScope === 'cloud' && (
-          <CloudDeviceSelect deviceFilter={deviceFilter} deviceList={deviceList} onDeviceFilterChange={onDeviceFilterChange} />
-        )}
-
-        {hostsRangeControls && <RangeControl range={range} customRange={customRange} onRangeChange={onRangeChange} now={now} />}
-
-        {hostsRangeControls && (
-          <TokenModeToggle showTotalTokens={showTotalTokens} onToggleTokenMode={onToggleTokenMode} cachedTokens={cachedTokens} />
-        )}
 
         </>}
 

@@ -1,23 +1,31 @@
 import type { UsageSub } from '../components/usage/UsagePage';
 import type { Tab } from '../types';
 
-/** 用量页子标签与侧栏二级入口共用的 子页 → Tab 映射。 */
-export const USAGE_SUB_TABS: Record<UsageSub, Tab> = { overview: 'dashboard', records: 'records', sessions: 'behavior' };
+/** 用量页子页与侧栏二级入口共用的 子页 → Tab 映射。 */
+export const USAGE_SUB_TABS: Record<UsageSub, Tab> = { overview: 'dashboard', requests: 'logs', sessions: 'behavior', allowances: 'allowances' };
 
 /**
- * 「用量」三个子页可直达的 hash 锚点。合并前的「行为分析」「总览看板」地址
- * （`#behavior`、`#dashboard`）必须继续可用（U-100）。
+ * 「用量」子页可直达的 hash 锚点。合并前的地址必须继续可用：
+ * `#behavior`、`#dashboard`（U-100），以及「记录」「活动明细」合并进「请求」前的 `#records`、`#logs`。
  */
 const USAGE_HASH_TABS: Record<string, Tab> = {
   dashboard: 'dashboard',
   overview: 'dashboard',
   usage: 'dashboard',
-  records: 'records',
-  'usage-records': 'records',
+  requests: 'logs',
+  'usage-requests': 'logs',
+  records: 'logs',
+  'usage-records': 'logs',
+  logs: 'logs',
+  details: 'logs',
   behavior: 'behavior',
   'behavior-analysis': 'behavior',
   sessions: 'behavior',
   'usage-sessions': 'behavior',
+  allowances: 'allowances',
+  'usage-allowances': 'allowances',
+  quota: 'allowances',
+  quotas: 'allowances',
 };
 
 export function usageTabFromHash(hash: string | null | undefined): Tab | null {

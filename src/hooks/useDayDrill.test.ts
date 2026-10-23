@@ -304,9 +304,9 @@ describe('day drill helpers', () => {
     const now = new Date(2026, 8, 24);
     expect(dayDrillCopy(drill('month'), now)).toEqual({
       day: '9月12日',
-      origin: '总览',
+      origin: '概览',
       returnLabel: '返回本月',
-      returnAriaLabel: '返回本月：回到总览并恢复原筛选',
+      returnAriaLabel: '返回本月：回到概览并恢复原筛选',
     });
     expect(dayDrillCopy(drill('all'), now).returnLabel).toBe('返回全部');
     expect(dayDrillCopy(drill('year'), now).returnLabel).toBe('返回今年');

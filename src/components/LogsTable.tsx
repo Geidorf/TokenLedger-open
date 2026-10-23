@@ -10,6 +10,7 @@ import { rangeDisplayName } from '../utils/rangeDisplay';
 import { useTheme } from '../utils/useTheme';
 import { FilterMultiSelect } from './FilterMultiSelect';
 import { BrandIcon } from './brand/BrandIcon';
+import { recordSourceLabel } from './usage/usageSummary';
 import SessionAnalysisDrawer from './SessionAnalysisDrawer';
 import type { SessionAnalysisRecord } from '../types/sessionAnalysis';
 import '../styles/overviewDrill.css';
@@ -43,6 +44,8 @@ interface LogsTableProps {
   /** 从总览下钻来的单日复盘：显示正在查看的日期与“返回原范围”入口（审计 P0-1）。 */
   dayDrill?: DayDrillCopy | null;
   onReturnFromDayDrill?: () => void;
+  /** 作为用量 · 请求子页渲染时为 true：页面标题已由用量页给出，这里只留读屏与焦点落点。 */
+  hasPageTitle?: boolean;
 }
 
 export interface DetailActionCopy {
@@ -93,6 +96,7 @@ export function LogsTable({
   onOpenEntity,
   dayDrill = null,
   onReturnFromDayDrill,
+  hasPageTitle = false,
 }: LogsTableProps) {
   const { effective } = useTheme();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -215,7 +219,9 @@ export function LogsTable({
     <div className="content-stack details-page">
       <div className="page-heading">
         <div>
-          <h1 id="details-page-title" className="page-title" tabIndex={-1}>消耗明细</h1>
+          {hasPageTitle
+            ? <h2 id="details-page-title" className="sr-only" tabIndex={-1}>请求明细</h2>
+            : <h1 id="details-page-title" className="page-title" tabIndex={-1}>消耗明细</h1>}
           <p className="page-subtitle">
             点击工具或模型，查看专属看板。
           </p>
@@ -576,6 +582,8 @@ export function LogsTable({
                             ))}
                             <div><span>记录数</span><strong>{formatNum(log.requests || 1)}</strong></div>
                             <div><span>数据粒度</span><strong>{rowGranularityLabel(log, details)}</strong></div>
+                            <div><span>来源</span><strong>{recordSourceLabel(log)}</strong></div>
+                            {log.provider && <div className="log-detail-wide"><span>供应商</span><code title={log.provider}>{log.provider}</code></div>}
                             <div className="log-detail-wide"><span>模型 ID</span><code title={log.model}>{log.model}</code></div>
                             <div className="log-detail-wide"><span>Session ID</span><code title={log.sessionId || '—'}>{log.sessionId || '—'}</code></div>
                             <div className="log-detail-wide"><span>完整时间</span><code title={log.timestamp}>{log.timestamp}</code></div>
