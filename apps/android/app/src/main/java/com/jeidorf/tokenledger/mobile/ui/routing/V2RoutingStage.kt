@@ -81,6 +81,7 @@ internal const val RECENT_LIT_MS = 30_000L
 
 private val AGENT_TILE_HEIGHT = 60.dp
 private val AGENT_GAP = 8.dp
+private val AGENT_MAX_WIDTH = 96.dp
 private val HUB_GAP = 34.dp
 private val HUB_HEIGHT = 56.dp
 private val HUB_MAX_WIDTH = 150.dp
@@ -118,9 +119,11 @@ private data class StageGeometry(
 
 private fun stageGeometry(widthPx: Float, agents: Int, targets: Int, px: (Dp) -> Float): StageGeometry {
     val agentCount = agents.coerceAtLeast(1)
-    val agentWidth = (widthPx - px(AGENT_GAP) * (agentCount - 1)) / agentCount
+    // Agent 少时块不拉满整行，按最大宽度居中排。
+    val agentWidth = minOf((widthPx - px(AGENT_GAP) * (agentCount - 1)) / agentCount, px(AGENT_MAX_WIDTH))
+    val agentRowStart = (widthPx - agentWidth * agentCount - px(AGENT_GAP) * (agentCount - 1)) / 2f
     val agentCenters = List(agents) { index ->
-        Offset(index * (agentWidth + px(AGENT_GAP)) + agentWidth / 2f, px(AGENT_TILE_HEIGHT))
+        Offset(agentRowStart + index * (agentWidth + px(AGENT_GAP)) + agentWidth / 2f, px(AGENT_TILE_HEIGHT))
     }
     val hubTop = px(AGENT_TILE_HEIGHT) + px(HUB_GAP)
     val hubBottom = hubTop + px(HUB_HEIGHT)
