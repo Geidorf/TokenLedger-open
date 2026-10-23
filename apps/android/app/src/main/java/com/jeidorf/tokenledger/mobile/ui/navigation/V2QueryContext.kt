@@ -39,6 +39,7 @@ import com.jeidorf.tokenledger.mobile.LedgerFont
 import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_ICON_INLINE
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 @Composable
 internal fun V2QueryContext(
@@ -102,7 +103,7 @@ internal fun V2FilterButton(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(13.dp))
+            .clip(RoundedCornerShape(LedgerRadius.md))
             .background(palette.surface)
             .clickable(
                 role = Role.Button,

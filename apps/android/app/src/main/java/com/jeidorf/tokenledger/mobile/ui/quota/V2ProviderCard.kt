@@ -78,6 +78,7 @@ import com.jeidorf.tokenledger.mobile.ui.foundation.v2Scope
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2ShortDateTime
 import com.jeidorf.tokenledger.mobile.localizedLabel
 import java.time.Instant
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 @Composable
 internal fun V2ProviderCard(
@@ -185,7 +186,7 @@ internal fun V2QuotaProviderDetails(palette: MobileV2Palette, provider: QuotaPro
         Modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(LedgerRadius.md))
             .background(if (palette.isEInk) Color.Transparent else palette.surfaceContainerHigh)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
