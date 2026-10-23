@@ -144,7 +144,7 @@ impl DavClient {
                 .header("Depth", "1")
                 .header(reqwest::header::CONTENT_TYPE, "application/xml"),
         )?;
-        let response = request
+        let mut response = request
             .send()
             .await
             .map_err(|error| format!("连接 WebDAV 服务器失败：{}", error.without_url()))?;
@@ -163,12 +163,17 @@ impl DavClient {
                 ))
             }
         }
-        let body = response
-            .bytes()
+        // Counted as it arrives, as `get_file` does.
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .map_err(|error| format!("读取 WebDAV 文件夹列表失败：{}", error.without_url()))?;
-        if body.len() > MAX_BACKUP_BYTES {
-            return Err("WebDAV 文件夹列表过大。".to_string());
+            .map_err(|error| format!("读取 WebDAV 文件夹列表失败：{}", error.without_url()))?
+        {
+            if body.len() + chunk.len() > MAX_BACKUP_BYTES {
+                return Err("WebDAV 文件夹列表过大。".to_string());
+            }
+            body.extend_from_slice(&chunk);
         }
         Ok(listed_files(&String::from_utf8_lossy(&body), url.path()))
     }

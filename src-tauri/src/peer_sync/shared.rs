@@ -122,12 +122,16 @@ type Days = BTreeMap<String, Vec<(NaiveDate, String)>>;
 
 pub struct SharedSource {
     client: DavClient,
-    passphrase: String,
+    /// Shared by every read of this source, so each salt's key is derived once.
+    opener: std::sync::Arc<std::sync::Mutex<Opener>>,
 }
 
 impl SharedSource {
     pub fn new(client: DavClient, passphrase: String) -> Self {
-        Self { client, passphrase }
+        Self {
+            client,
+            opener: std::sync::Arc::new(std::sync::Mutex::new(Opener::new(&passphrase))),
+        }
     }
 
     async fn days(&self) -> Result<Days, String> {
@@ -149,9 +153,11 @@ impl SharedSource {
     /// Opens and reads fetched days off the async runtime: the key is
     /// derived once per salt, but even once is 600000 rounds.
     async fn open_all(&self, fetched: Vec<(String, Vec<u8>)>) -> Result<Vec<DayRead>, String> {
-        let passphrase = self.passphrase.clone();
+        let opener = self.opener.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let mut opener = Opener::new(&passphrase);
+            let mut opener = opener
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             fetched
                 .into_iter()
                 .map(|(computer, sealed)| {
@@ -201,36 +207,39 @@ impl SharedSource {
             .collect())
     }
 
-    /// Every shared call of the `selected` computers still on the server.
+    /// Every shared call of the `selected` computers still on the server,
+    /// one computer's sealed days in memory at a time.
     pub async fn pull(
         &self,
         selected: &[String],
     ) -> Result<(Vec<SharedCall>, Vec<SharedComputer>), String> {
         let days = self.days().await?;
-        let mut fetched = Vec::new();
+        let mut computers = Vec::new();
+        let mut calls = Vec::new();
         for id in selected {
-            for (_, name) in days.get(id).into_iter().flatten() {
+            let Some(list) = days.get(id) else {
+                continue;
+            };
+            let mut fetched = Vec::new();
+            for (_, name) in list {
                 fetched.push((id.clone(), self.fetch(name).await?));
             }
-        }
-        let mut computers: BTreeMap<String, SharedComputer> = BTreeMap::new();
-        let mut calls = Vec::new();
-        for day in self.open_all(fetched).await? {
-            let entry = computers
-                .entry(day.computer.clone())
-                .or_insert_with(|| SharedComputer {
-                    id: day.computer.clone(),
-                    ..SharedComputer::default()
-                });
-            // Days come oldest first: the newest name wins.
-            if !day.name.is_empty() {
-                entry.name = day.name;
+            let mut computer = SharedComputer {
+                id: id.clone(),
+                ..SharedComputer::default()
+            };
+            for day in self.open_all(fetched).await? {
+                // Days come oldest first: the newest name wins.
+                if !day.name.is_empty() {
+                    computer.name = day.name;
+                }
+                computer.days += 1;
+                computer.calls += day.calls.len();
+                calls.extend(day.calls);
             }
-            entry.days += 1;
-            entry.calls += day.calls.len();
-            calls.extend(day.calls);
+            computers.push(computer);
         }
-        Ok((calls, computers.into_values().collect()))
+        Ok((calls, computers))
     }
 }
 
