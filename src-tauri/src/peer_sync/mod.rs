@@ -11,16 +11,13 @@
 //!   returned to the page.
 //! - Keys go from the decrypted bundle straight into the gateway's keychain
 //!   entries (`provider:<id>`), and only for providers the user picked.
-//! - Writing back (`writeback`) only ever adds or updates the providers the
-//!   user picked in the peer's backup, keeping everything else in it, and keeps
-//!   the server's file as it was beside TokenLedger's data first. It never
-//!   writes an API key: keys only come in, never go out.
+//! - Only the server is read: TokenLedger never writes the peer's backup, so
+//!   the peer on any computer keeps its setup exactly as it was.
 //! - Subscription sign-ins are not in a peer backup and are never read
 //!   (ADR-004).
 
 pub mod backup;
 pub mod dav;
-pub mod writeback;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -422,15 +419,8 @@ pub fn apply(
     Ok(result)
 }
 
-struct Fetched {
-    client: dav::DavClient,
-    passphrase: String,
-    remote: dav::Remote,
-    plain: Vec<u8>,
-}
-
 /// Reads and opens the server's backup with the saved setup.
-async fn fetch(app_dir: &Path, secrets: &dyn SecretStore) -> Result<Fetched, String> {
+async fn fetch_bundle(app_dir: &Path, secrets: &dyn SecretStore) -> Result<PeerBundle, String> {
     let config = load_config(app_dir)?
         .filter(|config| !config.url.is_empty())
         .ok_or_else(|| "请先填写 WebDAV 地址。".to_string())?;
@@ -439,92 +429,17 @@ async fn fetch(app_dir: &Path, secrets: &dyn SecretStore) -> Result<Fetched, Str
         .ok_or_else(|| "请先填写外部网关的同步密码。".to_string())?;
     let password = secrets.get(PASSWORD_ACCOUNT)?.unwrap_or_default();
     let client = dav::DavClient::new(&config.url, &config.user, &password)?;
-    let remote = client
-        .get_remote()
+    let sealed = client
+        .get_backup()
         .await?
         .ok_or_else(|| "这个 WebDAV 文件夹里还没有外部网关的同步文件。".to_string())?;
-    let sealed = remote.body.clone();
-    let pass = passphrase.clone();
     let plain = tauri::async_runtime::spawn_blocking(move || {
-        backup::open(&sealed, &pass, backup::BACKUP_FORMAT)
+        backup::open(&sealed, &passphrase, backup::BACKUP_FORMAT)
     })
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.message().to_string())?;
-    Ok(Fetched {
-        client,
-        passphrase,
-        remote,
-        plain,
-    })
-}
-
-async fn fetch_bundle(app_dir: &Path, secrets: &dyn SecretStore) -> Result<PeerBundle, String> {
-    parse_bundle(&fetch(app_dir, secrets).await?.plain)
-}
-
-const ASIDE_DIR: &str = "peer-sync-aside";
-const ASIDE_KEEP: usize = 5;
-
-/// Keeps the server's file as it was before a write, sealed as it is, in
-/// `app_data/peer-sync-aside/`; the newest five stay. The peer's own
-/// Restore can put one back.
-fn keep_aside(app_dir: &Path, sealed: &[u8], stamp: &str) -> Result<String, String> {
-    let dir = app_dir.join(ASIDE_DIR);
-    fs::create_dir_all(&dir).map_err(|error| format!("无法保存服务器原文件：{error}"))?;
-    let name = format!("{stamp}-server.sealed");
-    fs::write(dir.join(&name), sealed).map_err(|error| format!("无法保存服务器原文件：{error}"))?;
-    let mut kept: Vec<_> = fs::read_dir(&dir)
-        .map_err(|error| error.to_string())?
-        .filter_map(Result::ok)
-        .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .filter(|name| name.ends_with("-server.sealed"))
-        .collect();
-    kept.sort();
-    let excess = kept.len().saturating_sub(ASIDE_KEEP);
-    for old in &kept[..excess] {
-        let _ = fs::remove_file(dir.join(old));
-    }
-    Ok(name)
-}
-
-fn local_providers(gateway: &Gateway) -> Result<Vec<ProviderRecord>, String> {
-    Ok(gateway
-        .list_providers()?
-        .into_iter()
-        .map(|view| view.record)
-        .collect())
-}
-
-/// Builds the new backup: the picked providers (TokenLedger ids) merged in,
-/// without their keys.
-pub fn plan_export(
-    plain: &[u8],
-    providers: &[ProviderRecord],
-    picked: &BTreeSet<String>,
-    now: &str,
-) -> Result<(Vec<u8>, writeback::ExportResult), String> {
-    let bundle = parse_bundle(plain)?;
-    let plan = writeback::export_preview(&bundle, providers);
-    let mut result = writeback::ExportResult::default();
-    let mut outgoing = Vec::new();
-    for (candidate, record) in plan.providers.iter().zip(providers) {
-        if !picked.contains(&candidate.id) {
-            continue;
-        }
-        if candidate.unsupported.is_some() {
-            result.skipped.push(candidate.id.clone());
-            continue;
-        }
-        outgoing.push(record.clone());
-    }
-    if outgoing.is_empty() {
-        return Err("没有可以写入的供应商。".to_string());
-    }
-    let merged = writeback::merge(plain, &bundle, &outgoing, now)?;
-    result.added = merged.added;
-    result.updated = merged.updated;
-    Ok((merged.body, result))
+    parse_bundle(&plain)
 }
 
 fn ensure_main(window: &tauri::WebviewWindow) -> Result<(), String> {
@@ -596,62 +511,6 @@ pub async fn peer_sync_import_providers(
     let bundle = fetch_bundle(app.app_data_dir(), &secrets()).await?;
     let picked: BTreeSet<String> = peer_ids.into_iter().collect();
     apply(&gateway, &bundle, &picked)
-}
-
-/// Reads the peer's backup and lists what writing TokenLedger's providers
-/// into it would do.
-#[tauri::command]
-pub async fn peer_sync_export_preview(
-    window: tauri::WebviewWindow,
-    app: tauri::State<'_, Arc<AppContext>>,
-    gateway: tauri::State<'_, Arc<Gateway>>,
-) -> Result<writeback::ExportPreview, String> {
-    ensure_main(&window)?;
-    let bundle = fetch_bundle(app.app_data_dir(), &secrets()).await?;
-    Ok(writeback::export_preview(
-        &bundle,
-        &local_providers(&gateway)?,
-    ))
-}
-
-/// Writes the picked providers (TokenLedger ids) into the peer's backup on the
-/// server, over the version just read.
-#[tauri::command]
-pub async fn peer_sync_export_providers(
-    window: tauri::WebviewWindow,
-    app: tauri::State<'_, Arc<AppContext>>,
-    gateway: tauri::State<'_, Arc<Gateway>>,
-    ids: Vec<String>,
-) -> Result<writeback::ExportResult, String> {
-    ensure_main(&window)?;
-    let app_dir = app.app_data_dir().to_path_buf();
-    let fetched = fetch(&app_dir, &secrets()).await?;
-    let now = chrono::Utc::now();
-    let picked: BTreeSet<String> = ids.into_iter().collect();
-    let (plain, mut result) = plan_export(
-        &fetched.plain,
-        &local_providers(&gateway)?,
-        &picked,
-        &now.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
-    )?;
-    let passphrase = fetched.passphrase.clone();
-    let sealed = tauri::async_runtime::spawn_blocking(move || {
-        backup::seal(
-            &plain,
-            &passphrase,
-            backup::BACKUP_FORMAT,
-            backup::ITERATIONS,
-        )
-    })
-    .await
-    .map_err(|error| error.to_string())??;
-    result.saved_as = keep_aside(
-        &app_dir,
-        &fetched.remote.body,
-        &now.format("%Y-%m-%d-%H%M%S").to_string(),
-    )?;
-    fetched.client.put_backup(sealed, &fetched.remote).await?;
-    Ok(result)
 }
 
 #[cfg(test)]

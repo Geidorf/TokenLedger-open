@@ -867,8 +867,6 @@ pub fn run() {
             peer_sync::peer_sync_clear_config,
             peer_sync::peer_sync_preview,
             peer_sync::peer_sync_import_providers,
-            peer_sync::peer_sync_export_preview,
-            peer_sync::peer_sync_export_providers,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,

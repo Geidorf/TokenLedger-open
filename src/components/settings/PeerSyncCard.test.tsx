@@ -56,34 +56,4 @@ describe('PeerSyncCard', () => {
     expect(await screen.findByText(/已导入 1 个供应商，1 个 API key/)).toBeInTheDocument();
     expect(vi.mocked(invoke)).toHaveBeenCalledWith('peer_sync_import_providers', { peerIds: ['deepseek'] });
   });
-
-  it('写入外部网关默认不勾选，只发送选中的供应商并提示原文件已保存', async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'peer_sync_export_preview') {
-        return {
-          providers: [
-            { id: 'deepseek', name: 'DeepSeek', peerId: 'deepseek', update: true, unsupported: null },
-            { id: 'local', name: 'Local', peerId: 'local', update: false, unsupported: '不用 API key 的供应商不写入外部网关。' },
-          ],
-        };
-      }
-      if (cmd === 'peer_sync_export_providers') {
-        return { added: [], updated: ['deepseek'], skipped: [], savedAs: '2026-10-23-150000-server.peer-backup' };
-      }
-      return { url: 'https://dav.example/dav', user: 'me', hasPassword: true, hasPassphrase: true };
-    });
-    render(<PeerSyncCard />);
-    const open = await screen.findByRole('button', { name: '写入外部网关…' });
-    await waitFor(() => expect(open).toBeEnabled());
-    fireEvent.click(open);
-    const boxes = await screen.findAllByRole('checkbox');
-    expect(boxes[0]).not.toBeChecked();
-    expect(boxes[1]).toBeDisabled();
-    expect(screen.getByText('更新外部网关的「deepseek」')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '写入选中的 0 个供应商' })).toBeDisabled();
-    fireEvent.click(boxes[0]);
-    fireEvent.click(screen.getByRole('button', { name: '写入选中的 1 个供应商' }));
-    expect(await screen.findByText(/更新 1 个供应商.*2026-10-23-150000-server/)).toBeInTheDocument();
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith('peer_sync_export_providers', { ids: ['deepseek'] });
-  });
 });

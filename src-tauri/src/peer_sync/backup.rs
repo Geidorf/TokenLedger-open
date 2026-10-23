@@ -20,6 +20,7 @@ pub const BACKUP_FORMAT: &str = crate::peer_wire::BACKUP_FORMAT;
 #[allow(dead_code)] // shared usage is not read in v1
 pub const DATA_FORMAT: &str = crate::peer_wire::DATA_FORMAT;
 /// The peer's own iteration count, for files TokenLedger seals.
+#[allow(dead_code)] // nothing is sealed for the peer yet
 pub const ITERATIONS: u32 = 600_000;
 const KDF: &str = "pbkdf2-sha256";
 const VERSION: u32 = 1;
@@ -145,6 +146,7 @@ pub fn open(data: &[u8], passphrase: &str, format: &str) -> Result<Vec<u8>, Open
 
 /// Seals `plain` as the peer would: a whole backup indented, as the peer's
 /// `Seal` writes it, any other file compact.
+#[cfg_attr(not(test), allow(dead_code))] // only the tests seal for now
 pub fn seal(
     plain: &[u8],
     passphrase: &str,

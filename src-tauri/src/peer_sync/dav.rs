@@ -75,9 +75,8 @@ impl DavClient {
         Ok(request.basic_auth(&self.user, Some(&self.password)))
     }
 
-    /// Reads the peer's backup with the version the server gave it; `None`
-    /// when the folder has none yet.
-    pub async fn get_remote(&self) -> Result<Option<Remote>, String> {
+    /// Reads the peer's backup; `None` when the folder has none yet.
+    pub async fn get_backup(&self) -> Result<Option<Vec<u8>>, String> {
         let url = file_url(&self.base, &[FOLDER, BACKUP_FILE])?;
         let request = self.authorized(
             self.client
@@ -105,11 +104,6 @@ impl DavClient {
             }
             _ => {}
         }
-        let etag = response
-            .headers()
-            .get(reqwest::header::ETAG)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string);
         if response
             .content_length()
             .is_some_and(|length| length as usize > MAX_BACKUP_BYTES)
@@ -128,64 +122,9 @@ impl DavClient {
             }
             body.extend_from_slice(&chunk);
         }
-        Ok(Some(Remote { body, etag }))
-    }
-
-    /// Writes the backup over the version read, as the peer's own push does:
-    /// `If-Match` with its ETag, so a computer that wrote in between is not
-    /// overwritten. The file is then read back whole.
-    pub async fn put_backup(&self, body: Vec<u8>, read: &Remote) -> Result<(), String> {
-        let url = file_url(&self.base, &[FOLDER, BACKUP_FILE])?;
-        // A server without ETags: the file must still be the one read.
-        if read.etag.is_none() {
-            match self.get_remote().await? {
-                Some(now) if now.body == read.body => {}
-                _ => return Err(CHANGED.to_string()),
-            }
-        }
-        let mut request = self
-            .client
-            .put(url)
-            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream");
-        if let Some(etag) = &read.etag {
-            request = request.header(reqwest::header::IF_MATCH, etag);
-        }
-        let response = self
-            .authorized(request.body(body.clone()))?
-            .send()
-            .await
-            .map_err(|error| format!("写入 WebDAV 失败：{}", error.without_url()))?;
-        match response.status() {
-            StatusCode::PRECONDITION_FAILED => return Err(CHANGED.to_string()),
-            StatusCode::UNAUTHORIZED => {
-                return Err("WebDAV 服务器拒绝了用户名或密码（HTTP 401）。".to_string())
-            }
-            StatusCode::FORBIDDEN => {
-                return Err("WebDAV 账号没有写入权限（HTTP 403）。".to_string())
-            }
-            status if !status.is_success() => {
-                return Err(format!("WebDAV 写入失败：HTTP {}。", status.as_u16()))
-            }
-            _ => {}
-        }
-        match self.get_remote().await? {
-            Some(back) if back.body == body => Ok(()),
-            _ => Err(
-                "写入后读回的文件与写入的不一致，可能被中途截断。请在外部网关里检查同步状态。"
-                    .to_string(),
-            ),
-        }
+        Ok(Some(body))
     }
 }
-
-/// The backup as read, and the server's version of it.
-#[derive(Debug, Clone)]
-pub struct Remote {
-    pub body: Vec<u8>,
-    pub etag: Option<String>,
-}
-
-const CHANGED: &str = "服务器上的外部网关备份刚被其他电脑改过。请重新读取后再写入。";
 
 /// Basic auth over plain http only stays on this computer or the local
 /// network (a NAS at home); anywhere else it needs https.
