@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.tooling.preview.Preview
+import com.jeidorf.tokenledger.mobile.ui.me.V2MePage
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.math.roundToLong
@@ -51,7 +52,8 @@ internal fun LedgerDashboardPreviewHost(
     ambientMode: AmbientMode = AmbientMode.Console,
     tokenDisplayMode: TokenDisplayMode = TokenDisplayMode.Effective,
     forceLandscape: Boolean = false,
-    settingsVisible: Boolean = false
+    settingsVisible: Boolean = false,
+    mePage: V2MePage = V2MePage.Root
 ) {
     TokenLedgerTheme(appearance) {
         ProvideLedgerPalette(appearance) {
@@ -91,7 +93,8 @@ internal fun LedgerDashboardPreviewHost(
                     onSignOut = {},
                     initialDestination = destination,
                     initialInsightPane = insightPane,
-                    initialSettingsVisible = settingsVisible
+                    initialSettingsVisible = settingsVisible,
+                    initialMePage = mePage
                 )
             }
         }
