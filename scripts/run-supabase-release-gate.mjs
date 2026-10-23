@@ -172,7 +172,8 @@ function verifyContainer(target, expectedId) {
   const labels = info.Config?.Labels;
   if (!/^[a-f0-9]{64}$/.test(info.Id ?? '') || (expectedId && info.Id !== expectedId)
       || info.Name !== `/${name}` || info.State?.Running !== true
-      || !/^(?:public\.ecr\.aws\/|docker\.io\/)?supabase\/postgres:17\.[0-9]+(?:\.[0-9]+)*$/.test(info.Config?.Image ?? '')
+      // ghcr.io/supabase is the CLI's own fallback mirror when ECR rate-limits anonymous pulls.
+      || !/^(?:public\.ecr\.aws\/|ghcr\.io\/|docker\.io\/)?supabase\/postgres:17\.[0-9]+(?:\.[0-9]+)*$/.test(info.Config?.Image ?? '')
       || labels?.['com.supabase.cli.project'] !== isolation.project
       || labels?.['com.docker.compose.project'] !== isolation.project) throw new Error('dedicated container identity/labels/state mismatch');
   for (const bindings of [info.HostConfig?.PortBindings?.['5432/tcp'], info.NetworkSettings?.Ports?.['5432/tcp']]) {
