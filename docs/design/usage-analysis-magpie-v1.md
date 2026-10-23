@@ -23,7 +23,7 @@
 3. 请求子页指标：CSV 导出（全部页）、缓存命中率；输出速度只在来源记有耗时时给出，缺失时写明不可得，不按 0 显示；额度 Pace 沿用 `forecast-and-pace-v1.md`（额度子页已有）。
    - 导出：前端沿当前范围与筛选的游标逐页取完（每页 100 行，单次最多 50,000 行，超过时提示缩小范围），生成 CSV 交给新命令 `export_usage_csv` 写到应用数据目录的 `tokenledger_requests.csv`（带 BOM，路径由后端固定）。本地与云端走同一条路径。列：`time, tool, model, provider, source, granularity, requests, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cached_tokens, cache_hit_rate, cost_usd, usage_estimated, session_id, machine_id`；缓存读写只在拆分可证明时分列，缺失写空；`source` 在本机缺省为 `scan`，云端聚合不带来源时留空；`usage_estimated` 表示 Token 用量是否为约数；以 `= + - @` 开头的文本加单引号，防止表格软件当公式执行。设置里原有的「导出 CSV」仍是整本账本的原始导出，两者并存。
    - 缓存命中率 = 缓存读 ÷（输入 + 缓存读）。汇总条与展开行在读写拆分可证明时显示，否则写不可得。
-   - 输出速度：扫描记录没有请求耗时，不按 Token ÷ 时间间隔推算。网关与导入记录带整次请求耗时，2026-10-23 起明细在这些行上带可选 `latencyMs`（契约 §2.5），请求子页展开行与 CSV 据此给出输出速度，其余行不显示。
+   - 输出速度：扫描记录没有请求耗时，不按 Token ÷ 时间间隔推算。网关与导入记录带整次请求耗时，2026-10-23 起明细在这些行上带可选 `latencyMs`（契约 §2.5），请求子页展开行与 CSV 据此给出输出速度，其余行不显示；明细合计另带这些行的条数、输出合计与耗时合计，汇总条据此显示整体输出速度。
 
 ## 不做
 
