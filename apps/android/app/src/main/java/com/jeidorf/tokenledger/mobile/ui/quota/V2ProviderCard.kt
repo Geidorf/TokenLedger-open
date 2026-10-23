@@ -274,14 +274,18 @@ internal fun V2ProviderWindowRow(
         "${if (value == null) "上次记录重置" else "重置"} ${v2RelativeReset(window.resetsAt, LocalLedgerNow.current())}"
     val severity = (value as? QuotaDisplayValue.Progress)
         ?.let { quotaSeverityForFraction(v2QuotaRemainingFraction(it)) }
-    val shortfallNote = (value as? QuotaDisplayValue.Progress)
+    val now = LocalLedgerNow.current()
+    val okProgress = (value as? QuotaDisplayValue.Progress)
         ?.takeIf { presentation.status == QuotaWindowStatus.Ok }
-        ?.let { progress ->
-            quotaProjectedShortfallMinutes(
-                window.windowMinutes, window.resetsAt, v2QuotaRemainingFraction(progress), LocalLedgerNow.current()
-            )
-        }
+    val remainingFraction = okProgress?.let(::v2QuotaRemainingFraction)
+    val pace = okProgress?.let { quotaPaceRemainingFraction(window.windowMinutes, window.resetsAt, now) }
+    val shortfallNote = remainingFraction
+        ?.let { quotaProjectedShortfallMinutes(window.windowMinutes, window.resetsAt, it, now) }
         ?.let { quotaShortfallNote(name, it) }
+    // 匀速线只画在画布上，读屏要靠这里的文字拿到同样的比较（父级 clearAndSetSemantics 会吞掉子节点语义）。
+    val paceNote = if (remainingFraction != null && pace != null) {
+        quotaPaceAccessibilityNote(remainingFraction, pace)
+    } else null
     val statusColor = when {
         presentation.status == QuotaWindowStatus.Stale ||
             presentation.status == QuotaWindowStatus.AuthRequired -> palette.amber
@@ -299,7 +303,7 @@ internal fun V2ProviderWindowRow(
                     provider.localizedDisplayName(), name, presentation.status.localizedLabel(),
                     quotaValueLabel(value)?.let { label -> severity?.let { "$label（${it.label}）" } ?: label },
                     resetText, quotaFullTimestamp(window.observedAt)
-                ) + shortfallNote?.let { "，$it" }.orEmpty()
+                ) + listOfNotNull(paceNote, shortfallNote).joinToString("") { "，$it" }
             },
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -333,9 +337,7 @@ internal fun V2ProviderWindowRow(
                 palette = palette,
                 fraction = v2QuotaRemainingFraction(value),
                 degraded = presentation.status != QuotaWindowStatus.Ok,
-                pace = if (presentation.status == QuotaWindowStatus.Ok) {
-                    quotaPaceRemainingFraction(window.windowMinutes, window.resetsAt, LocalLedgerNow.current())
-                } else null
+                pace = pace
             )
         }
 

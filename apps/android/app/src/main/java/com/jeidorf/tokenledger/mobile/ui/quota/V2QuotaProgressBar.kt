@@ -160,6 +160,14 @@ internal fun quotaProjectedShortfallMinutes(
 
 private const val QUOTA_PROJECTION_MIN_ELAPSED_MINUTES = 10.0
 
+/** 匀速线的读屏说法：「按时间匀速应剩 40%，用得偏快」。与条同为四舍五入后的整数百分比比较。 */
+internal fun quotaPaceAccessibilityNote(remainingFraction: Float, pace: Float): String {
+    val remaining = Math.round(remainingFraction * 100f)
+    val expected = Math.round(pace * 100f)
+    val verdict = if (remaining < expected) "用得偏快" else "没有超出匀速"
+    return "按时间匀速应剩 $expected%，$verdict"
+}
+
 /** 「照现在的速度，5 小时额度会比重置早 25 分钟用完。」时长按分钟、小时、天取最粗的一级。 */
 internal fun quotaShortfallNote(windowLabel: String, shortfallMinutes: Long): String {
     val duration = when {

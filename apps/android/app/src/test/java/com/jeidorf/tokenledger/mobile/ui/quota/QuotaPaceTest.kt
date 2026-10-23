@@ -53,4 +53,10 @@ class QuotaPaceTest {
         assertEquals("照现在的速度，每周额度会比重置早 2 小时用完。", quotaShortfallNote("每周额度", 120L))
         assertEquals("照现在的速度，每周额度会比重置早 3 天用完。", quotaShortfallNote("每周额度", 3L * 24L * 60L + 30L))
     }
+
+    @Test
+    fun paceIsSpokenForScreenReaders() {
+        assertEquals("按时间匀速应剩 40%，用得偏快", quotaPaceAccessibilityNote(0.2f, 0.4f))
+        assertEquals("按时间匀速应剩 40%，没有超出匀速", quotaPaceAccessibilityNote(0.62f, 0.4f))
+    }
 }
