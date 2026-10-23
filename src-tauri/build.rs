@@ -124,6 +124,7 @@ fn main() {
         "peer_sync_clear_config",
         "peer_sync_preview",
         "peer_sync_import_providers",
+        "peer_live_snapshot",
         "get_local_session_analysis",
         "cancel_local_session_analysis",
         "get_entity_dashboard",

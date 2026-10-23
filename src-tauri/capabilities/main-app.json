@@ -65,6 +65,7 @@
     "allow-peer-sync-clear-config",
     "allow-peer-sync-preview",
     "allow-peer-sync-import-providers",
+    "allow-peer-live-snapshot",
     "allow-set-project-dimension",
     "allow-rebuild-project-index",
     "allow-get-local-session-analysis",
