@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StatsData } from '../types';
-import { cacheHitRate, outputTokensPerSecond, splitHeatmap, splitUsage } from './usageSplit';
+import { cacheHitRate, outputTokensPerSecond, splitHeatmapView, splitUsage } from './usageSplit';
 
 const stats = {
   summary: { totalTokens: 1000, inputTokens: 800, outputTokens: 200, cachedTokens: 0, totalCost: 3, totalRequests: 10, avgTokensPerReq: 100 },
@@ -77,13 +77,28 @@ describe('splitUsage', () => {
   });
 });
 
-describe('splitHeatmap', () => {
-  it('焦点决定热力图；设备或缺实体热力图时返回 null', () => {
-    expect(splitHeatmap(stats, null)).toBe(stats.heatmap);
-    expect(splitHeatmap(stats, { dimension: 'agent', id: 'claude' })).toEqual({ '2026-10-02': 400 });
-    expect(splitHeatmap(stats, { dimension: 'model', id: 'gpt-5' })).toEqual({ '2026-10-01': 500 });
-    expect(splitHeatmap(stats, { dimension: 'model', id: 'gpt-5-mini' })).toBeNull();
-    expect(splitHeatmap(stats, { dimension: 'device', id: 'mac' })).toBeNull();
+describe('splitHeatmapView', () => {
+  it('焦点决定热力图；设备或缺实体热力图时画整体', () => {
+    expect(splitHeatmapView(stats, null, 'tokens')).toEqual({ heatmap: stats.heatmap, metric: 'tokens', focused: false, metricFallback: false });
+    expect(splitHeatmapView(stats, { dimension: 'agent', id: 'claude' }, 'tokens').heatmap).toEqual({ '2026-10-02': 400 });
+    expect(splitHeatmapView(stats, { dimension: 'model', id: 'gpt-5' }, 'tokens').heatmap).toEqual({ '2026-10-01': 500 });
+    const noEntityHeatmap = splitHeatmapView(stats, { dimension: 'model', id: 'gpt-5-mini' }, 'tokens');
+    expect(noEntityHeatmap.focused).toBe(false);
+    expect(noEntityHeatmap.heatmap).toBe(stats.heatmap);
+    expect(splitHeatmapView(stats, { dimension: 'device', id: 'mac' }, 'tokens').focused).toBe(false);
+  });
+
+  it('指标跟随拆分：有逐日记录数与费用时画它们，没有时退回 Token 并标明', () => {
+    const local = {
+      ...stats,
+      heatmapRequests: { '2026-10-01': 6 },
+      heatmapCost: { '2026-10-01': 2 },
+      tools: { ...stats.tools, codex: { ...stats.tools.codex, heatmapRequests: { '2026-10-01': 6 }, heatmapCost: { '2026-10-01': 2 } } },
+    };
+    expect(splitHeatmapView(local, null, 'requests')).toEqual({ heatmap: { '2026-10-01': 6 }, metric: 'requests', focused: false, metricFallback: false });
+    expect(splitHeatmapView(local, { dimension: 'agent', id: 'codex' }, 'cost')).toEqual({ heatmap: { '2026-10-01': 2 }, metric: 'cost', focused: true, metricFallback: false });
+    expect(splitHeatmapView(local, { dimension: 'agent', id: 'claude' }, 'cost')).toEqual({ heatmap: { '2026-10-02': 400 }, metric: 'tokens', focused: true, metricFallback: true });
+    expect(splitHeatmapView(stats, null, 'requests')).toEqual({ heatmap: stats.heatmap, metric: 'tokens', focused: false, metricFallback: true });
   });
 });
 

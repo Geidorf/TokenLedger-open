@@ -136,4 +136,19 @@ describe('HeatmapSection', () => {
     expect(dayCell('2026-09-20')).toHaveAttribute('data-level', '5');
     expect(container.querySelector('.year-heatmap')).toHaveAttribute('tabindex', '0');
   });
+
+  it('跟随拆分指标画记录数，退回 Token 时说明原因', () => {
+    const { container, rerender } = render(
+      <HeatmapSection heatmap={{ '2026-09-20': 12 }} range="year" customRange={null} timeContext={cutoff('2026-09-24')} metric="requests" />,
+    );
+    expect(screen.getByText('本年度记录数日历')).toBeInTheDocument();
+    expect(dayCell('2026-09-20')).toHaveAttribute('aria-label', '2026-09-20: 12 条记录');
+    expect(container.querySelector('.heatmap-coverage')).toBeNull();
+
+    rerender(
+      <HeatmapSection heatmap={{ '2026-09-20': 5_000 }} range="year" customRange={null} timeContext={cutoff('2026-09-24')} metricFallback />,
+    );
+    expect(screen.getByText('本年度 Token 消耗日历')).toBeInTheDocument();
+    expect(container.querySelector('.heatmap-coverage')).toHaveTextContent('当前来源没有逐日的记录数与费用，这里显示有效 Token。');
+  });
 });

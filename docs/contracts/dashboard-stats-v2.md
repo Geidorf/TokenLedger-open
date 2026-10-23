@@ -199,6 +199,10 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 
 共享 fixture `gateway-dedupe-v2.json` 锁定上述映射、区间与窗口、两条规则、零 Token 失败请求与合并后的有效 Token 合计。
 
+### 2.6 逐日记录数与费用（2026-10-23，可选，仅本机）
+
+本机统计在顶层与每个 `tools[*]`、`models[*]` 上，与 `heatmap` 并列可带 `heatmapRequests`（当天记录数，正整数）与 `heatmapCost`（当天预估费用，美元，非负有限数，与 `summary.totalCost` 同一逐行估价）。两者与同一对象的 `heatmap` 日期键完全一致；带其一必带另一，且只在有 `heatmap` 的对象上出现。云端 RPC、实体看板的 `heatmap` 与旧缓存不带，读者遇到缺失时只画有效 Token 并说明，不按 0 补齐，也不从 `trends` 或 `dailyCosts` 推算。
+
 ## 3. comparison
 
 ```json
@@ -405,3 +409,4 @@ v2 内的只增扩展逐条记在这里；`meta.contractVersion` 只在 §7 第 
 - 2026-10-23（magpie 数据打通）：§2.5 明细 `source` 增加取值 `imported-magpie`，引用 `magpie-import-v1`；读者对未知取值仍按未知来源显示，旧版本不丢行；`contractVersion` 仍为 2。
 - 2026-10-23（输出速度）：§2.5 本机明细的网关与导入行增加可选 `latencyMs`；扫描行、小时聚合与云端不带；旧读者忽略该字段；`contractVersion` 仍为 2。
 - 2026-10-23（输出速度合计）：§2.5 本机明细 `filteredSummary` 增加可选 `timedRequests` / `timedOutputTokens` / `timedLatencyMs`；旧读者忽略；`contractVersion` 仍为 2。
+- 2026-10-23（热力图指标）：新增 §2.6 本机可选 `heatmapRequests` / `heatmapCost`（顶层与工具、模型）；云端不带；`contractVersion` 仍为 2。

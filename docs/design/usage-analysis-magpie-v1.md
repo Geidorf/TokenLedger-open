@@ -19,7 +19,7 @@
 ## 分步
 
 1. 信息架构：四个子页与侧栏、锚点、顶栏统一（已合并，#7）。
-2. 统一 Split by（#12）：概览的分布模块改为「用量拆分」，同一份数据按 Agent、模型、设备拆分，指标可切 Token、请求、费用，选中一项后其他维度随之收窄，热力图（现有 YearHeatmap）跟着画这一项的逐日用量。契约里 Agent × 模型只有有效 Token，交叉时请求与费用不可得；设备不与其他维度交叉；逐日热力图只有 Token，暂不提供请求、费用热力。趋势图仍按 Agent 堆叠，暂不随焦点。
+2. 统一 Split by（#12）：概览的分布模块改为「用量拆分」，同一份数据按 Agent、模型、设备拆分，指标可切 Token、请求、费用，选中一项后其他维度随之收窄，热力图（现有 YearHeatmap）跟着画这一项的逐日用量。契约里 Agent × 模型只有有效 Token，交叉时请求与费用不可得；设备不与其他维度交叉；逐日热力图起初只有 Token；2026-10-23 起本机统计另带逐日记录数与费用（契约 §2.6），热力图跟随拆分指标切换，云端仍只有 Token。趋势图仍按 Agent 堆叠，暂不随焦点。
 3. 请求子页指标：CSV 导出（全部页）、缓存命中率；输出速度只在来源记有耗时时给出，缺失时写明不可得，不按 0 显示；额度 Pace 沿用 `forecast-and-pace-v1.md`（额度子页已有）。
    - 导出：前端沿当前范围与筛选的游标逐页取完（每页 100 行，单次最多 50,000 行，超过时提示缩小范围），生成 CSV 交给新命令 `export_usage_csv` 写到应用数据目录的 `tokenledger_requests.csv`（带 BOM，路径由后端固定）。本地与云端走同一条路径。列：`time, tool, model, provider, source, granularity, requests, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cached_tokens, cache_hit_rate, cost_usd, usage_estimated, session_id, machine_id`；缓存读写只在拆分可证明时分列，缺失写空；`source` 在本机缺省为 `scan`，云端聚合不带来源时留空；`usage_estimated` 表示 Token 用量是否为约数；以 `= + - @` 开头的文本加单引号，防止表格软件当公式执行。设置里原有的「导出 CSV」仍是整本账本的原始导出，两者并存。
    - 缓存命中率 = 缓存读 ÷（输入 + 缓存读）。汇总条与展开行在读写拆分可证明时显示，否则写不可得。

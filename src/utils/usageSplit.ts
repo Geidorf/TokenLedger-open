@@ -153,13 +153,38 @@ export function splitUsage(stats: StatsData, dimension: SplitDimension, metric: 
   return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, false, costTotal);
 }
 
+interface HeatmapSource {
+  heatmap?: Record<string, number>;
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
+}
+
+export interface SplitHeatmapView {
+  heatmap: Record<string, number>;
+  /** 实际画的指标；来源不带所选指标的逐日数据时退回 Token。 */
+  metric: SplitMetric;
+  /** 画的是焦点项自己的逐日数据。 */
+  focused: boolean;
+  /** 所选指标没有逐日数据（云端或旧缓存），已退回 Token。 */
+  metricFallback: boolean;
+}
+
+function pickHeatmap(source: HeatmapSource, metric: SplitMetric): Record<string, number> | undefined {
+  if (metric === 'requests') return source.heatmapRequests;
+  if (metric === 'cost') return source.heatmapCost;
+  return source.heatmap;
+}
+
 /**
- * 热力图跟随焦点：选中 Agent 或模型时用它自己的逐日有效 Token；
- * 设备没有逐日数据，来源也可能不带实体热力图，这两种情况返回 null，由调用方退回整体热力图并说明。
+ * 热力图同时跟随拆分的焦点与指标：本机统计带逐日记录数与费用（契约 §2.6 可选扩展），
+ * 云端与旧缓存只有逐日有效 Token，此时退回 Token 并由调用方说明。
  */
-export function splitHeatmap(stats: StatsData, focus: SplitFocus | null): Record<string, number> | null {
-  if (!focus) return stats.heatmap;
-  if (focus.dimension === 'agent') return stats.tools?.[focus.id]?.heatmap ?? null;
-  if (focus.dimension === 'model') return stats.models?.[focus.id]?.heatmap ?? null;
-  return null;
+export function splitHeatmapView(stats: StatsData, focus: SplitFocus | null, metric: SplitMetric): SplitHeatmapView {
+  const entity: HeatmapSource | undefined = focus?.dimension === 'agent' ? stats.tools?.[focus.id]
+    : focus?.dimension === 'model' ? stats.models?.[focus.id] : undefined;
+  const source: HeatmapSource = entity?.heatmap ? entity : stats;
+  const focused = source === entity;
+  const picked = pickHeatmap(source, metric);
+  if (picked) return { heatmap: picked, metric, focused, metricFallback: false };
+  return { heatmap: source.heatmap ?? {}, metric: 'tokens', focused, metricFallback: metric !== 'tokens' };
 }

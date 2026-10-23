@@ -6204,6 +6204,9 @@ struct WindowTotals<'a> {
     requests: i64,
     cache_split_proven: bool,
     heatmap: HashMap<&'a str, i64>,
+    /// 与 `heatmap` 同日期键的逐日记录数与预估费用（契约 §2.6 本机可选扩展）。
+    heatmap_requests: HashMap<&'a str, i64>,
+    heatmap_cost: HashMap<&'a str, f64>,
     /// 只有工具使用：该工具下各模型的有效 Token。
     models: HashMap<&'a str, i64>,
 }
@@ -6221,6 +6224,8 @@ impl<'a> WindowTotals<'a> {
             requests: 0,
             cache_split_proven: true,
             heatmap: HashMap::new(),
+            heatmap_requests: HashMap::new(),
+            heatmap_cost: HashMap::new(),
             models: HashMap::new(),
         }
     }
@@ -6244,6 +6249,8 @@ impl<'a> WindowTotals<'a> {
         self.cache_split_proven &= cache_split_proven;
         if let Some(date) = heatmap_date {
             *self.heatmap.entry(date).or_insert(0) += total;
+            *self.heatmap_requests.entry(date).or_insert(0) += 1;
+            *self.heatmap_cost.entry(date).or_insert(0.0) += cost;
         }
     }
 
@@ -6262,11 +6269,25 @@ impl<'a> WindowTotals<'a> {
         object.insert("cost".to_string(), json!(self.cost));
         object.insert("requests".to_string(), json!(self.requests));
         object.insert("heatmap".to_string(), json_counts(self.heatmap));
+        object.insert(
+            "heatmapRequests".to_string(),
+            json_counts(self.heatmap_requests),
+        );
+        object.insert("heatmapCost".to_string(), json_amounts(self.heatmap_cost));
         if include_models {
             object.insert("models".to_string(), json_counts(self.models));
         }
         Value::Object(object)
     }
+}
+
+fn json_amounts(amounts: HashMap<&str, f64>) -> Value {
+    Value::Object(
+        amounts
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), json!(value)))
+            .collect(),
+    )
 }
 
 fn json_counts(counts: HashMap<&str, i64>) -> Value {
@@ -6310,6 +6331,8 @@ fn aggregate_rows_for_window(
     let mut tools: HashMap<&str, WindowTotals> = HashMap::new();
     let mut models: HashMap<&str, WindowTotals> = HashMap::new();
     let mut heatmap_map: HashMap<&str, i64> = HashMap::new();
+    let mut heatmap_requests: HashMap<&str, i64> = HashMap::new();
+    let mut heatmap_cost: HashMap<&str, f64> = HashMap::new();
     let mut history_list = Vec::new();
     let mut active_tools: HashSet<&str> = HashSet::new();
     let mut machine_stats: HashMap<&str, SummaryAccumulator> = HashMap::new();
@@ -6345,6 +6368,8 @@ fn aggregate_rows_for_window(
 
         if let Some(date) = heatmap_date {
             *heatmap_map.entry(date).or_insert(0) += row_total;
+            *heatmap_requests.entry(date).or_insert(0) += 1;
+            *heatmap_cost.entry(date).or_insert(0.0) += row_cost;
         }
 
         let tool = tools
@@ -6493,6 +6518,8 @@ fn aggregate_rows_for_window(
     stats.insert("models".to_string(), Value::Object(models_stats));
     stats.insert("trends".to_string(), Value::Array(trends_list));
     stats.insert("heatmap".to_string(), json_counts(heatmap_map));
+    stats.insert("heatmapRequests".to_string(), json_counts(heatmap_requests));
+    stats.insert("heatmapCost".to_string(), json_amounts(heatmap_cost));
     stats.insert("history".to_string(), Value::Array(history_list));
     stats.insert("machines".to_string(), json!(machine_list));
     stats.insert(
