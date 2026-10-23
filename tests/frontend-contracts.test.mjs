@@ -6841,3 +6841,18 @@ test('R-30 (T10.177 + T10.187): Android LedgerTokens.kt 的图表 8 槽与「其
   assert.equal(otherAfter('chart = DarkChart,'), fixture.dark.other.toLowerCase(), 'Android 深色 chartOther 与 fixture.dark.other 不一致');
   assert.equal(otherAfter('chart = LightChart,'), fixture.light.other.toLowerCase(), 'Android 浅色 chartOther 与 fixture.light.other 不一致');
 });
+
+test('settings pages draw compact controls inside a 44px target (GLB-03)', () => {
+  const css = readSource(path.join(process.cwd(), 'src', 'styles', 'settings-pages.css'));
+  const main = readSource(path.join(process.cwd(), 'src', 'main.tsx'));
+  // Loaded after the shared surfaces so it wins over index.css and the lazy section sheets.
+  assert.match(main, /import '\.\/styles\/surfaces\.css';\nimport '\.\/styles\/settings-pages\.css';/);
+  assert.match(css, /\.settings-directory-search \{[^}]*height: 44px;/);
+  assert.match(css, /\.settings-directory-list > button \{[^}]*min-height: 44px;/);
+  assert.match(css, /:is\(\.settings-input, \.settings-number, \.settings-select\) \{[^}]*height: 44px;[^}]*border: 6px solid transparent;/);
+  assert.match(css, /:is\(\.primary-inline, \.secondary-inline, \.ghost-inline, \.danger-inline\) \{[^}]*min-height: 44px;/);
+  assert.match(css, /:is\(\.primary-inline, \.secondary-inline, \.ghost-inline, \.danger-inline\)::before \{[^}]*inset: 6px 0;/);
+  assert.match(css, /\.settings-input-affix \{[^}]*width: 44px;[^}]*height: 44px;/);
+  assert.match(css, /\.share-modal-close \{[^}]*width: 44px;[^}]*height: 44px;/);
+  assert.match(css, /\.share-privacy-toggle \{[^}]*min-height: 44px;/);
+});
