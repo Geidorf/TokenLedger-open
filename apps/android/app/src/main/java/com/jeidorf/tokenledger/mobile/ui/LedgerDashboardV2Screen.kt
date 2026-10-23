@@ -760,6 +760,8 @@ internal fun LazyListScope.v2InsightsItems(
 ) {
     item(key = "insights-tabs", contentType = "controls") { V2InsightStrip(palette, pane, onPaneChange) }
     when (pane) {
+        // 概览由 v2OverviewItems 渲染，调用方不会以概览进入这里。
+        InsightPane.Overview -> Unit
         InsightPane.Trend -> {
             item(key = "insights-trend", contentType = "chart") {
                 V2TrendInsightCard(
