@@ -857,6 +857,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::magpie_import::magpie_import_status,
+            commands::magpie_import::magpie_import_run,
+            commands::magpie_import::magpie_import_clear,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,

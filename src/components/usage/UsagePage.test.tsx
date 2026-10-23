@@ -101,6 +101,7 @@ describe('请求明细的来源与估算标记', () => {
     expect(recordSourceLabel({})).toBe('日志扫描');
     expect(recordSourceLabel({ source: 'scan' })).toBe('日志扫描');
     expect(recordSourceLabel({ source: 'gateway' })).toBe('网关');
+    expect(recordSourceLabel({ source: 'imported-magpie' })).toBe('magpie 导入');
     expect(recordSourceLabel({ source: 'x' })).toBe('未知来源');
   });
 
