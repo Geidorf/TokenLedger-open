@@ -2,8 +2,6 @@ package com.jeidorf.tokenledger.mobile.ui.hero
 
 import androidx.compose.foundation.background
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +33,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -71,7 +72,7 @@ import com.jeidorf.tokenledger.mobile.ui.navigation.TodayReviewAction
 import com.jeidorf.tokenledger.mobile.v2FormatTokens
 
 /**
- * 用量概览主区（重构方案 v2，对齐参考设计）：一句变化说明 → 一张分格汇总卡 → 一张每日走势卡。
+ * 用量概览主区（重构方案 v2，对齐参考设计）：一句变化说明 → 一张分格汇总卡 → 一张 Token 走势卡。
  *
  * 汇总卡上半是 Token 与预估费用两格（窄屏或大字时上下排），下半是活跃、缓存复用率、记录数三格，
  * 格间只用发丝线分隔，不再有品牌光晕与盒中盒。主数字仍是唯一的 Token 口径切换入口，
@@ -127,9 +128,17 @@ internal fun V2HeroCard(
                 HeroGridRule(palette)
                 costCell(Modifier.fillMaxWidth())
             } else {
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                // 两格各占一半，中线画在行背景上：不用固有高度约束，Token 格里口径胶囊折行时仍能完整长高。
+                val divider = palette.divider
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .drawBehind {
+                            val line = LedgerStroke.hairline.toPx()
+                            drawRect(divider, topLeft = Offset((size.width - line) / 2f, 0f), size = Size(line, size.height))
+                        }
+                ) {
                     tokenCell(Modifier.weight(1f))
-                    Box(Modifier.fillMaxHeight().width(LedgerStroke.hairline).background(palette.divider))
                     costCell(Modifier.weight(1f))
                 }
             }
@@ -139,7 +148,8 @@ internal fun V2HeroCard(
             }
         }
         V2Card(palette, contentPadding = PaddingValues(start = LedgerSpace.md, end = LedgerSpace.md, top = LedgerSpace.md, bottom = LedgerSpace.xs)) {
-            Text("每日 Token", color = palette.muted, style = LedgerType.caption)
+            // 桶粒度随范围变化（今日按小时、今年按月），标题不写「每日」。
+            Text("Token 走势", color = palette.muted, style = LedgerType.caption)
             Spacer(Modifier.height(LedgerSpace.sm))
             V2TrendChart(
                 palette = palette,
