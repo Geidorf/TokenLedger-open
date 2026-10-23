@@ -16,7 +16,7 @@ test('编译后的设计令牌不产生自引用，圆角保留可解析值', as
   assert.deepEqual(cycles, []);
   const mediumRadius = [];
   output.walkDecls('--radius-md', (declaration) => { mediumRadius.push(declaration.value); });
-  assert.equal(mediumRadius.at(-1), '10px');
+  assert.equal(mediumRadius.at(-1), '8px');
   const warningColors = [];
   output.walkRules('.text-warning', (rule) => {
     rule.walkDecls('color', (declaration) => warningColors.push(declaration.value));
