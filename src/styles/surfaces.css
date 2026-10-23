@@ -428,6 +428,32 @@
   color: var(--color-text-primary);
 }
 
+/* ----- Model pages: fields ------------------------------------------------
+   Search boxes, selects and the model picker sit on the card as outlined
+   fields instead of grey slabs; focus keeps the shared ring. */
+.app-shell .mw-search,
+.app-shell .mw-native-select,
+.app-shell .mw-select,
+.app-shell .mw-value-btn {
+  border-color: var(--color-border);
+  background: var(--shell-field);
+}
+
+.app-shell .mw-value-btn:hover,
+.app-shell .mw-select:hover,
+.app-shell .mw-native-select:hover {
+  border-color: var(--color-border-strong);
+}
+
+.app-shell .mw-value-btn.is-open {
+  border-color: var(--color-primary-focus);
+}
+
+/* The code sample reads as one quiet block: its head shares the fill. */
+.app-shell .mw-code-head {
+  border-bottom-color: transparent;
+}
+
 /* ----- Settings directory --------------------------------------------------
    The open section is marked like a list selection, not tinted: the same
    white thumb as the switches, with the label in primary text. */

@@ -16,6 +16,8 @@
   --shell-thumb-edge: 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
   --shell-control-fg: #63636b;
   --shell-hover: rgba(0, 0, 0, 0.05);
+  /* Fields on a card: white with a hairline in light, a raised fill in dark. */
+  --shell-field: var(--color-bg-panel);
 }
 
 :root:not([data-theme="light"]) {
@@ -24,6 +26,7 @@
   --shell-thumb-edge: inset 0 0.5px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shell-control-fg: #a1a1aa;
   --shell-hover: rgba(255, 255, 255, 0.06);
+  --shell-field: var(--color-bg-input);
 }
 
 .app-shell {
