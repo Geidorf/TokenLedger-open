@@ -91,7 +91,7 @@ internal fun routingBlocker(feed: RoutingFeed, scene: RoutingScene?): Pair<Strin
     }
     return when (scene.empty) {
         RoutingEmptyReason.NoSnapshot -> "还没有路由数据" to
-            "在桌面端设置里打开「把实时路由同步到手机」，网关的每次请求会在几秒内出现在这里：" +
+            "在桌面端设置里打开「把实时路由同步到手机」，网关经手的每个请求会在几秒内出现在这里：" +
             "哪个 Agent 发的、分到哪个账号、哪个在应答、哪个在限流。"
         RoutingEmptyReason.Offline -> {
             val minutes = (scene.liveness as? RoutingLiveness.Offline)?.minutes ?: 1L
