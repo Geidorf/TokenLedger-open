@@ -157,7 +157,7 @@ internal fun quotaShortfallNote(windowLabel: String, shortfallMinutes: Long): St
         }
         else -> "${shortfallMinutes / (60L * 24L)} 天"
     }
-    return "照现在的速度，${windowLabel}会比重置早 $duration 用完。"
+    return "照现在的速度，${windowLabel}会比重置早 ${duration}用完。"
 }
 
 /**
