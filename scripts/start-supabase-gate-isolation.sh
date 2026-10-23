@@ -31,6 +31,10 @@ if grep -nE '^[[:space:]]*(port|shadow_port)[[:space:]]*=[[:space:]]*5432[0-9]' 
   exit 1
 fi
 
+# 门禁只接受 public.ecr.aws / docker.io 的 supabase/postgres 镜像；CLI 在 GitHub Actions 上
+# 会不定期改从 ghcr.io 拉镜像，导致容器身份核对时好时坏。这里钉住镜像源。
+export SUPABASE_INTERNAL_IMAGE_REGISTRY="${SUPABASE_INTERNAL_IMAGE_REGISTRY:-public.ecr.aws}"
+
 supabase start --workdir "$WORKDIR"
 
 CONTAINER="$(docker inspect --format '{{.Id}}' "supabase_db_$PROJECT")"
@@ -41,4 +45,5 @@ OUT="${GITHUB_ENV:-/dev/stdout}"
   echo "TOKENLEDGER_SUPABASE_GATE_WORKDIR=$WORKDIR"
   echo "TOKENLEDGER_SUPABASE_GATE_PROJECT=$PROJECT"
   echo "TOKENLEDGER_SUPABASE_GATE_CONTAINER=$CONTAINER"
+  echo "SUPABASE_INTERNAL_IMAGE_REGISTRY=$SUPABASE_INTERNAL_IMAGE_REGISTRY"
 } >> "$OUT"
