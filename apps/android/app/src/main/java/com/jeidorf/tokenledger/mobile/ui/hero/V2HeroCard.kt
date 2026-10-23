@@ -1,6 +1,7 @@
 package com.jeidorf.tokenledger.mobile.ui.hero
 
 import androidx.compose.foundation.background
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,8 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -72,6 +71,13 @@ import com.jeidorf.tokenledger.mobile.ui.navigation.InsightPane
 import com.jeidorf.tokenledger.mobile.ui.navigation.TodayReviewAction
 import com.jeidorf.tokenledger.mobile.v2FormatTokens
 
+/**
+ * 用量概览主区（重构方案 v2，对齐参考设计）：一句变化说明 → 一张分格汇总卡 → 一张 Token 走势卡。
+ *
+ * 汇总卡上半是 Token 与预估费用两格（窄屏或大字时上下排），下半是活跃、缓存复用率、记录数三格，
+ * 格间只用发丝线分隔，不再有品牌光晕与盒中盒。主数字仍是唯一的 Token 口径切换入口，
+ * 费用格仍是费用隐身开关；走势卡底部保留「查看趋势」行动行。
+ */
 @Composable
 internal fun V2HeroCard(
     palette: MobileV2Palette,
@@ -85,84 +91,104 @@ internal fun V2HeroCard(
     val tokenCapsule = heroChangeCapsule(comparison, comparison?.delta?.tokens)
     val costCapsule = heroChangeCapsule(comparison, comparison?.delta?.cost)
     val displayedTokens = displayedTokenCount(tokenDisplayMode, summary.effectiveTokens, summary.cachedTokens)
-    val stackValues = shouldStackDashboardHeroValues(LocalDensity.current.fontScale, LocalConfiguration.current.screenWidthDp)
+    val costText = v2FormatMoney(LocalContext.current, summary.totalCost, LocalCostMaskEnabled.current, LocalDashboardCurrency.current)
+    // 半宽格放不下长金额（如 ¥1,234,567.89）时整卡改为上下排，金额不截断。
+    val stackValues = shouldStackDashboardHeroValues(LocalDensity.current.fontScale, LocalConfiguration.current.screenWidthDp) ||
+        costText.length > HERO_COST_INLINE_MAX_CHARS
     val baseline = heroBaselineCaption(comparison)
     val subline = heroTokenSubline(summary, tokenDisplayMode)
     val peak = todayPeakLabel(stats)
     val actionLabel = todayTrendActionLabel(peak)
     val metricSlots = todayMetricStrip(stats)
-    V2Card(
-        palette,
-        cornerRadius = if (palette.isEInk) LedgerRadius.einkCard else LedgerRadius.lg,
-        contentPadding = PaddingValues(LedgerSpace.lg)
-    ) {
-        Box(Modifier.fillMaxWidth()) {
-            if (!palette.isEInk) {
-                // 光晕铺到卡片外沿（向外让出内容内边距），由 V2Card 的圆角裁切；
-                // 只铺内容区时左上角会露出一块直角矩形（视觉审查 A3）。
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .drawBehind {
-                            val inset = LedgerSpace.lg.toPx()
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(palette.tokens.brandSoftStart, Color.Transparent),
-                                    center = Offset(-inset, -inset),
-                                    radius = size.minDimension + inset
-                                ),
-                                topLeft = Offset(-inset, -inset),
-                                size = Size(size.width + inset * 2, size.height + inset * 2)
-                            )
-                        }
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(LedgerSpace.md)) {
-                Text(
-                    "${tokenDisplayMode.label} Token",
-                    color = palette.muted,
-                    style = LedgerType.label
-                )
-                if (stackValues) {
+    Column(verticalArrangement = Arrangement.spacedBy(LedgerSpace.md)) {
+        HeroChangeLine(palette, tokenCapsule, baseline)
+        V2Card(palette, contentPadding = PaddingValues(0.dp)) {
+            val tokenCell: @Composable (Modifier) -> Unit = { modifier ->
+                Column(modifier.padding(LedgerSpace.lg), verticalArrangement = Arrangement.spacedBy(LedgerSpace.xs)) {
+                    Text("${tokenDisplayMode.label} Token", color = palette.muted, style = LedgerType.caption)
                     V2HeroTokenValueRow(
                         palette = palette,
                         displayedTokens = displayedTokens,
-                        capsule = tokenCapsule,
-                        baseline = baseline,
                         tokenDisplayMode = tokenDisplayMode,
                         onTokenDisplayModeChange = onTokenDisplayModeChange
                     )
-                    Text(subline, color = palette.muted, style = LedgerType.meta)
-                    V2HeroCostToggle(palette, summary.totalCost, stacked = true, costCapsule = costCapsule)
-                } else {
-                    Row(verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerSpace.xs)) {
-                            V2HeroTokenValueRow(
-                                palette = palette,
-                                displayedTokens = displayedTokens,
-                                capsule = tokenCapsule,
-                                baseline = baseline,
-                                tokenDisplayMode = tokenDisplayMode,
-                                onTokenDisplayModeChange = onTokenDisplayModeChange
-                            )
-                            Text(subline, color = palette.muted, style = LedgerType.meta)
-                        }
-                        V2HeroCostToggle(palette, summary.totalCost, stacked = false, costCapsule = costCapsule)
-                    }
-                }
-                V2TrendChart(
-                    palette = palette,
-                    comparison = stats.comparison,
-                    fallback = stats.trends,
-                    modifier = Modifier.fillMaxWidth().height(82.dp),
-                    compact = true
-                )
-                TodayMetricStrip(palette, metricSlots, stacked = stackValues)
-                TodayTrendActionRow(palette, actionLabel) {
-                    onOpenInsights(TodayReviewAction.ExplainChange.targetPane!!)
+                    Text(subline, color = palette.faint, style = LedgerType.meta)
                 }
             }
+            val costCell: @Composable (Modifier) -> Unit = { modifier ->
+                Box(modifier.padding(LedgerSpace.lg)) {
+                    V2HeroCostToggle(
+                        palette,
+                        summary.totalCost,
+                        stacked = true,
+                        costCapsule = costCapsule,
+                        horizontalAlignment = Alignment.Start
+                    )
+                }
+            }
+            if (stackValues) {
+                tokenCell(Modifier.fillMaxWidth())
+                HeroGridRule(palette)
+                costCell(Modifier.fillMaxWidth())
+            } else {
+                // 两格各占一半，中线画在行背景上：不用固有高度约束，Token 格里口径胶囊折行时仍能完整长高。
+                val divider = palette.divider
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .drawBehind {
+                            val line = LedgerStroke.hairline.toPx()
+                            drawRect(divider, topLeft = Offset((size.width - line) / 2f, 0f), size = Size(line, size.height))
+                        }
+                ) {
+                    tokenCell(Modifier.weight(1f))
+                    costCell(Modifier.weight(1f))
+                }
+            }
+            HeroGridRule(palette)
+            Box(Modifier.padding(horizontal = LedgerSpace.sm, vertical = LedgerSpace.xs)) {
+                TodayMetricStrip(palette, metricSlots, stacked = stackValues)
+            }
         }
+        V2Card(palette, contentPadding = PaddingValues(start = LedgerSpace.md, end = LedgerSpace.md, top = LedgerSpace.md, bottom = LedgerSpace.xs)) {
+            // 桶粒度随范围变化（今日按小时、今年按月），标题不写「每日」。
+            Text("Token 走势", color = palette.muted, style = LedgerType.caption)
+            Spacer(Modifier.height(LedgerSpace.sm))
+            V2TrendChart(
+                palette = palette,
+                comparison = stats.comparison,
+                fallback = stats.trends,
+                modifier = Modifier.fillMaxWidth().height(108.dp),
+                compact = true
+            )
+            TodayTrendActionRow(palette, actionLabel) {
+                onOpenInsights(TodayReviewAction.ExplainChange.targetPane!!)
+            }
+        }
+    }
+}
+
+/** 半宽费用格在 360dp 级屏幕上能完整放下的金额字符数（含币种符号、千分位与小数点）。 */
+internal const val HERO_COST_INLINE_MAX_CHARS = 10
+
+/** 汇总卡格间的横向发丝线。 */
+@Composable
+private fun HeroGridRule(palette: MobileV2Palette) {
+    Box(Modifier.fillMaxWidth().height(LedgerStroke.hairline).background(palette.divider))
+}
+
+/** 卡片上方的一行变化说明：基线名 + 不带颜色的变化胶囊；无基线时只写「无自动基线」等说法。 */
+@Composable
+private fun HeroChangeLine(palette: MobileV2Palette, capsule: HeroChangeCapsule, baseline: String?) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(LedgerSpace.sm)
+    ) {
+        if (baseline != null) {
+            Text(baseline, color = palette.muted, style = LedgerType.meta)
+        }
+        HeroChangeCapsuleView(palette, capsule)
     }
 }
 
@@ -171,8 +197,6 @@ internal fun V2HeroCard(
 internal fun V2HeroTokenValueRow(
     palette: MobileV2Palette,
     displayedTokens: Long,
-    capsule: HeroChangeCapsule,
-    baseline: String?,
     tokenDisplayMode: TokenDisplayMode,
     onTokenDisplayModeChange: (TokenDisplayMode) -> Unit,
     modifier: Modifier = Modifier
@@ -195,17 +219,15 @@ internal fun V2HeroTokenValueRow(
         Text(
             formattedTokens,
             color = palette.text,
-            style = LedgerType.numXL,
+            style = LedgerType.numL,
             maxLines = 1,
-            softWrap = false
+            softWrap = false,
+            modifier = Modifier.align(Alignment.CenterVertically)
         )
-        HeroChangeCapsuleView(palette, capsule)
-        if (baseline != null) {
-            Text(baseline, color = palette.muted, style = LedgerType.meta, modifier = Modifier.align(Alignment.CenterVertically))
-        }
         Row(
             modifier = Modifier
-                .heightIn(min = 28.dp)
+                .align(Alignment.CenterVertically)
+                .heightIn(min = 24.dp)
                 .clip(RoundedCornerShape(LedgerRadius.sm))
                 .background(palette.raised)
                 .padding(horizontal = LedgerSpace.sm),
@@ -223,7 +245,8 @@ internal fun V2HeroCostToggle(
     palette: MobileV2Palette,
     totalCost: Double,
     stacked: Boolean,
-    costCapsule: HeroChangeCapsule? = null
+    costCapsule: HeroChangeCapsule? = null,
+    horizontalAlignment: Alignment.Horizontal = Alignment.End
 ) {
     val context = LocalContext.current
     val isCostMasked = LocalCostMaskEnabled.current
@@ -244,7 +267,7 @@ internal fun V2HeroCostToggle(
             onClick(costMaskActionLabel(isCostMasked), null)
         }
         .padding(horizontal = LedgerSpace.xs, vertical = LedgerSpace.hairline)
-    Column(modifier = modifier, horizontalAlignment = Alignment.End) {
+    Column(modifier = modifier, horizontalAlignment = horizontalAlignment) {
         V2HeroCostLabel(palette, isCostMasked)
         Text(
             v2FormatMoney(context, totalCost, isCostMasked, currency),

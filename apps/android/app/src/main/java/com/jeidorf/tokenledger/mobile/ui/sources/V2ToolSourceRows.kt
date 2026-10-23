@@ -24,6 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -168,8 +171,8 @@ internal fun V2SourceRow(
             }
         }
         Row(verticalAlignment = Alignment.Top) {
-            Box(Modifier.padding(top = 6.dp).size(8.dp).clip(CircleShape).background(color))
-            Spacer(Modifier.width(8.dp))
+            V2SourceTile(palette, label, color)
+            Spacer(Modifier.width(12.dp))
             if (stacked) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
@@ -191,7 +194,7 @@ internal fun V2SourceRow(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(value, color = palette.text, fontSize = LedgerFont.body, fontWeight = FontWeight.SemiBold)
                             if (secondaryValue != null) {
-                                Text(secondaryValue, color = palette.amber, fontSize = LedgerFont.caption, fontWeight = FontWeight.Normal)
+                                Text(secondaryValue, color = palette.faint, fontSize = LedgerFont.caption, fontWeight = FontWeight.Normal)
                             }
                         }
                         chevron()
@@ -205,11 +208,61 @@ internal fun V2SourceRow(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(value, color = palette.text, fontSize = LedgerFont.label, fontWeight = FontWeight.SemiBold)
                     if (secondaryValue != null) {
-                        Text(secondaryValue, color = palette.amber, fontSize = LedgerFont.caption, fontWeight = FontWeight.Normal)
+                        Text(secondaryValue, color = palette.faint, fontSize = LedgerFont.caption, fontWeight = FontWeight.Normal)
                     }
                 }
                 chevron()
             }
         }
     }
+}
+
+/**
+ * 来源身份块（重构方案 v2，对齐参考设计）：30dp 圆角方块，身份色淡底 + 同色缩写，
+ * 取代原先的 8dp 色点。缩写只是装饰，读屏由整行的合并描述念出完整名称。
+ * 墨水屏没有淡底，改成 1dp 黑边加正文色缩写。
+ */
+@Composable
+internal fun V2SourceTile(palette: MobileV2Palette, label: String, color: Color) {
+    val shape = RoundedCornerShape(LedgerRadius.lg)
+    val eInk = palette.isEInk
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(shape)
+            .then(
+                if (eInk) Modifier.border(LedgerStroke.hairline, palette.text, shape)
+                else Modifier.background(color.copy(alpha = 0.16f))
+            )
+            .clearAndSetSemantics { },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            sourceTileInitials(label),
+            color = if (eInk) palette.text else color,
+            fontSize = LedgerFont.caption,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
+    }
+}
+
+/**
+ * 身份块缩写：多词名取前两个词的首字母（Claude Code → CC），单个拉丁词取首字母加下一个辅音
+ * （Codex → Cd，Gemini → Gm，没有辅音时取前两个字母），中日韩等非拉丁名取第一个字。
+ */
+internal fun sourceTileInitials(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return "?"
+    val first = trimmed.first()
+    if (!first.isLetterOrDigit() || first.code > 0x24F) return trimmed.take(1)
+    val words = trimmed.split(Regex("[\\s_\\-./]+")).filter { it.isNotEmpty() }
+    if (words.size >= 2) {
+        return words.take(2).joinToString("") { it.first().uppercase() }
+    }
+    val word = words.first()
+    val second = word.drop(1).firstOrNull { it.isLetter() && it.lowercaseChar() !in "aeiou" }
+        ?: word.getOrNull(1)
+        ?: return word.first().uppercase()
+    return word.first().uppercase() + second.lowercaseChar()
 }

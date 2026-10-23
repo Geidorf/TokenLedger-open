@@ -724,10 +724,6 @@ internal fun LazyListScope.v2OverviewItems(
     item(key = "overview-hero", contentType = "hero") {
         V2HeroCard(palette, stats, tokenDisplayMode, onTokenDisplayModeChange, onOpenInsights)
     }
-    // 额度先于来源（design §7.1、T10.156 §2.1「额度先于趋势与排行」同序，T10.208 调整顺序）。
-    item(key = "overview-quota", contentType = "quota") {
-        V2QuotaSummaryCard(palette, state.quota, onOpenQuota, limit = TODAY_QUOTA_LIMIT)
-    }
     item(key = "overview-tools", contentType = "chart") {
         V2ToolDistributionCard(
             palette = palette,
@@ -738,6 +734,10 @@ internal fun LazyListScope.v2OverviewItems(
             limit = TODAY_SOURCE_LIMIT,
             title = "主要来源"
         )
+    }
+    // 重构 R2：额度有了自己的一级分区，概览只在来源之后留一张摘要卡作入口，主区与参考设计同序。
+    item(key = "overview-quota", contentType = "quota") {
+        V2QuotaSummaryCard(palette, state.quota, onOpenQuota, limit = TODAY_QUOTA_LIMIT)
     }
 }
 
