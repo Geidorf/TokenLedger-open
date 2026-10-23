@@ -35,6 +35,7 @@ import { BEHAVIOR_PROJECT_DIMENSION_DISABLED, BEHAVIOR_PROJECT_DIMENSION_UNAVAIL
 import type { CostProfile, CostProfileSaveResult } from './types';
 import { handleGatewayMock } from './features/gateway/devMock';
 import { mockWallpaperPreview } from './devMockWallpaperPreview';
+import { attachE2eHarness, resolveE2eOverride } from './devMockE2e';
 import { COST_PROFILE_DEFAULT_CNY_PER_USD, checkCostProfileInput, isCostProfileCleared } from './utils/contracts/costProfile';
 
 // Fixed local wall-clock time keeps visual review, range boundaries and screenshots deterministic.
@@ -1994,7 +1995,10 @@ export function installDevMockTauri() {
   mockCloudAuthenticated = true;
   mockCostProfile = emptyMockCostProfile();
   resetMockProjectDimension();
+  attachE2eHarness();
   mockIPC((cmd, args) => {
+    const e2e = resolveE2eOverride(cmd, args);
+    if (e2e.hit) return e2e.value;
     const payload = args && typeof args === 'object' && !Array.isArray(args)
       ? args as Record<string, unknown>
       : {};

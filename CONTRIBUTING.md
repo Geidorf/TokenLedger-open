@@ -46,6 +46,13 @@ npm run android:verify
 node scripts/run-android-gradle.mjs :app:validateDebugScreenshotTest
 ```
 
+Changes to the desktop UI or its interactions also run the browser regression (Playwright on Chromium and WebKit, 420–1440 px wide, with a few screenshot baselines). See [e2e/README.md](e2e/README.md):
+
+```bash
+npx playwright install chromium webkit
+npm run test:e2e
+```
+
 ## Invariants that must not drift
 
 These are the rules the test suite enforces. If your change touches one of them, expect tests to fail and explain why in your PR description.

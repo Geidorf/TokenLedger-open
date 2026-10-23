@@ -291,6 +291,14 @@ npm run android:verify                        # Android 编译与 lint
 node scripts/run-android-gradle.mjs :app:validateDebugScreenshotTest   # 截图回归
 ```
 
+桌面前端改了界面或交互时追加浏览器级回归（Playwright，Chromium + WebKit，420–1440 宽度，含少量截图基线；说明见 [e2e/README.md](e2e/README.md)）：
+
+```bash
+npx playwright install chromium webkit        # 首次运行前装浏览器
+npm run test:e2e                              # 浏览器回归
+npm run test:e2e:update                       # 有意改变画面时重新生成截图基线
+```
+
 `npm run check` 结束时会验证被跟踪文件未被门禁修改。CI 工作流保留在 `.github/workflows/` 中，但它不作为验收依据——验收只认本机实际运行的门禁。
 
 贡献流程、提交规范与代码约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
