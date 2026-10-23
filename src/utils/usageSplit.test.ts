@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StatsData } from '../types';
-import { cacheHitRate, outputTokensPerSecond, splitHeatmapView, splitUsage } from './usageSplit';
+import { accountSplitAvailable, cacheHitRate, outputTokensPerSecond, splitHeatmapView, splitUsage } from './usageSplit';
 
 const stats = {
   summary: { totalTokens: 1000, inputTokens: 800, outputTokens: 200, cachedTokens: 0, totalCost: 3, totalRequests: 10, avgTokensPerReq: 100 },
@@ -74,6 +74,27 @@ describe('splitUsage', () => {
 
   it('同一维度内的焦点不收窄列表', () => {
     expect(splitUsage(stats, 'agent', 'tokens', { dimension: 'agent', id: 'codex' }).rows).toHaveLength(2);
+  });
+
+  it('账号按网关供应商拆分，三项指标都可得；不与其他维度交叉', () => {
+    const local = {
+      ...stats,
+      providers: {
+        openai: { name: 'openai', input: 200, output: 80, cached: 0, total: 280, cost: 0.8, requests: 1, heatmap: { '2026-10-01': 280 } },
+        relay: { name: 'relay', input: 30, output: 10, cached: 0, total: 40, cost: 0.1, requests: 1 },
+      },
+    } as unknown as StatsData;
+    expect(accountSplitAvailable(stats)).toBe(false);
+    expect(accountSplitAvailable(local)).toBe(true);
+    const byAccount = splitUsage(local, 'account', 'requests', null);
+    expect(byAccount.metrics).toEqual(['tokens', 'requests', 'cost']);
+    expect(byAccount.rows.map((row) => [row.id, row.value])).toEqual([['openai', 1], ['relay', 1]]);
+    expect(splitUsage(local, 'account', 'tokens', { dimension: 'agent', id: 'codex' }).focusIgnored).toBe(true);
+    const byAgent = splitUsage(local, 'agent', 'tokens', { dimension: 'account', id: 'openai' });
+    expect(byAgent.focusIgnored).toBe(true);
+    expect(byAgent.rows).toHaveLength(2);
+    expect(splitHeatmapView(local, { dimension: 'account', id: 'openai' }, 'tokens')).toMatchObject({ heatmap: { '2026-10-01': 280 }, focused: true });
+    expect(splitHeatmapView(local, { dimension: 'account', id: 'relay' }, 'tokens').focused).toBe(false);
   });
 });
 

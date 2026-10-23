@@ -6,10 +6,11 @@ import { splitModelCacheRead } from './modelDistribution';
  * 统一「Split by」（对齐 magpie Usage 页）：同一份 StatsData 按 Agent、模型或设备拆分，
  * 选中一项后其他维度随之收窄。只用契约已有字段，不推断：
  * - Agent × 模型的交叉只有 `tools[].models` 里的有效 Token，没有记录数与费用；
- * - 设备只有 `machineDistribution` 的整体构成，不能与 Agent、模型交叉。
+ * - 设备只有 `machineDistribution` 的整体构成，不能与 Agent、模型交叉；
+ * - 账号（网关供应商）只有本机 `providers`（契约 §2.7），只含经网关的记录，同样不与其他维度交叉。
  * 交叉取不到的指标标为不可得，不按 0 显示。
  */
-export type SplitDimension = 'agent' | 'model' | 'device';
+export type SplitDimension = 'agent' | 'model' | 'device' | 'account';
 export type SplitMetric = 'tokens' | 'requests' | 'cost';
 
 export interface SplitFocus {
@@ -42,6 +43,7 @@ export const SPLIT_DIMENSIONS: { id: SplitDimension; label: string }[] = [
   { id: 'agent', label: 'Agent' },
   { id: 'model', label: '模型' },
   { id: 'device', label: '设备' },
+  { id: 'account', label: '账号' },
 ];
 
 export const SPLIT_METRICS: { id: SplitMetric; label: string }[] = [
@@ -129,6 +131,21 @@ function deviceRows(stats: StatsData, withCache: boolean) {
   }));
 }
 
+function accountRows(stats: StatsData, withCache: boolean) {
+  return Object.values(stats.providers || {}).map((provider) => ({
+    id: provider.name,
+    tokens: effectiveTokens(provider) + (withCache ? provider.cached || 0 : 0),
+    requests: provider.requests,
+    cost: provider.cost,
+    cacheHit: provenCacheHit(provider),
+  }));
+}
+
+/** 账号维度可用：本机统计带了至少一个账号。 */
+export function accountSplitAvailable(stats: StatsData): boolean {
+  return Object.keys(stats.providers || {}).length > 0;
+}
+
 /**
  * `withCache` 跟随概览的「概览有效 / 概览含缓存」口径（与原模型排行一致）；
  * Agent × 模型交叉只有有效 Token，交叉时始终是有效口径，界面会写明。
@@ -137,7 +154,8 @@ export function splitUsage(stats: StatsData, dimension: SplitDimension, metric: 
   const crossFocus = focus && focus.dimension !== dimension ? focus : null;
   const costTotal = stats.summary?.totalCost || 0;
   if (dimension === 'device') return finish(deviceRows(stats, withCache), metric, ALL_METRICS, Boolean(crossFocus), costTotal);
-  if (crossFocus?.dimension === 'device') {
+  if (dimension === 'account') return finish(accountRows(stats, withCache), metric, ALL_METRICS, Boolean(crossFocus), costTotal);
+  if (crossFocus?.dimension === 'device' || crossFocus?.dimension === 'account') {
     return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, true, costTotal);
   }
   if (dimension === 'model' && crossFocus?.dimension === 'agent') {
@@ -181,7 +199,8 @@ function pickHeatmap(source: HeatmapSource, metric: SplitMetric): Record<string,
  */
 export function splitHeatmapView(stats: StatsData, focus: SplitFocus | null, metric: SplitMetric): SplitHeatmapView {
   const entity: HeatmapSource | undefined = focus?.dimension === 'agent' ? stats.tools?.[focus.id]
-    : focus?.dimension === 'model' ? stats.models?.[focus.id] : undefined;
+    : focus?.dimension === 'model' ? stats.models?.[focus.id]
+      : focus?.dimension === 'account' ? stats.providers?.[focus.id] : undefined;
   const source: HeatmapSource = entity?.heatmap ? entity : stats;
   const focused = source === entity;
   const picked = pickHeatmap(source, metric);

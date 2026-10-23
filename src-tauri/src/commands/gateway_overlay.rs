@@ -539,6 +539,13 @@ pub(super) fn open_stats_connection(db_path: &Path) -> Result<Connection, String
     Ok(conn)
 }
 
+/// 合并视图里每条网关与导入行的供应商（行 id → 供应商 ID），供按账号拆分。
+pub(super) fn row_providers(conn: &Connection) -> rusqlite::Result<HashMap<i64, String>> {
+    let mut stmt = conn.prepare("SELECT id, provider FROM temp.gw_rows")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect()
+}
+
 #[derive(Debug, PartialEq)]
 pub(super) struct GatewayDetail {
     pub source: String,

@@ -6285,7 +6285,7 @@ fn json_amounts(amounts: HashMap<&str, f64>) -> Value {
     Value::Object(
         amounts
             .into_iter()
-            .map(|(key, value)| (key.to_string(), json!(value)))
+            .map(|(key, value)| (key.to_string(), json!((value * 1e6).round() / 1e6)))
             .collect(),
     )
 }
@@ -6295,6 +6295,54 @@ fn json_counts(counts: HashMap<&str, i64>) -> Value {
         counts
             .into_iter()
             .map(|(key, value)| (key.to_string(), json!(value)))
+            .collect(),
+    )
+}
+
+/// 契约 §2.7：按网关供应商（账号）拆分本期用量。只有网关与导入行带供应商，
+/// 扫描行不计入任何账号；口径与 `tools[*]` 相同（逐行估价、同一窗口）。
+fn aggregate_provider_split(
+    rows: &[StatRow],
+    providers: &HashMap<i64, String>,
+    prices: &Value,
+    filter_start: Option<NaiveDateTime>,
+    filter_end: NaiveDateTime,
+) -> Value {
+    let filter_start = filter_start.map(storage_timestamp);
+    let filter_end = storage_timestamp(filter_end);
+    let mut memo = PriceMemo::new(prices);
+    let mut totals: HashMap<&str, WindowTotals> = HashMap::new();
+    for row in rows {
+        let Some(provider) = providers
+            .get(&row.id)
+            .filter(|provider| !provider.is_empty())
+        else {
+            continue;
+        };
+        if filter_start
+            .as_ref()
+            .is_some_and(|start| row.timestamp < *start)
+            || row.timestamp > filter_end
+        {
+            continue;
+        }
+        let clean_date = row.timestamp.split_whitespace().next().unwrap_or("");
+        let price = memo.row_price(row);
+        totals
+            .entry(provider.as_str())
+            .or_insert_with(WindowTotals::new)
+            .add(
+                row,
+                effective_tokens(row.input_tokens, row.output_tokens),
+                price.cost,
+                row.cache_split_is_proven(),
+                (clean_date.len() == 10).then_some(clean_date),
+            );
+    }
+    Value::Object(
+        totals
+            .into_iter()
+            .map(|(name, totals)| (name.to_string(), totals.into_json(name, false)))
             .collect(),
     )
 }
@@ -7024,6 +7072,17 @@ fn get_local_stats_v2_snapshot_with_entity_at(
     );
     if gateway_overlay::ledger_signature(&db_path).is_some() {
         stats["meta"]["capabilities"]["gatewayLedger"] = json!(true);
+        if entity.is_none() {
+            let conn = gateway_overlay::open_stats_connection(&db_path)?;
+            let providers = gateway_overlay::row_providers(&conn).map_err(|e| e.to_string())?;
+            stats["providers"] = aggregate_provider_split(
+                &rows,
+                &providers,
+                &prices,
+                bounds.current_start.as_ref().map(DateTime::naive_local),
+                bounds.current_end.naive_local(),
+            );
+        }
     }
     Ok(LocalStatsSnapshot {
         stats,

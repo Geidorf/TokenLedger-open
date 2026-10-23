@@ -422,6 +422,12 @@ export interface StatsData {
   dailyCosts?: DailyCosts;
   /** Query-bound device aggregate; absent on clouds that predate T6.3. */
   machineDistribution?: CompositionItem[];
+  /**
+   * Local stats only (contract §2.7): this period's gateway/imported usage split by
+   * provider account, same shape as `tools[*]`. Scan rows carry no account and are
+   * not in any entry; absent on cloud and when no gateway ledger exists.
+   */
+  providers?: Record<string, ToolStat>;
   historyPage?: UsageDetailsResponse;
   comparison?: UsageComparison | null;
   machines?: string[];

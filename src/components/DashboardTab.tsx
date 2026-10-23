@@ -4,7 +4,7 @@ import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
 import { UsageSplitPanel } from './usage/UsageSplitPanel';
-import { splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
+import { accountSplitAvailable, splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
 import { LoadingSkeleton, MetricsSkeleton } from './LoadingSkeleton';
 import { MetricsGrid } from './MetricsGrid';
 import { ModelCostDistributionPanel } from './ModelCostDistributionPanel';
@@ -614,7 +614,8 @@ export function DashboardTab({
   const activeSplitFocus = splitFocus && (
     splitFocus.dimension === 'agent' ? Boolean(stats.tools?.[splitFocus.id])
       : splitFocus.dimension === 'model' ? Boolean(stats.models?.[splitFocus.id])
-        : showDeviceDistribution && (stats.machineDistribution || []).some((machine) => machine.value === splitFocus.id)
+        : splitFocus.dimension === 'account' ? Boolean(stats.providers?.[splitFocus.id])
+          : showDeviceDistribution && (stats.machineDistribution || []).some((machine) => machine.value === splitFocus.id)
   ) ? splitFocus : null;
   const heatmapView = splitHeatmapView(stats, activeSplitFocus, splitMetric);
   const cloudRecovery = scope === 'cloud'
@@ -878,7 +879,7 @@ export function DashboardTab({
             sourceOrder={displayPreferences.preferences.quotaSourceOrder} hiddenSourceIds={displayPreferences.preferences.hiddenQuotaSourceIds} />
         </div>;
         if (module === 'distribution') return <UsageSplitPanel key={module} stats={stats}
-          dimension={splitDimension === 'device' && !showDeviceDistribution ? 'agent' : splitDimension}
+          dimension={(splitDimension === 'device' && !showDeviceDistribution) || (splitDimension === 'account' && !accountSplitAvailable(stats)) ? 'agent' : splitDimension}
           metric={splitMetric} focus={activeSplitFocus}
           deviceAvailable={showDeviceDistribution} showTotalTokens={showTotalTokens}
           onDimensionChange={setSplitDimension} onMetricChange={setSplitMetric} onFocusChange={setSplitFocus}
@@ -897,7 +898,7 @@ export function DashboardTab({
           {showHeatmap && <HeatmapSection heatmap={heatmapView.heatmap} subject={heatmapView.focused && activeSplitFocus ? activeSplitFocus.id : undefined}
             subjectUnavailable={activeSplitFocus && !heatmapView.focused ? activeSplitFocus.id : undefined}
             metric={heatmapView.metric} metricFallback={heatmapView.metricFallback}
-            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (heatmapView.focused && activeSplitFocus
+            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (heatmapView.focused && activeSplitFocus && activeSplitFocus.dimension !== 'account'
               ? onSelectDate(date, { tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [], models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [] })
               : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} />}
           <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />

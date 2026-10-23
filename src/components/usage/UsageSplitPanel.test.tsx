@@ -18,12 +18,12 @@ const stats = {
   trends: [], heatmap: {}, history: [],
 } as unknown as StatsData;
 
-function Harness({ onOpenEntity = vi.fn(), deviceAvailable = false }: { onOpenEntity?: (kind: 'tool' | 'model', id: string) => void; deviceAvailable?: boolean }) {
+function Harness({ onOpenEntity = vi.fn(), deviceAvailable = false, data = stats }: { onOpenEntity?: (kind: 'tool' | 'model', id: string) => void; deviceAvailable?: boolean; data?: StatsData }) {
   const [dimension, setDimension] = useState<SplitDimension>('agent');
   const [metric, setMetric] = useState<SplitMetric>('tokens');
   const [focus, setFocus] = useState<SplitFocus | null>(null);
   return (
-    <UsageSplitPanel stats={stats} dimension={dimension} metric={metric} focus={focus} deviceAvailable={deviceAvailable}
+    <UsageSplitPanel stats={data} dimension={dimension} metric={metric} focus={focus} deviceAvailable={deviceAvailable}
       onDimensionChange={setDimension} onMetricChange={setMetric} onFocusChange={setFocus} onOpenEntity={onOpenEntity} />
   );
 }
@@ -51,6 +51,23 @@ describe('UsageSplitPanel', () => {
     const device = within(screen.getByRole('group', { name: '拆分维度' })).getByRole('button', { name: '设备' });
     expect(device).toBeDisabled();
     expect(device).toHaveAttribute('title', expect.stringContaining('云端汇总'));
+  });
+
+  it('账号维度：没有网关供应商时禁用并说明；有时按账号拆分且不带看板入口', () => {
+    const { unmount } = render(<Harness />);
+    const account = within(screen.getByRole('group', { name: '拆分维度' })).getByRole('button', { name: '账号' });
+    expect(account).toBeDisabled();
+    expect(account).toHaveAttribute('title', expect.stringContaining('网关供应商'));
+    unmount();
+    const local = {
+      ...stats,
+      providers: { openai: { name: 'openai', input: 200, output: 80, cached: 0, total: 280, cost: 0.8, requests: 1 } },
+    } as unknown as StatsData;
+    render(<Harness data={local} onOpenEntity={vi.fn()} />);
+    fireEvent.click(within(screen.getByRole('group', { name: '拆分维度' })).getByRole('button', { name: '账号' }));
+    expect(rowNames()).toEqual(['openai']);
+    expect(screen.getByText(/账号即网关供应商/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /专属看板/ })).not.toBeInTheDocument();
   });
 
   it('看板按钮打开原有专属看板', () => {
