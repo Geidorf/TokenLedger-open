@@ -34,9 +34,11 @@ export const REQUESTS_CSV_MAX_ROWS = 50_000;
 function csvCell(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  // 单元格内换行压成空格，保证一行一条记录，导出条数按行数计才准确。
+  const flat = value.replace(/\r\n|[\r\n]/g, ' ');
   // 表格软件会把 = + - @ 开头的文本当公式执行，加单引号让它保持文本。
-  const text = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  const text = /^[=+\-@\t]/.test(flat) ? `'${flat}` : flat;
+  return /[",]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 /**

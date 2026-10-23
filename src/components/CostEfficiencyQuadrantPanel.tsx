@@ -13,7 +13,7 @@ import '../styles/overviewDrill.css';
 interface CostEfficiencyQuadrantProps {
   models: ModelStat[];
   onModelClick?: (model: ModelStat) => void;
-  /** Same screen-wide tool -> colour assignment as `BarPanel`'s `toolColors` (T10.178 review P1-1); falls back to a local same-view assignment when absent. */
+  /** Screen-wide tool -> colour assignment computed by DashboardTab (T10.178 review P1-1); falls back to a local same-view assignment when absent. */
   toolColors?: Map<string, string>;
 }
 
