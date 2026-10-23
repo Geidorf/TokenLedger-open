@@ -1,0 +1,137 @@
+/* ==========================================================================
+   Shared surfaces for the desktop visual refresh
+   --------------------------------------------------------------------------
+   Segmented controls are a quiet track with one white thumb, page toolbars sit on the page instead of in a card, and summary
+   lines are plain text. Hit targets stay 44px (GLB-03): the track, thumb and
+   hover fill are drawn inset. Unlayered and imported after index.css.
+   ========================================================================== */
+
+.segmented {
+  --seg-radius: 6px;
+  --seg-inset-y: 8px;
+  --seg-bg: var(--shell-thumb);
+  --seg-shadow: var(--shell-thumb-edge);
+  position: relative;
+  isolation: isolate;
+  gap: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0 2px;
+}
+
+.segmented::after {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 6px 0;
+  border-radius: 8px;
+  background: var(--shell-track);
+  pointer-events: none;
+}
+
+.segmented button {
+  gap: 5px;
+  padding: 0 11px;
+  color: var(--shell-control-fg);
+  font-weight: var(--weight-regular);
+}
+
+.segmented button.active,
+.segmented button[aria-pressed='true'],
+.segmented button[aria-selected='true'] {
+  font-weight: var(--weight-label);
+}
+
+.segmented button > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.segmented button:hover:not(.active):not([aria-pressed='true']):not([aria-selected='true'])::before {
+  background: transparent;
+}
+
+/* Page toolbars: controls straight on the page. */
+.usage-toolbar {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The one-line conclusion reads as a note, the estimate as a quiet
+   figure at the head's right. */
+.usage-summary {
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.usage-summary::before {
+  display: none;
+}
+
+.usage-summary .usage-conclusion {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.usage-summary .usage-conclusion b {
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-label);
+}
+
+.usage-cost {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.usage-cost b {
+  color: var(--color-text-primary);
+  font-size: 17px;
+  font-weight: var(--weight-title);
+  letter-spacing: -0.01em;
+}
+
+/* Cards are still: no lift or glow on hover, one hairline edge. */
+.metric-card:hover,
+.panel:hover {
+  transform: none;
+}
+
+/* Theme: an icon, its mode in the tooltip. */
+.app-header .theme-toggle > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.app-header .theme-toggle {
+  min-width: 36px;
+  justify-content: center;
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+  color: var(--shell-control-fg);
+}
+
+.app-header .theme-toggle:hover {
+  background: var(--shell-hover);
+  color: var(--color-text-primary);
+}
+
+@media (forced-colors: active) {
+  .segmented::after {
+    border: 1px solid ButtonText;
+    background: Canvas;
+  }
+}

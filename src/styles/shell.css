@@ -1,0 +1,353 @@
+/* ==========================================================================
+   Window shell: one top bar with a segmented page switch
+   --------------------------------------------------------------------------
+   One quiet surface: the top bar and the page share --color-bg-page, the
+   pages' first-level switch is a segmented control centred in the bar, and
+   the actions on its right are bare icon buttons. Every control keeps a 44px
+   hit target (GLB-03); the visible thumb, track and hover fill are drawn
+   inset so the bar reads dense.
+   Unlayered and imported last, so it wins over the older shell rules in
+   index.css that still style the page header's inner pieces.
+   ========================================================================== */
+
+:root {
+  --shell-track: #e9e9ee;
+  --shell-thumb: #ffffff;
+  --shell-thumb-edge: 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  --shell-control-fg: #63636b;
+  --shell-hover: rgba(0, 0, 0, 0.05);
+}
+
+:root:not([data-theme="light"]) {
+  --shell-track: rgba(255, 255, 255, 0.05);
+  --shell-thumb: rgba(255, 255, 255, 0.14);
+  --shell-thumb-edge: inset 0 0.5px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shell-control-fg: #a1a1aa;
+  --shell-hover: rgba(255, 255, 255, 0.06);
+}
+
+.app-shell {
+  flex-direction: column;
+  background: var(--color-bg-page);
+}
+
+.app-shell .app-main {
+  min-height: 0;
+  background: var(--color-bg-page);
+}
+
+/* ----- Top bar ---------------------------------------------------------- */
+.app-topbar {
+  position: relative;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  height: 52px;
+  padding: 0 10px 0 16px;
+  background: var(--color-bg-page);
+}
+
+.app-topbar[data-vibrancy="native"] {
+  background: var(--color-bg-header);
+}
+
+.topbar-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: var(--weight-title);
+  letter-spacing: 0.01em;
+}
+
+.topbar-logo-mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.topbar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The first-level switch: a quiet track, the open page's white thumb. */
+.topbar-nav,
+.usage-subnav {
+  --seg-radius: 6px;
+  --seg-inset-y: 8px;
+  --seg-bg: var(--shell-thumb);
+  --seg-shadow: var(--shell-thumb-edge);
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  padding: 0 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topbar-nav::-webkit-scrollbar,
+.usage-subnav::-webkit-scrollbar {
+  display: none;
+}
+
+.topbar-nav::after,
+.usage-subnav::after {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 6px 0;
+  border-radius: 8px;
+  background: var(--shell-track);
+  pointer-events: none;
+}
+
+.topbar-nav > button,
+.usage-subnav > button {
+  position: relative;
+  min-height: 44px;
+  flex: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0 13px;
+  color: var(--shell-control-fg);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-regular);
+  line-height: 1;
+  white-space: nowrap;
+  transition: color var(--motion-slow) var(--easing-standard);
+}
+
+.topbar-nav > button:hover:not([aria-current="page"]),
+.usage-subnav > button:hover:not([aria-current="page"]) {
+  color: var(--color-text-secondary);
+}
+
+.topbar-nav > button[aria-current="page"],
+.usage-subnav > button[aria-current="page"] {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-label);
+}
+
+.topbar-nav > button:focus-visible,
+.usage-subnav > button:focus-visible {
+  outline-offset: -6px;
+}
+
+/* ----- Right-hand actions ---------------------------------------------- */
+.topbar-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+}
+
+.topbar-tools {
+  display: flex;
+  align-items: center;
+}
+
+.topbar-icon-btn,
+.topbar-text-btn {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  min-height: 44px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--shell-control-fg);
+  transition: color var(--motion-hover) var(--easing-standard);
+}
+
+.topbar-icon-btn {
+  width: 34px;
+}
+
+.topbar-text-btn {
+  padding: 0 9px;
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-label);
+}
+
+.topbar-icon-btn::after,
+.topbar-text-btn::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 8px 2px;
+  border-radius: 7px;
+  background: transparent;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
+.topbar-icon-btn:hover:not(:disabled),
+.topbar-icon-btn.is-active {
+  color: var(--color-text-primary);
+}
+
+.topbar-icon-btn:hover:not(:disabled)::after,
+.topbar-text-btn:hover::after,
+.topbar-icon-btn.is-active::after {
+  background: var(--shell-hover);
+}
+
+.topbar-icon-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.topbar-icon-btn:disabled {
+  opacity: 0.42;
+}
+
+.topbar-icon-btn:focus-visible,
+.topbar-text-btn:focus-visible {
+  outline-offset: -6px;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--color-border);
+}
+
+.topbar-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 4px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.topbar-status .sidebar-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-full);
+}
+
+/* ----- Page head under the bar ----------------------------------------- */
+.app-shell .app-header {
+  min-height: 52px;
+  border-bottom: 0;
+  padding: 0 var(--space-6);
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.app-shell .app-header .toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.usage-subnav {
+  margin-left: -2px;
+}
+
+/* ----- Narrow windows ---------------------------------------------------- */
+@media (max-width: 860px) {
+  .app-topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-left: 12px;
+  }
+
+  .topbar-title,
+  .topbar-status-label,
+  .topbar-divider {
+    display: none;
+  }
+
+  .topbar-nav {
+    justify-self: center;
+    max-width: 100%;
+  }
+
+  .topbar-nav > button {
+    padding: 0 9px;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Phone widths keep every page in the switch: the status words, the
+     recovery link and the quick tools step aside (the cloud button keeps its
+     reason in its tooltip, settings keeps the recovery). */
+  .topbar-tools,
+  .topbar-status,
+  .topbar-text-btn {
+    display: none;
+  }
+
+  .topbar-nav > button {
+    padding: 0 7px;
+  }
+
+  .app-shell .app-header {
+    padding-inline: var(--space-4);
+  }
+}
+
+@media (forced-colors: active) {
+  .topbar-nav::after,
+  .usage-subnav::after {
+    border: 1px solid ButtonText;
+    background: Canvas;
+  }
+}
+
+.app-shell .app-content {
+  padding-top: 4px;
+}
+
+/* Model pages: the bar already names the page, so the head keeps only a
+   quiet label and the one line that says what the page is for. */
+.app-shell header.mw-header.app-header .toolbar-title-parent,
+.app-shell header.mw-header.app-header .toolbar-title-crumb {
+  display: none;
+}
+
+.app-shell header.mw-header.app-header .toolbar-brand {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.app-shell header.mw-header.app-header .toolbar-title,
+.app-shell header.mw-header.app-header .toolbar-title h1 {
+  flex: none;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-title);
+  letter-spacing: 0.05em;
+}
+
+.app-shell header.mw-header.app-header .toolbar-subtitle {
+  min-width: 0;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-sm);
+}
+
+/* The skip link waits above the window; its floating shadow must not bleed
+   onto the bar's corner until it is focused. */
+.skip-link:not(:focus-visible) {
+  box-shadow: none;
+}

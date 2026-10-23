@@ -10,7 +10,8 @@ import { createPortal } from 'react-dom';
 import { useSegmentedIndicator } from '../hooks/useSegmentedIndicator';
 import { isUsageTab, type CloudStatus, type DataScope, type Tab } from '../types';
 import { focusAfterPopoverTrigger, useAnchoredPopover } from './anchoredPopover';
-import { usageSubLabelForTab } from './usage/UsagePage';
+import { USAGE_SUB_OPTIONS, usageSubLabelForTab } from './usage/UsagePage';
+import { USAGE_SUB_TABS } from '../utils/usageNavigation';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -47,6 +48,8 @@ interface AppHeaderProps {
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
   dataStatus: HeaderDataStatus;
+  /** 用量子页的二级分段；不传时退回只读标题。 */
+  onTabChange?: (tab: Tab) => void;
 }
 
 // This is the single window-drag contract for the desktop shell. Tauri's
@@ -147,6 +150,7 @@ export function AppHeader({
   themeMode,
   onThemeChange,
   dataStatus,
+  onTabChange,
 }: AppHeaderProps) {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
@@ -158,6 +162,7 @@ export function AppHeader({
   const [hasMoreHeaderControls, setHasMoreHeaderControls] = useState(false);
   // One sliding selection pill per segmented group (T10.150); aria-pressed stays the source of truth.
   const scopeIndicatorRef = useSegmentedIndicator<HTMLDivElement>();
+  const usageIndicatorRef = useSegmentedIndicator<HTMLElement>('[aria-current="page"]');
   const isSettingsSurface = activeTab === 'settings';
   const usageSurface = isUsageTab(activeTab);
   // 用量三个子页共用一个顶栏：元素、健康状态与命令不随子页变化（T10.276），标题是「用量 · 子页」
@@ -354,16 +359,37 @@ export function AppHeader({
       onDoubleClick={handleWindowDragDoubleClick}
     >
       <div className="toolbar-brand min-w-0">
-        <div className="toolbar-title truncate">
-          {usageCrumb ? (
-            <>
-              <span className="toolbar-title-parent">{headerTitle}</span>
-              <span className="toolbar-title-crumb" aria-hidden="true">
-                <span className="toolbar-title-sep"> · </span>{usageCrumb}
-              </span>
-            </>
-          ) : headerTitle}
-        </div>
+        {usageSurface && onTabChange ? (
+          <nav ref={usageIndicatorRef} className="usage-subnav tl-seg" data-window-drag-block aria-label="用量子页">
+            {USAGE_SUB_OPTIONS.map((option) => {
+              const tab = USAGE_SUB_TABS[option.id];
+              const current = activeTab === tab;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={current ? 'active' : ''}
+                  aria-current={current ? 'page' : undefined}
+                  title={`用量 · ${option.label}`}
+                  onClick={() => onTabChange(tab)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </nav>
+        ) : (
+          <div className="toolbar-title truncate">
+            {usageCrumb ? (
+              <>
+                <span className="toolbar-title-parent">{headerTitle}</span>
+                <span className="toolbar-title-crumb" aria-hidden="true">
+                  <span className="toolbar-title-sep"> · </span>{usageCrumb}
+                </span>
+              </>
+            ) : headerTitle}
+          </div>
+        )}
         {headerSubtitle && (
           <div className="toolbar-subtitle truncate">
             {headerSubtitle}

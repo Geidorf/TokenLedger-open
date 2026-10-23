@@ -484,3 +484,33 @@ describe('AppHeader', () => {
   });
 
 });
+
+describe('用量页头二级分段', () => {
+  const props = {
+    dataScope: 'local' as DataScope,
+    cloudStatus: { configured: true, authenticated: false, email: '', userId: '' },
+    onScopeChange: vi.fn(),
+    onCloudScope: vi.fn(),
+    themeMode: 'auto' as const,
+    onThemeChange: vi.fn(),
+    dataStatus: { loading: false, stale: false, lastRefreshedAt: null, unsyncedRecords: 0, cloudCapabilityVerified: true, cloudFirstSyncCompleted: true },
+  };
+
+  it('列出概览、请求、会话、额度，标出当前子页，点击切到对应 Tab', () => {
+    const onTabChange = vi.fn();
+    render(<AppHeader {...props} activeTab="behavior" onTabChange={onTabChange} />);
+    const nav = screen.getByRole('navigation', { name: '用量子页' });
+    expect(within(nav).getAllByRole('button').map((button) => button.textContent)).toEqual(['概览', '请求', '会话', '额度']);
+    expect(within(nav).getByRole('button', { name: '会话' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(within(nav).getByRole('button', { name: '请求' }));
+    expect(onTabChange).toHaveBeenCalledWith('logs');
+    fireEvent.click(within(nav).getByRole('button', { name: '额度' }));
+    expect(onTabChange).toHaveBeenLastCalledWith('allowances');
+  });
+
+  it('设置页没有用量分段，仍显示页名', () => {
+    render(<AppHeader {...props} activeTab="settings" onTabChange={vi.fn()} />);
+    expect(screen.queryByRole('navigation', { name: '用量子页' })).toBeNull();
+    expect(screen.getByText('设置与云端')).toBeInTheDocument();
+  });
+});
