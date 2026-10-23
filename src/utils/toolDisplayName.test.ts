@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../../fixtures/tool-display-names-v1/names.json';
-import { describeToolDistribution } from '../components/DonutPanel';
 import { buildTools } from '../components/widget/cardModel';
 import type { ToolStat } from '../types';
 import { toolDisplayName } from './toolDisplayName';
@@ -75,10 +74,5 @@ describe('toolDisplayName（看板 / 挂件 / 壁纸共用）', () => {
       ['deepseekgui', 'DeepSeek'],
       ['opencode', 'OpenCode'],
     ]);
-    const summary = describeToolDistribution([tool('opencode', 1), tool('kimidesktop', 1)], false);
-    expect(summary).toContain('OpenCode');
-    expect(summary).toContain('Kimi');
-    expect(summary).not.toContain('opencode');
-    expect(summary).not.toContain('kimidesktop');
   });
 });

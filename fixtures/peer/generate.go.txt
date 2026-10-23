@@ -1,0 +1,48 @@
+package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/pbkdf2"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+type envelope struct {
+	Format     string `json:"format"`
+	Version    int    `json:"version"`
+	KDF        string `json:"kdf"`
+	Iterations int    `json:"iterations"`
+	Salt       []byte `json:"salt"`
+	Nonce      []byte `json:"nonce"`
+	Data       []byte `json:"data"`
+}
+
+func seal(format string, plain []byte, pass string, indent bool) []byte {
+	e := envelope{Format: format, Version: 1, KDF: "pbkdf2-sha256", Iterations: 600000,
+		Salt: []byte("0123456789abcdef"), Nonce: []byte("nonce-12byte")}
+	key, _ := pbkdf2.Key(sha256.New, pass, e.Salt, e.Iterations, 32)
+	b, _ := aes.NewCipher(key)
+	g, _ := cipher.NewGCM(b)
+	aad := fmt.Appendf(nil, "%s/%d/%s/%d/%x", e.Format, e.Version, e.KDF, e.Iterations, e.Salt)
+	e.Data = g.Seal(nil, e.Nonce, plain, aad)
+	// The format name is the peer's; the file holds a placeholder the tests
+	// put it back in, so the name itself is spelled only in peer_wire.rs.
+	e.Format = "@FORMAT@"
+	if indent {
+		out, _ := json.MarshalIndent(e, "", "  ")
+		return out
+	}
+	out, _ := json.Marshal(e)
+	return out
+}
+
+// go run generate.go <the peer's name, as peer_wire.rs spells it>
+func main() {
+	app := os.Args[1]
+	bundle := []byte(`{"version":2,"created":"2026-10-20T08:00:00Z","app":"peer test","keys":true,"providers":[{"id":"deepseek","name":"DeepSeek","preset":"deepseek","key":"fixture-key-deepseek","chat":"https://api.deepseek.com/v1","anthropic":"https://api.deepseek.com/anthropic","models":["deepseek-chat"]},{"id":"relay","name":"My Relay","key":"","keys":[{"name":"a","key":"fixture-key-relay"}],"responses":"https://relay.example/v1","baseAPI":"responses"},{"id":"claude","name":"Claude","key":""},{"id":"gem","name":"Gemini","key":"g-key","gemini":"https://generativelanguage.googleapis.com/v1beta"}],"settings":{"port":3425}}`)
+	os.WriteFile("bundle.sealed", seal(app+"-backup", bundle, "correct horse", true), 0o644)
+	os.WriteFile("data.sealed", seal(app+"-data", []byte("hello peer"), "correct horse", false), 0o644)
+}

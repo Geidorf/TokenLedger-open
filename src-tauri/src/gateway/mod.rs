@@ -34,9 +34,13 @@ use ledger::Ledger;
 pub use ledger::LedgerRecord;
 use routing::Router;
 pub use routing::{RouteDecision, RoutingGroup};
-use store::{ensure_local_token, provider_account, ProviderStore, WireApi};
+#[cfg(test)]
+pub use store::MemorySecrets;
+use store::{ensure_local_token, provider_account, ProviderStore};
 pub(crate) use store::{load_providers_readonly, read_provider_key};
-pub use store::{KeyringSecrets, ProviderRecord, SecretStore};
+pub use store::{
+    valid_id, validate_provider, AuthMode, KeyringSecrets, ProviderRecord, SecretStore, WireApi,
+};
 
 pub const DEFAULT_PORT: u16 = 3462;
 const MAX_KEY_LENGTH: usize = 4096;

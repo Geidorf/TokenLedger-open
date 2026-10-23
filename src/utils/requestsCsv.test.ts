@@ -66,6 +66,14 @@ describe('requestsToCsv', () => {
     expect(row).toContain('"a,""b"""');
     expect(row).toContain(`"'=HYPERLINK(""x"")"`);
   });
+
+  it('flattens embedded line breaks so every record stays on one line', () => {
+    const csv = requestsToCsv([item({ model: 'a\r\nb', sessionId: 'x\ny' }), item({ id: 2 })]);
+    const lines = csv.trimEnd().split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toContain(',a b,');
+    expect(lines[1]).toContain(',x y,');
+  });
 });
 
 describe('collectAllDetails', () => {

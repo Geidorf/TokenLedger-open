@@ -4944,6 +4944,7 @@ name = "tokenledger"
 version = "2.0.0"
 dependencies = [
  "ab_glyph",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "chrono-tz",
@@ -4963,6 +4964,7 @@ dependencies = [
  "portable-pty",
  "regex",
  "reqwest 0.12.28",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",

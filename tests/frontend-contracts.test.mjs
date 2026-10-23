@@ -33,7 +33,6 @@ import {
   widgetConfigFromSettings,
 } from '../src/utils/widgetConfig.ts';
 import { cloudSidebarStatusCopy } from '../src/components/Sidebar.tsx';
-import { describeToolDistribution } from '../src/components/DonutPanel.tsx';
 import { assignToolChartSlots, colorsForToolsInView, toolChartSlot } from '../src/types.ts';
 import { getChartThemeTokens } from '../src/utils/chartTheme.ts';
 import { MetricsGrid } from '../src/components/MetricsGrid.tsx';
@@ -716,36 +715,6 @@ test('cloud v2 entry points fail closed when version or capability is absent', (
   assert.equal(hasCloudCapability({ meta: { contractVersion: 2, capabilities: { entityDashboard: true } } }, 'entityDashboard'), true);
 });
 
-test('tool distribution accessibility summary includes names, tokens, percentages and empty state', () => {
-  const tools = [
-    { name: 'Codex', input: 600, output: 400, cached: 500 },
-    { name: 'Claude', input: 300, output: 200, cached: 0 },
-  ];
-  const effective = describeToolDistribution(tools, false);
-  assert.match(effective, /Codex：1\.0K 有效 Token，占 67%/);
-  assert.match(effective, /Claude：500 有效 Token，占 33%/);
-
-  const combined = describeToolDistribution(tools, true);
-  assert.match(combined, /Codex：1\.5K 总 Token（含缓存），占 75%/);
-  assert.match(combined, /Claude：500 总 Token（含缓存），占 25%/);
-  assert.equal(describeToolDistribution([], false), '工具分布：暂无有效 Token 数据。');
-});
-
-test('phone tool distribution keeps a visible color legend when chart legend is hidden', () => {
-  const donutPanel = readSource(path.join(process.cwd(), 'src', 'components', 'DonutPanel.tsx'));
-  const styles = readSource(path.join(process.cwd(), 'src', 'index.css'));
-  assert.match(donutPanel, /compactLegend = hideLegend && activeTools\.length > 0 && totalVal > 0/);
-  assert.match(donutPanel, /className=\{`panel chart-panel tool-distribution-panel\$\{compactLegend \? ' is-compact' : ''\}`\}/);
-  assert.match(donutPanel, /<ul className="tool-distribution-legend" aria-label="工具分布明细">/);
-  // T10.178: the legend swatch now reuses the same rank-resolved slot colours
-  // as the donut wedges (colorsForToolsInView), instead of re-deriving its own
-  // colour per row, so the two never drift apart on a same-slot collision.
-  assert.match(donutPanel, /const toolColors = colorsForToolsInView\(activeTools\.map\(\(tool\) => tool\.name\), effective\);/);
-  assert.match(donutPanel, /className="tool-distribution-swatch"[\s\S]*?toolColors\[index\]/);
-  assert.match(donutPanel, /<strong className="tool-distribution-value">\{formatTokens\(value\)\}<\/strong>/);
-  assert.match(styles, /\.tool-distribution-panel\.is-compact[\s\S]*?\.tool-distribution-legend[\s\S]*?\.tool-distribution-swatch/);
-});
-
 // One tool per primary slot 1..8, none colliding — resolves straight to the
 // 8 raw slot colours in slot order. Shared by the FI-5 mirror-guard test
 // below and the T10.187 review P2-1 fixture-equality tests.
@@ -874,26 +843,13 @@ test('T10.187 review P2-1: src/utils/chartTheme.ts CHART_SERIES_FALLBACK matches
 
 test('T10.178 review P1-1 fix round: every tool-coloured panel resolves colours through same-view collision-shift, not a lone colorForTool(name, index) call', () => {
   // DashboardTab computes one screen-wide assignment from activeToolsList (the
-  // same list ToolStrip/DonutPanel/TrendPanel already use) and hands it to
-  // BarPanel and CostEfficiencyQuadrantPanel, so a tool reads the same colour
-  // in every panel on the tab instead of each panel resolving its own
-  // same-slot collisions from a differently-ordered model/point list.
+  // same list ToolStrip/TrendPanel already use) and hands it to
+  // CostEfficiencyQuadrantPanel, so a tool reads the same colour in every
+  // panel on the tab instead of each panel resolving its own same-slot
+  // collisions from a differently-ordered model/point list.
   const dashboardTab = readSource(path.join(process.cwd(), 'src', 'components', 'DashboardTab.tsx'));
   assert.match(dashboardTab, /const toolColors = toolColorMap\(activeToolsList\.map\(\(tool\) => tool\.name\), effective\);/);
-  // 概览的分布模块已改为用量拆分（对齐 magpie Split by），不再渲染 BarPanel；BarPanel 自身的取色约束仍守在下方。
-  assert.doesNotMatch(dashboardTab, /<BarPanel /);
   assert.match(dashboardTab, /<CostEfficiencyQuadrantPanel models=\{allModelsList\}[^>]*toolColors=\{toolColors\}/);
-
-  const barPanel = readSource(path.join(process.cwd(), 'src', 'components', 'BarPanel.tsx'));
-  assert.match(barPanel, /toolColors\?: Map<string, string>/);
-  assert.match(barPanel, /colors\.get\(\(m\.tool \|\| m\.name\)\.toLowerCase\(\)\)/);
-  // Review P2-2 / root R-9: light theme draws the bar gradient opaque-floored
-  // (>= 0.96) instead of fading to 0.74, without touching chartTheme.ts's
-  // default or any --chart-* token.
-  assert.match(barPanel, /alphaStops = effective === 'light' \? \[1, 0\.96\][^:]*: \[0\.96, 0\.74\]/);
-  // Review B1: the tooltip states the owning tool, since colour alone cannot
-  // distinguish two tools sharing a slot for a colour-blind reader.
-  assert.match(barPanel, /所属工具: \$\{escapeHtml\(model\.tool \? toolDisplayName\(model\.tool\) : '未知'\)\}/);
 
   const quadrantPanel = readSource(path.join(process.cwd(), 'src', 'components', 'CostEfficiencyQuadrantPanel.tsx'));
   assert.match(quadrantPanel, /toolColors\?: Map<string, string>/);
@@ -1995,9 +1951,7 @@ test('dashboard visual hierarchy keeps contributor panels aligned and trend metr
 // 守卫防回退：改动这些文件时若又长出「有效 Tokens」，这里先红。
 test('effective-token wording never regresses to the plural "有效 Tokens" (T10.204)', () => {
   const files = [
-    ['src', 'components', 'BarPanel.tsx'],
     ['src', 'components', 'CostEfficiencyQuadrantPanel.tsx'],
-    ['src', 'components', 'DeviceDistributionPanel.tsx'],
     ['src', 'components', 'LogsTable.tsx'],
     ['src', 'components', 'MetricsGrid.tsx'],
     ['src', 'components', 'TrendPanel.tsx'],
@@ -3692,7 +3646,6 @@ test('phone trend comparison cards keep current values readable', () => {
 
 test('phone model ranking exposes every drilldown item without a hidden scrollbar', () => {
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
-  const barPanel = readSource(path.join(process.cwd(), 'src', 'components', 'BarPanel.tsx'));
   const modelCost = readSource(path.join(process.cwd(), 'src', 'components', 'ModelCostDistributionPanel.tsx'));
   const phoneBlock = css.slice(css.lastIndexOf('@media (max-width: 600px)'));
   assert.match(css, /\.chart-access-list button \{[\s\S]*flex:\s*1 1 0;/);
@@ -3713,16 +3666,12 @@ test('phone model ranking exposes every drilldown item without a hidden scrollba
   assert.match(phoneBlock, /\.model-cost-row-btn \{[\s\S]*grid-template-columns:\s*20px minmax\(0, 1fr\) auto;[\s\S]*"rank name amount"/);
   assert.match(phoneBlock, /\.model-cost-drilldown-btn \{[\s\S]*width:\s*44px;[\s\S]*min-width:\s*44px;[\s\S]*padding:\s*0;/);
   assert.match(phoneBlock, /\.model-cost-drilldown-label \{\s*display:\s*none;/);
-  assert.match(barPanel, /className="chart-access-list" role="group" aria-label="可下钻的模型排行"/);
-  assert.match(barPanel, /aria-label=\{`打开 \$\{model\.name\} 专属看板`\}/);
 });
 
 test('desktop model ranking keeps long IDs distinguishable in the drilldown list', () => {
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
-  const barPanel = readSource(path.join(process.cwd(), 'src', 'components', 'BarPanel.tsx'));
   const desktopBlock = css.slice(css.indexOf('@media (min-width: 601px)'));
   assert.match(desktopBlock, /\.chart-access-list button span \{[\s\S]*display:\s*-webkit-box;[\s\S]*-webkit-line-clamp:\s*2;[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*white-space:\s*normal;[\s\S]*line-height:\s*1\.25;/);
-  assert.match(barPanel, /title=\{`打开 \$\{model\.name\} 专属看板`\}/);
 });
 
 test('desktop model cost distribution keeps long IDs readable before drilldown', () => {

@@ -32,6 +32,8 @@ mod project_index;
 mod quota;
 pub use quota::run_claude_statusline_helper;
 mod macos_wallpaper_window;
+mod peer_sync;
+mod peer_wire;
 mod quota_sync;
 mod scanner;
 mod session_analysis;
@@ -860,6 +862,11 @@ pub fn run() {
             commands::magpie_import::magpie_import_status,
             commands::magpie_import::magpie_import_run,
             commands::magpie_import::magpie_import_clear,
+            peer_sync::peer_sync_get_config,
+            peer_sync::peer_sync_save_config,
+            peer_sync::peer_sync_clear_config,
+            peer_sync::peer_sync_preview,
+            peer_sync::peer_sync_import_providers,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,
