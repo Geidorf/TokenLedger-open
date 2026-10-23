@@ -256,6 +256,27 @@ impl Features {
     }
 }
 
+/// A conversation key from the body, for clients that send no session
+/// header: Responses `prompt_cache_key`, or the session inside Anthropic
+/// `metadata.user_id` (a JSON object with `session_id`, or a legacy
+/// `…_session_<id>` string). Only used to pin routing, never recorded.
+pub fn body_session(payload: &Value) -> Option<String> {
+    let clip = |text: &str| -> Option<String> {
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.chars().take(128).collect())
+    };
+    if let Some(key) = payload.get("prompt_cache_key").and_then(Value::as_str) {
+        return clip(key);
+    }
+    let user = payload
+        .pointer("/metadata/user_id")
+        .and_then(Value::as_str)?;
+    if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(user) {
+        return map.get("session_id").and_then(Value::as_str).and_then(clip);
+    }
+    user.rsplit_once("_session_").and_then(|(_, id)| clip(id))
+}
+
 fn parse_minutes(text: &str) -> Option<u32> {
     let (hour, minute) = text.split_once(':')?;
     if hour.len() != 2 || minute.len() != 2 {
@@ -1125,6 +1146,43 @@ mod tests {
         let pinned = plan_members(&g, &none, Some("a/m1"), 0);
         assert_eq!(pinned.candidates, ["a/m1", "c/m3", "b/m2"]);
         assert_eq!(pinned.reason, "affinity");
+    }
+
+    #[test]
+    fn body_session_reads_cache_key_and_metadata() {
+        assert_eq!(
+            body_session(
+                &json!({"prompt_cache_key": "conv-1", "metadata": {"user_id": "x_session_y"}})
+            ),
+            Some("conv-1".into())
+        );
+        assert_eq!(
+            body_session(&json!({"metadata": {"user_id": "user_ab_account_cd_session_5e6f"}})),
+            Some("5e6f".into())
+        );
+        assert_eq!(
+            body_session(
+                &json!({"metadata": {"user_id": "{\"device_id\":\"d\",\"session_id\":\"s-9\"}"}})
+            ),
+            Some("s-9".into())
+        );
+        assert_eq!(
+            body_session(&json!({"metadata": {"user_id": "user_only"}})),
+            None
+        );
+        assert_eq!(
+            body_session(&json!({"metadata": {"user_id": "{\"device_id\":\"d\"}"}})),
+            None
+        );
+        assert_eq!(body_session(&json!({"prompt_cache_key": "  "})), None);
+        assert_eq!(body_session(&json!({"input": "hi"})), None);
+        let long = "k".repeat(300);
+        assert_eq!(
+            body_session(&json!({"prompt_cache_key": long}))
+                .unwrap()
+                .len(),
+            128
+        );
     }
 
     #[test]
