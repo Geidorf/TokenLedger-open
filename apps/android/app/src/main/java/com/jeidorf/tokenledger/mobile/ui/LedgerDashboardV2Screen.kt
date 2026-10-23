@@ -541,7 +541,9 @@ internal fun V2DestinationContent(
     // §4.1 顶栏 scroll-under：当前页（目的地 × 洞察页签）的列表是否已离开顶部，只在翻转时报告；
     // 没有数据、显示的是状态壳时列表不在屏上，一律算在顶部。
     val activeListState = listStateFor(destination, insightPane)
-    val listShown = displayedStats != null
+    // 路由页不依赖用量统计：统计还没到或读取失败时它照常显示自己的内容。
+    val routingIndependent = destination == MobileDestination.Routing
+    val listShown = displayedStats != null || routingIndependent
     val reportScrolledUnder by rememberUpdatedState(onScrolledUnderChange)
     LaunchedEffect(activeListState, listShown) {
         snapshotFlow { listShown && activeListState.v2ScrolledUnder() }.collect { reportScrolledUnder(it) }
@@ -549,17 +551,17 @@ internal fun V2DestinationContent(
 
     val stats = displayedStats
     when {
-        stats == null && state.dashboardLoading -> V2DestinationStateShell(
+        stats == null && !routingIndependent && state.dashboardLoading -> V2DestinationStateShell(
             palette, destination, insightPane, state.query, state.dayReviewReturn != null,
             onRangeChange, onRequestCustomRange, onInsightPaneChange, onReturnFromDay
         ) { V2LoadingState(palette = palette, showingCachedData = state.showingCachedData) }
-        stats == null && state.error != null -> V2DestinationStateShell(
+        stats == null && !routingIndependent && state.error != null -> V2DestinationStateShell(
             palette, destination, insightPane, state.query, state.dayReviewReturn != null,
             onRangeChange, onRequestCustomRange, onInsightPaneChange, onReturnFromDay
         ) {
             V2FullState(palette, "看板暂时不可用", state.userVisibleError.orEmpty(), "重试", onRefresh)
         }
-        stats == null -> V2DestinationStateShell(
+        stats == null && !routingIndependent -> V2DestinationStateShell(
             palette, destination, insightPane, state.query, state.dayReviewReturn != null,
             onRangeChange, onRequestCustomRange, onInsightPaneChange, onReturnFromDay
         ) {
@@ -602,6 +604,11 @@ internal fun V2DestinationContent(
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = contentBottomPadding),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                if (stats == null) {
+                    // 只有路由页会在没有统计时走到这里；切页过渡里旧页也可能短暂落在这一支。
+                    if (targetDestination == MobileDestination.Routing) v2RoutingItems(palette)
+                    return@LazyColumn
+                }
                 when (targetDestination) {
                     MobileDestination.Usage -> if (targetPane == InsightPane.Overview) v2OverviewItems(
                         palette,
