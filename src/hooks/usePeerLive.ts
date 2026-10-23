@@ -29,7 +29,10 @@ export interface PeerRecentRoute {
   agent: string;
   model: string;
   ended: string;
+  /** 最多 16 次：前面的尝试加上最后一次，最终结果总在末尾。 */
   attempts: PeerRouteAttempt[];
+  /** 中间省略的尝试数，没有省略时不出现。 */
+  omitted?: number;
 }
 
 export interface PeerLiveSnapshot {
@@ -45,13 +48,16 @@ export interface PeerLiveSnapshot {
 
 /**
  * 轮询外部网关的实时路由状态，供路由动画使用。外部网关允许每秒读取一次；
- * 页面隐藏时暂停，`enabled = false` 时不发请求。
+ * 页面隐藏时暂停，`enabled = false` 时不发请求。停用或换端口时清空旧快照；
+ * 读取出错时保留上一次快照但 `stale = true`，调用方不要把它当作当前状态。
  */
 export function usePeerLive(enabled: boolean, intervalMs = 1000, port?: number) {
   const [snapshot, setSnapshot] = useState<PeerLiveSnapshot | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    setSnapshot(null);
+    setError('');
     if (!enabled) return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -76,5 +82,5 @@ export function usePeerLive(enabled: boolean, intervalMs = 1000, port?: number) 
     };
   }, [enabled, intervalMs, port]);
 
-  return { snapshot, error };
+  return { snapshot, error, stale: snapshot !== null && error !== '' };
 }
