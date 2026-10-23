@@ -89,7 +89,7 @@ function NodeBox({ node, x, y, width, height, maxLabel, side, color }: {
   const state = node.more ? 'more' : node.state ?? 'idle';
   return (
     <g className={`rs-node rs-${side} is-${state}`} transform={`translate(${x - width / 2} ${y - height / 2})`} style={color ? ({ '--agent': color } as CSSProperties) : undefined}>
-      <title>{node.more ? `另有 ${node.more} 个` : node.label}</title>
+      <title>{node.more ? `另有 ${node.more} 个` : node.why ? `${node.label} · ${node.why}` : node.label}</title>
       <rect className="rs-node-box" width={width} height={height} rx={height / 3.2} />
       {!node.more && <circle className="rs-node-dot" cx={12} cy={height / 2} r={3.5} />}
       <text className="rs-node-label" x={node.more ? width / 2 : 22} y={height / 2} textAnchor={node.more ? 'middle' : 'start'} dominantBaseline="central">
