@@ -38,6 +38,9 @@ jobs:
       - name: Verify run health probe contract
         run: npm run test:run-health
 
+      - name: Verify sensitive-term matcher
+        run: node --test scripts/check-sensitive-terms.test.mjs
+
       # 中文提交主题此前只由本地 .githooks 校验：需要每个 worktree 手动执行
       # git config core.hooksPath .githooks，忘了就完全失效，--no-verify 也能绕过。
       # 见 docs/audits/collaboration-process-20260725.md §六缺口 1。
@@ -61,6 +64,8 @@ jobs:
           fi
           echo "校验范围：$RANGE"
           node scripts/check-commit-message.mjs --range "$RANGE"
+          # 公开仓库红线：本次提交消息与新增内容里不得出现竞品信息（名单只存摘要）。
+          node scripts/check-sensitive-terms.mjs --range "$RANGE"
 
   frontend-check:
     name: Frontend Contracts & Build

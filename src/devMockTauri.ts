@@ -2344,6 +2344,11 @@ export function installDevMockTauri() {
         return { message: 'Supabase 配置已保存' };
       case 'export_db_csv':
         return { message: '已导出 CSV', path: 'dev/tokenledger-export.csv' };
+      case 'export_usage_csv': {
+        const content = typeof payload.content === 'string' ? payload.content : '';
+        const rows = Math.max(0, content.split('\n').filter(Boolean).length - 1);
+        return { message: `已导出 ${rows} 条记录`, path: 'dev/tokenledger_requests.csv' };
+      }
       case 'reset_local_sync':
         return { message: '同步状态已重置' };
       case 'cleanup_db': {

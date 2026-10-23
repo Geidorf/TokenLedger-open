@@ -6824,7 +6824,8 @@
 
   .details-summary {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* 五项（含缓存命中率）在常见宽度排成一行，窄一些时自动折行。 */
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 10px;
   }
 

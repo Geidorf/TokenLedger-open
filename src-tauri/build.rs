@@ -106,6 +106,7 @@ fn main() {
         "search_models_dev_prices",
         "get_db_info",
         "export_db_csv",
+        "export_usage_csv",
         "cleanup_db",
         "reset_local_sync",
         "refresh_scan",
