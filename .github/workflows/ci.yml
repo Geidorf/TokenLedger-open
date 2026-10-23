@@ -282,6 +282,18 @@ jobs:
       - name: Validate Android screenshot goldens on the source host family
         run: node scripts/run-android-gradle.mjs :app:validateDebugScreenshotTest
 
+      # 视觉改动需要前后对比：无论通过与否都上传渲染结果与差异报告，截图不进 Git。
+      - name: Upload Android screenshot report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-screenshot-report
+          path: |
+            apps/android/app/build/reports/screenshotTest
+            apps/android/app/build/outputs/screenshotTest-results
+          if-no-files-found: ignore
+          retention-days: 14
+
   supabase-test:
     name: Supabase Fresh Replay, RLS, RPC & EXPLAIN
     runs-on: ubuntu-latest
