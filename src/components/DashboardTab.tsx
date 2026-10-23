@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Cloud, FolderSearch, RefreshCw, Settings, SlidersHorizontal, TriangleAlert } from 'lucide-react';
-import { BarPanel } from './BarPanel';
 import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
-import { DeviceDistributionPanel } from './DeviceDistributionPanel';
-import { DonutPanel } from './DonutPanel';
 import { HeatmapSection } from './HeatmapSection';
+import { UsageSplitPanel } from './usage/UsageSplitPanel';
+import { splitHeatmap, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
 import { LoadingSkeleton, MetricsSkeleton } from './LoadingSkeleton';
 import { MetricsGrid } from './MetricsGrid';
 import { ModelCostDistributionPanel } from './ModelCostDistributionPanel';
@@ -367,6 +366,10 @@ export function DashboardTab({
   onOpenAllowances,
 }: DashboardTabProps) {
   const quotaSectionRef = useRef<HTMLDivElement>(null);
+  // 用量拆分（Split by）的维度、指标与焦点：焦点同时决定热力图画哪一项。
+  const [splitDimension, setSplitDimension] = useState<SplitDimension>('agent');
+  const [splitMetric, setSplitMetric] = useState<SplitMetric>('tokens');
+  const [splitFocus, setSplitFocus] = useState<SplitFocus | null>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const closePreferences = useCallback(() => setPreferencesOpen(false), []);
   const openPreferences = useCallback(() => setPreferencesOpen(true), []);
@@ -606,6 +609,13 @@ export function DashboardTab({
     topModelsList.length === 0 &&
     (stats.history?.length || 0) === 0;
   const showDeviceDistribution = shouldShowDeviceDistribution(scope, stats);
+  // 换了范围或口径后焦点项可能已不在数据里：不存在就当没有焦点，不显示一个空列表。
+  const activeSplitFocus = splitFocus && (
+    splitFocus.dimension === 'agent' ? Boolean(stats.tools?.[splitFocus.id])
+      : splitFocus.dimension === 'model' ? Boolean(stats.models?.[splitFocus.id])
+        : showDeviceDistribution && (stats.machineDistribution || []).some((machine) => machine.value === splitFocus.id)
+  ) ? splitFocus : null;
+  const focusedHeatmap = activeSplitFocus ? splitHeatmap(stats, activeSplitFocus) : null;
   const cloudRecovery = scope === 'cloud'
     ? cloudSyncRecoveryCopy({ authenticated: cloudAuthenticated, capabilityVerified: cloudCapabilityVerified })
     : null;
@@ -866,11 +876,15 @@ export function DashboardTab({
             onOpenSettings={onOpenQuotaSettings} onNotify={onQuotaNotify}
             sourceOrder={displayPreferences.preferences.quotaSourceOrder} hiddenSourceIds={displayPreferences.preferences.hiddenQuotaSourceIds} />
         </div>;
-        if (module === 'distribution') return <div key={module} className={`dashboard-grid${showDeviceDistribution ? ' dashboard-grid-with-devices' : ''}`}>
-          <DonutPanel activeTools={activeToolsList} showTotalTokens={showTotalTokens} />
-          {showDeviceDistribution && <DeviceDistributionPanel machines={stats.machineDistribution || []} showTotalTokens={showTotalTokens} />}
-          <BarPanel topModels={topModelsList} onModelClick={onModelClick} showTotalTokens={showTotalTokens} toolColors={toolColors} />
-        </div>;
+        if (module === 'distribution') return <UsageSplitPanel key={module} stats={stats}
+          dimension={splitDimension === 'device' && !showDeviceDistribution ? 'agent' : splitDimension}
+          metric={splitMetric} focus={activeSplitFocus}
+          deviceAvailable={showDeviceDistribution} showTotalTokens={showTotalTokens}
+          onDimensionChange={setSplitDimension} onMetricChange={setSplitMetric} onFocusChange={setSplitFocus}
+          onOpenEntity={(kind, id) => {
+            if (kind === 'tool') { const tool = stats.tools[id]; if (tool) onToolClick?.(tool); }
+            else { const model = allModelsList.find((item) => item.name === id); if (model) onModelClick?.(model); }
+          }} />;
         return <section key={module} className="dashboard-preference-module" aria-labelledby="dashboard-insights-title">
           <h2 id="dashboard-insights-title" className="insight-group-title">消费洞察 · 缓存与模型经济</h2>
           <CacheFlowPanel summary={stats.summary} />
@@ -879,7 +893,9 @@ export function DashboardTab({
           <TemporalInsightsSection trends={stats.trends} context={insightTimeContext} comparison={stats.comparison ?? null} onSelectDate={onSelectDate} dateDrillUnavailable={dateDrillUnavailable} />
           {/* Cloud scope cannot open a single day: calendar cells stay static
               (the reason text there is still open, see T10.158 log). */}
-          {showHeatmap && <HeatmapSection heatmap={stats.heatmap} onSelectDate={dateDrillUnavailable ? undefined : onSelectDate} range={range} customRange={customRange} timeContext={insightTimeContext} />}
+          {showHeatmap && <HeatmapSection heatmap={focusedHeatmap ?? stats.heatmap} subject={focusedHeatmap && activeSplitFocus ? activeSplitFocus.id : undefined}
+            subjectUnavailable={activeSplitFocus && !focusedHeatmap ? activeSplitFocus.id : undefined}
+            onSelectDate={dateDrillUnavailable ? undefined : onSelectDate} range={range} customRange={customRange} timeContext={insightTimeContext} />}
           <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />
         </section>;
       })}
