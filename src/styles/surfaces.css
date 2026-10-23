@@ -116,7 +116,10 @@
 }
 
 .app-header .theme-toggle {
-  min-width: 36px;
+  position: relative;
+  isolation: isolate;
+  min-width: 44px;
+  min-height: 44px;
   justify-content: center;
   border-color: transparent;
   background: transparent;
@@ -124,9 +127,24 @@
   color: var(--shell-control-fg);
 }
 
+/* Hover fill drawn inside the 44px target (GLB-03). */
+.app-header .theme-toggle::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 7px;
+  border-radius: 7px;
+  background: transparent;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
 .app-header .theme-toggle:hover {
-  background: var(--shell-hover);
+  background: transparent;
   color: var(--color-text-primary);
+}
+
+.app-header .theme-toggle:hover::after {
+  background: var(--shell-hover);
 }
 
 @media (forced-colors: active) {

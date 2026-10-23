@@ -3540,6 +3540,8 @@ test('top bar segments and icon actions preserve a 44px target (GLB-03)', () => 
   assert.match(shell, /\.topbar-icon-btn,\n\.topbar-text-btn \{[^}]*min-height: 44px;/);
   assert.match(shell, /\.topbar-icon-btn,\n\.topbar-text-btn \{[^}]*min-width: 44px;/);
   assert.match(shell, /\n\.topbar-icon-btn \{\n  width: 44px;/);
+  const surfaces = readSource(path.join(process.cwd(), 'src', 'styles', 'surfaces.css'));
+  assert.match(surfaces, /\n\.app-header \.theme-toggle \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
   // The actions column never shrinks under its content, so it cannot overlap the switch.
   assert.match(shell, /\n\.app-topbar \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto minmax\(max-content, 1fr\);/);
   // The visible thumb, track and hover fill are drawn inset, not the hit area.
