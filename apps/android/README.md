@@ -4,7 +4,7 @@
 
 ## 构建配置
 
-构建基线固定为 JDK 17、Gradle Wrapper 8.13、Android API 36；不要依赖每台机器各自安装的全局 Gradle。
+构建基线固定为 JDK 17、Gradle Wrapper 8.13、Android API 36；不要依赖每台机器各自安装的全局 Gradle。依赖与插件版本统一写在 `gradle/libs.versions.toml`，升级只改这一处；升级 Compose BOM 会改变截图像素，需要在 macOS 金图主机上重新生成截图基线。
 
 1. 安装 JDK 17 与 Android SDK Platform 36，并设置 `JAVA_HOME`。
 2. 复制 `local.properties.sample` 为 `local.properties`，至少设置 `sdk.dir`。
