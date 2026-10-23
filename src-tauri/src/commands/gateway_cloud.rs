@@ -296,6 +296,12 @@ fn collect_hours_with_scan_hook(
         Some(signature) => gateway_overlay::gateway_rows_cached(db_path, &signature)?,
         None => std::sync::Arc::new(Vec::new()),
     };
+    // Other computers' shared calls are theirs to upload, never this one's.
+    let gateway: Vec<gateway_overlay::GatewayRow> = gateway
+        .iter()
+        .filter(|row| row.source != gateway_overlay::RowSource::SharedPeer)
+        .cloned()
+        .collect();
     if gateway.is_empty() && previous.is_empty() {
         return Ok(hours);
     }

@@ -77,7 +77,13 @@ impl DavClient {
 
     /// Reads the peer's backup; `None` when the folder has none yet.
     pub async fn get_backup(&self) -> Result<Option<Vec<u8>>, String> {
-        let url = file_url(&self.base, &[FOLDER, BACKUP_FILE])?;
+        self.get_file(&[FOLDER, BACKUP_FILE], MAX_BACKUP_BYTES)
+            .await
+    }
+
+    /// Reads `<base>/<parts…>`; `None` when it isn't there.
+    pub async fn get_file(&self, parts: &[&str], max: usize) -> Result<Option<Vec<u8>>, String> {
+        let url = file_url(&self.base, parts)?;
         let request = self.authorized(
             self.client
                 .get(url)
@@ -106,7 +112,7 @@ impl DavClient {
         }
         if response
             .content_length()
-            .is_some_and(|length| length as usize > MAX_BACKUP_BYTES)
+            .is_some_and(|length| length as usize > max)
         {
             return Err("服务器上的同步文件过大，不像外部网关的备份。".to_string());
         }
@@ -117,13 +123,128 @@ impl DavClient {
             .await
             .map_err(|error| format!("读取 WebDAV 文件失败：{}", error.without_url()))?
         {
-            if body.len() + chunk.len() > MAX_BACKUP_BYTES {
+            if body.len() + chunk.len() > max {
                 return Err("服务器上的同步文件过大，不像外部网关的备份。".to_string());
             }
             body.extend_from_slice(&chunk);
         }
         Ok(Some(body))
     }
+
+    /// The files in `<base>/<parts…>/` with their ETags (empty when the
+    /// server gives none); an empty list when the folder isn't there.
+    pub async fn list(&self, parts: &[&str]) -> Result<Vec<(String, String)>, String> {
+        let mut url = file_url(&self.base, parts)?;
+        let folder = format!("{}/", url.path());
+        url.set_path(&folder);
+        let method = reqwest::Method::from_bytes(b"PROPFIND").map_err(|error| error.to_string())?;
+        let request = self.authorized(
+            self.client
+                .request(method, url.clone())
+                .header("Depth", "1")
+                .header(reqwest::header::CONTENT_TYPE, "application/xml"),
+        )?;
+        let response = request
+            .send()
+            .await
+            .map_err(|error| format!("连接 WebDAV 服务器失败：{}", error.without_url()))?;
+        match response.status() {
+            StatusCode::NOT_FOUND | StatusCode::CONFLICT | StatusCode::GONE => {
+                return Ok(Vec::new())
+            }
+            StatusCode::UNAUTHORIZED => {
+                return Err("WebDAV 服务器拒绝了用户名或密码（HTTP 401）。".to_string())
+            }
+            StatusCode::MULTI_STATUS => {}
+            status => {
+                return Err(format!(
+                    "列出 WebDAV 文件夹失败（HTTP {}）。",
+                    status.as_u16()
+                ))
+            }
+        }
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| format!("读取 WebDAV 文件夹列表失败：{}", error.without_url()))?;
+        if body.len() > MAX_BACKUP_BYTES {
+            return Err("WebDAV 文件夹列表过大。".to_string());
+        }
+        Ok(listed_files(&String::from_utf8_lossy(&body), url.path()))
+    }
+}
+
+/// The text of every `<…href>` and `<…getetag>` element, in order, whatever
+/// namespace prefix the server uses.
+fn elements<'a>(xml: &'a str, name: &str) -> Vec<(usize, &'a str)> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(offset) = xml[at..].find('<') {
+        let open = at + offset;
+        let Some(close) = xml[open..].find('>').map(|end| open + end) else {
+            break;
+        };
+        let tag = &xml[open + 1..close];
+        let local = tag.split_whitespace().next().unwrap_or("");
+        let local = local.rsplit(':').next().unwrap_or(local);
+        at = close + 1;
+        if tag.starts_with('/') || tag.ends_with('/') || !local.eq_ignore_ascii_case(name) {
+            continue;
+        }
+        if let Some(end) = xml[at..].find("</") {
+            found.push((open, xml[at..at + end].trim()));
+        }
+    }
+    found
+}
+
+/// The files a PROPFIND multistatus names directly under `folder` (a URL
+/// path ending in `/`), each with its ETag.
+pub fn listed_files(xml: &str, folder: &str) -> Vec<(String, String)> {
+    let hrefs = elements(xml, "href");
+    let etags = elements(xml, "getetag");
+    let mut files = Vec::new();
+    for (index, (at, href)) in hrefs.iter().enumerate() {
+        let next = hrefs.get(index + 1).map_or(xml.len(), |(next, _)| *next);
+        let etag = etags
+            .iter()
+            .find(|(position, _)| position > at && *position < next)
+            .map(|(_, etag)| etag.trim_matches('"').replace("&quot;", ""))
+            .unwrap_or_default();
+        let href = href.replace("&amp;", "&");
+        // A server may answer with whole URLs or with paths.
+        let path = Url::parse(&href).map_or(href.clone(), |url| url.path().to_string());
+        let decoded = percent_decode(&path);
+        let folder = percent_decode(folder);
+        let Some(name) = decoded.strip_prefix(folder.as_str()) else {
+            continue;
+        };
+        if name.is_empty() || name.contains('/') {
+            continue;
+        }
+        files.push((name.to_string(), etag));
+    }
+    files
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            let hex = &bytes[index + 1..index + 3];
+            if hex.iter().all(u8::is_ascii_hexdigit) {
+                let digit = |ch: u8| (ch as char).to_digit(16).unwrap_or(0) as u8;
+                out.push(digit(hex[0]) * 16 + digit(hex[1]));
+                index += 3;
+                continue;
+            }
+        }
+        out.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Basic auth over plain http only stays on this computer or the local

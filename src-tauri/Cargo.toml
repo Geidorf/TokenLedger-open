@@ -42,6 +42,8 @@ sha2 = "0.10"
 # 外部网关同步格式（PBKDF2-SHA256 + AES-256-GCM）；ring 已是 rustls 的依赖，不新增 crate。
 ring = "0.17"
 base64 = "0.22"
+# 外部网关共享用量文件是 gzip；flate2 已在 Cargo.lock 中（间接依赖），不新增 crate。
+flate2 = "1"
 zstd = "0.13"
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
