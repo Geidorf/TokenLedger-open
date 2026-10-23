@@ -25,6 +25,11 @@ const ledger = {
 };
 
 test.describe('实时路由动画', () => {
+  // 外部本机网关默认不在运行：各用例只看自带网关，需要外部来源的用例自己覆盖。
+  test.beforeEach(async ({ ipc }) => {
+    await ipc.override('peer_live_snapshot', { value: { reachable: false, port: 3425, requests: 0, waiting: 0, tools: 0, active: [], recent: [] } });
+  });
+
   test('失败切换：失败成员带状态码，说明写清切到了哪个成员', async ({ page, ipc }) => {
     await ipc.override('gateway_recent_route_decisions', { value: [failover] });
     await ipc.override('gateway_recent_requests', { value: [ledger] });
@@ -55,5 +60,23 @@ test.describe('实时路由动画', () => {
     await expect(empty).toContainText('暂无实时路由数据');
     await expect(empty).toContainText('网关未运行');
     await expect(page.locator('.rs-packet')).toHaveCount(0);
+  });
+  test('外部本机网关：在途请求流动，最近完成的回退逐跳可见', async ({ page, ipc }) => {
+    await ipc.override('gateway_status', { value: { running: false, port: 3462, providerCount: 0, enabledCount: 0 } });
+    await ipc.override('peer_live_snapshot', { value: {
+      reachable: true, port: 3425, requests: 1, waiting: 0, tools: 0,
+      active: [{ id: 7, agent: 'claude', model: 'claude-opus-5-5', provider: 'anthropic', started: ago(1_200), ms: 1_200, phase: 'upstream' }],
+      recent: [{ id: '9', agent: 'opencode', model: 'glm-4.6', ended: ago(2_000), attempts: [
+        { provider: 'relay', outcome: 'failed', status: 529 },
+        { provider: 'zhipu', outcome: 'ok' },
+      ] }],
+    } });
+    await openPage(page, 'routing');
+    const stage = page.getByRole('figure', { name: '实时路由动画' });
+    await expect(stage).toBeVisible();
+    await expect(stage.locator('.rs-agent .rs-node-label')).toHaveText(['claude', 'opencode']);
+    await expect(stage.locator('.rs-tag')).toHaveText('529');
+    await expect(stage.locator('.rs-hub.is-busy')).toHaveCount(1);
+    await expect(page.getByRole('region', { name: '实时路由' }).getByText('在途')).toBeVisible();
   });
 });

@@ -22,7 +22,7 @@ import type { ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStr
 import { Sheet } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 import { RoutingStage, RoutingStageEmpty } from './RoutingStage';
-import { useRoutingLive } from './useRoutingLive';
+import { readExternalGateway, useRoutingLive } from './useRoutingLive';
 
 interface PageProps {
   onNotify: (type: ToastType, text: string) => void;
@@ -203,7 +203,7 @@ function GroupCard({ group, busy, onEdit, onToggle, onDelete }: { group: Routing
 }
 
 function LiveRoutingCard() {
-  const { scene, loaded } = useRoutingLive();
+  const { scene, loaded } = useRoutingLive({ readExternal: readExternalGateway });
   const live = scene.sources.some((source) => source.reachable);
   return (
     <section className="mw-card rs-card" aria-label="实时路由">

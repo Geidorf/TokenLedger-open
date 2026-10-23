@@ -209,10 +209,10 @@ function flowsFromExternal(snapshot: ExternalLiveSnapshot, now: number): SceneFl
       status: attempt.status ?? null,
     }));
     return {
-      id: `mp:${route.id}`,
+      id: `ext:${route.id}`,
       source: 'external',
       agent: agentName(route.agent),
-      via: route.model ?? '外部网关',
+      via: route.model || '外部网关',
       hops,
       phase: hops.some((hop) => hop.outcome === 'ok') ? 'done' : 'failed',
       at,
@@ -224,10 +224,10 @@ function flowsFromExternal(snapshot: ExternalLiveSnapshot, now: number): SceneFl
     const at = started || (request.ms != null ? now - request.ms : now);
     const target = request.provider ? (request.model ? `${request.provider}/${request.model}` : request.provider) : null;
     return {
-      id: `mp:${request.id}`,
+      id: `ext:${request.id}`,
       source: 'external',
       agent: agentName(request.agent),
-      via: request.model ?? '外部网关',
+      via: request.model || '外部网关',
       hops: target ? [{ target, outcome: 'pending' as const }] : [],
       phase: 'inflight' as const,
       at,
