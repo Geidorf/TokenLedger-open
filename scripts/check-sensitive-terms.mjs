@@ -36,6 +36,13 @@ export function containsSensitiveTerm(text, digests = DIGEST_SET, lengths = LENG
   return false;
 }
 
+/** 报位置用：把路径里含名单词的字母数字段换成 `***`，免得文件名把词带进公开日志。 */
+export function redact(text, digests = DIGEST_SET, lengths = LENGTHS) {
+  return String(text).replace(/[A-Za-z0-9]+/gu, (run) =>
+    containsSensitiveTerm(run, digests, lengths) ? '***' : run,
+  );
+}
+
 /** 逐行检查，返回命中的行号（从 1 开始）。 */
 export function findSensitiveLines(text) {
   return String(text || '')
@@ -85,7 +92,7 @@ function checkAddedContent(range) {
   const violations = [];
   const diff = diffRange(range);
   for (const file of git(['diff', '--name-only', '-z', '--diff-filter=AR', diff]).split('\0')) {
-    if (file && containsSensitiveTerm(file)) violations.push(`文件路径 ${file}`);
+    if (file && containsSensitiveTerm(file)) violations.push(`文件路径 ${redact(file)}`);
   }
   // 已有的提及不追究：改动一行原本就含名单词的内容（例如改错字）不算新增，
   // 只有某个文件里含名单词的新增行多于删去的含名单词的行时，才把多出来的报出来。
@@ -116,7 +123,7 @@ function checkAddedContent(range) {
     }
   }
   for (const { file, added, removed } of files.values()) {
-    for (const at of added.slice(removed)) violations.push(`${file}:${at}`);
+    for (const at of added.slice(removed)) violations.push(`${redact(file)}:${at}`);
   }
   return violations;
 }
@@ -125,7 +132,7 @@ function checkAddedContent(range) {
 function checkTree() {
   const violations = [];
   for (const file of git(['ls-files', '-z']).split('\0').filter(Boolean)) {
-    if (containsSensitiveTerm(file)) violations.push(`文件路径 ${file}`);
+    if (containsSensitiveTerm(file)) violations.push(`文件路径 ${redact(file)}`);
     let content;
     try {
       content = fs.readFileSync(file);
@@ -133,7 +140,7 @@ function checkTree() {
       continue;
     }
     if (content.includes(0)) continue;
-    for (const line of findSensitiveLines(content.toString('utf8'))) violations.push(`${file}:${line}`);
+    for (const line of findSensitiveLines(content.toString('utf8'))) violations.push(`${redact(file)}:${line}`);
   }
   return violations;
 }

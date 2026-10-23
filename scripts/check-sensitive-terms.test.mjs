@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { TERM_DIGESTS, containsSensitiveTerm, diffRange, patchPath } from './check-sensitive-terms.mjs';
+import { TERM_DIGESTS, containsSensitiveTerm, diffRange, patchPath, redact } from './check-sensitive-terms.mjs';
 
 // 名单本身不能以明文出现在仓库里，所以用一个无关的替身词验证匹配规则。
 const word = 'zebrafish';
@@ -48,4 +48,12 @@ test('reads the new path from a patch header, quoted or not', () => {
   assert.equal(patchPath('b/文档/说明.md'), '文档/说明.md');
   assert.equal(patchPath('"b/docs/a\\tb.md"'), 'docs/a\\tb.md');
   assert.equal(patchPath('/dev/null'), null);
+});
+
+test('redacts the term out of reported paths', () => {
+  assert.equal(
+    redact('src/ZebrafishImportCard.tsx:12', digests, lengths),
+    'src/***.tsx:12',
+  );
+  assert.equal(redact('docs/plain.md:3', digests, lengths), 'docs/plain.md:3');
 });
