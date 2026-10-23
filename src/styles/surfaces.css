@@ -271,3 +271,181 @@
   font-size: var(--font-size-sm);
   font-weight: var(--weight-label);
 }
+
+/* ----- Model pages: segmented switches -------------------------------------
+   The protocol and language switches read as the bar's switch: a quiet track
+   with one white thumb. The 44px rows stay; track and thumb are drawn inset. */
+.app-shell .mw-seg {
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  padding: 0 2px;
+  background: transparent;
+}
+
+.app-shell .mw-seg::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 6px 0;
+  border-radius: 8px;
+  background: var(--shell-track);
+  pointer-events: none;
+}
+
+.app-shell .mw-seg button {
+  position: relative;
+  border-radius: 6px;
+  padding: 0 12px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-control-fg);
+}
+
+.app-shell .mw-connect > .mw-seg {
+  justify-self: start;
+}
+
+.app-shell .mw-seg.is-sm button {
+  padding: 0 10px;
+}
+
+.app-shell .mw-seg button::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 8px 0;
+  border-radius: 6px;
+  background: transparent;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
+.app-shell .mw-seg button.is-on {
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-label);
+}
+
+.app-shell .mw-seg button.is-on::after {
+  background: var(--shell-thumb);
+  box-shadow: var(--shell-thumb-edge);
+}
+
+.app-shell .mw-seg button:focus-visible {
+  outline-offset: -6px;
+}
+
+/* ----- Model pages: buttons ------------------------------------------------
+   Secondary actions are quiet: the outline and hover fill sit inside the 44px
+   target, so a row of them no longer reads as a stack of boxes. */
+.app-shell .mw-btn.is-ghost,
+.app-shell .mw-btn.is-danger-ghost,
+.app-shell .mw-btn.is-primary {
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .mw-btn.is-ghost::before,
+.app-shell .mw-btn.is-danger-ghost::before,
+.app-shell .mw-btn.is-primary::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px 0;
+  border-radius: 7px;
+  pointer-events: none;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
+.app-shell .mw-btn.is-ghost::before {
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.app-shell .mw-btn.is-ghost:hover:not(:disabled) {
+  background: transparent;
+}
+
+.app-shell .mw-btn.is-ghost:hover:not(:disabled)::before {
+  background: var(--shell-hover);
+}
+
+.app-shell .mw-btn.is-danger-ghost::before {
+  box-shadow: inset 0 0 0 1px var(--color-danger-soft-border);
+}
+
+.app-shell .mw-btn.is-danger-ghost:hover:not(:disabled) {
+  background: transparent;
+}
+
+.app-shell .mw-btn.is-danger-ghost:hover:not(:disabled)::before {
+  background: var(--color-danger-soft-bg);
+}
+
+.app-shell .mw-btn.is-primary::before {
+  background: var(--color-primary-fill);
+}
+
+.app-shell .mw-btn.is-primary:hover:not(:disabled) {
+  background: transparent;
+}
+
+.app-shell .mw-btn.is-primary:hover:not(:disabled)::before {
+  background: var(--color-primary-fill-hover);
+}
+
+.app-shell .mw-panel-head > .mw-btn {
+  align-self: center;
+}
+
+.app-shell .mw-btn:focus-visible {
+  outline-offset: -6px;
+}
+
+.app-shell .mw-icon-btn:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+/* ----- Settings directory --------------------------------------------------
+   The open section is marked like a list selection, not tinted: the same
+   white thumb as the switches, with the label in primary text. */
+.app-shell .settings-directory-list {
+  --seg-bg: var(--shell-thumb);
+  --seg-shadow: var(--shell-thumb-edge);
+}
+
+.app-shell .settings-directory-list > button.is-active {
+  color: var(--color-text-primary);
+}
+
+/* ----- Settings rows -------------------------------------------------------
+   A row is named by its words; its glyph stays as a quiet grey mark instead of
+   a tinted tile. */
+.app-shell .settings-row-icon {
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+
+@media (forced-colors: active) {
+  .app-shell .mw-seg::before {
+    border: 1px solid ButtonText;
+    background: Canvas;
+  }
+
+  .app-shell .mw-seg button.is-on::after {
+    background: Highlight;
+  }
+
+  .app-shell .mw-btn.is-ghost::before,
+  .app-shell .mw-btn.is-danger-ghost::before {
+    border: 1px solid ButtonText;
+  }
+
+  .app-shell .mw-btn.is-primary::before {
+    background: ButtonText;
+  }
+}
