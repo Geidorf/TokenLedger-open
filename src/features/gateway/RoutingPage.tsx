@@ -21,6 +21,8 @@ import {
 import type { ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
 import { Sheet } from './ui';
 import { InfoTip } from '../../components/InfoTip';
+import { RoutingStage, RoutingStageEmpty } from './RoutingStage';
+import { useRoutingLive } from './useRoutingLive';
 
 interface PageProps {
   onNotify: (type: ToastType, text: string) => void;
@@ -200,6 +202,29 @@ function GroupCard({ group, busy, onEdit, onToggle, onDelete }: { group: Routing
   );
 }
 
+function LiveRoutingCard() {
+  const { scene, loaded } = useRoutingLive();
+  const live = scene.sources.some((source) => source.reachable);
+  return (
+    <section className="mw-card rs-card" aria-label="实时路由">
+      <div className="mw-panel-head rs-card-head">
+        <h3>实时路由</h3>
+        <span className={`rs-livedot ${live ? 'is-on' : ''}`} aria-hidden="true" />
+        <span className="mw-caption">{live ? '网关怎么分配每个请求，失败时切到哪个成员' : '未连接'}</span>
+        <span className="mw-flex" />
+        {scene.empty === null && (
+          <dl className="rs-stats" aria-label="最近记录统计">
+            <div><dt>在途</dt><dd>{scene.stats.inflight}</dd></div>
+            <div><dt>已改道</dt><dd>{scene.stats.rerouted}</dd></div>
+            <div><dt>失败</dt><dd>{scene.stats.failed}</dd></div>
+          </dl>
+        )}
+      </div>
+      {!loaded ? null : scene.empty ? <RoutingStageEmpty scene={scene} /> : <RoutingStage scene={scene} />}
+    </section>
+  );
+}
+
 function DecisionList({ decisions }: { decisions: RouteDecision[] }) {
   if (decisions.length === 0) return <p className="mw-caption">还没有路由决策。Agent 使用 group/… 模型后，这里会显示网关的选择。</p>;
   return (
@@ -290,6 +315,7 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
   return (
     <div className="mw-routing">
       <div className="mw-routing-main">
+        <LiveRoutingCard />
         <div className="mw-toolbar">
           <span className="mw-caption">
             {groups?.length ?? 0} 个路由组
