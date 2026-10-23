@@ -15,8 +15,8 @@ class QuotaPaceTest {
     }
 
     @Test
-    fun elapsedResetClampsToZeroAndFarResetClampsToOne() {
-        assertEquals(0f, quotaPaceRemainingFraction(300, "2026-09-07T01:00:00Z", now)!!, 0.0001f)
+    fun elapsedResetDrawsNoLineAndFarResetClampsToOne() {
+        assertNull(quotaPaceRemainingFraction(300, "2026-09-07T01:00:00Z", now))
         assertEquals(1f, quotaPaceRemainingFraction(60, "2026-09-08T02:00:00Z", now)!!, 0.0001f)
     }
 

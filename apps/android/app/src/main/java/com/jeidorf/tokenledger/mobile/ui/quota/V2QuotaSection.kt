@@ -128,8 +128,9 @@ internal fun LazyListScope.v2QuotaItems(
                 }
             }
             quota.warning?.let { warning -> item(key = "quota-warning", contentType = "status") { V2QuotaStateCard(palette, "快照提醒", warning) } }
+            val paceNow = Instant.ofEpochMilli(quota.evaluatedAtEpochMillis)
             val anyPaceLine = providers.any { provider ->
-                provider.windows.any { it.windowMinutes != null && it.resetsAt != null }
+                provider.windows.any { quotaPaceRemainingFraction(it.windowMinutes, it.resetsAt, paceNow) != null }
             }
             if (anyPaceLine) item(key = "quota-pace-note", contentType = "note") {
                 Text(

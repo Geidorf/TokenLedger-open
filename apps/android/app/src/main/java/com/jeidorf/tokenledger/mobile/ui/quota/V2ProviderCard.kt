@@ -61,6 +61,7 @@ import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
 import com.jeidorf.tokenledger.mobile.localizedDisplayName
 import com.jeidorf.tokenledger.mobile.localizedWindowLabel
+import com.jeidorf.tokenledger.mobile.quotaProviderCanonicalName
 import com.jeidorf.tokenledger.mobile.quotaCacheTimestamp
 import com.jeidorf.tokenledger.mobile.quotaCardPresentation
 import com.jeidorf.tokenledger.mobile.quotaFullTimestamp
@@ -131,8 +132,10 @@ internal fun V2ProviderCard(
             }
         } else {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                // 图块按 providerId 取字与配色，和来源页同一工具保持一致；显示名带“订阅额度”等后缀不适合取字。
-                V2SourceTile(palette, provider.providerId, palette.tokens.chartSlot(toolChartSlot(provider.providerId)))
+                // 图块按规范名取字与配色（Codex → Cd），和来源页同一工具一致；显示名带“订阅额度”等后缀、
+                // 来源 ID 带连字符（codex-app-server → CA），都不适合取字。
+                val tileName = quotaProviderCanonicalName(provider.providerId) ?: providerName
+                V2SourceTile(palette, tileName, palette.tokens.chartSlot(toolChartSlot(tileName)))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(

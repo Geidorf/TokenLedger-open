@@ -126,7 +126,7 @@ private val QUOTA_PACE_MARKER_WIDTH = 2.dp
 
 /**
  * 匀速线位置：窗口还剩多少时间占窗口长度的比例，即匀速用完时此刻应剩的额度比例。
- * 窗口长度、重置时间缺失或解析不出时返回 null，不编造；已过重置时间记为 0。
+ * 窗口长度、重置时间缺失或解析不出、或已过重置时间时返回 null，不编造。
  */
 internal fun quotaPaceRemainingFraction(windowMinutes: Int?, resetsAt: String?, now: Instant): Float? {
     val minutes = windowMinutes?.takeIf { it > 0 } ?: return null
@@ -134,6 +134,8 @@ internal fun quotaPaceRemainingFraction(windowMinutes: Int?, resetsAt: String?, 
         runCatching { OffsetDateTime.parse(raw).toInstant() }.getOrNull() ?: runCatching { Instant.parse(raw) }.getOrNull()
     } ?: return null
     val left = Duration.between(now, reset).seconds.toDouble() / 60.0
+    // 已过重置时间的读数说明快照还没刷新，这时画在最左端的竖线没有意义，不画。
+    if (left <= 0.0) return null
     return (left / minutes).coerceIn(0.0, 1.0).toFloat()
 }
 
