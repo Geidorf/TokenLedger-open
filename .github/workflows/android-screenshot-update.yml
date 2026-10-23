@@ -2,6 +2,9 @@ name: Android Screenshot Golden Update
 
 # 视觉改动的金图只能在 macOS 金图主机上生成（ADR-007）。手动触发后，在指定分支上
 # 重新生成截图基线并提交回该分支，供前后对比与评审；不允许对 main 运行。
+#
+# 注意：这里用 GITHUB_TOKEN 推送，金图提交不会触发 CI，PR 头部会缺少必需检查。
+# 开启必需检查与自动合并后，作者需要在金图提交之后再推一个正常提交来触发 CI。
 on:
   workflow_dispatch:
     inputs:
