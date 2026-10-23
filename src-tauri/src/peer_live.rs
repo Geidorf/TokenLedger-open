@@ -130,6 +130,8 @@ struct RawAttempt {
     status: i64,
     rejected: bool,
     route_id: i64,
+    /// Set on calls the peer's sync brought from another computer.
+    computer: String,
 }
 
 /// The last few routes in `usage.jsonl` lines (oldest first, as the peer
@@ -140,7 +142,9 @@ pub fn recent_routes(lines: &[u8]) -> Vec<RecentRoute> {
         let Ok(raw) = serde_json::from_slice::<RawAttempt>(line) else {
             continue;
         };
-        if raw.t.is_empty() {
+        // Only this computer's gateway: a synced call ran elsewhere, and its
+        // route id may collide with a local one.
+        if raw.t.is_empty() || !raw.computer.trim().is_empty() {
             continue;
         }
         let id = if raw.route_id > 0 {
@@ -376,6 +380,20 @@ mod tests {
         assert_eq!(recent[1].attempts.len(), 1);
         let json = serde_json::to_string(&recent).unwrap();
         assert!(!json.contains("secret") && !json.contains("example.com"));
+    }
+
+    #[test]
+    fn calls_from_other_computers_are_left_out() {
+        let lines = concat!(
+            r#"{"t":"2026-10-23T13:00:00Z","provider":"here","status":200,"route_id":5}"#,
+            "\n",
+            r#"{"t":"2026-10-23T13:00:01Z","provider":"there","status":200,"route_id":5,"computer":"laptop"}"#,
+            "\n",
+        );
+        let routes = recent_routes(lines.as_bytes());
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].attempts.len(), 1);
+        assert_eq!(routes[0].attempts[0].provider, "here");
     }
 
     #[test]
