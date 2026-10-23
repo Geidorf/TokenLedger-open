@@ -21,7 +21,7 @@
 
 - `sources[]`：每个来源 `{ id: tokenledger | external, reachable, note?, readError? }`。
 - `flows[]`（最新在前）：`{ id, source, agent, via, hops[], phase, at, waitingOn?, fresh }`。
-  - `hops[]` 按尝试顺序：`{ target: "供应商/模型", outcome: ok | failed | rejected | skipped | pending, status? }`。
+  - `hops[]` 按尝试顺序：`{ target: "供应商/模型", outcome: ok | failed | rejected | skipped | pending, status?, why? }`。`why` 是决策解释链里该成员的一句话原因（见 [routing-decision-trace-v1.md](routing-decision-trace-v1.md)），只有主窗口有，上游节点同样带最新一次的 `why`。
   - `phase`：`inflight`（在途）、`routed`（已接通，可能仍在流式）、`done`（已结束且成功）、`failed`（没有成员接通或请求失败）。
   - `fresh`：记录距今不足 12 秒（`FLOW_LINGER_MS`），只有新鲜的流才播放；时间在未来的记录（时钟偏差）不播放。
 - `agents[]` / `targets[]`：最多 4 个 Agent、5 个上游，多出的折叠成 `+N` 节点；节点 `state` 取最新一条流的结果（ok / failed / busy / idle），失败节点带状态码。

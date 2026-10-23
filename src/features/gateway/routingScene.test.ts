@@ -25,6 +25,15 @@ const ledger = (patch: Partial<LedgerRecord>): LedgerRecord => ({
 });
 
 describe('buildRoutingScene', () => {
+  it('带 trace 的决策给每一跳和上游节点附上一句话原因', () => {
+    const scene = buildRoutingScene({ now: NOW, gateway: { running: true, requests: [], decisions: [{ ...failover, trace: [
+      { member: 'openai/gpt-5', rank: 0, verdict: 'failed', reasons: ['strategy_first', 'rate_limited'] },
+      { member: 'deepseek/deepseek-chat', rank: 1, verdict: 'chosen', reasons: ['fallback', 'answered'] },
+    ] }] } });
+    expect(scene.flows[0].hops.map((hop) => hop.why)).toEqual(['限流', '备选']);
+    expect(scene.targets.find((node) => node.id === 'openai/gpt-5')?.why).toBe('限流');
+  });
+
   it('没有任何可达数据源时给出 no-source 空态，不编造流量', () => {
     const scene = buildRoutingScene({ now: NOW, gateway: { running: false, decisions: [], requests: [] } });
     expect(scene.empty).toBe('no-source');

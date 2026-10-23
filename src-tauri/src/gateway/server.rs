@@ -25,7 +25,7 @@ use super::convert::{chat_to_response, responses_to_chat, ChatStream, StreamConv
 use super::gemini::{self, GeminiPath, GeminiStream};
 use super::ledger::{agent_from_user_agent, sse_data, LedgerRecord, SseLines, Usage};
 use super::policy;
-use super::routing::{Features, RouteAttempt, RouteDecision, GROUP_PREFIX};
+use super::routing::{build_trace, Features, RouteAttempt, RouteDecision, GROUP_PREFIX};
 use super::store::{provider_account, validate_auth_mode, AuthMode, ProviderRecord, WireApi};
 use super::Shared;
 
@@ -916,6 +916,7 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
             }
         }
     }
+    let trace = build_trace(&group, &plan, &attempts);
     shared.router.record(RouteDecision {
         ts: chrono::Utc::now().to_rfc3339(),
         request_id: ctx.request_id.clone(),
@@ -925,6 +926,7 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
         detail: plan.detail,
         chosen,
         attempts,
+        trace,
     });
     last.unwrap_or_else(|| error_response(StatusCode::SERVICE_UNAVAILABLE, "路由组没有可用成员。"))
 }

@@ -266,6 +266,22 @@ fn unsupported_conversion_never_sends_and_native_group_member_preserves_semantic
         let decision = &shared.router.recent(1)[0];
         assert_eq!(decision.attempts[0].outcome, "skipped");
         assert_eq!(decision.chosen.as_deref(), Some("b/m"));
+        let trace: Vec<_> = decision
+            .trace
+            .iter()
+            .map(|item| (item.member.as_str(), item.verdict, item.reasons.clone()))
+            .collect();
+        assert_eq!(
+            trace,
+            [
+                (
+                    "a/m",
+                    "skipped",
+                    vec!["strategy_first", "protocol_unsupported"]
+                ),
+                ("b/m", "chosen", vec!["fallback", "answered"]),
+            ]
+        );
         std::fs::remove_dir_all(dir).unwrap();
     });
 }

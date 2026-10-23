@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { GroupIcon, Seg } from '../../prototypes/prototypeKit';
 import { formatTokens } from '../../utils/format';
-import { errorText, gatewayStatus, listProviders, listRoutingGroups, recentRequests, revealLocalToken } from './api';
-import { codeSample, DEFAULT_BASE_URL, effectiveTokens, modelOptions, shortTime, type ModelOption, type SampleApi, type SampleLang } from './helpers';
-import type { GatewayStatus, LedgerRecord, ProviderView, RoutingGroup } from './types';
+import { errorText, gatewayStatus, listProviders, listRoutingGroups, recentRequests, recentRouteDecisions, revealLocalToken } from './api';
+import { codeSample, DEFAULT_BASE_URL, effectiveTokens, modelOptions, shortTime, traceHeadline, type ModelOption, type SampleApi, type SampleLang } from './helpers';
+import type { GatewayStatus, LedgerRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
+import { DecisionTrace } from './DecisionTrace';
 import { CopyButton, ProviderIcon, RevealCopyButton } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 
@@ -13,6 +14,15 @@ interface GatewayData {
   providers: ProviderView[];
   groups: RoutingGroup[];
   requests: LedgerRecord[];
+  /** Group decisions by the logical request id the ledger records carry. */
+  decisions: Map<string, RouteDecision>;
+}
+
+/** Why this attempt's member was used or passed over, from the decision trace. */
+function attemptWhy(record: LedgerRecord, decision: RouteDecision | undefined): string | null {
+  const member = record.member ?? `${record.provider}/${record.upstreamModel}`;
+  const item = decision?.trace?.find((entry) => entry.member === member);
+  return item ? traceHeadline(item.reasons) : null;
 }
 
 export function GatewayStatusBar({ status }: { status: GatewayStatus | null }) {
@@ -39,11 +49,15 @@ export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
   const [lang, setLang] = useState<SampleLang>('curl');
   const [query, setQuery] = useState('');
   const [model, setModel] = useState('');
+  const [openTrace, setOpenTrace] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [status, providers, groups, requests] = await Promise.all([gatewayStatus(), listProviders(), listRoutingGroups(), recentRequests(50)]);
-      setData({ status, providers, groups, requests });
+      // Decisions only explain group requests; the page works without them.
+      const [status, providers, groups, requests, recent] = await Promise.all([
+        gatewayStatus(), listProviders(), listRoutingGroups(), recentRequests(50), recentRouteDecisions(200).catch(() => [] as RouteDecision[]),
+      ]);
+      setData({ status, providers, groups, requests, decisions: new Map(recent.map((decision) => [decision.requestId, decision])) });
       setLoadError('');
     } catch (error) {
       setLoadError(errorText(error));
@@ -153,21 +167,40 @@ export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
                 </tr>
               </thead>
               <tbody>
-                {data?.requests.map((record) => (
-                  <tr key={record.requestId}>
-                    <td>{shortTime(record.ts)}</td>
-                    <td>{record.agent ?? '—'}</td>
-                    <td className="mw-mono-text">{record.requestedModel}</td>
-                    <td className="mw-mono-text">{record.member ?? `${record.provider}/${record.upstreamModel}`}</td>
-                    <td className={record.ok ? '' : 'is-danger'} title={record.error ?? undefined}>{record.status}</td>
-                    <td className="is-num">{formatTokens(effectiveTokens(record))}</td>
-                    <td className="is-num">{formatTokens(record.input)}</td>
-                    <td className="is-num">{formatTokens(record.output)}</td>
-                    <td className="is-num">{formatTokens(record.cacheRead)}</td>
-                    <td className="is-num">{formatTokens(record.cacheWrite)}</td>
-                    <td className="is-num">{(record.latencyMs / 1000).toFixed(1)} s</td>
-                  </tr>
-                ))}
+                {data?.requests.map((record) => {
+                  const decision = record.group ? data.decisions.get(record.logicalRequestId ?? record.requestId) : undefined;
+                  const why = attemptWhy(record, decision);
+                  const open = openTrace === record.requestId;
+                  return (
+                    <Fragment key={record.requestId}>
+                      <tr>
+                        <td>{shortTime(record.ts)}</td>
+                        <td>{record.agent ?? '—'}</td>
+                        <td className="mw-mono-text">{record.requestedModel}</td>
+                        <td className="mw-mono-text">
+                          {record.member ?? `${record.provider}/${record.upstreamModel}`}
+                          {decision && (
+                            <button type="button" className="mw-chip-hit mw-trace-open" aria-expanded={open} aria-label={`${open ? '收起' : '查看'}路由原因`} onClick={() => setOpenTrace(open ? null : record.requestId)}>
+                              <span className={`mw-chip ${record.ok ? 'is-info' : 'is-warning'}`}>{why ?? '路由原因'}</span>
+                            </button>
+                          )}
+                        </td>
+                        <td className={record.ok ? '' : 'is-danger'} title={record.error ?? undefined}>{record.status}</td>
+                        <td className="is-num">{formatTokens(effectiveTokens(record))}</td>
+                        <td className="is-num">{formatTokens(record.input)}</td>
+                        <td className="is-num">{formatTokens(record.output)}</td>
+                        <td className="is-num">{formatTokens(record.cacheRead)}</td>
+                        <td className="is-num">{formatTokens(record.cacheWrite)}</td>
+                        <td className="is-num">{(record.latencyMs / 1000).toFixed(1)} s</td>
+                      </tr>
+                      {open && decision && (
+                        <tr className="mw-trace-row">
+                          <td colSpan={11}><DecisionTrace decision={decision} /></td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

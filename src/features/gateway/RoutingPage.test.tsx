@@ -35,7 +35,10 @@ describe('RoutingPage', () => {
       { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', wire: 'chat', models: ['deepseek-chat', 'deepseek-reasoner'], enabled: true, hasKey: true },
     ]);
     vi.mocked(api.recentRouteDecisions).mockResolvedValue([
-      { ts: '2026-10-03T16:00:00Z', requestId: 'r1', group: 'coding', session: 's1', reason: 'failover', detail: '按顺序', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'openai/gpt-5', outcome: 'failed', status: 429 }, { member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }] },
+      { ts: '2026-10-03T16:00:00Z', requestId: 'r1', group: 'coding', session: 's1', reason: 'failover', detail: '按顺序', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'openai/gpt-5', outcome: 'failed', status: 429 }, { member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }], trace: [
+        { member: 'openai/gpt-5', rank: 0, verdict: 'failed', reasons: ['strategy_first', 'rate_limited'], detail: '上游返回 429' },
+        { member: 'deepseek/deepseek-chat', rank: 1, verdict: 'chosen', reasons: ['fallback', 'answered'] },
+      ] },
     ]);
     vi.mocked(api.upsertRoutingGroup).mockImplementation(async (group) => [group]);
     vi.mocked(api.deleteRoutingGroup).mockResolvedValue([]);
@@ -48,6 +51,15 @@ describe('RoutingPage', () => {
     expect(screen.getByText('会话保持 1 小时')).toBeInTheDocument();
     const panel = screen.getByRole('complementary', { name: '最近路由决策' });
     await waitFor(() => expect(within(panel).getByText(/失败已切换 429/)).toBeInTheDocument());
+  });
+
+  it('最近决策可展开每个成员为何被选或被跳过', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    const panel = screen.getByRole('complementary', { name: '最近路由决策' });
+    const toggle = await within(panel).findByText('为什么这样选（2 个成员）');
+    fireEvent.click(toggle);
+    const trace = within(panel).getByRole('list', { name: 'group/coding 成员决策' });
+    expect(within(trace).getAllByRole('listitem')[0]).toHaveTextContent('策略首选 · 限流');
   });
 
   it('新建路由组：添加成员、规则与会话保持后提交', async () => {

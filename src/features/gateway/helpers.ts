@@ -138,6 +138,61 @@ export const ATTEMPT_OUTCOME_LABEL: Record<string, string> = {
   skipped: '跳过',
 };
 
+export const TRACE_VERDICT_LABEL: Record<string, string> = {
+  chosen: '选中',
+  failed: '失败已切换',
+  rejected: '上游拒绝',
+  skipped: '跳过',
+  not_reached: '未轮到',
+  excluded: '未参与',
+};
+
+/** Reason codes from the gateway's decision trace (routing.rs build_trace). */
+export const TRACE_REASON_LABEL: Record<string, string> = {
+  rule_match: '命中规则',
+  affinity: '会话保持',
+  strategy_first: '策略首选',
+  rotate_turn: '轮到它',
+  weighted_pick: '按权重选中',
+  manual_pick: '固定成员',
+  fallback: '备选',
+  nested: '来自子组',
+  answered: '已响应',
+  rate_limited: '限流',
+  quota_exhausted: '额度用尽',
+  connect_failed: '连接失败',
+  upstream_failed: '上游出错',
+  upstream_rejected: '上游拒绝',
+  auth_failed: '鉴权失败',
+  provider_missing: '供应商不存在',
+  key_missing: '未设置 Key',
+  protocol_unsupported: '协议不支持',
+  credential_unavailable: '凭据不可用',
+  not_reached: '前一个已响应',
+  manual_only: '固定分配只用一个',
+  cooling_down: '冷却中',
+  unhealthy: '健康检查未过',
+  disabled: '已停用',
+  not_planned: '未排入候选',
+};
+
+/** Codes that say why a member could not serve, for compact one-line hints. */
+const TRACE_PROBLEM_CODES = new Set([
+  'rate_limited', 'quota_exhausted', 'connect_failed', 'upstream_failed', 'upstream_rejected', 'auth_failed',
+  'provider_missing', 'key_missing', 'protocol_unsupported', 'credential_unavailable', 'cooling_down', 'unhealthy', 'disabled',
+]);
+
+export function traceReasonLabel(code: string): string {
+  return TRACE_REASON_LABEL[code] ?? code;
+}
+
+/** The most telling reason of one member: its problem if it had one, else why it was ranked. */
+export function traceHeadline(reasons: string[]): string | null {
+  const problem = reasons.find((code) => TRACE_PROBLEM_CODES.has(code));
+  const code = problem ?? reasons[0];
+  return code ? traceReasonLabel(code) : null;
+}
+
 export const TTL_OPTIONS: { value: number; label: string }[] = [
   { value: 0, label: '关闭' },
   { value: 1800, label: '30 分钟' },

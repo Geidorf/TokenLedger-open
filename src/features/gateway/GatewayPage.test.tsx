@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GatewayPage } from './GatewayPage';
 import * as api from './api';
@@ -11,6 +11,7 @@ vi.mock('./api', async (importOriginal) => {
     listProviders: vi.fn(),
     listRoutingGroups: vi.fn(),
     recentRequests: vi.fn(),
+    recentRouteDecisions: vi.fn(),
     revealLocalToken: vi.fn(),
   };
 });
@@ -25,6 +26,29 @@ describe('GatewayPage', () => {
     vi.mocked(api.listProviders).mockResolvedValue([{ id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', wire: 'chat', models: ['deepseek-chat'], enabled: true, hasKey: true }]);
     vi.mocked(api.listRoutingGroups).mockResolvedValue([{ id: 'coding', name: '编码', strategy: 'failover', members: ['deepseek/deepseek-chat'], rules: [], sessionTtlSecs: 3600, enabled: true }]);
     vi.mocked(api.recentRequests).mockResolvedValue([{ ts: '2026-10-03T16:00:00Z', requestId: 'r1', agent: 'codex', session: null, endpoint: '/v1/responses', provider: 'deepseek', requestedModel: 'group/coding', upstreamModel: 'deepseek-chat', wire: 'chat', stream: true, status: 200, ok: true, input: 1000, output: 500, cacheRead: 4000, cacheWrite: 0, latencyMs: 1200, group: 'coding', member: 'deepseek/deepseek-chat' }]);
+    vi.mocked(api.recentRouteDecisions).mockResolvedValue([{ ts: '2026-10-03T16:00:00Z', requestId: 'r1', group: 'coding', reason: 'rule', detail: '含图片输入', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }], trace: [
+      { member: 'deepseek/deepseek-chat', rank: 0, verdict: 'chosen', reasons: ['rule_match', 'answered'], detail: '含图片输入' },
+      { member: 'openai/gpt-5', rank: 1, verdict: 'not_reached', reasons: ['fallback', 'not_reached'] },
+    ] }]);
+  });
+
+  it('组请求的实际转发旁显示路由原因，点开列出每个成员', async () => {
+    render(<GatewayPage onOpenRouting={vi.fn()} />);
+    const open = await screen.findByRole('button', { name: '查看路由原因' });
+    expect(open).toHaveTextContent('命中规则');
+    fireEvent.click(open);
+    const items = within(screen.getByRole('list', { name: 'group/coding 成员决策' })).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('含图片输入');
+    expect(items[1]).toHaveTextContent('未轮到');
+    fireEvent.click(screen.getByRole('button', { name: '收起路由原因' }));
+    expect(screen.queryByRole('list', { name: 'group/coding 成员决策' })).not.toBeInTheDocument();
+  });
+
+  it('读不到路由决策时页面照常显示，不出原因按钮', async () => {
+    vi.mocked(api.recentRouteDecisions).mockRejectedValue(new Error('boom'));
+    render(<GatewayPage onOpenRouting={vi.fn()} />);
+    expect(await screen.findByRole('table', { name: '最近请求' })).toHaveTextContent('deepseek/deepseek-chat');
+    expect(screen.queryByRole('button', { name: '查看路由原因' })).not.toBeInTheDocument();
   });
 
   it('显示运行状态、3462 地址与 token 尾号', async () => {
