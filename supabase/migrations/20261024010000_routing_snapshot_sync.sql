@@ -87,7 +87,6 @@ $$;
 create or replace function private.validate_routing_snapshot_v1(p_snapshot jsonb, p_now timestamptz)
 returns timestamptz
 language plpgsql
-stable
 set search_path = ''
 as $$
 declare
@@ -277,7 +276,6 @@ $$;
 create or replace function public.get_routing_snapshots_v1()
 returns jsonb
 language plpgsql
-stable
 security definer
 set search_path = ''
 as $$
