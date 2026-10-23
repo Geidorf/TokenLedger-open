@@ -2,4 +2,5 @@
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
-exec node "$repo_root/scripts/check-commit-message.mjs" --file "$1"
+node "$repo_root/scripts/check-commit-message.mjs" --file "$1"
+exec node "$repo_root/scripts/check-sensitive-terms.mjs" --file "$1"

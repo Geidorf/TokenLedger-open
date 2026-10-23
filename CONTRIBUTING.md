@@ -75,6 +75,7 @@ These are the rules the test suite enforces. If your change touches one of them,
 - **Stage precisely.** Never use `git add .` or `git add -A`; add only the files you own.
 - **Never rewrite published history.** Historical commit SHAs are referenced by task logs and multi-machine handoffs.
 - **Run the commit hook** in your worktree: `git config core.hooksPath .githooks`.
+- **No third-party product names.** Commit messages, PR titles and descriptions, and new or changed lines of code, comments, and docs must not name other products in this space; describe them neutrally (for example "an external gateway"). Existing mentions on `main` are left as they are, but CI and the commit hook reject new ones and report only the location. Check locally with `node scripts/check-sensitive-terms.mjs --range origin/main..HEAD`.
 
 ## Pull requests
 
