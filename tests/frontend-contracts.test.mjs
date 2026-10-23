@@ -969,10 +969,11 @@ test('Android dashboard range and insight selectors expose one selected radio op
   assert.match(rangeSelector, /selected = query\.range == RangeKey\.Custom[\s\S]*?role = Role\.RadioButton[\s\S]*?stateDescription = if \(query\.range == RangeKey\.Custom\) "已选择" else "未选择"/);
   const rangeOption = block('V2RangeOption', 'V2QueryContext', 'V2FilterButton');
   assert.match(rangeOption, /this\.selected = active[\s\S]*?role = Role\.RadioButton[\s\S]*?stateDescription = if \(active\) "已选择" else "未选择"/);
-  // T10.130 把四种双态切换收敛成一个 V2SegmentedToggle，洞察页签也走它。
-  // 语义保证从这里移到共享控件里，所以两边都查。
+  // 重构 R2 把用量子页签换成下划线页签：不再走分段控件，单选语义在它自己身上查。
   const insightStrip = block('V2InsightStrip');
-  assert.match(insightStrip, /V2SegmentedToggle\([\s\S]*?role = Role\.RadioButton/);
+  assert.match(insightStrip, /\.semantics \{ selectableGroup\(\) \}/);
+  assert.match(insightStrip, /val active = pane == selected/);
+  assert.match(insightStrip, /\.clickable\(enabled = enabled, role = Role\.Tab\)[\s\S]*?this\.selected = active[\s\S]*?stateDescription = if \(active\) "已选择" else "未选择"/);
   const segmented = block('V2SegmentedToggle');
   assert.match(segmented, /\.semantics \{ selectableGroup\(\) \}/);
   assert.match(segmented, /val active = option\.value == selected/);
@@ -985,7 +986,8 @@ test('Android 导航复用分段控件，内容指标直接点击切换', () => 
   const androidUi = readAndroidDashboardUi();
 
   assert.equal((androidUi.match(/(?:private|internal) fun <T> V2SegmentedToggle\(/gu) ?? []).length, 1);
-  for (const caller of ['V2MetricModeToggle', 'V2CurrencyToggle', 'V2InsightStrip']) {
+  // 用量子页签（V2InsightStrip）自重构 R2 起是下划线页签，不在此列。
+  for (const caller of ['V2MetricModeToggle', 'V2CurrencyToggle']) {
     assert.match(androidUiDeclaration(caller), /V2SegmentedToggle\(/u, `${caller} 没走共享分段控件`);
   }
   // Token 口径不走分段控件：REQ-ANDROID-01 要求它「向 TalkBack 暴露 Switch 状态，不额外侵占一整行
