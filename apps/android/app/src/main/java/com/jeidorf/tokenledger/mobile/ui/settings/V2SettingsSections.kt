@@ -40,6 +40,7 @@ import com.jeidorf.tokenledger.mobile.QuotaUiState
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_ICON_ACTION
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 @Composable
 internal fun V2OrientationSettings(
@@ -147,7 +148,7 @@ internal fun V2WidgetSettings(palette: MobileV2Palette, onOpen: () -> Unit, modi
 
 @Composable
 internal fun V2SettingsIcon(palette: MobileV2Palette, icon: ImageVector) {
-    Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(palette.raised), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(38.dp).clip(RoundedCornerShape(LedgerRadius.md)).background(palette.raised), contentAlignment = Alignment.Center) {
         Icon(icon, contentDescription = null, tint = palette.blue, modifier = Modifier.size(V2_ICON_ACTION))
     }
 }

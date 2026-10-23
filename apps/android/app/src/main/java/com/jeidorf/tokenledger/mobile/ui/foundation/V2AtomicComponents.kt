@@ -245,7 +245,7 @@ internal fun <T> V2SegmentedToggle(
     val labelLineHeight = with(LocalDensity.current) { labelStyle.lineHeight.toDp() }
     val visibleHeight = v2SegmentTrackHeight(labelLineHeight)
     val touchHeight = maxOf(V2_TOUCH_TARGET, visibleHeight)
-    val trackShape = RoundedCornerShape(LedgerRadius.md)
+    val trackShape = RoundedCornerShape(LedgerRadius.segmentTrack)
     val slots = columns.coerceAtLeast(1)
     val rows = options.chunked(slots)
     val widestRow = rows.maxOfOrNull { it.size } ?: 1

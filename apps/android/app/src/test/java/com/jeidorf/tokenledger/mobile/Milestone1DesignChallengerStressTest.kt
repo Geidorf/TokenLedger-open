@@ -267,14 +267,14 @@ class Milestone1DesignChallengerStressTest {
     @Test
     fun verifyCornerRadiusHierarchy() {
         // T10.173 §3.4 五档圆角（T10.177 起读生产令牌，不再在测试里各写一份）：
-        // 6 表格徽标 < 8 胶囊与芯片 < 12 按钮与分段轨道 < 16 卡片 < 20 底部面板与对话框；墨水屏卡片统一 8。
+        // 2026-10 对齐参考设计：4 表格徽标 < 6 胶囊与芯片 < 7 按钮与输入 < 8 卡片 < 10 底部面板与对话框；墨水屏卡片统一 8。
         assertTrue("Badge radius must be smaller than pill radius", LedgerRadius.xs < LedgerRadius.sm)
         assertTrue("Pill radius must be smaller than control radius", LedgerRadius.sm < LedgerRadius.md)
         assertTrue("Control radius must be smaller than card radius", LedgerRadius.md < LedgerRadius.lg)
         assertTrue("Card radius must be smaller than sheet radius", LedgerRadius.lg < LedgerRadius.xl)
-        assertEquals(16.dp, LedgerRadius.lg)
+        assertEquals(8.dp, LedgerRadius.lg)
         assertEquals("E-Ink card radius is 8dp", 8.dp, LedgerRadius.einkCard)
-        // 同心：分段轨道 12 − 内缩 4 = 胶囊 8。
-        assertEquals(LedgerRadius.sm, LedgerRadius.md - V2_SEGMENT_INSET)
+        // 同心：分段轨道 10 − 内缩 4 = 胶囊 6。
+        assertEquals(LedgerRadius.sm, LedgerRadius.segmentTrack - V2_SEGMENT_INSET)
     }
 }
