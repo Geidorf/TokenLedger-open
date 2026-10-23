@@ -37,9 +37,9 @@
 
 迁移 `migrations/20261024010000_routing_snapshot_sync.sql`，契约 `docs/contracts/routing-snapshot-v1.md`：
 - 新表 `private.routing_snapshots`：每个用户每台设备只存最新一份已脱敏的路由快照（≤ 16 KiB），客户端无表权限。
-- 新 RPC（仅 `authenticated`）：`publish_routing_snapshot_v1(text, jsonb)` 发布（结构、取值与长度校验，旧快照不覆盖新快照，每用户最多 8 台设备，顺带删除超过 1 天的行）；`get_routing_snapshots_v1()` 读 15 分钟内收到的快照；`clear_routing_snapshot_v1(text)` 删除本机那一行。
+- 新 RPC（仅 `authenticated`）：`publish_routing_snapshot_v1(text, jsonb)` 发布（结构、取值与长度校验，旧快照不覆盖新快照，每用户最多 8 台设备，顺带删除本人超过 1 天的行）；`pg_cron` 任务 `tokenledger-routing-snapshot-hourly-purge` 每小时删除所有用户超过 1 天的行；`get_routing_snapshots_v1()` 读 15 分钟内收到的快照；`clear_routing_snapshot_v1(text)` 删除本机那一行。
 - 回归：`tests/routing_snapshot_regression.sql`（已接入 `supabase:verify:release`）。
-- 部署：`supabase db push`。回滚：`drop function public.publish_routing_snapshot_v1(text, jsonb), public.get_routing_snapshots_v1(), public.clear_routing_snapshot_v1(text); drop table private.routing_snapshots;` 并删除 `private.routing_snapshot_*_v1` 与 `private.validate_routing_snapshot_v1` 辅助函数。旧客户端不调用这些 RPC，不受影响。
+- 部署：`supabase db push`。回滚：`drop function public.publish_routing_snapshot_v1(text, jsonb), public.get_routing_snapshots_v1(), public.clear_routing_snapshot_v1(text); drop table private.routing_snapshots;` 并 `select cron.unschedule('tokenledger-routing-snapshot-hourly-purge');`，删除 `private.purge_expired_routing_snapshots_v1`、`private.routing_snapshot_*_v1` 与 `private.validate_routing_snapshot_v1` 辅助函数。旧客户端不调用这些 RPC，不受影响。
 
 ## 2026-10-10 额度清空恢复元数据与写入防护（T10.308）
 

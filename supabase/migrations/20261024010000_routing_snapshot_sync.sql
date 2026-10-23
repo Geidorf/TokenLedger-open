@@ -19,6 +19,9 @@ create table private.routing_snapshots (
     check (pg_catalog.jsonb_typeof(snapshot) = 'object')
 );
 
+create index routing_snapshots_received_at_idx
+  on private.routing_snapshots (received_at);
+
 alter table private.routing_snapshots enable row level security;
 alter table private.routing_snapshots force row level security;
 
@@ -325,6 +328,34 @@ begin
 end;
 $$;
 
+-- Owner-independent expiry: a user who stops publishing (lost device, uninstall)
+-- must not keep a snapshot forever just because nobody publishes for them.
+create or replace function private.purge_expired_routing_snapshots_v1()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count integer;
+begin
+  delete from private.routing_snapshots
+  where received_at < pg_catalog.clock_timestamp() - interval '1 day';
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+create extension if not exists pg_cron;
+
+select cron.schedule(
+  'tokenledger-routing-snapshot-hourly-purge',
+  '17 * * * *',
+  $cron$select private.purge_expired_routing_snapshots_v1();$cron$
+);
+
+revoke execute on function private.purge_expired_routing_snapshots_v1()
+  from public, anon, authenticated, service_role;
 revoke execute on function private.routing_snapshot_fail_v1(text)
   from public, anon, authenticated, service_role;
 revoke execute on function private.routing_snapshot_text_ok_v1(jsonb, integer, boolean)

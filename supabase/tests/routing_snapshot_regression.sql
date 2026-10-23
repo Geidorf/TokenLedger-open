@@ -254,4 +254,32 @@ begin
 end;
 $purge$;
 
+-- Abandoned owners: the hourly purge removes day-old rows for every owner.
+do $abandoned$
+begin
+  if not exists (
+    select 1 from cron.job
+    where jobname = 'tokenledger-routing-snapshot-hourly-purge'
+      and command like '%purge_expired_routing_snapshots_v1%'
+  ) then
+    raise exception 'routing snapshot purge job is not scheduled';
+  end if;
+  update private.routing_snapshots
+  set received_at = pg_catalog.clock_timestamp() - interval '25 hours'
+  where user_id = '7a5e0000-0000-4000-8000-000000000001' and device = '4444444444444444';
+  if private.purge_expired_routing_snapshots_v1() <> 1 then
+    raise exception 'purge did not remove exactly the abandoned row';
+  end if;
+  if exists (
+    select 1 from private.routing_snapshots
+    where user_id = '7a5e0000-0000-4000-8000-000000000001' and device = '4444444444444444'
+  ) then
+    raise exception 'abandoned snapshot survived the purge';
+  end if;
+  if pg_catalog.has_function_privilege('authenticated', 'private.purge_expired_routing_snapshots_v1()', 'execute') then
+    raise exception 'clients can run the routing snapshot purge';
+  end if;
+end;
+$abandoned$;
+
 rollback;
