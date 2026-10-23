@@ -942,6 +942,17 @@ pub fn gateway_routing_feed(
     gateway.routing_feed(limit.unwrap_or(30))
 }
 
+/// The external local gateway's live state for the same windows as the
+/// routing feed. Fixed to its default port so a widget can't probe other
+/// loopback ports; the snapshot already carries no session, error text or key.
+#[tauri::command]
+pub async fn gateway_external_feed(
+    window: tauri::WebviewWindow,
+) -> Result<crate::peer_live::LiveSnapshot, String> {
+    ensure_routing_feed_label(window.label())?;
+    crate::peer_live::read_snapshot(crate::peer_live::DEFAULT_PORT).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::store::{MemorySecrets, WireApi, LOCAL_TOKEN_ACCOUNT};

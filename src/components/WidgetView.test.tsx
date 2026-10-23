@@ -291,6 +291,28 @@ describe('WidgetView', () => {
     expect(screen.queryByRole('button', { name: '本周' })).not.toBeInTheDocument();
   });
 
+  it('「实时路由」自带网关没运行时也画外部本机网关的在途请求（只读脱敏的固定端口快照）', async () => {
+    settings.widget_popover_layout = 'routing';
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'get_settings') return settings;
+      if (command === 'gateway_routing_feed') return { running: false, decisions: [], requests: [] };
+      if (command === 'gateway_external_feed') {
+        return {
+          reachable: true, port: 3425, requests: 1, waiting: 0, tools: 0,
+          active: [{ id: 7, agent: 'claude', model: 'claude-opus-5-5', provider: 'anthropic', started: new Date(Date.now() - 1_200).toISOString(), ms: 1_200, phase: 'upstream' }],
+          recent: [],
+        };
+      }
+      return null;
+    });
+    const { container } = render(<WidgetView />);
+    await screen.findByRole('figure', { name: '实时路由动画' });
+    expect(screen.getByText('在途 1 · 已改道 0 · 失败 0')).toBeInTheDocument();
+    expect(container.querySelector('.rs-flow.is-inflight')).not.toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith('gateway_external_feed');
+    expect(invokeMock).not.toHaveBeenCalledWith('peer_live_snapshot', expect.anything());
+  });
+
   it('「实时路由」网关没运行时只给空态，不画动画', async () => {
     settings.widget_popover_layout = 'routing';
     invokeMock.mockImplementation(async (command: string) => {

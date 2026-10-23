@@ -2404,6 +2404,7 @@ export function installDevMockTauri() {
         mockMagpieImport = null;
         return null;
       case 'peer_live_snapshot':
+      case 'gateway_external_feed':
         return {
           reachable: true, port: 3425, requests: 2, waiting: 1, tools: 0,
           active: [
