@@ -23,9 +23,28 @@ pub(super) const DEDUPE_WINDOW_SECS: i64 = 5;
 const LEDGER_FILES: [&str; 2] = ["usage-v1.jsonl.1", "usage-v1.jsonl"];
 const SYNTHETIC_SESSION_PREFIX: &str = "gateway:";
 
+/// Where a merged row came from: TokenLedger's own gateway, or magpie's
+/// `usage.jsonl` imported by the user (`magpie_import`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum RowSource {
+    #[default]
+    Gateway,
+    ImportedMagpie,
+}
+
+impl RowSource {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Gateway => "gateway",
+            Self::ImportedMagpie => "imported-magpie",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct GatewayRow {
     pub id: i64,
+    pub source: RowSource,
     pub request_id: String,
     pub tool: String,
     pub model: String,
@@ -80,7 +99,7 @@ fn model_for(record: &LedgerRecord) -> String {
 
 /// Stable negative id so gateway rows never collide with scanned row ids and
 /// detail cursors stay valid across reloads (FNV-1a of the request id).
-fn row_id(request_id: &str) -> i64 {
+pub(super) fn row_id(request_id: &str) -> i64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in request_id.as_bytes() {
         hash ^= u64::from(*byte);
@@ -118,6 +137,7 @@ pub(super) fn map_record(
         .filter(|value| !value.is_empty());
     Some(GatewayRow {
         id: row_id(&accounting_id(record)),
+        source: RowSource::Gateway,
         request_id: record.request_id.clone(),
         tool: tool_for_agent(record.agent.as_deref()),
         model: model_for(record),
@@ -155,8 +175,30 @@ pub(super) fn superseded_scan_ids(
     scans: &[ScanCandidate],
     window_secs: i64,
 ) -> BTreeSet<i64> {
+    resolve_overlay(gateway, scans, window_secs).superseded
+}
+
+/// Outcome of merging gateway-like rows with scanned rows.
+#[derive(Debug, Default, PartialEq)]
+pub(super) struct OverlayResolution {
+    /// Scanned rows replaced by a gateway or imported row.
+    pub superseded: BTreeSet<i64>,
+    /// Imported rows left out because rule B found more than one equally
+    /// fitting scan: their scanned twins stay counted instead, so the totals
+    /// are unchanged and nothing is merged on a guess.
+    pub held: BTreeSet<i64>,
+}
+
+/// Rule A then rule B, as `superseded_scan_ids`; imported magpie rows are
+/// never matched by rule B when more than one candidate fits.
+pub(super) fn resolve_overlay(
+    gateway: &[GatewayRow],
+    scans: &[ScanCandidate],
+    window_secs: i64,
+) -> OverlayResolution {
     let window = chrono::Duration::seconds(window_secs);
     let mut superseded = BTreeSet::new();
+    let mut held = BTreeSet::new();
 
     let mut spans: HashMap<(&str, &str), (NaiveDateTime, NaiveDateTime)> = HashMap::new();
     for row in gateway.iter().filter(|row| row.real_session) {
@@ -230,7 +272,7 @@ pub(super) fn superseded_scan_ids(
         if first > last {
             continue;
         }
-        let best = matching
+        let fitting = matching
             .range((first, i64::MIN)..=(last, i64::MAX))
             .filter(|(_, id)| !superseded.contains(id))
             .map(|&(at, id)| {
@@ -244,13 +286,17 @@ pub(super) fn superseded_scan_ids(
                 (delta, id, at)
             })
             .filter(|(delta, _, _)| *delta <= window_secs)
-            .min();
-        if let Some((_, id, at)) = best {
+            .collect::<Vec<_>>();
+        if row.source == RowSource::ImportedMagpie && fitting.len() > 1 {
+            held.insert(row.id);
+            continue;
+        }
+        if let Some(&(_, id, at)) = fitting.iter().min() {
             superseded.insert(id);
             matching.remove(&(at, id));
         }
     }
-    superseded
+    OverlayResolution { superseded, held }
 }
 
 pub(super) fn gateway_dir(db_path: &Path) -> PathBuf {
@@ -266,7 +312,7 @@ fn ledger_paths(db_path: &Path) -> Vec<PathBuf> {
 }
 
 /// Presence is detected without inventing an accounting database for scan-only installs.
-fn accounting_present(db_path: &Path) -> bool {
+pub(super) fn accounting_present(db_path: &Path) -> bool {
     let present = |path: &Path| {
         fs::symlink_metadata(path).map_or_else(
             |error| error.kind() != std::io::ErrorKind::NotFound,
@@ -288,13 +334,17 @@ pub(super) fn accounting_coverage(db_path: &Path) -> Result<Option<accounting::C
 
 /// Permanent accounting revision invalidates stats caches even after diagnostic rotation.
 /// An unreadable source retains presence; consumers must return Err, not pure-scan fallback.
+/// An imported magpie ledger (`magpie_import`) joins the signature, so importing,
+/// re-importing or removing it invalidates the same caches.
 pub(super) fn ledger_signature(db_path: &Path) -> Option<String> {
-    if !accounting_present(db_path) {
-        return None;
-    }
-    match accounting::horizon(&gateway_dir(db_path)) {
-        Ok((coverage, through)) => Some(format!("accounting:{}:{through}", coverage.revision)),
-        Err(_) => Some("accounting:unreadable".to_string()),
+    let accounting =
+        accounting_present(db_path).then(|| match accounting::horizon(&gateway_dir(db_path)) {
+            Ok((coverage, through)) => format!("accounting:{}:{through}", coverage.revision),
+            Err(_) => "accounting:unreadable".to_string(),
+        });
+    match (accounting, super::magpie_import::signature(db_path)) {
+        (Some(accounting), Some(magpie)) => Some(format!("{accounting}|{magpie}")),
+        (accounting, magpie) => accounting.or(magpie),
     }
 }
 
@@ -307,6 +357,40 @@ fn local_storage_time(ts: DateTime<Utc>) -> String {
 
 fn accounting_id(record: &LedgerRecord) -> String {
     accounting::accounting_id(record)
+}
+
+/// TokenLedger's own gateway rows, then the imported magpie rows that are not
+/// the same request seen by both gateways (a TokenLedger gateway row wins,
+/// matched by the same rules A and B as a scanned row).
+fn read_merged_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
+    let mut rows = if accounting_present(db_path) {
+        read_gateway_rows(db_path)?
+    } else {
+        Vec::new()
+    };
+    let imported = super::magpie_import::read_rows(db_path)?;
+    if imported.is_empty() {
+        return Ok(rows);
+    }
+    let as_scans: Vec<ScanCandidate> = imported
+        .iter()
+        .map(|row| ScanCandidate {
+            id: row.id,
+            tool: row.tool.clone(),
+            session_id: row.session_id.clone(),
+            timestamp: row.timestamp.clone(),
+            input_tokens: row.input_tokens,
+            output_tokens: row.output_tokens,
+            cached_tokens: row.cached_tokens,
+        })
+        .collect();
+    let duplicates = superseded_scan_ids(&rows, &as_scans, DEDUPE_WINDOW_SECS);
+    rows.extend(
+        imported
+            .into_iter()
+            .filter(|row| !duplicates.contains(&row.id)),
+    );
+    Ok(rows)
 }
 
 fn read_gateway_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
@@ -344,7 +428,7 @@ pub(super) fn gateway_rows_cached(
             return Ok(rows.clone());
         }
     }
-    let rows = Arc::new(read_gateway_rows(db_path)?);
+    let rows = Arc::new(read_merged_rows(db_path)?);
     *cache = Some((db_path.to_path_buf(), (signature.to_string(), rows.clone())));
     Ok(rows)
 }
@@ -389,7 +473,7 @@ pub(super) fn scan_candidates(
 }
 
 fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Result<()> {
-    let superseded = superseded_scan_ids(
+    let OverlayResolution { superseded, held } = resolve_overlay(
         gateway,
         &scan_candidates(conn, gateway)?,
         DEDUPE_WINDOW_SECS,
@@ -401,7 +485,7 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
              input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
              cached_tokens INTEGER NOT NULL, cache_write_tokens INTEGER NOT NULL,
              timestamp TEXT NOT NULL, session_id TEXT NOT NULL, cost_usd REAL,
-             machine_id TEXT NOT NULL, provider TEXT NOT NULL);
+             machine_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
          CREATE TEMP TABLE gw_superseded (id INTEGER PRIMARY KEY);
          CREATE TEMP VIEW token_logs AS
              SELECT id, tool, model, input_tokens, output_tokens, cached_tokens,
@@ -414,9 +498,9 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
                FROM temp.gw_rows;",
     )?;
     let mut insert_row = conn.prepare(
-        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11)",
+        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12)",
     )?;
-    for row in gateway {
+    for row in gateway.iter().filter(|row| !held.contains(&row.id)) {
         insert_row.execute(params![
             row.id,
             row.tool,
@@ -429,6 +513,7 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
             row.session_id,
             machine_id,
             row.provider,
+            row.source.as_str(),
         ])?;
     }
     let mut insert_superseded = conn.prepare("INSERT INTO temp.gw_superseded VALUES (?1)")?;
@@ -449,15 +534,16 @@ pub(super) fn open_stats_connection(db_path: &Path) -> Result<Connection, String
     Ok(conn)
 }
 
-/// Provider of a gateway row on a connection from `open_stats_connection`.
-pub(super) fn gateway_provider(conn: &Connection, id: i64) -> Option<String> {
+/// Source (`gateway` or `imported-magpie`) and provider of a merged row on a
+/// connection from `open_stats_connection`.
+pub(super) fn gateway_provider(conn: &Connection, id: i64) -> Option<(String, String)> {
     if id >= 0 {
         return None;
     }
     conn.query_row(
-        "SELECT provider FROM temp.gw_rows WHERE id = ?1",
+        "SELECT source, provider FROM temp.gw_rows WHERE id = ?1",
         params![id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )
     .ok()
 }

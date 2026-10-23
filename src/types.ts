@@ -143,7 +143,7 @@ export interface LogHistoryItem {
   granularity?: 'request' | 'hour';
   requests?: number;
   /** Local detail rows only (contract §2.5); absent means scanned. Unknown values stay displayable. */
-  source?: 'scan' | 'gateway' | (string & {});
+  source?: 'scan' | 'gateway' | 'imported-magpie' | (string & {});
   /** Gateway provider id; present only on gateway rows. */
   provider?: string;
 }
