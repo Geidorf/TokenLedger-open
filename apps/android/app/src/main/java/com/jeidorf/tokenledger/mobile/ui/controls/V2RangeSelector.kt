@@ -104,7 +104,7 @@ internal fun V2GlobalRangeControl(
         with(density) { v2SegmentTrackHeight(LedgerType.label.lineHeight.toDp()) }
     }
     val fadePx = with(density) { V2_RANGE_EDGE_FADE.toPx() }
-    val trackShape = RoundedCornerShape(LedgerRadius.md)
+    val trackShape = RoundedCornerShape(LedgerRadius.segmentTrack)
     val trackColor = if (tokens.isEInk) tokens.card else tokens.raised
     val customActive = query.range == RangeKey.Custom
     val selectedIndex = options.indexOf(query.range)
@@ -197,11 +197,11 @@ internal fun V2GlobalRangeControl(
             measurePolicy = measurePolicy
         )
         Spacer(Modifier.width(LedgerSpace.sm))
-        // 「自定义」按钮（§4.3）：轨道右侧独立的 48dp 方形按钮，raised 底、圆角 12、日历图标；
+        // 「自定义」按钮（§4.3）：轨道右侧独立的 48dp 方形按钮，raised 底、与轨道同圆角、日历图标；
         // 自定义生效时（胶囊离开轨道）切为 primaryContainer 底 + primary 图标。语义与旧实现
         // 同款、只换了视觉：契约「Android dashboard range and insight selectors expose one
         // selected radio option」按字面核对这一段。
-        val customShape = RoundedCornerShape(LedgerRadius.md)
+        val customShape = RoundedCornerShape(LedgerRadius.segmentTrack)
         Box(
             modifier = Modifier
                 .size(48.dp)

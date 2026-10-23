@@ -168,7 +168,8 @@ private fun ledgerTextStyle(
 /**
  * 动效时长（T10.173 §3.9，与桌面动效原语一一对应）。改造前整份 8000 行 UI 只有一个
  * 箭头旋转动画，模式切换、展开收起、进度条与数据条全是硬跳。`FAST / STANDARD / EMPHASIZED`
- * 保留名字、改为 160 / 260 / 420，其余为 T10.177 新增；配 [ledgerTween] 与 [LedgerEasing] 使用。
+ * 保留名字，其余为 T10.177 新增；配 [ledgerTween] 与 [LedgerEasing] 使用。2026-10 对齐参考设计：
+ * 状态类 120ms、弹出与标准过渡 150–180ms、页面与指示器不超过 240ms，曲线取 参考设计的 `--ease`。
  *
  * 墨水屏与「关闭动画」的系统设置都会把时长与延迟压到 0：墨水屏每一帧重绘都是可见的残影，
  * 补间动画在上面不是好看不好看的问题，是必须没有。无限循环（[LIVE_MILLIS]、[SPIN_MILLIS]）
@@ -178,26 +179,26 @@ internal object LedgerMotion {
     /** 离散对象（按钮、卡片、分段、图标按钮）按压缩到 [PRESSED_SCALE]；列表行保留水波纹，不缩放。 */
     const val PRESS_MILLIS = 90
     /** 颜色类状态：选中文字色、Switch、芯片。 */
-    const val FAST_MILLIS = 160
+    const val FAST_MILLIS = 120
     /** 菜单、读数气泡：淡入并从 97% 放大，原点在触点。 */
-    const val POP_MILLIS = 180
+    const val POP_MILLIS = 150
     /** 用户主动改变查询或档位后的条宽、数字、重排；**后台刷新立即完成，不动**。 */
-    const val UPDATE_MILLIS = 240
+    const val UPDATE_MILLIS = 180
     /** 对话框从 98% 落定（[LedgerEasing.EaseOutExpo]）。 */
-    const val STANDARD_MILLIS = 260
+    const val STANDARD_MILLIS = 180
     /** 分段胶囊与导航胶囊的偏移与宽度（[LedgerEasing.EaseOutExpo]）；首帧直接落位不滑。 */
-    const val INDICATOR_MILLIS = 360
+    const val INDICATOR_MILLIS = 220
     /** 切一级页、切复盘页签：新页淡入并上移 [ENTER_OFFSET]（[LedgerEasing.EaseOutExpo]）。 */
-    const val EMPHASIZED_MILLIS = 420
+    const val EMPHASIZED_MILLIS = 240
     /** 数据条、额度条挂载时从起点生长（[LedgerEasing.EaseOutExpo]）。 */
-    const val GROW_MILLIS = 420
+    const val GROW_MILLIS = 320
     /** 首次进入的卡片逐项错开；骨架屏不逐卡延迟。 */
     const val STAGGER_MILLIS = 40
     const val STAGGER_MAX_ITEMS = 4
     /** 曲线首次揭示（裁剪矩形由左向右，[LedgerEasing.EaseOutCubic]）。 */
-    const val CHART_REVEAL_MILLIS = 700
+    const val CHART_REVEAL_MILLIS = 480
     /** 用户切换指标或范围后的曲线形变（[LedgerEasing.EaseOutCubic]）。 */
-    const val CHART_UPDATE_MILLIS = 450
+    const val CHART_UPDATE_MILLIS = 300
     /** 同步中的状态点呼吸环，循环；空闲时静止。 */
     const val LIVE_MILLIS = 1800
     /** 刷新图标旋转，循环、线性，只在刷新进行中。 */
@@ -210,8 +211,8 @@ internal object LedgerMotion {
 
 /** §3.9 的三条曲线；数据相关的元素不用回弹（阻尼比 < 1 的弹簧只留给底部面板这类系统手势）。 */
 internal object LedgerEasing {
-    /** 状态、按压、弹出、数据更新。 */
-    val EaseOutQuart: Easing = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
+    /** 状态、按压、弹出、数据更新。取 参考设计的 `--ease: cubic-bezier(.2, .8, .2, 1)`，名字保留。 */
+    val EaseOutQuart: Easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f)
     /** 落定、指示器、入场、生长。 */
     val EaseOutExpo: Easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
     /** 图表揭示与形变。 */

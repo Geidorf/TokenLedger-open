@@ -4,6 +4,6 @@
   （tl_paper = page，tl_primary = primary），由 LedgerTokensTest 比对。
 -->
 <resources>
-    <color name="tl_paper">#0D0F13</color>
-    <color name="tl_primary">#6B9DFF</color>
+    <color name="tl_paper">#1A1A1E</color>
+    <color name="tl_primary">#A5B4FC</color>
 </resources>

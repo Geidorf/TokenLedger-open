@@ -67,6 +67,7 @@ import com.jeidorf.tokenledger.mobile.orderedQuotaProvidersForDisplay
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 /**
  * 小组件配置 Activity（T8.5a）。桌面添加实例时由系统 AppWidgetHost 拉起：用户选初始模式、
@@ -326,7 +327,7 @@ private fun ModeOptionRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(LedgerRadius.md),
                 color = if (selected) colors.primary.copy(alpha = 0.14f) else colors.surfaceVariant
             ) {
                 Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
