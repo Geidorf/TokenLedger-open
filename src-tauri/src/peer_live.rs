@@ -22,6 +22,10 @@ use serde::{Deserialize, Serialize};
 
 /// The peer's default gateway address (`gateway.DefaultAddr`).
 pub const DEFAULT_PORT: u16 = 3425;
+/// Attempts kept per recent route.
+const MAX_ATTEMPTS: usize = 16;
+/// The in-flight answer is small; this is far past any real one.
+const MAX_BODY_BYTES: usize = 1024 * 1024;
 const PATH: &str = crate::peer_wire::LIVE_PATH;
 const MAX_ACTIVE: usize = 256;
 const MAX_RECENT: usize = 32;
@@ -86,7 +90,15 @@ pub struct RecentRoute {
     pub model: String,
     /// When its last attempt ended (RFC 3339).
     pub ended: String,
+    /// The first attempts and always the last one, at most `MAX_ATTEMPTS`.
     pub attempts: Vec<RouteAttempt>,
+    /// Attempts left out between them.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub omitted: u32,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -183,14 +195,20 @@ pub fn recent_routes(lines: &[u8]) -> Vec<RecentRoute> {
                     model: String::new(),
                     ended: String::new(),
                     attempts: Vec::new(),
+                    omitted: 0,
                 },
             )
         });
         entry.0 = index;
         entry.1.model = clip(model, 128);
         entry.1.ended = clip(&raw.t, 40);
-        if entry.1.attempts.len() < 16 {
+        // Past the cap the last slot follows the newest attempt, so the
+        // route's final result is never lost.
+        if entry.1.attempts.len() < MAX_ATTEMPTS {
             entry.1.attempts.push(attempt);
+        } else if let Some(last) = entry.1.attempts.last_mut() {
+            *last = attempt;
+            entry.1.omitted += 1;
         }
     }
     let mut routes: Vec<(usize, RecentRoute)> = routes.into_values().collect();
@@ -300,10 +318,19 @@ pub async fn snapshot(port: u16) -> Result<LiveSnapshot, String> {
             response.status().as_u16()
         ));
     }
-    let body = response
-        .bytes()
+    let mut response = response;
+    // Counted as it arrives: the answer is a few KB, anything far larger is not it.
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|error| format!("读取外部网关实时状态失败：{}", error.without_url()))?;
+        .map_err(|error| format!("读取外部网关实时状态失败：{}", error.without_url()))?
+    {
+        if body.len() + chunk.len() > MAX_BODY_BYTES {
+            return Err("外部网关的实时状态过大，已停止读取。".to_string());
+        }
+        body.extend_from_slice(&chunk);
+    }
     parse(&body, port)
 }
 
@@ -383,6 +410,25 @@ mod tests {
         assert_eq!(recent[1].attempts.len(), 1);
         let json = serde_json::to_string(&recent).unwrap();
         assert!(!json.contains("secret") && !json.contains("example.com"));
+    }
+
+    #[test]
+    fn a_long_route_keeps_its_final_result() {
+        let mut lines = String::new();
+        for second in 0..17 {
+            let status = if second == 16 { 200 } else { 529 };
+            lines.push_str(&format!(
+                "{{\"t\":\"2026-10-23T13:00:{second:02}Z\",\"provider\":\"p{second}\",\"status\":{status},\"route_id\":3}}\n"
+            ));
+        }
+        let routes = recent_routes(lines.as_bytes());
+        let route = &routes[0];
+        assert_eq!(route.attempts.len(), MAX_ATTEMPTS);
+        assert_eq!(route.omitted, 1);
+        assert_eq!(route.attempts[0].provider, "p0");
+        let last = route.attempts.last().unwrap();
+        assert_eq!((last.provider.as_str(), last.outcome), ("p16", "ok"));
+        assert_eq!(route.ended, "2026-10-23T13:00:16Z");
     }
 
     #[test]
