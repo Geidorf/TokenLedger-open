@@ -1,0 +1,56 @@
+name: 任务（维护方）
+description: 协调者给多工位开发开的任务；外部贡献者请用 Bug report 或 Feature request
+title: "[任务] "
+labels: ["任务"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        认领、租约与合并规则见 docs/COLLABORATION.md。本仓库公开，不要写机器名、用户名、本机路径、账号或凭据。
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 要做什么、不做什么；涉及的需求或契约编号。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收
+      description: 逐条可核对的完成标准，以及需要哪些门禁（含真机门禁）。
+    validations:
+      required: true
+
+  - type: textarea
+    id: shared-files
+    attributes:
+      label: 共享文件与拥有者
+      description: 会改的单写文件（契约、迁移、lockfile、版本文件等）及本任务是否为其唯一拥有者；新迁移编号写在这里。没有写“无”。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: level
+    attributes:
+      label: 改动级别
+      options:
+        - A：CI 绿自动合并
+        - B：另需他人评审
+        - C：另需负责人批准
+    validations:
+      required: true
+
+  - type: input
+    id: assignee
+    attributes:
+      label: 指定工位
+      description: 只给某个工位做时填工位名；留空表示带 `可开工` 后任何有能力的工位都可领。
+
+  - type: textarea
+    id: depends
+    attributes:
+      label: 依赖
+      description: 先要合并的 Issue 或 PR；没有写“无”。
