@@ -888,6 +888,7 @@ pub fn run() {
             gateway::gateway_upsert_routing_group,
             gateway::gateway_delete_routing_group,
             gateway::gateway_recent_route_decisions,
+            gateway::gateway_routing_feed,
             gateway::gateway_reveal_local_token,
             commands::get_app_version,
             commands::get_claude_statusline_command,

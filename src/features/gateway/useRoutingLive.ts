@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorText, gatewayStatus, recentRequests, recentRouteDecisions } from './api';
+import type { RoutingFeed } from './types';
 import { buildRoutingScene, type ExternalLiveSnapshot, type RoutingScene, type SceneInput } from './routingScene';
 
 export const ROUTING_POLL_MS = 1_500;
@@ -12,6 +13,12 @@ export interface RoutingLiveOptions {
   intervalMs?: number;
   /** Optional second source; omitted until the external gateway's live read is available. */
   readExternal?: () => Promise<ExternalLiveSnapshot>;
+  /**
+   * Reads the gateway in one call instead of status + decisions + ledger.
+   * The widget windows pass `gateway_routing_feed` (the only gateway read
+   * they are granted); the main window uses the full commands.
+   */
+  readFeed?: () => Promise<RoutingFeed>;
 }
 
 type GatewayInput = NonNullable<SceneInput['gateway']>;
@@ -37,13 +44,15 @@ async function readGateway(ledger: { at: number; requests: GatewayInput['request
  * out on time. A failed read turns its source unreachable; it never keeps
  * playing stale data as if it were live.
  */
-export function useRoutingLive({ enabled = true, intervalMs = ROUTING_POLL_MS, readExternal }: RoutingLiveOptions = {}): { scene: RoutingScene; error: string; loaded: boolean } {
+export function useRoutingLive({ enabled = true, intervalMs = ROUTING_POLL_MS, readExternal, readFeed }: RoutingLiveOptions = {}): { scene: RoutingScene; error: string; loaded: boolean } {
   const [input, setInput] = useState<Omit<SceneInput, 'now'>>({});
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
   const externalRef = useRef(readExternal);
   externalRef.current = readExternal;
+  const feedRef = useRef(readFeed);
+  feedRef.current = readFeed;
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -57,7 +66,8 @@ export function useRoutingLive({ enabled = true, intervalMs = ROUTING_POLL_MS, r
         return;
       }
       const readExt = externalRef.current;
-      const [gateway, external] = await Promise.allSettled([readGateway(ledger), readExt ? readExt() : Promise.resolve(null)]);
+      const feed = feedRef.current;
+      const [gateway, external] = await Promise.allSettled([feed ? feed() : readGateway(ledger), readExt ? readExt() : Promise.resolve(null)]);
       if (cancelled) return;
       const next: Omit<SceneInput, 'now'> = {
         gateway: gateway.status === 'fulfilled' ? gateway.value : { running: false, decisions: [], requests: [], readError: errorText(gateway.reason) },

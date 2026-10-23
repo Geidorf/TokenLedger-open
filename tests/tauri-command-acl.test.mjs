@@ -84,7 +84,7 @@ function grants(policy, label) {
     .filter((permission) => !permission.includes(':')));
 }
 
-const sharedWidget = ['get_settings', 'get_cached_stats', 'get_local_quota_providers', 'refresh_scan', 'focus_main_window', 'open_main_settings'];
+const sharedWidget = ['get_settings', 'get_cached_stats', 'get_local_quota_providers', 'refresh_scan', 'focus_main_window', 'open_main_settings', 'gateway_routing_feed'];
 const surfaceCommands = {
   widget: [...sharedWidget, 'hide_widget_window', 'widget_pointer_hover'],
   'desktop-widget': [...sharedWidget, 'set_desktop_widget_enabled'],
@@ -128,9 +128,9 @@ function validatePolicy(policy) {
   }
 }
 
-test('all 86 registered commands have generated permissions and exact per-window grants', () => {
+test('all 103 registered commands have generated permissions and exact per-window grants', () => {
   const policy = productionPolicy();
-  assert.equal(policy.registered.length, 102, 'review the surface matrix when adding or removing an application command');
+  assert.equal(policy.registered.length, 103, 'review the surface matrix when adding or removing an application command');
   validatePolicy(policy);
 });
 

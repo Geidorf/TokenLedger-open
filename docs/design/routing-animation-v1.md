@@ -12,7 +12,7 @@
 
 | 来源 | 读法 | 能画什么 | 注意 |
 | --- | --- | --- | --- |
-| TokenLedger 自带网关 | `gateway_status`、`gateway_recent_route_decisions`、`gateway_recent_requests`，主窗口每 1.5 秒轮询，页面隐藏时暂停 | 组请求的每次尝试（失败、拒绝、跳过、接通）；直连请求在结束后出现 | **RouteDecision 在上游开始回包时就记下**，流式请求此刻还没结束，所以接通只算 `routed`（已接通），不算完成。Agent 名从账本按 `logicalRequestId` 关联，取不到就写「Agent」。 |
+| TokenLedger 自带网关 | 主窗口：`gateway_status`、`gateway_recent_route_decisions`、`gateway_recent_requests`；挂件窗口：`gateway_routing_feed`（一次读回运行状态、决策与账本尾部，去掉会话、错误正文、决策说明与 Token 数）。每 1.5 秒轮询，页面隐藏时暂停 | 组请求的每次尝试（失败、拒绝、跳过、接通）；直连请求在结束后出现 | **RouteDecision 在上游开始回包时就记下**，流式请求此刻还没结束，所以接通只算 `routed`（已接通），不算完成。Agent 名从账本按 `logicalRequestId` 关联，取不到就写「Agent」。 |
 | 外部本机网关 | 外部网关实时快照命令（契约在 `docs/contracts/` 下，由数据源维护者单写） | 在途请求（排队、限速、等上游）与最近完成请求的逐次尝试 | 外部网关没运行时 `reachable=false`，在途为空，但最近完成的记录照常返回。 |
 
 ## 场景结构（跨端复用）
@@ -47,5 +47,5 @@
 
 1. 主窗口路由页顶部的实时路由卡片，数据源为自带网关（本 PR）。
 2. 接入外部本机网关的实时源（等对应命令合并）。
-3. 托盘弹层与桌面小组件里的紧凑舞台：需要一个给挂件窗口用的只读、已脱敏命令，属于 IPC 契约改动（B 级），单独开 PR。
+3. 托盘弹层与桌面小组件里的紧凑舞台：挂件板式「实时路由」（364×300，托盘多 26px 顶栏），数据来自只读、已脱敏的 `gateway_routing_feed`（B 级，单独 PR）。
 4. Android「路由」页与动态壁纸按本文场景结构实现（Android 线程负责）。
