@@ -18,6 +18,9 @@ __pycache__/
 reasonix.toml
 
 # Local review/browser scratch output
+# Playwright 运行产物（失败截图、trace、HTML 报告）；基线在 e2e/__screenshots__ 下，要入库。
+test-results/
+playwright-report/
 tmp/
 scratch/
 review/

@@ -101,6 +101,45 @@ jobs:
           TZ=Pacific/Kiritimati npm run test:unit
           TZ=Asia/Kathmandu npm run test:frontend
 
+  # 桌面前端的浏览器级回归：Vite 开发服务器 + src/devMockTauri.ts 的 IPC mock，
+  # Chromium 与 WebKit（WebKit 贴近 macOS 的 WKWebView）各跑中文、英文系统语言，
+  # 覆盖 420–1440 宽度的主要页面、关键交互与错误态；视觉基线只在 Chromium 中文项目比对。
+  # @playwright/test 钉在精确版本，浏览器构建随之固定，基线才可复现。见 e2e/README.md。
+  desktop-e2e:
+    name: Desktop Browser E2E (Playwright)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers and system dependencies
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Type-check E2E specs
+        run: npm run typecheck:e2e
+
+      - name: Run Playwright regression
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   rust-test:
     name: Rust Format, Clippy & Tests
     runs-on: macos-latest
