@@ -3067,6 +3067,11 @@ fn save_cloud_config_file(app: &AppContext, config: &CloudConfig) -> Result<(), 
     )
 }
 
+/// The machine name `token_logs` rows carry; other uploads only send it hashed.
+pub(crate) fn local_machine_id() -> String {
+    fallback_machine_id()
+}
+
 fn fallback_machine_id() -> String {
     hostname::get()
         .map(|h| h.to_string_lossy().to_string())
