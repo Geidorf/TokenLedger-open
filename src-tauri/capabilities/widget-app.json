@@ -11,6 +11,7 @@
     "allow-get-cached-stats",
     "allow-get-local-quota-providers",
     "allow-gateway-routing-feed",
+    "allow-gateway-external-feed",
     "allow-refresh-scan",
     "allow-focus-main-window",
     "allow-open-main-settings"

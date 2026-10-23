@@ -9,6 +9,7 @@
     "allow-gateway-legacy-inspect",
     "allow-gateway-legacy-restore",
     "allow-gateway-routing-feed",
+    "allow-gateway-external-feed",
     "allow-get-app-version",
     "allow-get-claude-statusline-command",
     "allow-get-claude-quota-setup",

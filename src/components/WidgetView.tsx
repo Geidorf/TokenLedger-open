@@ -15,7 +15,8 @@ import { LedgerCard } from './widget/LedgerCard';
 import { RoutingCard } from './widget/RoutingCard';
 import { failedWidgetQuota, readWidgetQuota } from './widget/quotaRead';
 import { DesktopToolbar, TrayTopBar, type WidgetActions } from './widget/WidgetChrome';
-import { useRoutingLive } from '../features/gateway/useRoutingLive';
+import { toExternalSnapshot, useRoutingLive } from '../features/gateway/useRoutingLive';
+import type { PeerLiveSnapshot } from '../hooks/usePeerLive';
 import type { RoutingFeed } from '../features/gateway/types';
 import '../styles/widget.css';
 
@@ -45,6 +46,8 @@ const VISIBLE_RECONCILE_MS = 5 * 60 * 1000;
 
 /** 「实时路由」板式的数据：挂件窗口只被授权读这一条已脱敏的网关视图。 */
 const readRoutingFeed = () => invoke<RoutingFeed>('gateway_routing_feed', { limit: 30 });
+// 外部本机网关的同一份脱敏快照（固定默认端口）；没运行时 reachable=false，舞台不画它。
+const readExternalFeed = async () => toExternalSnapshot(await invoke<PeerLiveSnapshot>('gateway_external_feed'));
 
 interface WidgetSnapshot {
   stats: StatsData;
@@ -80,7 +83,7 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
   // 「单行消耗」「实时路由」不画额度：不去读可能要几十秒的额度来源。换到别的板式时重新读一次。
   const needsQuota = !(layout === 'compact' || layout === 'routing');
   // 「实时路由」只在选了这个板式时轮询网关（挂件唯一能读的网关命令，已脱敏）。
-  const routing = useRoutingLive({ enabled: configReady && layout === 'routing', readFeed: readRoutingFeed });
+  const routing = useRoutingLive({ enabled: configReady && layout === 'routing', readFeed: readRoutingFeed, readExternal: readExternalFeed });
   const needsQuotaRef = useRef(needsQuota);
   needsQuotaRef.current = needsQuota;
 

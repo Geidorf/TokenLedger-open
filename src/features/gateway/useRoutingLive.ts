@@ -31,7 +31,11 @@ type GatewayInput = NonNullable<SceneInput['gateway']>;
  * error; a failed read rejects and the hook marks the source unreachable.
  */
 export async function readExternalGateway(): Promise<ExternalLiveSnapshot> {
-  const snapshot = await invoke<PeerLiveSnapshot>('peer_live_snapshot', {});
+  return toExternalSnapshot(await invoke<PeerLiveSnapshot>('peer_live_snapshot', {}));
+}
+
+/** The scene keys flows by string id; the external gateway numbers its requests. */
+export function toExternalSnapshot(snapshot: PeerLiveSnapshot): ExternalLiveSnapshot {
   return { ...snapshot, active: snapshot.active.map((request) => ({ ...request, id: String(request.id) })) };
 }
 
