@@ -3911,7 +3911,9 @@ test('phone-width toolbar keeps commands in a contained horizontal strip', () =>
   assert.match(css, /@media \(max-width: 1080px\)[\s\S]*?\.app-header\[data-surface='settings'\] \.header-controls-shell \{[\s\S]*width:\s*100%;/);
   assert.match(phoneBlock, /\.header-controls::-webkit-scrollbar \{[\s\S]*display:\s*none;/);
   assert.match(header, /className="header-controls"[\s\S]*role="group"[\s\S]*aria-label=\{headerControlsLabel\}/);
-  assert.match(header, /aria-label="数据范围"[\s\S]*<ShareCardButton[\s\S]*<CloudDeviceSelect/);
+  // 范围、设备与战报都在用量页内工具行（T10.276；请求并入用量后顶栏不再托管任何一项）。
+  assert.match(header, /aria-label="数据范围"/);
+  assert.doesNotMatch(header, /<ShareCardButton|<CloudDeviceSelect|<RangeControl/);
   assert.match(header, /function scrollHeaderElement\(element: HTMLElement, left: number, behavior: ScrollBehavior\)[\s\S]*typeof element\.scrollTo === 'function'[\s\S]*element\.scrollTo\(\{ left, behavior \}\)[\s\S]*element\.scrollLeft = left/);
   assert.match(header, /scrollHeaderElement\(controls, 0, 'auto'\)[\s\S]*\}, \[activeTab\]\);/);
   assert.match(header, /headerControlsLabel[\s\S]*顶部控制器，可横向滚动查看更多命令/);
@@ -3957,7 +3959,7 @@ test('phone-width toolbar keeps commands in a contained horizontal strip', () =>
 test('toast feedback sits in normal flow below the header instead of covering its context', () => {
   const app = readSource(path.join(process.cwd(), 'src', 'App.tsx'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
-  assert.match(app, /<AppHeader[\s\S]*onOpenShareCard=\{handleOpenShareCard\}[\s\S]*\/>[\s\S]*\{message && <Toast message=\{message\} \/>\}[\s\S]*<section id="main-content"/);
+  assert.match(app, /<AppHeader[\s\S]*dataStatus=\{\{[\s\S]*\/>\}[\s\S]*\{message && <Toast message=\{message\} \/>\}[\s\S]*<section id="main-content"/);
   assert.match(css, /\.toast \{[\s\S]*position:\s*relative;[\s\S]*align-self:\s*flex-end;[\s\S]*margin:\s*8px 22px 0;/);
   assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*\.toast \{[\s\S]*align-self:\s*stretch;[\s\S]*margin:\s*8px 12px 0;[\s\S]*max-width:\s*none;/);
 });

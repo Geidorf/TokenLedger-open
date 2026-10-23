@@ -78,10 +78,10 @@ const RETURN_RANGE_LABELS: Record<Exclude<RangeKey, 'custom'>, string> = {
 };
 
 const ORIGIN_TAB_LABELS: Record<Tab, string> = {
-  dashboard: '总览',
-  behavior: '行为分析',
-  records: '用量记录',
-  logs: '明细',
+  dashboard: '概览',
+  behavior: '会话',
+  logs: '请求',
+  allowances: '额度',
   settings: '设置',
   agents: 'Agent',
   providers: '供应商',

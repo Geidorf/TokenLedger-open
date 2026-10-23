@@ -5,14 +5,32 @@ import { rangeDisplayName } from '../../utils/rangeDisplay';
 import { usageConclusion } from './usageSummary';
 import './usage-page.css';
 
-export type UsageSub = 'overview' | 'records' | 'sessions';
+export type UsageSub = 'overview' | 'requests' | 'sessions' | 'allowances';
 
-/** 内部 id 仍为 `sessions`，用户可见名称统一为「行为分析」（U-100）。侧栏二级入口共用这份定义。 */
+/**
+ * 用量子页对齐 magpie Usage 页（概览 / 请求 / 会话），额度单列一页：
+ * 原「记录」与一级入口「活动明细」合并为「请求」，原「行为分析」改名「会话」。
+ * magpie 的 Context 需要逐请求的提示词构成，本机与云端都没有这份数据，暂不设入口。
+ * 侧栏二级入口共用这份定义。
+ */
 export const USAGE_SUB_OPTIONS: { id: UsageSub; label: string }[] = [
   { id: 'overview', label: '概览' },
-  { id: 'records', label: '记录' },
-  { id: 'sessions', label: '行为分析' },
+  { id: 'requests', label: '请求' },
+  { id: 'sessions', label: '会话' },
+  { id: 'allowances', label: '额度' },
 ];
+
+const USAGE_SUB_BY_TAB: Partial<Record<Tab, UsageSub>> = {
+  dashboard: 'overview',
+  logs: 'requests',
+  behavior: 'sessions',
+  allowances: 'allowances',
+};
+
+/** 用量 Tab → 子页；非用量页返回 null。 */
+export function usageSubForTab(tab: Tab): UsageSub | null {
+  return USAGE_SUB_BY_TAB[tab] ?? null;
+}
 
 const percent = (value: number | null) => (value === null ? '不可得' : `${(value * 100).toFixed(1)}%`);
 
@@ -34,7 +52,7 @@ function Conclusion({ stats, range, customRange }: { stats: StatsData; range: Ra
 
 /** 顶栏面包屑与内容区可访问名称共用的子页名称（U-101）；非用量页返回 null。 */
 export function usageSubLabelForTab(tab: Tab): string | null {
-  const sub: UsageSub | null = tab === 'dashboard' ? 'overview' : tab === 'records' ? 'records' : tab === 'behavior' ? 'sessions' : null;
+  const sub = usageSubForTab(tab);
   return sub ? USAGE_SUB_OPTIONS.find((option) => option.id === sub)!.label : null;
 }
 
@@ -46,16 +64,17 @@ export interface UsagePageProps {
   /** 子页专属控件（T10.276）：渲染在面板第一行，与行为分析自带的范围栏同一位置。 */
   toolbar?: ReactNode;
   overview: ReactNode;
-  records: ReactNode;
+  requests: ReactNode;
   sessions: ReactNode;
+  allowances: ReactNode;
 }
 
 /**
- * 「用量」入口（U-89）：概览沿用原总览看板，行为分析子页沿用原行为分析（U-100），记录为逐请求列表。
+ * 「用量」入口（U-89）：概览沿用原总览看板，请求为可筛选的逐请求明细，会话沿用原行为分析，额度为订阅额度详情。
  * 子页只由侧栏二级入口切换（U-101），页内没有子标签；内容区以子页名称作可访问名称，
  * 顶栏面包屑的子页部分对读屏隐藏，两处不重复朗读。
  */
-export function UsagePage({ sub, stats, range, customRange, toolbar, overview, records, sessions }: UsagePageProps) {
+export function UsagePage({ sub, stats, range, customRange, toolbar, overview, requests, sessions, allowances }: UsagePageProps) {
   const label = USAGE_SUB_OPTIONS.find((option) => option.id === sub)!.label;
   return (
     <div className="usage-page">
@@ -71,8 +90,9 @@ export function UsagePage({ sub, stats, range, customRange, toolbar, overview, r
           </div>
         )}
         {sub === 'overview' && overview}
-        {sub === 'records' && records}
+        {sub === 'requests' && requests}
         {sub === 'sessions' && sessions}
+        {sub === 'allowances' && allowances}
       </section>
     </div>
   );

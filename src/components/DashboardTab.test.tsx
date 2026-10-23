@@ -363,6 +363,17 @@ describe('首屏额度与显示偏好', () => {
     expect(screen.queryByRole('region', {name:'首屏额度摘要'})).not.toBeInTheDocument();
     preferences([]);
   });
+
+  it('额度详情在额度子页时，概览只留摘要，点开切到额度子页', () => {
+    const onOpenAllowances = vi.fn();
+    renderPopulated({quotaProviders:[quota], quotaError:'读取失败', onOpenAllowances});
+    preferences([]);
+    expect(screen.queryByLabelText('订阅额度详情')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', {name:'额度失败恢复入口'})).not.toBeInTheDocument();
+    const summary = screen.getByRole('region', {name:'首屏额度摘要'});
+    fireEvent.click(within(summary).getByRole('button'));
+    expect(onOpenAllowances).toHaveBeenCalledOnce();
+  });
   it('来源隐藏也对摘要生效', () => {
     const other = {...quota, providerId:'anthropic-claude-consumer', windows:quota.windows.map(w=>({...w,providerId:'anthropic-claude-consumer'}))};
     renderPopulated({quotaProviders:[quota, other]});

@@ -4,7 +4,7 @@ import { LogsTable } from './LogsTable';
 import { EntityDashboardModal } from './EntityDashboardModal';
 import { DashboardTab } from './DashboardTab';
 import { AnomalySpikePanel } from './AnomalySpikePanel';
-import { AppHeader } from './AppHeader';
+import { TokenModeToggle } from './RangeControls';
 import { colorForTool, getPalette, PALETTE_DARK, PALETTE_LIGHT, toolChartSlot, type EntityDashboard, type StatsData, type UsageDetailsResponse } from '../types';
 
 vi.mock('./MetricsGrid', () => ({ MetricsGrid: () => <div data-testid="metrics-grid">metrics</div> }));
@@ -679,29 +679,11 @@ describe('Empirical Stress Test: Keyboard Parity on Semantic Button Panels', () 
   });
 });
 
-describe('Empirical Stress Test: AppHeader Zero-Cache Tooltip & Controls', () => {
+describe('Empirical Stress Test: Token Mode Zero-Cache Tooltip & Controls', () => {
   it('displays informative zero-cache tooltip when cachedTokens === 0 and standard toggle tooltip when cachedTokens > 0', () => {
     const onToggle = vi.fn();
     const { rerender } = render(
-      <AppHeader
-        activeTab="logs"
-        dataScope="local"
-        range="today"
-        deviceFilter="all_cloud"
-        deviceList={[]}
-        cloudStatus={{ configured: true, authenticated: true, email: 'user@example.invalid', userId: 'user-1' }}
-        onScopeChange={vi.fn()}
-        onCloudScope={vi.fn()}
-        onDeviceFilterChange={vi.fn()}
-        onRangeChange={vi.fn()}
-        showTotalTokens={false}
-        onToggleTokenMode={onToggle}
-        cachedTokens={0}
-        themeMode="auto"
-        onThemeChange={vi.fn()}
-        dataStatus={{ loading: false, stale: false, lastRefreshedAt: '2026-08-20T14:30:00+08:00', unsyncedRecords: 0, cloudCapabilityVerified: true, cloudFirstSyncCompleted: true }}
-        onOpenShareCard={vi.fn()}
-      />,
+      <TokenModeToggle showTotalTokens={false} onToggleTokenMode={onToggle} cachedTokens={0} />,
     );
 
     const zeroCacheEffectiveBtn = screen.getByRole('button', { name: '概览有效' });
@@ -717,25 +699,7 @@ describe('Empirical Stress Test: AppHeader Zero-Cache Tooltip & Controls', () =>
 
     // When cachedTokens > 0
     rerender(
-      <AppHeader
-        activeTab="logs"
-        dataScope="local"
-        range="today"
-        deviceFilter="all_cloud"
-        deviceList={[]}
-        cloudStatus={{ configured: true, authenticated: true, email: 'user@example.invalid', userId: 'user-1' }}
-        onScopeChange={vi.fn()}
-        onCloudScope={vi.fn()}
-        onDeviceFilterChange={vi.fn()}
-        onRangeChange={vi.fn()}
-        showTotalTokens={false}
-        onToggleTokenMode={onToggle}
-        cachedTokens={5000}
-        themeMode="auto"
-        onThemeChange={vi.fn()}
-        dataStatus={{ loading: false, stale: false, lastRefreshedAt: '2026-08-20T14:30:00+08:00', unsyncedRecords: 0, cloudCapabilityVerified: true, cloudFirstSyncCompleted: true }}
-        onOpenShareCard={vi.fn()}
-      />,
+      <TokenModeToggle showTotalTokens={false} onToggleTokenMode={onToggle} cachedTokens={5000} />,
     );
 
     const activeCacheEffectiveBtn = screen.getByRole('button', { name: '概览有效' });

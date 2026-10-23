@@ -5,8 +5,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { AppHeader } from './components/AppHeader';
 import { DashboardTab, dashboardQueryIdentity } from './components/DashboardTab';
 import { BehaviorAnalysisView } from './components/BehaviorAnalysisView';
-import { UsagePage, type UsageSub } from './components/usage/UsagePage';
-import { UsageRecordsPanel } from './components/usage/UsageRecordsPanel';
+import { UsagePage, usageSubForTab } from './components/usage/UsagePage';
+import { UsageAllowancesView } from './components/usage/UsageAllowancesView';
 import { UsageToolbar } from './components/usage/UsageToolbar';
 import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { Sidebar } from './components/Sidebar';
@@ -63,14 +63,6 @@ function currentTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
-function usageSubForTab(tab: Tab): UsageSub {
-  return tab === 'records' ? 'records' : tab === 'behavior' ? 'sessions' : 'overview';
-}
-
-function detailFiltersEmpty(filters: DetailFilters): boolean {
-  return filters.tools.length === 0 && filters.models.length === 0 && filters.machines.length === 0 && !filters.search.trim();
-}
-
 function initialTabFromLocation(): Tab {
   const redirect = legacySettingsRedirect(window.location.hash);
   if (redirect) {
@@ -121,7 +113,7 @@ function MainApp() {
   // Tab & Scroll state
   const [activeTab, setActiveTab] = useState<Tab>(() => initialTabFromLocation());
   const contentRef = useRef<HTMLElement>(null);
-  const tabScrollPositions = useRef<Record<Tab, number>>({ dashboard: 0, records: 0, behavior: 0, logs: 0, settings: 0, agents: 0, providers: 0, gateway: 0, routing: 0 });
+  const tabScrollPositions = useRef<Record<Tab, number>>({ dashboard: 0, logs: 0, behavior: 0, allowances: 0, settings: 0, agents: 0, providers: 0, gateway: 0, routing: 0 });
   const [gatewayRefreshKey, setGatewayRefreshKey] = useState(0);
   const [settingsAnchor, setSettingsAnchor] = useState<string | null>(null);
 
@@ -523,7 +515,7 @@ function MainApp() {
   // user's pagination position.
   const cloudDetailsCapable = hasCloudCapability(statsHook.stats, 'detailPagination');
   useEffect(() => {
-    if (activeTab !== 'logs' && activeTab !== 'records') return;
+    if (activeTab !== 'logs') return;
     void usageDetails.loadDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -731,18 +723,9 @@ function MainApp() {
         ) : <AppHeader
           activeTab={activeTab}
           dataScope={statsHook.dataScope}
-          range={statsHook.range}
-          customRange={statsHook.customRange}
-          deviceFilter={statsHook.deviceFilter}
-          deviceList={statsHook.deviceList}
           cloudStatus={cloud.cloudStatus}
           onScopeChange={statsHook.selectLocalScope}
           onCloudScope={selectCloudScopeLeavingDayDrill}
-          onDeviceFilterChange={statsHook.changeHeaderDevice}
-          onRangeChange={statsHook.changeRange}
-          showTotalTokens={settings.showTotalTokens}
-          onToggleTokenMode={settings.toggleTokenMode}
-          cachedTokens={statsHook.stats?.summary.cachedTokens ?? 0}
           themeMode={theme.mode}
           onThemeChange={theme.set}
           dataStatus={{
@@ -753,7 +736,6 @@ function MainApp() {
             cloudCapabilityVerified: cloud.cloudSetup.capabilityVerified,
             cloudFirstSyncCompleted: cloud.cloudSetup.firstSyncCompleted,
           }}
-          onOpenShareCard={handleOpenShareCard}
         />}
         <div className="toast-region" aria-live="polite" aria-atomic="true">
           {message && <Toast message={message} />}
@@ -761,13 +743,13 @@ function MainApp() {
         <section id="main-content" ref={contentRef} className="app-content tl-scrollbar" tabIndex={-1} aria-label="主要内容">
           {isUsageTab(activeTab) && (
             <UsagePage
-              sub={usageSubForTab(activeTab)}
+              sub={usageSubForTab(activeTab) ?? 'overview'}
               stats={statsHook.stats}
               range={statsHook.range}
               customRange={statsHook.customRange}
-              toolbar={activeTab !== 'behavior' && (
+              toolbar={(activeTab === 'dashboard' || activeTab === 'logs') && (
                 <UsageToolbar
-                  variant={activeTab === 'records' ? 'records' : 'overview'}
+                  variant={activeTab === 'logs' ? 'requests' : 'overview'}
                   dataScope={statsHook.dataScope}
                   range={statsHook.range}
                   customRange={statsHook.customRange}
@@ -827,21 +809,30 @@ function MainApp() {
                   refreshCompletedAt={statsHook.refreshCompletedAt}
                   onSelectDate={dayDrill.drillIntoDay}
                   dateDrillUnavailable={dayDrill.dayDrillUnavailable}
+                  onOpenAllowances={() => changeTab('allowances')}
                 />
               )}
-              records={activeTab === 'records' && (
-                <UsageRecordsPanel
+              requests={activeTab === 'logs' && (
+                <Suspense fallback={<LoadingSkeleton className="h-64" />}>
+                <LogsTable
                   details={usageDetails.details}
+                  filters={usageDetails.detailFilters}
                   loading={usageDetails.detailsLoading}
                   loadingMore={usageDetails.detailsLoadingMore}
                   error={usageDetails.detailsError}
-                  filtered={!detailFiltersEmpty(usageDetails.detailFilters)}
-                  filters={usageDetails.detailFilters}
+                  scope={statsHook.dataScope}
+                  range={statsHook.range}
+                  customRange={statsHook.customRange}
+                  onFilterChange={usageDetails.updateDetailFilter}
                   onClearFilters={() => usageDetails.setDetailFilters(EMPTY_DETAIL_FILTERS)}
                   onRetry={() => void usageDetails.loadDetails()}
                   onLoadMore={() => void usageDetails.loadDetails(usageDetails.details?.nextCursor || null, true)}
-                  onOpenDetails={() => changeTab('logs', true)}
+                  onOpenEntity={entityDashboard.openEntity}
+                  dayDrill={dayDrill.dayDrill ? dayDrillCopy(dayDrill.dayDrill) : null}
+                  onReturnFromDayDrill={dayDrill.returnFromDayDrill}
+                  hasPageTitle
                 />
+                </Suspense>
               )}
               sessions={activeTab === 'behavior' && (
                 <BehaviorAnalysisView
@@ -875,28 +866,19 @@ function MainApp() {
                   }}
                 />
               )}
+              allowances={activeTab === 'allowances' && (
+                <UsageAllowancesView
+                  providers={quota.quotaProviders}
+                  loading={quota.quotaLoading}
+                  error={quota.quotaError}
+                  quotaSyncStatus={quota.quotaSyncStatus}
+                  onRefresh={() => void quota.loadQuotas(cloud.cloudStatusKnown && cloud.cloudStatus.authenticated, true)}
+                  onSyncNow={() => void quota.syncQuotaSnapshotsNow()}
+                  onOpenSettings={openQuotaSettings}
+                  onNotify={(text) => showMessage('info', text)}
+                />
+              )}
             />
-          )}
-          {activeTab === 'logs' && (
-            <Suspense fallback={<LoadingSkeleton className="h-64" />}>
-              <LogsTable
-                details={usageDetails.details}
-                filters={usageDetails.detailFilters}
-                loading={usageDetails.detailsLoading}
-                loadingMore={usageDetails.detailsLoadingMore}
-                error={usageDetails.detailsError}
-                scope={statsHook.dataScope}
-                range={statsHook.range}
-                customRange={statsHook.customRange}
-                onFilterChange={usageDetails.updateDetailFilter}
-                onClearFilters={() => usageDetails.setDetailFilters(EMPTY_DETAIL_FILTERS)}
-                onRetry={() => void usageDetails.loadDetails()}
-                onLoadMore={() => void usageDetails.loadDetails(usageDetails.details?.nextCursor || null, true)}
-                onOpenEntity={entityDashboard.openEntity}
-                dayDrill={dayDrill.dayDrill ? dayDrillCopy(dayDrill.dayDrill) : null}
-                onReturnFromDayDrill={dayDrill.returnFromDayDrill}
-              />
-            </Suspense>
           )}
           {modelPageVisible && isModelTab(activeTab) && (
             <Suspense fallback={<LoadingSkeleton className="h-64" />}>

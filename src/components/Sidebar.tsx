@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bot, Check, Cloud, FileText, History, Image as ImageIcon, LoaderCircle, Monitor, Plug, RefreshCw, Route, Server, Settings, Share2 } from 'lucide-react';
+import { Activity, BarChart3, Bot, Check, Cloud, Gauge, History, Image as ImageIcon, LoaderCircle, Monitor, Plug, RefreshCw, Route, Server, Settings, Share2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { TokenLedgerIcon } from './brand/TokenLedgerIcon';
@@ -82,11 +82,10 @@ interface NavItem {
 const USAGE_NAV_ITEM: NavItem = { id: 'dashboard', label: '用量', icon: BarChart3, matches: isUsageTab };
 
 /** 用量分组内同级页面（T10.306f），仍是子页唯一的侧栏入口（U-101）。 */
+const USAGE_SUB_ICONS = { overview: BarChart3, requests: History, sessions: Activity, allowances: Gauge } as const;
 const USAGE_SUB_NAV_ITEMS = USAGE_SUB_OPTIONS.map(({ id, label }) => ({
-  id: USAGE_SUB_TABS[id], label, icon: id === 'overview' ? BarChart3 : id === 'records' ? FileText : Activity,
+  id: USAGE_SUB_TABS[id], label, icon: USAGE_SUB_ICONS[id],
 }));
-
-const LOGS_NAV_ITEM: NavItem = { id: 'logs', label: '活动明细', icon: History, matches: (tab) => tab === 'logs' };
 
 /**
  * The sliding pill follows the current page (`aria-current="page"`). The usage
@@ -188,7 +187,7 @@ export function Sidebar({
   const usageActive = isUsageTab(activeTab);
 
   // Icon-only rail (≤860px): the sub-entries are hidden, so the 用量 icon
-  // opens a three-item menu instead (U-101 removed the in-page tabs).
+  // opens the sub-page menu instead (U-101 removed the in-page tabs).
   const usageButtonRef = useRef<HTMLButtonElement>(null);
   const usageMenuRef = useRef<HTMLDivElement>(null);
   const usageMenuItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -432,7 +431,6 @@ export function Sidebar({
             <nav ref={navIndicatorRef} className="sidebar-nav sidebar-nav-primary tl-seg" data-window-drag-block aria-label="主要页面导航">
               {narrowRail ? usageNavItem : <div className="sidebar-group-title sidebar-usage-heading" aria-hidden="true">用量</div>}
               {USAGE_SUB_NAV_ITEMS.map(renderUsageSubItem)}
-              {renderNavItem(LOGS_NAV_ITEM)}
               {modelAccessEnabled && (
                 <>
                   <div className="sidebar-group-title" aria-hidden="true">模型接入</div>

@@ -80,6 +80,11 @@ interface DashboardTabProps {
   onSelectDate?: (date: string) => void;
   /** 当前作用域做不了单日复盘时（桌面云端）的说明；入口显示为不可用，绝不跳到空结果。 */
   dateDrillUnavailable?: DayDrillUnavailable | null;
+  /**
+   * 额度详情在用量 · 额度子页时给出：概览只留额度要点，点开跳过去，
+   * 不再在概览里重复渲染完整额度面板与恢复入口。
+   */
+  onOpenAllowances?: () => void;
 }
 
 export function cloudSyncRecoveryCopy(setup: {
@@ -359,6 +364,7 @@ export function DashboardTab({
   refreshCompletedAt,
   onSelectDate,
   dateDrillUnavailable = null,
+  onOpenAllowances,
 }: DashboardTabProps) {
   const quotaSectionRef = useRef<HTMLDivElement>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -659,14 +665,14 @@ export function DashboardTab({
             {renderStatsRecoveryActions('banner')}
           </div>
         )}
-        {moduleVisible('quota') && quotaError && (
+        {moduleVisible('quota') && !onOpenAllowances && quotaError && (
           <QuotaRecoveryCue
             busy={quotaRecoveryBusy}
             onRefresh={onRefreshQuotas}
             onOpenSettings={onOpenQuotaSettings}
           />
         )}
-        {moduleVisible('quota') && <QuotaPanel
+        {moduleVisible('quota') && !onOpenAllowances && <QuotaPanel
           providers={quotaProviders}
           loading={quotaLoading}
           error={quotaError}
@@ -846,14 +852,14 @@ export function DashboardTab({
           {moduleVisible('quota') && <QuotaHighlights
             providers={quotaProviders.filter(provider => sourceOptions.some(source => source.id === quotaSourceKey(provider) && source.visible))}
             refreshFailed={Boolean(quotaError)}
-            onOpen={() => {
+            onOpen={onOpenAllowances ?? (() => {
               quotaSectionRef.current?.focus({ preventScroll: true });
               quotaSectionRef.current?.scrollIntoView({ block: 'start' });
-            }} />}
+            })} />}
         </div>;
         if (module === 'trend') return <TrendPanel key={module} trends={stats.trends} activeTools={activeToolsList} comparison={stats.comparison} range={range} scope={scope}
           overviewStats={stats} pendingUploads={unsyncedRecords} />;
-        if (module === 'quota') return <div key={module} ref={quotaSectionRef} tabIndex={-1} aria-label="订阅额度详情" className="dashboard-preference-module quota-details-anchor">
+        if (module === 'quota') return onOpenAllowances ? null : <div key={module} ref={quotaSectionRef} tabIndex={-1} aria-label="订阅额度详情" className="dashboard-preference-module quota-details-anchor">
           {quotaError && <QuotaRecoveryCue busy={quotaRecoveryBusy} onRefresh={onRefreshQuotas} onOpenSettings={onOpenQuotaSettings} />}
           <QuotaPanel providers={quotaProviders} loading={quotaLoading} error={quotaError} showRecoveryActions={false}
             quotaSyncStatus={quotaSyncStatus} onRefresh={onRefreshQuotas} onSyncNow={onQuotaSyncNow}

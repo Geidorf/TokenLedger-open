@@ -65,7 +65,7 @@ describe('Sidebar', () => {
     );
     const nav = screen.getByRole('navigation', { name: '主要页面导航' });
     const labels = Array.from(nav.querySelectorAll('button')).map((button) => button.getAttribute('aria-label'));
-    expect(labels).toEqual(['概览', '记录', '行为分析', '活动明细', 'Agent', '供应商', '网关', '路由', '设置与云端']);
+    expect(labels).toEqual(['概览', '请求', '会话', '额度', 'Agent', '供应商', '网关', '路由', '设置与云端']);
     expect(screen.getByRole('button', { name: '网关' })).toHaveAttribute('aria-current', 'page');
     fireEvent.click(screen.getByRole('button', { name: '路由' }));
     expect(onTabChange).toHaveBeenCalledWith('routing');
@@ -79,7 +79,7 @@ describe('Sidebar', () => {
     );
     const nav = screen.getByRole('navigation', { name: '主要页面导航' });
     const labels = Array.from(nav.querySelectorAll('button')).map((button) => button.getAttribute('aria-label'));
-    expect(labels).toEqual(['概览', '记录', '行为分析', '活动明细', '设置与云端']);
+    expect(labels).toEqual(['概览', '请求', '会话', '额度', '设置与云端']);
     expect(nav).not.toHaveTextContent('模型接入');
   });
 
@@ -90,7 +90,7 @@ describe('Sidebar', () => {
     const nav = screen.getByRole('navigation', { name: '主要页面导航' });
     expect(screen.queryByRole('button', { name: '用量' })).not.toBeInTheDocument();
     expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: '行为分析' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: '会话' })).toHaveAttribute('aria-current', 'page');
     fireEvent.click(screen.getByRole('button', { name: '概览' }));
     expect(onTabChange).toHaveBeenLastCalledWith('dashboard');
     expect(screen.getByRole('button', { name: '概览' }).querySelector('svg')).not.toBeNull();
@@ -103,27 +103,26 @@ describe('Sidebar', () => {
       cloudStatus, onScan: vi.fn(), onSync: vi.fn(), onWallpaper: vi.fn(), wallpaperBusy: false, appVersion: '1.2.72',
     };
     const { rerender } = render(<Sidebar {...props} activeTab="behavior" />);
-    const behavior = screen.getByRole('button', { name: '行为分析' });
+    const behavior = screen.getByRole('button', { name: '会话' });
     expect(behavior).toHaveAttribute('aria-current', 'page');
     expect(behavior).toHaveClass('nav-sub-item', 'nav-item-active');
     expect(screen.getByRole('button', { name: '概览' })).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('button', { name: '记录' })).not.toHaveAttribute('aria-current');
-    expect(screen.queryByRole('button', { name: '会话' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '请求' })).not.toHaveAttribute('aria-current');
 
-    fireEvent.click(screen.getByRole('button', { name: '记录' }));
-    expect(onTabChange).toHaveBeenLastCalledWith('records');
+    fireEvent.click(screen.getByRole('button', { name: '请求' }));
+    expect(onTabChange).toHaveBeenLastCalledWith('logs');
     fireEvent.click(screen.getByRole('button', { name: '概览' }));
     expect(onTabChange).toHaveBeenLastCalledWith('dashboard');
 
-    rerender(<Sidebar {...props} activeTab="records" />);
-    expect(screen.getByRole('button', { name: '记录' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('button', { name: '行为分析' })).not.toHaveAttribute('aria-current');
+    rerender(<Sidebar {...props} activeTab="logs" />);
+    expect(screen.getByRole('button', { name: '请求' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: '会话' })).not.toHaveAttribute('aria-current');
 
     rerender(<Sidebar {...props} activeTab="gateway" />);
-    for (const name of ['概览', '记录', '行为分析']) {
+    for (const name of ['概览', '请求', '会话', '额度']) {
       expect(screen.getByRole('button', { name })).not.toHaveAttribute('aria-current');
     }
-    fireEvent.click(screen.getByRole('button', { name: '行为分析' }));
+    fireEvent.click(screen.getByRole('button', { name: '会话' }));
     expect(onTabChange).toHaveBeenLastCalledWith('behavior');
   });
 
@@ -379,7 +378,7 @@ describe('窄栏「用量」菜单（U-101，T10.277）', () => {
     }
   });
 
-  it('点「用量」图标弹出三项菜单，焦点落在当前子页并带选中标记', () => {
+  it('点「用量」图标弹出子页菜单，焦点落在当前子页并带选中标记', () => {
     const restore = mockNarrowRail(true);
     try {
       const onTabChange = renderRail('behavior');
@@ -392,7 +391,7 @@ describe('窄栏「用量」菜单（U-101，T10.277）', () => {
       const menu = screen.getByRole('menu', { name: '用量子页' });
       expect(usage).toHaveAttribute('aria-controls', menu.id);
       const items = screen.getAllByRole('menuitemradio');
-      expect(items.map((item) => item.textContent)).toEqual(['概览', '记录', '行为分析']);
+      expect(items.map((item) => item.textContent)).toEqual(['概览', '请求', '会话', '额度']);
       expect(items[2]).toHaveAttribute('aria-checked', 'true');
       expect(items[0]).toHaveAttribute('aria-checked', 'false');
       expect(items[2].querySelector('svg')).not.toBeNull();
@@ -411,17 +410,21 @@ describe('窄栏「用量」菜单（U-101，T10.277）', () => {
       const menu = screen.getByRole('menu');
       const items = screen.getAllByRole('menuitemradio');
       fireEvent.keyDown(menu, { key: 'ArrowDown' });
+      expect(items[3]).toHaveFocus();
+      fireEvent.keyDown(menu, { key: 'ArrowDown' });
       expect(items[0]).toHaveFocus();
       fireEvent.keyDown(menu, { key: 'ArrowUp' });
-      expect(items[2]).toHaveFocus();
+      expect(items[3]).toHaveFocus();
       fireEvent.keyDown(menu, { key: 'Home' });
       expect(items[0]).toHaveFocus();
       fireEvent.keyDown(menu, { key: 'End' });
+      expect(items[3]).toHaveFocus();
+      fireEvent.keyDown(menu, { key: 'ArrowUp' });
       expect(items[2]).toHaveFocus();
       fireEvent.keyDown(menu, { key: 'ArrowUp' });
       expect(items[1]).toHaveFocus();
       fireEvent.click(items[1]);
-      expect(onTabChange).toHaveBeenCalledWith('records');
+      expect(onTabChange).toHaveBeenCalledWith('logs');
       expect(screen.queryByRole('menu')).not.toBeInTheDocument();
       expect(usage).toHaveFocus();
     } finally {
