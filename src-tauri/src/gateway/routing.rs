@@ -566,16 +566,15 @@ impl Router {
                     None => None,
                 }
             });
-        let rotation = if matches!(group.strategy, Strategy::Rotate | Strategy::Weighted) {
-            let mut counters = lock(&self.rotation);
-            let counter = counters.entry(group.id.clone()).or_insert(0);
-            let current = *counter;
+        // A turn is spent only when the strategy picked the primary, so
+        // pinned sessions and rule hits do not skew rotation or weights.
+        let mut counters = lock(&self.rotation);
+        let counter = counters.entry(group.id.clone()).or_insert(0);
+        let plan = plan_members(group, features, affinity.as_deref(), *counter);
+        if matches!(plan.reason, "rotate" | "weighted") {
             *counter = counter.wrapping_add(1);
-            current
-        } else {
-            0
-        };
-        plan_members(group, features, affinity.as_deref(), rotation)
+        }
+        plan
     }
 
     /// Pins the session to the member that actually answered.
@@ -870,6 +869,29 @@ mod tests {
         let a = router.plan(&g, &none, None).candidates[0].clone();
         let b = router.plan(&g, &none, None).candidates[0].clone();
         assert_ne!(a, b, "rotation without a session");
+
+        let mut weighted = g.clone();
+        weighted.id = "split".into();
+        weighted.strategy = Strategy::Weighted;
+        weighted.weights = BTreeMap::from([("a/m1".into(), 2)]);
+        let mut firsts = Vec::new();
+        for session in 0..4 {
+            let session = format!("w{session}");
+            let first = router.plan(&weighted, &none, Some(&session)).candidates[0].clone();
+            router.remember(&weighted, Some(&session), &first);
+            for _ in 0..2 {
+                assert_eq!(
+                    router.plan(&weighted, &none, Some(&session)).reason,
+                    "affinity"
+                );
+            }
+            firsts.push(first);
+        }
+        assert_eq!(
+            firsts,
+            ["a/m1", "b/m2", "c/m3", "a/m1"],
+            "pinned turns do not consume weighted slots"
+        );
 
         g.session_ttl_secs = 0;
         router.remember(&g, Some("s2"), "c/m3");
