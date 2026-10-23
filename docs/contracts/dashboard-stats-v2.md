@@ -176,7 +176,7 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 
 规则只在本机执行（本机看板合并与云端上传前的合并，见下），结果是派生的：不修改、不删除扫描入库的原始行，网关文件或扫描数据变化后整体重算。
 
-**明细与能力声明（可选扩展）。** 本机明细 `items[]` 可带可选 `source: "scan" | "gateway" | "imported-magpie"`，网关来源与 magpie 导入来源另带可选 `provider`；字段缺失按 `scan` 理解（旧生产者）。`imported-magpie` 是从 magpie 本机 `usage.jsonl` 导入的调用，读取范围、字段与去重顺序见 [magpie-import-v1](magpie-import-v1.md)：导入行按本节维度映射与规则 A/B 并入，与 TokenLedger 网关记录重复时以网关记录为准，取代扫描记录的方式与网关记录相同，规则 B 下有多条同指纹候选时导入行暂不计入；`meta.capabilities.gatewayLedger = true` 同样表示导入行已按此合并。本机响应在合并生效时声明 `meta.capabilities.gatewayLedger = true`；缺失表示生产者未合并网关记录。读者遇到未知 `source` 取值时按未知来源显示，不丢弃该行。
+**明细与能力声明（可选扩展）。** 本机明细 `items[]` 可带可选 `source: "scan" | "gateway" | "imported-magpie"`，网关来源与 magpie 导入来源另带可选 `provider`；字段缺失按 `scan` 理解（旧生产者）。`imported-magpie` 是从 magpie 本机 `usage.jsonl` 导入的调用，读取范围、字段与去重顺序见 [magpie-import-v1](magpie-import-v1.md)：导入行按本节维度映射与规则 A/B 并入，与 TokenLedger 网关记录重复时以网关记录为准，取代扫描记录的方式与网关记录相同，规则 B 下有多条同指纹候选时导入行暂不计入。本机响应在合并生效时声明 `meta.capabilities.gatewayLedger = true`（网关记录与导入行都已按本节合并）；缺失表示生产者未合并网关记录。读者遇到未知 `source` 取值时按未知来源显示，不丢弃该行。
 
 **兼容与边界。**
 
