@@ -34,6 +34,8 @@ fi
 supabase start --workdir "$WORKDIR"
 
 CONTAINER="$(docker inspect --format '{{.Id}}' "supabase_db_$PROJECT")"
+# 门禁会逐项核对名称、镜像、标签、端口与数据卷；先把这些字段打出来，失败时能直接对照。
+docker inspect --format 'name={{.Name}} image={{.Config.Image}} running={{.State.Running}} labels={{json .Config.Labels}} ports={{json .HostConfig.PortBindings}} mounts={{json .Mounts}}' "$CONTAINER"
 OUT="${GITHUB_ENV:-/dev/stdout}"
 {
   echo "TOKENLEDGER_SUPABASE_GATE_WORKDIR=$WORKDIR"
