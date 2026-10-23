@@ -112,7 +112,7 @@ private fun V2RoutingEyebrow(palette: MobileV2Palette, feed: RoutingFeed, scene:
             .padding(top = 2.dp)
             .semantics(mergeDescendants = true) { heading() },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text("ROUTING", color = palette.muted, style = LedgerType.caption, fontWeight = FontWeight.SemiBold)
         Box(Modifier.size(6.dp).background(dot, CircleShape))
@@ -229,7 +229,7 @@ private fun V2RoutingRecentRow(palette: MobileV2Palette, flow: RoutingFlow, now:
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 9.dp)
+            .padding(vertical = 10.dp)
             .clearAndSetSemantics { contentDescription = RoutingSnapshots.describe(flow) + "，" + ago(now - flow.atServerMs) },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)

@@ -2,11 +2,6 @@ package com.jeidorf.tokenledger.mobile.ui.routing
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,10 +23,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -55,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.jeidorf.tokenledger.mobile.LedgerFont
 import com.jeidorf.tokenledger.mobile.LedgerType
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
+import com.jeidorf.tokenledger.mobile.ledgerTween
 import com.jeidorf.tokenledger.mobile.routing.RoutingFlow
 import com.jeidorf.tokenledger.mobile.routing.RoutingFlowPhase
 import com.jeidorf.tokenledger.mobile.routing.RoutingHopOutcome
@@ -181,14 +179,16 @@ internal fun V2RoutingStage(
         ?.takeIf { nowServerMs - it.atServerMs in 0 until RECENT_LIT_MS }
     val inflight = scene.flows.filter { it.phase == RoutingFlowPhase.Inflight }
 
-    val dash by if (motion && inflight.isNotEmpty()) {
-        rememberInfiniteTransition(label = "routingDash").animateFloat(
-            initialValue = 0f,
-            targetValue = -18f,
-            animationSpec = infiniteRepeatable(tween(SEGMENT_MS, easing = LinearEasing), RepeatMode.Restart),
-            label = "routingDashPhase"
-        )
-    } else remember { mutableStateOf(0f) }
+    // 虚线流动用帧时钟推相位（0.7 秒一周期），不经 tween：关动画时根本不跑。
+    var dash by remember { mutableFloatStateOf(0f) }
+    val animateDash = motion && inflight.isNotEmpty()
+    LaunchedEffect(animateDash) {
+        dash = 0f
+        if (!animateDash) return@LaunchedEffect
+        while (true) {
+            withFrameMillis { ms -> dash = -18f * ((ms % SEGMENT_MS) / SEGMENT_MS.toFloat()) }
+        }
+    }
 
     // 新出现的流排队依次播放；只在动画开启时跑光点。
     val tracker = remember { RoutingPlaybackTracker() }
@@ -214,7 +214,7 @@ internal fun V2RoutingStage(
             for (segment in 0 until segments) {
                 progress.snapTo(0f)
                 playing = next to segment.toFloat()
-                progress.animateTo(1f, tween(perSegment, easing = LinearEasing)) {
+                progress.animateTo(1f, ledgerTween(perSegment, motion, easing = LinearEasing)) {
                     playing = next to (segment + value)
                 }
                 delay(SEGMENT_GAP_MS.coerceAtMost(perSegment / 2L))
@@ -475,7 +475,7 @@ private fun V2RoutingTargetRow(palette: MobileV2Palette, node: RoutingNode, lit:
     ) {
         Box(
             Modifier
-                .size(9.dp)
+                .size(10.dp)
                 .then(
                     if (active) Modifier.background(palette.text, CircleShape)
                     else Modifier.border(1.5.dp, palette.muted, CircleShape)
