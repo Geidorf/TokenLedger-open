@@ -136,8 +136,11 @@ function hungRunFixture() {
   return { dir, daemonLog, runsJson, sessionsDir, startedAt };
 }
 
-function runScript(args) {
-  const result = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
+function runScript(args, env = {}) {
+  const result = spawnSync(process.execPath, [SCRIPT, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -672,7 +675,9 @@ test('CLI：受控快照自带 anchor-date，同一快照不同 mtime 下判定�
       '--now', now,
       '--json',
       ...extra,
-    ]);
+    // 快照头部写明日志时间是机器本地时间（UTC+8），判定必须在同一时区下进行，
+    // 否则 UTC runner 会把 12:51 当成 UTC，停滞秒数归零。
+    ], { TZ: 'Asia/Shanghai' });
     return { result, payload: JSON.parse(result.stdout) };
   };
 

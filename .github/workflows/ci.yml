@@ -226,7 +226,9 @@ jobs:
             throw "Windows Tauri executable is empty"
           }
           $expectedVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $actualVersion = $executable.VersionInfo.ProductVersion -replace '\.0$', ''
+          # ProductVersion 可能是三段（2.0.0）也可能是四段（2.0.0.0）；只取前三段比对。
+          # 旧写法去掉末尾 ".0" 会把 2.0.0 截成 2.0。
+          $actualVersion = ($executable.VersionInfo.ProductVersion -split '\.')[0..2] -join '.'
           if ($actualVersion -ne $expectedVersion) {
             throw "Windows Tauri executable version $actualVersion does not match package version $expectedVersion"
           }
@@ -297,12 +299,16 @@ jobs:
         with:
           version: 2.109.1
 
+      # 门禁只认 checkout 之外的专用项目与端口（见脚本头注释），不能直接 `supabase start`。
       - name: Start isolated Supabase services
-        run: supabase start
+        run: scripts/start-supabase-gate-isolation.sh "$RUNNER_TEMP/supabase-gate" "tokenledger-t0-ci-sql-gh${{ github.run_id }}"
 
       - name: Replay migrations and run strict release SQL gates
         run: npm run supabase:verify:release
 
       - name: Stop isolated Supabase services
         if: always()
-        run: supabase stop --no-backup
+        run: |
+          if [ -n "${TOKENLEDGER_SUPABASE_GATE_WORKDIR:-}" ]; then
+            supabase stop --no-backup --workdir "$TOKENLEDGER_SUPABASE_GATE_WORKDIR"
+          fi
