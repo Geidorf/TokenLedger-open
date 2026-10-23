@@ -34,6 +34,8 @@ export interface DayDrill {
   /** 被复盘的本地日期 `YYYY-MM-DD`。 */
   date: string;
   origin: DayDrillOrigin;
+  /** 从只看某个 Agent / 模型的热力图点进来时带上的筛选；只要筛选还是它，复盘就仍有效。 */
+  entity?: Pick<DetailFilters, 'tools' | 'models'>;
 }
 
 /** 下钻入口不可用时的说明：`label` 就地显示，`description` 用于悬停提示与读屏。 */
@@ -54,6 +56,8 @@ export function dayDrillUnavailable(_scope: DataScope): DayDrillUnavailable | nu
 }
 
 /** 当前查询是否仍是这次下钻设下的单日范围与空筛选；任何偏离都视为用户改了条件。 */
+const sameValues = (a: string[], b: string[]) => a.length === b.length && a.every((value, index) => value === b[index]);
+
 export function isDayDrillQuery(
   drill: DayDrill,
   range: RangeKey,
@@ -63,8 +67,8 @@ export function isDayDrillQuery(
   return range === 'custom'
     && customRange?.start === drill.date
     && customRange.end === drill.date
-    && filters.tools.length === 0
-    && filters.models.length === 0
+    && sameValues(filters.tools, drill.entity?.tools ?? [])
+    && sameValues(filters.models, drill.entity?.models ?? [])
     && filters.machines.length === 0
     && filters.search === '';
 }
@@ -182,15 +186,16 @@ export function useDayDrill({
 
   const unavailable = dayDrillUnavailable(scope);
 
-  const drillIntoDay = useCallback((date: string) => {
+  /** `entity`：从只看某个 Agent 或模型的热力图点进来时，明细同时按它筛选，结果与格子一致。 */
+  const drillIntoDay = useCallback((date: string, entity?: Pick<DetailFilters, 'tools' | 'models'>) => {
     // Never navigate to a result the scope cannot produce; the entry points
     // are rendered disabled with the reason instead.
     if (unavailable || isoCalendarDayValue(date) === null) return false;
     // A second drill keeps the first origin, so "back" still leads home.
     const origin = active?.origin ?? { scope, tab: activeTab, range, customRange, filters };
-    setDrill({ date, origin });
+    setDrill(entity ? { date, origin, entity } : { date, origin });
     changeRange('custom', { start: date, end: date });
-    setFilters(EMPTY_DETAIL_FILTERS);
+    setFilters(entity ? { ...EMPTY_DETAIL_FILTERS, tools: entity.tools, models: entity.models } : EMPTY_DETAIL_FILTERS);
     changeTab('logs', true);
     focusWhenMounted(() => document.getElementById('details-page-title'));
     return true;

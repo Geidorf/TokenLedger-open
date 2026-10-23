@@ -80,9 +80,9 @@ class LedgerTokensTest {
             LedgerPalettes.Light.chart
         )
         // 语义色不跟着图表色改（U-4 只动 chart）。
-        assertEquals(Color(0xFFA78BFA), LedgerPalettes.Dark.accent)
-        assertEquals(Color(0xFF4ADE80), LedgerPalettes.Dark.success)
-        assertEquals(Color(0xFF7C5CF0), LedgerPalettes.Light.brand2)
+        assertEquals(Color(0xFFC4B5FD), LedgerPalettes.Dark.accent)
+        assertEquals(Color(0xFF6FD99B), LedgerPalettes.Dark.success)
+        assertEquals(Color(0xFF7C3AED), LedgerPalettes.Light.brand2)
     }
 
     @Test
@@ -90,11 +90,11 @@ class LedgerTokensTest {
         // P3-11：热力 1–4 级与 M3 tertiary 从图表色派生，重调 chart 时不会停在旧色相。
         // 派生结果仍逐值等于 §3.8 的取值。
         assertEquals(
-            listOf(Color(0xFF1B1F26), Color(0x476B9DFF), Color(0x806B9DFF), Color(0xBD6B9DFF), Color(0xFF6B9DFF)),
+            listOf(Color(0xFF2D2D33), Color(0x476B9DFF), Color(0x806B9DFF), Color(0xBD6B9DFF), Color(0xFF6B9DFF)),
             LedgerPalettes.Dark.heat
         )
         assertEquals(
-            listOf(Color(0xFFEEF0F3), Color(0x332F6BE6), Color(0x662F6BE6), Color(0xA82F6BE6), Color(0xFF2F6BE6)),
+            listOf(Color(0xFFF1F1F4), Color(0x332F6BE6), Color(0x662F6BE6), Color(0xA82F6BE6), Color(0xFF2F6BE6)),
             LedgerPalettes.Light.heat
         )
         listOf(LedgerPalettes.Dark, LedgerPalettes.Light).forEach { c ->
@@ -222,22 +222,22 @@ class LedgerTokensTest {
     @Test
     fun materialSchemeMatchesSection32Values() {
         val dark = ledgerColorScheme(LedgerPalettes.Dark)
-        assertEquals(Color(0xFF6B9DFF), dark.primary)
-        assertEquals(Color(0xFF1F283E), dark.primaryContainer)
-        assertEquals(Color(0xFF15181E), dark.surfaceContainerLow)
-        assertEquals(Color(0xFF1B1F26), dark.surfaceContainer)
-        assertEquals(Color(0xFF1D2129), dark.surfaceContainerHigh)
-        assertEquals(Color(0xFF2A303B), dark.surfaceContainerHighest)
-        assertEquals(Color(0xFF3A1620), dark.errorContainer)
-        assertEquals(Color(0xA8030509), dark.scrim)
+        assertEquals(Color(0xFFA5B4FC), dark.primary)
+        assertEquals(Color(0xFF383A49), dark.primaryContainer)
+        assertEquals(Color(0xFF232327), dark.surfaceContainerLow)
+        assertEquals(Color(0xFF2D2D33), dark.surfaceContainer)
+        assertEquals(Color(0xFF303036), dark.surfaceContainerHigh)
+        assertEquals(Color(0xFF3A3A42), dark.surfaceContainerHighest)
+        assertEquals(Color(0xFF45272A), dark.errorContainer)
+        assertEquals(Color(0xA8050507), dark.scrim)
         val light = ledgerColorScheme(LedgerPalettes.Light)
-        assertEquals(Color(0xFF1F5FD6), light.primary)
-        assertEquals(Color(0xFFEBF1FB), light.primaryContainer)
-        assertEquals(Color(0xFFF7F8FA), light.surfaceContainerLow)
-        assertEquals(Color(0xFFEEF0F3), light.surfaceContainer)
-        assertEquals(Color(0xFFE9EBEF), light.surfaceContainerHigh)
-        assertEquals(Color(0xFFFDE8EC), light.errorContainer)
-        assertEquals(Color(0x470F172A), light.scrim)
+        assertEquals(Color(0xFF4F46E5), light.primary)
+        assertEquals(Color(0xFFEFEEFD), light.primaryContainer)
+        assertEquals(Color(0xFFF9F9FB), light.surfaceContainerLow)
+        assertEquals(Color(0xFFF1F1F4), light.surfaceContainer)
+        assertEquals(Color(0xFFE9E9EE), light.surfaceContainerHigh)
+        assertEquals(Color(0xFFFBE9E9), light.errorContainer)
+        assertEquals(Color(0x4714161E), light.scrim)
         val eink = ledgerColorScheme(LedgerPalettes.EInk)
         assertEquals("墨水屏只有 surfaceContainer 不是白", Color(0xFFF2F2F2), eink.surfaceContainer)
         listOf(
@@ -636,11 +636,11 @@ class LedgerTokensTest {
             )
         )
         assertEquals(
-            listOf(6.dp, 8.dp, 12.dp, 16.dp, 20.dp, 8.dp),
+            listOf(4.dp, 6.dp, 7.dp, 8.dp, 10.dp, 8.dp),
             listOf(LedgerRadius.xs, LedgerRadius.sm, LedgerRadius.md, LedgerRadius.lg, LedgerRadius.xl, LedgerRadius.einkCard)
         )
-        // 同心：轨道 12 − 内缩 4 = 胶囊 8；轨道 48 − 2×4 = 胶囊 40。
-        assertEquals(LedgerRadius.sm, LedgerRadius.md - LedgerSpace.xs)
+        // 同心：分段轨道 10 − 内缩 4 = 胶囊 6；轨道 48 − 2×4 = 胶囊 40。
+        assertEquals(LedgerRadius.sm, LedgerRadius.segmentTrack - LedgerSpace.xs)
         assertEquals(LedgerSize.segmentPill, LedgerSize.segmentTrack - LedgerSpace.xs * 2)
     }
 
@@ -651,7 +651,7 @@ class LedgerTokensTest {
     @Test
     fun motionTokensMatchTheDesktopPrimitives() {
         assertEquals(
-            listOf(90, 160, 180, 240, 260, 360, 420, 420, 40, 4, 700, 450, 1800, 900),
+            listOf(90, 120, 150, 180, 180, 220, 240, 320, 40, 4, 480, 300, 1800, 900),
             listOf(
                 LedgerMotion.PRESS_MILLIS, LedgerMotion.FAST_MILLIS, LedgerMotion.POP_MILLIS,
                 LedgerMotion.UPDATE_MILLIS, LedgerMotion.STANDARD_MILLIS, LedgerMotion.INDICATOR_MILLIS,
@@ -667,7 +667,7 @@ class LedgerTokensTest {
     @Test
     fun disabledMotionCollapsesDurationAndDelayToZero() {
         val on = ledgerTween<Float>(LedgerMotion.INDICATOR_MILLIS, enabled = true, delayMillis = 40, easing = LedgerEasing.EaseOutExpo) as TweenSpec<Float>
-        assertEquals(360, on.durationMillis)
+        assertEquals(220, on.durationMillis)
         assertEquals(40, on.delay)
         assertSame(LedgerEasing.EaseOutExpo, on.easing)
         val off = ledgerTween<Float>(LedgerMotion.INDICATOR_MILLIS, enabled = false, delayMillis = 40) as TweenSpec<Float>

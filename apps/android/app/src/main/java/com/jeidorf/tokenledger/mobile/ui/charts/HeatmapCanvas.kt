@@ -59,6 +59,7 @@ import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_ICON_INLINE
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_TOUCH_TARGET
 import com.jeidorf.tokenledger.mobile.v2FormatTokens
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 internal data class HeatmapCellSelection(
     val date: String,
@@ -310,7 +311,7 @@ internal fun V2HeatmapChart(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(LedgerRadius.lg),
                 color = if (palette.isEInk) palette.surface else palette.surfaceContainerHigh.copy(alpha = 0.96f),
                 border = if (palette.isEInk) BorderStroke(1.dp, palette.text) else null,
                 shadowElevation = if (palette.isEInk) 0.dp else 4.dp

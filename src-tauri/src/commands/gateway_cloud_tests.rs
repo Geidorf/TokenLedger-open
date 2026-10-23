@@ -421,3 +421,76 @@ fn antigravity_unknown_cache_write_survives_hourly_merge_and_fingerprint() {
         5
     );
 }
+
+#[test]
+fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    // A scanned row already synced, and a magpie call it duplicates plus one
+    // it doesn't, in another hour.
+    insert_scan(&db_path, "dup", "s1", "2026-10-04 10:00:09", Some("user-a"));
+    let at = |hour: u32, second: u32| {
+        Local
+            .with_ymd_and_hms(2026, 10, 4, hour, 0, second)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc)
+            .to_rfc3339()
+    };
+    let magpie_dir = root.join("magpie");
+    fs::create_dir_all(&magpie_dir).unwrap();
+    let source = magpie_dir.join("usage.jsonl");
+    let lines = [
+        json!({"t": at(10, 10), "agent": "codex", "provider": "openai", "model": "gpt-5.5",
+               "in": 200, "out": 80, "cache_read": 0, "cache_write": 0, "ms": 900,
+               "status": 200, "session": "s1"}),
+        json!({"t": at(12, 0), "agent": "codex", "provider": "openai", "model": "gpt-5.5",
+               "in": 7, "out": 1, "cache_read": 0, "cache_write": 0, "ms": 100, "status": 200}),
+    ];
+    fs::write(
+        &source,
+        lines
+            .iter()
+            .map(|line| format!("{line}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    super::super::magpie_import::import_from(&db_path, &source).unwrap();
+
+    let imported = collect_hours(&db_path, "user-a", "mac").unwrap();
+    let first = plan(&imported, &load_state(&db_path), "user-a", "mac", &cost);
+    assert_eq!(first.next_state.hours.len(), 2);
+    save_state(&db_path, &first.next_state).unwrap();
+    assert!(
+        !gateway_overlay::accounting_present(&db_path),
+        "an import-only install must not leave legacy-history evidence for the gateway"
+    );
+    assert_eq!(load_state(&db_path), first.next_state);
+    let noon = "2026-10-04 12:00:00";
+    let noon_key = format!("agg_mac_codex_gpt-5.5_{noon}");
+    assert!(first.upserts.iter().any(|agg| agg.unique_key() == noon_key));
+
+    super::super::magpie_import::clear(&db_path).unwrap();
+    let cleared = collect_hours(&db_path, "user-a", "mac").unwrap();
+    assert_eq!(
+        cleared.keys().cloned().collect::<BTreeSet<_>>(),
+        BTreeSet::from([HOUR.to_string(), noon.to_string()]),
+        "hours uploaded with imported rows are recomputed after removal"
+    );
+    let second = plan(&cleared, &load_state(&db_path), "user-a", "mac", &cost);
+    // 10:00 goes back to the scanned row alone; 12:00 had only the import.
+    let ten = second
+        .upserts
+        .iter()
+        .find(|agg| agg.hour == HOUR)
+        .expect("10:00 is re-uploaded scan-only");
+    assert_eq!((ten.requests, ten.gateway_requests), (1, 0));
+    assert!(second.deletes.contains(&noon_key));
+    assert!(
+        second.next_state.hours.is_empty(),
+        "scan-only hours are handed back to the plain aggregation"
+    );
+    save_state(&db_path, &second.next_state).unwrap();
+    assert!(collect_hours(&db_path, "user-a", "mac").unwrap().is_empty());
+    let _ = fs::remove_dir_all(root);
+}

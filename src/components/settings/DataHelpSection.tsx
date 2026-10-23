@@ -12,6 +12,7 @@ import {
   SettingsSection,
 } from './SettingsPrimitives';
 import { ProjectDimensionCard } from './ProjectDimensionCard';
+import { MagpieImportCard } from './MagpieImportCard';
 
 export interface DataHelpSectionProps {
   dbInfo: DbInfo | null;
@@ -163,6 +164,8 @@ export function DataHelpSection(props: DataHelpSectionProps) {
       </SettingsCard>
 
       <ProjectDimensionCard />
+
+      <MagpieImportCard />
 
       <SettingsCard title="导出与分享">
         <SettingsGroup>

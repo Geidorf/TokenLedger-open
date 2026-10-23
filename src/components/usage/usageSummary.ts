@@ -33,11 +33,12 @@ export function usageConclusion(stats: StatsData): UsageConclusion {
   };
 }
 
-export type RecordSourceLabel = '网关' | '日志扫描' | '未知来源';
+export type RecordSourceLabel = '网关' | 'magpie 导入' | '日志扫描' | '未知来源';
 
 /** 契约 §2.5：缺失按扫描理解；未知取值照常显示该行，只标未知来源。 */
 export function recordSourceLabel(item: Pick<LogHistoryItem, 'source'>): RecordSourceLabel {
   if (item.source === undefined || item.source === 'scan') return '日志扫描';
   if (item.source === 'gateway') return '网关';
+  if (item.source === 'imported-magpie') return 'magpie 导入';
   return '未知来源';
 }
