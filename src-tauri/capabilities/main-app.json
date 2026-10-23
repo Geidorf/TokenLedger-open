@@ -49,6 +49,7 @@
     "allow-search-models-dev-prices",
     "allow-get-db-info",
     "allow-export-db-csv",
+    "allow-export-usage-csv",
     "allow-cleanup-db",
     "allow-reset-local-sync",
     "allow-refresh-scan",
