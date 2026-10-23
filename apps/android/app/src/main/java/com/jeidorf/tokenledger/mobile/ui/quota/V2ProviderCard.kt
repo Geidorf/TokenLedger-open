@@ -131,7 +131,8 @@ internal fun V2ProviderCard(
             }
         } else {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                V2SourceTile(palette, providerName, palette.tokens.chartSlot(toolChartSlot(providerName)))
+                // 图块按 providerId 取字与配色，和来源页同一工具保持一致；显示名带“订阅额度”等后缀不适合取字。
+                V2SourceTile(palette, provider.providerId, palette.tokens.chartSlot(toolChartSlot(provider.providerId)))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(

@@ -93,8 +93,10 @@ import com.jeidorf.tokenledger.mobile.ui.controls.V2FilterSheet
 import com.jeidorf.tokenledger.mobile.ui.controls.V2FilterSheetContent
 import com.jeidorf.tokenledger.mobile.ui.controls.V2GlobalRangeControl
 import com.jeidorf.tokenledger.mobile.ui.controls.V2InsightStrip
+import com.jeidorf.tokenledger.mobile.ui.details.V2DetailListHeader
 import com.jeidorf.tokenledger.mobile.ui.details.V2DetailRow
 import com.jeidorf.tokenledger.mobile.ui.details.V2DetailSearch
+import com.jeidorf.tokenledger.mobile.ui.details.detailListSummary
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2FullState
@@ -817,6 +819,12 @@ internal fun LazyListScope.v2InsightsItems(
                 V2DetailSearch(palette, state.query.search, onSearchChange)
             }
             val details = stats.detailsPage?.items ?: stats.history
+            val listSummary = detailListSummary(stats.detailsPage, tokenDisplayMode)
+            if (details.isNotEmpty() && listSummary != null) {
+                item(key = "insights-detail-summary", contentType = "context") {
+                    V2DetailListHeader(palette, listSummary)
+                }
+            }
             if (details.isEmpty()) {
                 item(key = "insights-detail-empty", contentType = "status") {
                     val narrowed = !state.query.search.isNullOrBlank() ||
