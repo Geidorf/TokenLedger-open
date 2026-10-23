@@ -459,7 +459,7 @@ private fun V2MePreferencesCard(
         V2MeDivider(palette)
         V2MeRow(palette, title = "Token 口径", value = tokenDisplayMode.label, chevron = true, onClick = { dialog = V2MePreferenceDialog.TokenMode })
         V2MeDivider(palette)
-        V2MeSwitchRow(palette, "隐藏金额", "截图或投屏时把费用换成 ••", costMasked) { toggleCostMask() }
+        V2MeSwitchRow(palette, "隐藏费用", "截图或投屏时把费用换成 ••", costMasked) { toggleCostMask() }
         V2MeDivider(palette)
         V2MeSwitchRow(
             palette,
