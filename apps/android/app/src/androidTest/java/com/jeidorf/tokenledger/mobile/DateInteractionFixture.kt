@@ -81,7 +81,7 @@ internal object DateInteractionFixture {
         onReturnFromDay: () -> Unit = {},
         onBack: () -> Unit = {},
         onRefresh: () -> Unit = {},
-        initialDestination: MobileDestination = MobileDestination.Insights,
+        initialDestination: MobileDestination = MobileDestination.Usage,
         initialInsightPane: InsightPane = InsightPane.Calendar
     ) {
         val density = LocalDensity.current
@@ -130,7 +130,7 @@ internal object DateInteractionFixture {
         appearance: LedgerAppearance = LedgerAppearance.Light,
         fontScale: Float? = null,
         cache: FakeCache = FakeCache(),
-        initialDestination: MobileDestination = MobileDestination.Insights,
+        initialDestination: MobileDestination = MobileDestination.Usage,
         initialInsightPane: InsightPane = InsightPane.Calendar,
         diagnosticTestId: String? = null
     ): Harness {
@@ -144,9 +144,8 @@ internal object DateInteractionFixture {
             quotaFreshnessSchedulingEnabled = false
         )
         val initialSection = when (initialDestination) {
-            MobileDestination.Overview -> DashboardSection.Overview
-            MobileDestination.Insights -> initialInsightPane.dashboardSection()
-            MobileDestination.Quota, MobileDestination.Widget -> DashboardSection.Overview
+            MobileDestination.Usage -> initialInsightPane.dashboardSection()
+            MobileDestination.Routing, MobileDestination.Quota, MobileDestination.Me -> DashboardSection.Overview
         }
         val diagnostics = diagnosticTestId?.let { DateInteractionDiagnostics(rule, viewModel, source, it) }
         val harness = Harness(rule, viewModel, source, cache, initialSection, diagnostics)

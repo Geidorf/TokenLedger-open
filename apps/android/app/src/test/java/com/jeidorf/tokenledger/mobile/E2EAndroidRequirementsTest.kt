@@ -214,20 +214,23 @@ class E2EAndroidRequirementsTest {
 
     @Test
     fun tier1_f08_persistentNavigationSelectionAcrossTabs() {
-        assertEquals(listOf("今日", "复盘", "额度", "展示"), MobileDestination.entries.map { it.label })
+        assertEquals(listOf("用量", "路由", "额度", "我的"), MobileDestination.entries.map { it.label })
+        assertEquals(listOf("概览", "趋势", "来源", "日历", "请求"), InsightPane.entries.map { it.label })
         assertEquals(listOf("查看趋势"), TodayReviewAction.entries.map { it.label })
         assertEquals(InsightPane.Trend, TodayReviewAction.ExplainChange.targetPane)
         assertEquals(3, TODAY_SOURCE_LIMIT)
         assertEquals(2, TODAY_QUOTA_LIMIT)
 
-        val nav = V2NavigationSelection(MobileDestination.Overview, InsightPane.Trend)
+        val nav = V2NavigationSelection(MobileDestination.Quota, InsightPane.Overview)
         val switched = nav.openInsight(InsightPane.Sources)
-        assertEquals(MobileDestination.Insights, switched.destination)
+        assertEquals(MobileDestination.Usage, switched.destination)
         assertEquals(InsightPane.Sources, switched.insightPane)
         assertEquals(DashboardSection.Contributions, switched.destination.dashboardSection(switched.insightPane))
-        assertEquals(DashboardSection.Overview, MobileDestination.Overview.dashboardSection(InsightPane.Details))
+        assertEquals(DashboardSection.Overview, MobileDestination.Usage.dashboardSection(InsightPane.Overview))
+        assertEquals(DashboardSection.Details, MobileDestination.Usage.dashboardSection(InsightPane.Details))
+        assertEquals(null, MobileDestination.Routing.dashboardSection(InsightPane.Trend))
         assertEquals(null, MobileDestination.Quota.dashboardSection(InsightPane.Trend))
-        assertEquals(null, MobileDestination.Widget.dashboardSection(InsightPane.Trend))
+        assertEquals(null, MobileDestination.Me.dashboardSection(InsightPane.Trend))
 
         assertEquals(DashboardSection.Trends, InsightPane.Calendar.dashboardSection())
         assertEquals(DashboardSection.Contributions, InsightPane.Sources.dashboardSection())
@@ -599,7 +602,7 @@ class E2EAndroidRequirementsTest {
 
     @Test
     fun tier2_f08_rapidNavigationTransitionsPreserveLatestPane() {
-        var selection = V2NavigationSelection(MobileDestination.Overview, InsightPane.Trend)
+        var selection = V2NavigationSelection(MobileDestination.Quota, InsightPane.Overview)
         val transitions = listOf(InsightPane.Sources, InsightPane.Calendar, InsightPane.Details, InsightPane.Trend, InsightPane.Calendar)
         transitions.forEach { pane ->
             selection = selection.openInsight(pane)

@@ -1029,17 +1029,20 @@ class LedgerUiLogicTest {
 
     @Test
     fun rapidInsightSelectionKeepsTheLatestPaneWhilePreservingLegacySectionMapping() {
-        assertEquals(listOf("今日", "复盘", "额度", "展示"), MobileDestination.entries.map { it.label })
+        assertEquals(listOf("用量", "路由", "额度", "我的"), MobileDestination.entries.map { it.label })
+        assertEquals(listOf("概览", "趋势", "来源", "日历", "请求"), InsightPane.entries.map { it.label })
         assertEquals(listOf("查看趋势"), TodayReviewAction.entries.map { it.label })
         assertEquals(InsightPane.Trend, TodayReviewAction.ExplainChange.targetPane)
         assertEquals(3, TODAY_SOURCE_LIMIT)
         assertEquals(2, TODAY_QUOTA_LIMIT)
 
-        assertEquals(DashboardSection.Overview, MobileDestination.Overview.dashboardSection(InsightPane.Details))
+        assertEquals(DashboardSection.Overview, MobileDestination.Usage.dashboardSection(InsightPane.Overview))
+        assertEquals(DashboardSection.Details, MobileDestination.Usage.dashboardSection(InsightPane.Details))
+        assertEquals(null, MobileDestination.Routing.dashboardSection(InsightPane.Trend))
         assertEquals(null, MobileDestination.Quota.dashboardSection(InsightPane.Trend))
-        assertEquals(null, MobileDestination.Widget.dashboardSection(InsightPane.Trend))
+        assertEquals(null, MobileDestination.Me.dashboardSection(InsightPane.Trend))
 
-        var selection = V2NavigationSelection(MobileDestination.Overview, InsightPane.Trend)
+        var selection = V2NavigationSelection(MobileDestination.Quota, InsightPane.Overview)
         listOf(
             InsightPane.Sources,
             InsightPane.Calendar,
@@ -1048,7 +1051,7 @@ class LedgerUiLogicTest {
             InsightPane.Calendar
         ).forEach { pane ->
             selection = selection.openInsight(pane)
-            assertEquals(MobileDestination.Insights, selection.destination)
+            assertEquals(MobileDestination.Usage, selection.destination)
             assertEquals(pane, selection.insightPane)
             assertEquals(pane.dashboardSection(), selection.destination.dashboardSection(selection.insightPane))
         }
@@ -1060,13 +1063,13 @@ class LedgerUiLogicTest {
 
     @Test
     fun dayReviewNavigationAlwaysEntersDetailsAndReturnsToCalendar() {
-        val initial = V2NavigationSelection(MobileDestination.Insights, InsightPane.Calendar)
+        val initial = V2NavigationSelection(MobileDestination.Usage, InsightPane.Calendar)
         val reviewing = initial.openInsight(InsightPane.Details)
-        assertEquals(MobileDestination.Insights, reviewing.destination)
+        assertEquals(MobileDestination.Usage, reviewing.destination)
         assertEquals(InsightPane.Details, reviewing.insightPane)
 
         val restored = reviewing.openInsight(InsightPane.Calendar)
-        assertEquals(MobileDestination.Insights, restored.destination)
+        assertEquals(MobileDestination.Usage, restored.destination)
         assertEquals(InsightPane.Calendar, restored.insightPane)
     }
 

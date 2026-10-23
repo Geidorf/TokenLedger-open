@@ -81,11 +81,11 @@ import com.jeidorf.tokenledger.mobile.buildInsightCalendarAxis
 import com.jeidorf.tokenledger.mobile.dashboardContentBottomPaddingDp
 import com.jeidorf.tokenledger.mobile.dashboardLayoutMode
 import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
-import com.jeidorf.tokenledger.mobile.dashboardRangeLabel
 import com.jeidorf.tokenledger.mobile.entityKindLabel
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
 import com.jeidorf.tokenledger.mobile.ui.ambient.v2WidgetItems
+import com.jeidorf.tokenledger.mobile.ui.routing.v2RoutingItems
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2DayReviewSummary
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2InsightCalendarCard
 import com.jeidorf.tokenledger.mobile.ui.controls.V2CustomRangeDialog
@@ -160,8 +160,8 @@ internal fun LedgerDashboardV2Screen(
     onOpenDay: (String) -> Boolean = { false },
     onOpenTrendBucket: (String, DashboardSection) -> Boolean = { _, _ -> false },
     onReturnFromDay: () -> Unit = {},
-    initialDestination: MobileDestination = MobileDestination.Overview,
-    initialInsightPane: InsightPane = InsightPane.Trend,
+    initialDestination: MobileDestination = MobileDestination.Usage,
+    initialInsightPane: InsightPane = InsightPane.Overview,
     initialSettingsVisible: Boolean = false
 ) {
     val context = LocalContext.current
@@ -237,7 +237,7 @@ internal fun LedgerDashboardV2Screen(
             if (!dayReviewOpen) dayReviewOriginPane = InsightPane.Trend
             dayReviewOpen = true
             dayBackCallback.isEnabled = true
-            destination = MobileDestination.Insights
+            destination = MobileDestination.Usage
             insightPane = target
         }
     }
@@ -335,8 +335,7 @@ internal fun LedgerDashboardV2Screen(
                     V2TopBar(
                         palette = palette,
                         title = v2TopBarTitle(
-                            showSettings, entityMode, destination, entityLabel,
-                            rangeLabel = dashboardRangeLabel(state.query)
+                            showSettings, entityMode, destination, entityLabel
                         ),
                         subtitle = v2TopBarSubtitle(
                             showSettings, entityMode, destination, entityKind, entityLabel, querySummary
@@ -353,7 +352,7 @@ internal fun LedgerDashboardV2Screen(
                         // 目的地那样带分享；旧版这里没按 destination 分支，额度页其实也在分享，
                         // 顺手把这处也修了。
                         onShare = displayedData
-                            ?.takeIf { destination != MobileDestination.Quota }
+                            ?.takeIf { destination == MobileDestination.Usage || destination == MobileDestination.Me }
                             ?.let { { showSharePoster = true } },
                         filtersActive = state.hasActiveFilters,
                         onOpenFilters = { filterSheet = V2FilterSheet.All },
@@ -517,6 +516,7 @@ internal fun V2DestinationContent(
     val overviewListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_overview") { LazyListState() }
     val quotaListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_quota") { LazyListState() }
     val widgetListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_widget") { LazyListState() }
+    val routingListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_routing") { LazyListState() }
 
     val trendListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_trend") { LazyListState() }
     val sourcesListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_sources") { LazyListState() }
@@ -524,15 +524,16 @@ internal fun V2DestinationContent(
     val detailsListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_details") { LazyListState() }
 
     fun listStateFor(dest: MobileDestination, pane: InsightPane): LazyListState = when (dest) {
-        MobileDestination.Overview -> overviewListState
-        MobileDestination.Insights -> when (pane) {
+        MobileDestination.Usage -> when (pane) {
+            InsightPane.Overview -> overviewListState
             InsightPane.Trend -> trendListState
             InsightPane.Sources -> sourcesListState
             InsightPane.Calendar -> calendarListState
             InsightPane.Details -> detailsListState
         }
+        MobileDestination.Routing -> routingListState
         MobileDestination.Quota -> quotaListState
-        MobileDestination.Widget -> widgetListState
+        MobileDestination.Me -> widgetListState
     }
     val revealMotion = ledgerMotionEnabled(palette.isEInk)
     val revealDensity = LocalDensity.current
@@ -564,7 +565,11 @@ internal fun V2DestinationContent(
         ) {
             V2FullState(
                 palette,
-                if (destination == MobileDestination.Overview) "这个范围还没有可解释的消耗记录" else "还没有消耗数据",
+                if (destination == MobileDestination.Usage && insightPane == InsightPane.Overview) {
+                    "这个范围还没有可解释的消耗记录"
+                } else {
+                    "还没有消耗数据"
+                },
                 if (state.hasActiveFilters) "当前筛选没有匹配记录。" else "桌面端同步后，这里会显示完整看板。",
                 if (state.hasActiveFilters) "清除筛选" else "刷新",
                 if (state.hasActiveFilters) onClearFilters else onRefresh
@@ -598,7 +603,7 @@ internal fun V2DestinationContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 when (targetDestination) {
-                    MobileDestination.Overview -> v2OverviewItems(
+                    MobileDestination.Usage -> if (targetPane == InsightPane.Overview) v2OverviewItems(
                         palette,
                         state,
                         stats,
@@ -610,8 +615,7 @@ internal fun V2DestinationContent(
                         onOpenQuota,
                         onOpenTool,
                         onRequestCustomRange
-                    )
-                    MobileDestination.Insights -> v2InsightsItems(
+                    ) else v2InsightsItems(
                         palette,
                         state,
                         stats,
@@ -631,13 +635,14 @@ internal fun V2DestinationContent(
                         trendMetric, trendCurrency,
                         { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis
                     )
+                    MobileDestination.Routing -> v2RoutingItems(palette)
                     MobileDestination.Quota -> v2QuotaItems(
                         palette = palette,
                         quota = state.quota,
                         onRefresh = onRefresh,
                         dashboardLoading = state.dashboardLoading
                     )
-                    MobileDestination.Widget -> v2WidgetItems(
+                    MobileDestination.Me -> v2WidgetItems(
                         palette,
                         state,
                         stats,
@@ -669,12 +674,12 @@ internal fun V2DestinationStateShell(
 ) {
     Column(Modifier.fillMaxSize()) {
         when (destination) {
-            MobileDestination.Overview -> Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
-                V2GlobalRangeControl(palette, query, onRangeChange, onRequestCustomRange)
-            }
-            MobileDestination.Insights -> Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
+            MobileDestination.Usage -> Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
                 Column {
                     V2InsightStrip(palette, insightPane, onInsightPaneChange)
+                    if (insightPane == InsightPane.Overview) {
+                        V2GlobalRangeControl(palette, query, onRangeChange, onRequestCustomRange)
+                    }
                     if (dayReviewActive) {
                         TextButton(
                             onClick = onReturnFromDay,
@@ -683,7 +688,7 @@ internal fun V2DestinationStateShell(
                     }
                 }
             }
-            MobileDestination.Quota, MobileDestination.Widget -> Unit
+            MobileDestination.Routing, MobileDestination.Quota, MobileDestination.Me -> Unit
         }
         Box(Modifier.fillMaxWidth().weight(1f)) { content() }
     }
@@ -702,6 +707,9 @@ internal fun LazyListScope.v2OverviewItems(
     onOpenTool: (String) -> Unit,
     onRequestCustomRange: () -> Unit
 ) {
+    item(key = "overview-tabs", contentType = "controls") {
+        V2InsightStrip(palette, InsightPane.Overview, onOpenInsights)
+    }
     item(key = "overview-range", contentType = "controls") {
         V2GlobalRangeControl(palette, state.query, onRangeChange, onRequestCustomRange)
     }

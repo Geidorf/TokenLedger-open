@@ -21,7 +21,7 @@ import com.android.tools.screenshot.PreviewTest
 fun LedgerDashboardInsightsCalendarLandscapeScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Calendar,
         forceLandscape = true
     )
@@ -40,7 +40,7 @@ fun LedgerDashboardInsightsCalendarLandscapeScreenshot() {
 fun LedgerDashboardInsightsCalendarLandscapeLightScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Light,
-        destination = MobileDestination.Insights,
+        destination = MobileDestination.Usage,
         insightPane = InsightPane.Calendar,
         forceLandscape = true
     )

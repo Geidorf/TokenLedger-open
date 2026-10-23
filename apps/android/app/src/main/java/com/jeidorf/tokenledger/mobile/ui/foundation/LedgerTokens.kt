@@ -147,6 +147,12 @@ internal const val LEDGER_HEAT_LEVELS = 5
 private fun ledgerHeatRamp(level0: Color, peak: Color, vararg alphas: Int): List<Color> =
     listOf(level0) + alphas.map { peak.copy(alpha = it / 255f) } + peak
 
+/**
+ * 线性矢量图标的模板墨色：只是 [androidx.compose.ui.graphics.vector.ImageVector] 描边需要一个非透明画刷，
+ * 渲染时一律被 `Icon` 的 tint 覆盖，不代表任何界面颜色。
+ */
+internal val LedgerVectorTemplateInk: Color = Color.Black
+
 internal object LedgerPalettes {
     /**
      * 图表 8 色，槽位 1…8 即桌面 `--chart-1…8`（§3.8）。2026-09-25 用户就 U-4 选定方案 B「均衡」：

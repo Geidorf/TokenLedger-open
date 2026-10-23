@@ -17,19 +17,19 @@ fun UniformOverviewScreenshot() {
 @Preview(name = "Uniform trend 390x844", device = "spec:width=390dp,height=844dp,dpi=160", fontScale = 1f, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun UniformTrendScreenshot() {
-    LedgerDashboardPreviewHost(LedgerAppearance.Dark, destination = MobileDestination.Insights, insightPane = InsightPane.Trend)
+    LedgerDashboardPreviewHost(LedgerAppearance.Dark, destination = MobileDestination.Usage, insightPane = InsightPane.Trend)
 }
 
 @PreviewTest
 @Preview(name = "Uniform sources 390x844", device = "spec:width=390dp,height=844dp,dpi=160", fontScale = 1f, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun UniformSourcesScreenshot() {
-    LedgerDashboardPreviewHost(LedgerAppearance.Dark, destination = MobileDestination.Insights, insightPane = InsightPane.Sources)
+    LedgerDashboardPreviewHost(LedgerAppearance.Dark, destination = MobileDestination.Usage, insightPane = InsightPane.Sources)
 }
 
 @PreviewTest
 @Preview(name = "Uniform calendar 390x844", device = "spec:width=390dp,height=844dp,dpi=160", fontScale = 1f, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun UniformCalendarScreenshot() {
-    LedgerDashboardPreviewHost(LedgerAppearance.Dark, destination = MobileDestination.Insights, insightPane = InsightPane.Calendar)
+    LedgerDashboardPreviewHost(LedgerAppearance.Dark, destination = MobileDestination.Usage, insightPane = InsightPane.Calendar)
 }

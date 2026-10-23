@@ -46,8 +46,8 @@ internal fun LedgerDashboard390Preview() {
 internal fun LedgerDashboardPreviewHost(
     appearance: LedgerAppearance,
     state: DashboardUiState = ledgerSnapshotFixture(),
-    destination: MobileDestination = MobileDestination.Overview,
-    insightPane: InsightPane = InsightPane.Trend,
+    destination: MobileDestination = MobileDestination.Usage,
+    insightPane: InsightPane = InsightPane.Overview,
     ambientMode: AmbientMode = AmbientMode.Console,
     tokenDisplayMode: TokenDisplayMode = TokenDisplayMode.Effective,
     forceLandscape: Boolean = false,

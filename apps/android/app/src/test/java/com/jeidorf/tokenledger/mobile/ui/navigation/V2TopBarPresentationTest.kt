@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * T10.208（A1 导航壳）：顶栏标题跟随范围（design 关闭决定 #5）、副标题并入筛选入口
+ * T10.208（A1 导航壳）→ 重构方案 v2：顶栏标题即分区名、副标题并入筛选入口
  * （用户决定 V-Q3）两条分支逻辑，从 `LedgerDashboardV2Screen` 的顶栏调用点抽成
  * [v2TopBarTitle] / [v2TopBarSubtitle] 两个纯函数单独测，避免以后再改标题/副标题时
  * 把两件不同的事（导航项文字 vs 页面标题）混在一起改。
@@ -16,16 +16,16 @@ class V2TopBarPresentationTest {
         assertEquals(
             "设置",
             v2TopBarTitle(
-                showSettings = true, entityMode = false, destination = MobileDestination.Overview,
-                entityLabel = "codex", rangeLabel = "本周"
+                showSettings = true, entityMode = false, destination = MobileDestination.Usage,
+                entityLabel = "codex"
             )
         )
         // 设置优先于专属看板：两者理论上不会同时为真，但优先级必须钉死，不能悄悄倒过来。
         assertEquals(
             "设置",
             v2TopBarTitle(
-                showSettings = true, entityMode = true, destination = MobileDestination.Insights,
-                entityLabel = "codex", rangeLabel = "本周"
+                showSettings = true, entityMode = true, destination = MobileDestination.Usage,
+                entityLabel = "codex"
             )
         )
     }
@@ -35,56 +35,29 @@ class V2TopBarPresentationTest {
         assertEquals(
             "codex",
             v2TopBarTitle(
-                showSettings = false, entityMode = true, destination = MobileDestination.Insights,
-                entityLabel = "codex", rangeLabel = "本周"
+                showSettings = false, entityMode = true, destination = MobileDestination.Usage,
+                entityLabel = "codex"
             )
         )
     }
 
     @Test
-    fun overviewTitleFollowsSelectedRangeInsteadOfDestinationLabel() {
-        // design 关闭决定 #5：导航项仍叫「今日」，但顶栏标题跟着所选范围走。
-        assertEquals(
-            "本周",
-            v2TopBarTitle(
-                showSettings = false, entityMode = false, destination = MobileDestination.Overview,
-                entityLabel = "", rangeLabel = "本周"
+    fun destinationTitleIsItsOwnLabel() {
+        // 重构方案 v2：顶栏标题就是分区名（用量/路由/额度/我的），范围由页内范围栏展示，不再进标题。
+        for ((destination, label) in listOf(
+            MobileDestination.Usage to "用量",
+            MobileDestination.Routing to "路由",
+            MobileDestination.Quota to "额度",
+            MobileDestination.Me to "我的"
+        )) {
+            assertEquals(
+                label,
+                v2TopBarTitle(
+                    showSettings = false, entityMode = false, destination = destination,
+                    entityLabel = ""
+                )
             )
-        )
-        assertEquals(
-            "今日",
-            v2TopBarTitle(
-                showSettings = false, entityMode = false, destination = MobileDestination.Overview,
-                entityLabel = "", rangeLabel = "今日"
-            )
-        )
-    }
-
-    @Test
-    fun otherDestinationsKeepTheirOwnLabelRegardlessOfRange() {
-        // 只有「今日」目的地跟范围；复盘/额度/展示三个目的地不跟——它们的页面内容
-        // 本来就有自己的范围/页签展示方式，标题不需要（也不应该）跟着全局范围变。
-        assertEquals(
-            "复盘",
-            v2TopBarTitle(
-                showSettings = false, entityMode = false, destination = MobileDestination.Insights,
-                entityLabel = "", rangeLabel = "本月"
-            )
-        )
-        assertEquals(
-            "额度",
-            v2TopBarTitle(
-                showSettings = false, entityMode = false, destination = MobileDestination.Quota,
-                entityLabel = "", rangeLabel = "本月"
-            )
-        )
-        assertEquals(
-            "展示",
-            v2TopBarTitle(
-                showSettings = false, entityMode = false, destination = MobileDestination.Widget,
-                entityLabel = "", rangeLabel = "本月"
-            )
-        )
+        }
     }
 
     @Test
@@ -92,7 +65,7 @@ class V2TopBarPresentationTest {
         assertEquals(
             "",
             v2TopBarSubtitle(
-                showSettings = true, entityMode = false, destination = MobileDestination.Overview,
+                showSettings = true, entityMode = false, destination = MobileDestination.Usage,
                 entityKind = null, entityLabel = "", querySummary = "今日 · 全部设备"
             )
         )
@@ -112,8 +85,19 @@ class V2TopBarPresentationTest {
     }
 
     @Test
-    fun nonQuotaDestinationSubtitleIsQuerySummary() {
-        for (destination in listOf(MobileDestination.Overview, MobileDestination.Insights, MobileDestination.Widget)) {
+    fun routingSubtitleIsBlankBecauseRoutingHasNoUsageQuery() {
+        assertEquals(
+            "",
+            v2TopBarSubtitle(
+                showSettings = false, entityMode = false, destination = MobileDestination.Routing,
+                entityKind = null, entityLabel = "", querySummary = "今日 · 全部设备"
+            )
+        )
+    }
+
+    @Test
+    fun usageAndMeSubtitleIsQuerySummary() {
+        for (destination in listOf(MobileDestination.Usage, MobileDestination.Me)) {
             assertEquals(
                 "今日 · 全部设备",
                 v2TopBarSubtitle(
@@ -129,14 +113,14 @@ class V2TopBarPresentationTest {
         assertEquals(
             "工具 · codex · 今日 · 全部设备",
             v2TopBarSubtitle(
-                showSettings = false, entityMode = true, destination = MobileDestination.Insights,
+                showSettings = false, entityMode = true, destination = MobileDestination.Usage,
                 entityKind = "tool", entityLabel = "codex", querySummary = "今日 · 全部设备"
             )
         )
         assertEquals(
             "模型 · gpt-5 · 本周 · 全部设备",
             v2TopBarSubtitle(
-                showSettings = false, entityMode = true, destination = MobileDestination.Insights,
+                showSettings = false, entityMode = true, destination = MobileDestination.Usage,
                 entityKind = "model", entityLabel = "gpt-5", querySummary = "本周 · 全部设备"
             )
         )
@@ -150,7 +134,7 @@ class V2TopBarPresentationTest {
         assertEquals(
             "来源下钻 · 今日 · 全部设备",
             v2TopBarSubtitle(
-                showSettings = false, entityMode = true, destination = MobileDestination.Insights,
+                showSettings = false, entityMode = true, destination = MobileDestination.Usage,
                 entityKind = null, entityLabel = "来源下钻", querySummary = "今日 · 全部设备"
             )
         )

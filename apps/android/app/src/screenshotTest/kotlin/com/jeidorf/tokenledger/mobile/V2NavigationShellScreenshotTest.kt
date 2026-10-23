@@ -257,7 +257,7 @@ private fun NavigationBarFixture() {
             println("NAV_BAR|${destination.name}|${b.left},${b.top},${b.width},${b.height}")
         }
     }) {
-        V2NavigationBar(palette = palette, selected = MobileDestination.Overview, onSelect = {})
+        V2NavigationBar(palette = palette, selected = MobileDestination.Usage, onSelect = {})
     }
 }
 
@@ -265,7 +265,7 @@ private fun NavigationBarFixture() {
 private fun NavigationRailFixture() {
     val palette = v2Palette(LedgerAppearance.Light)
     Box(Modifier.fillMaxSize().background(palette.tokens.page)) {
-        V2NavigationRail(palette = palette, selected = MobileDestination.Insights, onSelect = {})
+        V2NavigationRail(palette = palette, selected = MobileDestination.Usage, onSelect = {})
     }
 }
 
