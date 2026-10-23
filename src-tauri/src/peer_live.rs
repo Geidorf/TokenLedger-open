@@ -275,6 +275,8 @@ pub async fn snapshot(port: u16) -> Result<LiveSnapshot, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(1500))
         .no_proxy()
+        // Only this computer: never follow a redirect elsewhere.
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|error| error.to_string())?;
     let url = format!("http://127.0.0.1:{port}{PATH}");
