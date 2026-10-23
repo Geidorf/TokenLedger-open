@@ -16,7 +16,8 @@ const sqlNames = [
   'entity_machine_token_components_regression.sql', 'quota_snapshot_v2_regression.sql',
   'quota_snapshot_v3_regression.sql', 'quota_recovery_regression.sql',
   'quota_snapshot_capacity_regression.sql', 'quota_balance_reason_regression.sql',
-  'gateway_aggregate_provenance_regression.sql', 'release_readiness_regression.sql',
+  'gateway_aggregate_provenance_regression.sql', 'routing_snapshot_regression.sql',
+  'release_readiness_regression.sql',
 ];
 const sql = new Map(sqlNames.map(name => [name, fs.readFileSync(path.join(root, 'supabase/tests', name), 'utf8')]));
 const configText = `project_id = "${project}"

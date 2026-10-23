@@ -85,7 +85,10 @@ begin
     'public.delete_quota_snapshot_provider_v2(integer,bigint,text,text,bigint)',
     'public.clear_quota_snapshots_v2(integer,bigint)',
     'public.get_quota_snapshots_v3()',
-    'public.upsert_quota_snapshots_v3(integer,bigint,jsonb)'
+    'public.upsert_quota_snapshots_v3(integer,bigint,jsonb)',
+    'public.publish_routing_snapshot_v1(text,jsonb)',
+    'public.get_routing_snapshots_v1()',
+    'public.clear_routing_snapshot_v1(text)'
   ]
   loop
     if pg_catalog.to_regprocedure(v_signature) is null then

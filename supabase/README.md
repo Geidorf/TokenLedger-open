@@ -4,7 +4,7 @@
 
 ## 迁移清单
 
-`supabase/migrations/` 共 23 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
+`supabase/migrations/` 共 24 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
 
 | 迁移 | 内容 |
 |---|---|
@@ -31,6 +31,15 @@
 | `20261004150000_quota_balance_reason_codes` | 供应商余额原因码 |
 | `20261007045426_quota_active_capacity` | 墓碑重发时仍限 8 个活跃 Provider |
 | `20261010170540_quota_recovery_metadata_and_write_guards` | 额度清空恢复元数据与写入防护 |
+| `20261024010000_routing_snapshot_sync` | 实时路由快照中转（Android 动态壁纸） |
+
+## 2026-10-24 实时路由快照中转（routing-snapshot-v1）
+
+迁移 `migrations/20261024010000_routing_snapshot_sync.sql`，契约 `docs/contracts/routing-snapshot-v1.md`：
+- 新表 `private.routing_snapshots`：每个用户每台设备只存最新一份已脱敏的路由快照（≤ 16 KiB），客户端无表权限。
+- 新 RPC（仅 `authenticated`）：`publish_routing_snapshot_v1(text, jsonb)` 发布（结构、取值与长度校验，旧快照不覆盖新快照，每用户最多 8 台设备，顺带删除超过 1 天的行）；`get_routing_snapshots_v1()` 读 15 分钟内收到的快照；`clear_routing_snapshot_v1(text)` 删除本机那一行。
+- 回归：`tests/routing_snapshot_regression.sql`（已接入 `supabase:verify:release`）。
+- 部署：`supabase db push`。回滚：`drop function public.publish_routing_snapshot_v1(text, jsonb), public.get_routing_snapshots_v1(), public.clear_routing_snapshot_v1(text); drop table private.routing_snapshots;` 并删除 `private.routing_snapshot_*_v1` 与 `private.validate_routing_snapshot_v1` 辅助函数。旧客户端不调用这些 RPC，不受影响。
 
 ## 2026-10-10 额度清空恢复元数据与写入防护（T10.308）
 
