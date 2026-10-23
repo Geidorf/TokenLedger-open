@@ -170,6 +170,19 @@ describe('overview day drill-down (audit P0-1)', () => {
     expect(new Set(page.items.map((item) => item.tool)).size).toBeGreaterThan(1);
   });
 
+  it('narrows the day to the focused Agent when the drill comes from a focused calendar', () => {
+    const { result } = renderHook(() => useAppSlice('local'));
+    act(() => { result.current.drill.drillIntoDay(DRILL_DAY, { tools: ['codex'], models: [] }); });
+    expect(result.current.details.detailFilters).toEqual({ ...EMPTY_DETAIL_FILTERS, tools: ['codex'] });
+    expect(result.current.activeTab).toBe('logs');
+    // 筛选仍是带进来的那一项时，复盘与「返回原范围」保持有效。
+    expect(result.current.drill.dayDrill?.date).toBe(DRILL_DAY);
+
+    // 用户自己改了筛选，复盘才失效。
+    act(() => result.current.details.setDetailFilters({ ...EMPTY_DETAIL_FILTERS, tools: ['claude'] }));
+    expect(result.current.drill.dayDrill).toBeNull();
+  });
+
   it('returns to the remembered range, filters and page', () => {
     const { result } = renderHook(() => useAppSlice('local'));
     act(() => result.current.details.setDetailFilters(ORIGIN_FILTERS));

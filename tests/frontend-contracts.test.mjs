@@ -880,7 +880,8 @@ test('T10.178 review P1-1 fix round: every tool-coloured panel resolves colours 
   // same-slot collisions from a differently-ordered model/point list.
   const dashboardTab = readSource(path.join(process.cwd(), 'src', 'components', 'DashboardTab.tsx'));
   assert.match(dashboardTab, /const toolColors = toolColorMap\(activeToolsList\.map\(\(tool\) => tool\.name\), effective\);/);
-  assert.match(dashboardTab, /<BarPanel topModels=\{topModelsList\}[^>]*toolColors=\{toolColors\}/);
+  // 概览的分布模块已改为用量拆分（对齐 magpie Split by），不再渲染 BarPanel；BarPanel 自身的取色约束仍守在下方。
+  assert.doesNotMatch(dashboardTab, /<BarPanel /);
   assert.match(dashboardTab, /<CostEfficiencyQuadrantPanel models=\{allModelsList\}[^>]*toolColors=\{toolColors\}/);
 
   const barPanel = readSource(path.join(process.cwd(), 'src', 'components', 'BarPanel.tsx'));
@@ -1835,7 +1836,7 @@ test('dashboard defaults keep KPI then comparison trend while allowing stored mo
   );
 
   const trend = source.indexOf('<TrendPanel');
-  const contributorGrid = source.indexOf('className={`dashboard-grid');
+  const contributorGrid = source.indexOf('<UsageSplitPanel');
   assert.ok(trend !== -1 && contributorGrid !== -1 && trend < contributorGrid);
   const preferences = readSource(path.join(process.cwd(), 'src', 'utils', 'useDashboardDisplayPreferences.ts'));
   assert.match(preferences, /DASHBOARD_MODULE_IDS = \['kpi', 'trend', 'quota', 'distribution', 'insights'\]/);
@@ -1860,7 +1861,8 @@ test('overview day drill opens a single-day review and model cost reports use ev
   assert.match(dashboardProps, /dateDrillUnavailable=\{dayDrill\.dayDrillUnavailable\}/);
   assert.match(app, /onReturnFromDayDrill=\{dayDrill\.returnFromDayDrill\}/);
   const drill = readSource(path.join(process.cwd(), 'src', 'hooks', 'useDayDrill.ts'));
-  assert.match(drill, /changeRange\('custom', \{ start: date, end: date \}\);\s*setFilters\(EMPTY_DETAIL_FILTERS\);/);
+  // 整体日历清空筛选；只看某个 Agent / 模型的日历只带上这一项（用量拆分焦点）。
+  assert.match(drill, /changeRange\('custom', \{ start: date, end: date \}\);\s*setFilters\(entity \? \{ \.\.\.EMPTY_DETAIL_FILTERS, tools: entity\.tools, models: entity\.models \} : EMPTY_DETAIL_FILTERS\);/);
   // Review P2-1: the header's cloud switch leaves a review first, so the
   // single-day range never reaches a cloud request; devices never cross scopes.
   assert.match(app, /onCloudScope=\{selectCloudScopeLeavingDayDrill\}/);
@@ -1875,7 +1877,8 @@ test('overview day drill opens a single-day review and model cost reports use ev
   const source = populatedDashboardSource();
   assert.match(source, /<ModelCostDistributionPanel models=\{allModelsList\}/);
   assert.match(source, /<CostEfficiencyQuadrantPanel models=\{allModelsList\}/);
-  assert.match(source, /<BarPanel topModels=\{topModelsList\}/);
+  // 模型排行并入用量拆分的模型维度（对齐 magpie Split by），同样看到全部模型。
+  assert.match(source, /<UsageSplitPanel key=\{module\} stats=\{stats\}/);
 });
 
 test('populated dashboard groups insight panels in a cache-economics then time-behavior narrative', () => {
