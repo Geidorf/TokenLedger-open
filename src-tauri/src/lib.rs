@@ -32,6 +32,7 @@ mod project_index;
 mod quota;
 pub use quota::run_claude_statusline_helper;
 mod macos_wallpaper_window;
+mod peer_live;
 mod peer_sync;
 mod peer_wire;
 mod quota_sync;
@@ -867,6 +868,7 @@ pub fn run() {
             peer_sync::peer_sync_clear_config,
             peer_sync::peer_sync_preview,
             peer_sync::peer_sync_import_providers,
+            peer_live::peer_live_snapshot,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,

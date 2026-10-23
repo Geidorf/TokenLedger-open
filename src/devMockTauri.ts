@@ -2403,6 +2403,23 @@ export function installDevMockTauri() {
       case 'magpie_import_clear':
         mockMagpieImport = null;
         return null;
+      case 'peer_live_snapshot':
+        return {
+          reachable: true, port: 3425, requests: 2, waiting: 1, tools: 0,
+          active: [
+            { id: 7, agent: 'claude', model: 'claude-opus-5-5', provider: 'anthropic', started: new Date(Date.now() - 1200).toISOString(), ms: 1200, phase: 'upstream' },
+            { id: 8, agent: 'codex', model: '', provider: '', started: new Date(Date.now() - 300).toISOString(), ms: 300, phase: 'slot' },
+          ],
+          recent: [
+            {
+              id: '9', agent: 'claude', model: 'claude-opus-5-5', ended: new Date(Date.now() - 4000).toISOString(),
+              attempts: [
+                { provider: 'relay', outcome: 'failed', status: 529 },
+                { provider: 'anthropic', outcome: 'ok' },
+              ],
+            },
+          ],
+        };
       case 'peer_sync_get_config':
         return { url: '', user: '', hasPassword: false, hasPassphrase: false };
       case 'peer_sync_save_config': {
