@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { TERM_DIGESTS, containsSensitiveTerm, diffRange } from './check-sensitive-terms.mjs';
+import { TERM_DIGESTS, containsSensitiveTerm, diffRange, patchPath } from './check-sensitive-terms.mjs';
 
 // 名单本身不能以明文出现在仓库里，所以用一个无关的替身词验证匹配规则。
 const word = 'zebrafish';
@@ -41,4 +41,11 @@ test('leaves unrelated text alone', () => {
 test('diffs from the merge base, so a branch behind main is not blamed for main', () => {
   assert.equal(diffRange('origin/main..abc123'), 'origin/main...abc123');
   assert.equal(diffRange('origin/main...abc123'), 'origin/main...abc123');
+});
+
+test('reads the new path from a patch header, quoted or not', () => {
+  assert.equal(patchPath('b/docs/a.md'), 'docs/a.md');
+  assert.equal(patchPath('b/文档/说明.md'), '文档/说明.md');
+  assert.equal(patchPath('"b/docs/a\\tb.md"'), 'docs/a\\tb.md');
+  assert.equal(patchPath('/dev/null'), null);
 });

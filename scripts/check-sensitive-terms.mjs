@@ -73,11 +73,18 @@ export function diffRange(range) {
   return range.includes('...') ? range : range.replace('..', '...');
 }
 
+/** diff 文件头里的新路径；`/dev/null`（文件被删）返回 null。 */
+export function patchPath(raw) {
+  if (raw === '/dev/null') return null;
+  const unquoted = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+  return unquoted.startsWith('b/') ? unquoted.slice(2) : unquoted;
+}
+
 /** 范围内新增的行与新增或改名后的文件路径；删除或原样保留已有内容不算违规。 */
 function checkAddedContent(range) {
   const violations = [];
   const diff = diffRange(range);
-  for (const file of git(['diff', '--name-only', '--diff-filter=AR', diff]).split('\n')) {
+  for (const file of git(['diff', '--name-only', '-z', '--diff-filter=AR', diff]).split('\0')) {
     if (file && containsSensitiveTerm(file)) violations.push(`文件路径 ${file}`);
   }
   // 已有的提及不追究：改动一行原本就含名单词的内容（例如改错字）不算新增，
@@ -86,15 +93,16 @@ function checkAddedContent(range) {
   let entry = null;
   let line = 0;
   let inHunk = false;
-  for (const text of git(['diff', '--unified=0', '--no-color', '--no-ext-diff', diff]).split('\n')) {
+  for (const text of git(['-c', 'core.quotePath=false', 'diff', '--unified=0', '--no-color', '--no-ext-diff', diff]).split('\n')) {
     if (text.startsWith('diff --git ')) {
       inHunk = false;
       entry = null;
     } else if (!inHunk && text.startsWith('--- ')) {
       continue;
     } else if (!inHunk && text.startsWith('+++ ')) {
-      const file = text.startsWith('+++ b/') ? text.slice(6) : '';
-      entry = file ? { file, added: [], removed: 0 } : null;
+      // 含引号、制表符等的路径仍会被 git 加引号；只用于报位置，取不准也照样扫内容。
+      const file = patchPath(text.slice(4));
+      entry = file === null ? null : { file, added: [], removed: 0 };
       if (entry) files.set(file, entry);
     } else if (text.startsWith('@@')) {
       inHunk = true;
