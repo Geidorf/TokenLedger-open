@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -228,7 +229,7 @@ internal fun V2MeRow(
         }
         if (value != null) {
             Spacer(Modifier.width(LedgerSpace.sm))
-            // 值可能比标题长（数据组的口径说明），让它和标题分一行的宽度，最多折两行。
+            // 值按内容取宽，标题优先；数据组的口径说明较长，限宽后最多折两行。
             Text(
                 value,
                 color = palette.muted,
@@ -236,7 +237,7 @@ internal fun V2MeRow(
                 textAlign = TextAlign.End,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1.2f, fill = false)
+                modifier = Modifier.widthIn(max = 168.dp)
             )
         }
         if (trailing != null) {
@@ -352,7 +353,7 @@ private fun V2MeSyncCard(palette: MobileV2Palette, state: DashboardUiState, onRe
             palette,
             title = "WebDAV 备份",
             icon = Icons.Default.Storage,
-            meta = "在桌面端设置；手机经云端读取，不直连 WebDAV",
+            meta = "在桌面端设置，手机经云端读取",
             value = "桌面端"
         )
         V2MeDivider(palette)
@@ -360,7 +361,7 @@ private fun V2MeSyncCard(palette: MobileV2Palette, state: DashboardUiState, onRe
             palette,
             title = "服务商密钥",
             icon = Icons.Default.Key,
-            meta = "只保存在桌面端本机安全存储，手机不保存",
+            meta = "只存在桌面端本机，手机不保存",
             value = "桌面端"
         )
     }
