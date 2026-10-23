@@ -4,7 +4,7 @@
 //! classify intent. Groups live in `routing-v1.json`; decisions are kept in a
 //! small in-memory ring for the UI.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -24,6 +24,7 @@ const MAX_TTL_SECS: u64 = 7 * 24 * 3600;
 const MAX_AFFINITY_ENTRIES: usize = 10_000;
 const MAX_DECISIONS: usize = 200;
 const MAX_SCAN_DEPTH: usize = 64;
+const MAX_WEIGHT: u32 = 100;
 /// Codex's local compaction prompt; seen in codex-cli 0.160.
 const COMPACT_MARKERS: &[&str] = &["CONTEXT CHECKPOINT COMPACTION"];
 const IMAGE_TYPES: &[&str] = &["input_image", "image_url", "image"];
@@ -37,6 +38,9 @@ pub enum Strategy {
     Rotate,
     /// Always `manualMember`, no failover.
     Manual,
+    /// Smooth weighted round-robin start by `weights`, then the remaining
+    /// members by weight on failure.
+    Weighted,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -78,6 +82,9 @@ pub struct RoutingGroup {
     pub manual_member: Option<String>,
     #[serde(default)]
     pub rules: Vec<RoutingRule>,
+    /// Member → weight 1–100 for `weighted`; a missing member weighs 1.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub weights: BTreeMap<String, u32>,
     /// 0 turns session affinity off.
     #[serde(default = "default_ttl")]
     pub session_ttl_secs: u64,
@@ -97,6 +104,32 @@ impl RoutingGroup {
     pub fn model_name(&self) -> String {
         format!("{GROUP_PREFIX}{}", self.id)
     }
+
+    fn weight(&self, member: &str) -> u32 {
+        self.weights.get(member).copied().unwrap_or(1)
+    }
+}
+
+/// The member index for `turn` in a smooth weighted round-robin over
+/// `weights`: each cycle of `sum(weights)` turns gives every member exactly
+/// its weight, spread out instead of in bursts.
+pub fn weighted_index(weights: &[u32], turn: usize) -> usize {
+    let total: i64 = weights.iter().map(|w| i64::from(*w)).sum();
+    if total == 0 {
+        return 0;
+    }
+    let mut current = vec![0i64; weights.len()];
+    let mut picked = 0;
+    for _ in 0..=(turn % total as usize) {
+        for (slot, weight) in current.iter_mut().zip(weights) {
+            *slot += i64::from(*weight);
+        }
+        picked = (0..current.len())
+            .max_by_key(|&index| (current[index], std::cmp::Reverse(index)))
+            .unwrap_or(0);
+        current[picked] -= total;
+    }
+    picked
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -117,7 +150,7 @@ pub struct RouteDecision {
     pub request_id: String,
     pub group: String,
     pub session: Option<String>,
-    /// `rule` | `affinity` | `failover` | `rotate` | `manual`
+    /// `rule` | `affinity` | `failover` | `rotate` | `manual` | `weighted`
     pub reason: &'static str,
     pub detail: String,
     pub chosen: Option<String>,
@@ -325,6 +358,16 @@ pub fn plan_members(
                 "manual",
                 "固定成员".to_string(),
             ),
+            Strategy::Weighted => {
+                let weights: Vec<u32> = members.iter().map(|m| group.weight(m)).collect();
+                let index = weighted_index(&weights, rotation);
+                let total: u32 = weights.iter().sum();
+                (
+                    members[index].clone(),
+                    "weighted",
+                    format!("加权 {}/{total}", weights[index]),
+                )
+            }
         }
     };
     let start = members.iter().position(|m| *m == primary).unwrap_or(0);
@@ -336,6 +379,13 @@ pub fn plan_members(
         Strategy::Rotate => (0..members.len())
             .map(|offset| members[(start + offset) % members.len()].clone())
             .collect(),
+        Strategy::Weighted => {
+            let mut rest: Vec<&String> = members.iter().filter(|m| **m != primary).collect();
+            rest.sort_by_key(|m| std::cmp::Reverse(group.weight(m)));
+            std::iter::once(primary.clone())
+                .chain(rest.into_iter().cloned())
+                .collect()
+        }
     };
     Plan {
         candidates,
@@ -376,6 +426,16 @@ pub fn validate_group(group: &RoutingGroup, provider_ids: &[String]) -> Result<(
         (Strategy::Manual, Some(member)) if group.members.contains(member) => {}
         (Strategy::Manual, _) => return Err("固定分配需要选一个组内成员。".to_string()),
         _ => {}
+    }
+    for (member, weight) in &group.weights {
+        if !group.members.contains(member) {
+            return Err(format!("权重指向的成员「{member}」不在组内。"));
+        }
+        if !(1..=MAX_WEIGHT).contains(weight) {
+            return Err(format!(
+                "成员「{member}」的权重需要在 1–{MAX_WEIGHT} 之间。"
+            ));
+        }
     }
     if group.rules.len() > MAX_RULES {
         return Err(format!("每个路由组最多 {MAX_RULES} 条规则。"));
@@ -506,7 +566,7 @@ impl Router {
                     None => None,
                 }
             });
-        let rotation = if group.strategy == Strategy::Rotate {
+        let rotation = if matches!(group.strategy, Strategy::Rotate | Strategy::Weighted) {
             let mut counters = lock(&self.rotation);
             let counter = counters.entry(group.id.clone()).or_insert(0);
             let current = *counter;
@@ -585,6 +645,7 @@ mod tests {
             members: vec!["a/m1".into(), "b/m2".into(), "c/m3".into()],
             manual_member: (strategy == Strategy::Manual).then(|| "b/m2".into()),
             rules,
+            weights: BTreeMap::new(),
             session_ttl_secs: 60,
             enabled: true,
         }
@@ -612,6 +673,41 @@ mod tests {
         assert_eq!(pinned.reason, "affinity");
         let stale = plan_members(&group(Strategy::Failover, vec![]), &none, Some("gone/x"), 0);
         assert_eq!(stale.reason, "failover");
+    }
+
+    #[test]
+    fn weighted_round_robin_is_smooth_and_proportional() {
+        let picks: Vec<usize> = (0..7)
+            .map(|turn| weighted_index(&[5, 1, 1], turn))
+            .collect();
+        assert_eq!(picks, [0, 0, 1, 0, 2, 0, 0]);
+        assert_eq!(weighted_index(&[5, 1, 1], 7), picks[0], "cycle repeats");
+        let counts = (0..300).fold([0; 3], |mut acc, turn| {
+            acc[weighted_index(&[3, 2, 1], turn)] += 1;
+            acc
+        });
+        assert_eq!(counts, [150, 100, 50]);
+        assert_eq!(weighted_index(&[1, 1], 1), 1);
+    }
+
+    #[test]
+    fn weighted_strategy_falls_back_by_weight() {
+        let mut g = group(Strategy::Weighted, vec![]);
+        g.weights = BTreeMap::from([("a/m1".into(), 1), ("b/m2".into(), 2), ("c/m3".into(), 5)]);
+        let none = Features::default();
+        let plan = plan_members(&g, &none, None, 0);
+        assert_eq!(plan.candidates, ["c/m3", "b/m2", "a/m1"]);
+        assert_eq!(
+            (plan.reason, plan.detail.as_str()),
+            ("weighted", "加权 5/8")
+        );
+        let hits = (0..8)
+            .filter(|turn| plan_members(&g, &none, None, *turn).candidates[0] == "b/m2")
+            .count();
+        assert_eq!(hits, 2);
+        let pinned = plan_members(&g, &none, Some("a/m1"), 0);
+        assert_eq!(pinned.candidates, ["a/m1", "c/m3", "b/m2"]);
+        assert_eq!(pinned.reason, "affinity");
     }
 
     #[test]
@@ -742,6 +838,13 @@ mod tests {
             )],
         );
         assert!(validate_group(&bad, &providers).is_err());
+        let mut bad = group(Strategy::Weighted, vec![]);
+        bad.weights.insert("a/m1".into(), 0);
+        assert!(validate_group(&bad, &providers).is_err());
+        bad.weights = BTreeMap::from([("z/outside".into(), 3)]);
+        assert!(validate_group(&bad, &providers).is_err());
+        bad.weights = BTreeMap::from([("a/m1".into(), 100)]);
+        assert!(validate_group(&bad, &providers).is_ok());
     }
 
     #[test]

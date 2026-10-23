@@ -78,6 +78,29 @@ describe('RoutingPage', () => {
     }));
   });
 
+  it('按权重：每个成员可设权重并显示占比，只提交非默认权重', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    await screen.findByText('编码主力');
+    fireEvent.click(screen.getByRole('button', { name: /新建路由组/ }));
+    const dialog = screen.getByRole('dialog', { name: '新建路由组' });
+    fireEvent.change(within(dialog).getByLabelText('名称'), { target: { value: '分流' } });
+    fireEvent.change(within(dialog).getByLabelText(/^ID/), { target: { value: 'split' } });
+    for (const member of ['openai/gpt-5', 'deepseek/deepseek-chat']) {
+      fireEvent.change(within(dialog).getByLabelText('选择成员'), { target: { value: member } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /添加成员/ }));
+    }
+    fireEvent.change(within(dialog).getByLabelText(/^分配方式/), { target: { value: 'weighted' } });
+    fireEvent.change(within(dialog).getByLabelText('openai/gpt-5 的权重'), { target: { value: '3' } });
+    expect(within(dialog).getByText('75%')).toBeInTheDocument();
+    expect(within(dialog).getByText('25%')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.upsertRoutingGroup).toHaveBeenCalledWith(expect.objectContaining({
+      strategy: 'weighted',
+      members: ['openai/gpt-5', 'deepseek/deepseek-chat'],
+      weights: { 'openai/gpt-5': 3 },
+    })));
+  });
+
   it('固定一个时提交选定成员', async () => {
     render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: '编辑 编码主力' }));
