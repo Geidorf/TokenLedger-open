@@ -10,6 +10,7 @@ import {
   normalizeStatsQuery,
   queryEchoMatches,
 } from '../utils/frontendContracts';
+import { collectAllDetails, REQUESTS_CSV_MAX_ROWS, requestsToCsv } from '../utils/requestsCsv';
 import {
   CustomDateRange,
   DataScope,
@@ -71,7 +72,40 @@ export function useUsageDetails({
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsLoadingMore, setDetailsLoadingMore] = useState(false);
   const [detailsError, setDetailsError] = useState('');
+  const [detailsExporting, setDetailsExporting] = useState(false);
   const detailRequestId = useRef(0);
+
+  const fetchDetailsPage = useCallback(async (cursor: string | null, limit: number): Promise<UsageDetailsResponse> => {
+    const inheritedMachines = detailFilters.machines.length === 0
+      && dataScope === 'cloud'
+      && deviceFilter !== 'all_cloud'
+      ? [deviceFilter]
+      : detailFilters.machines;
+    const canonicalQuery = normalizeStatsQuery({
+      range,
+      start: customRange?.start,
+      end: customRange?.end,
+      timezone: currentTimezone(),
+      machines: inheritedMachines,
+      tools: detailFilters.tools,
+      models: detailFilters.models,
+      search: detailFilters.search,
+      tokenMode: 'effective',
+    });
+    const query: UsageDetailsQuery = {
+      scope: dataScope,
+      ...canonicalQuery,
+      cursor,
+      limit,
+    };
+    const response = await invoke<UsageDetailsEnvelope>('get_usage_details', { query });
+    const unavailable = unavailableMessage(response, '当前数据源不支持完整消耗明细。');
+    if (isUnavailableEnvelope(response)) throw new Error(unavailable || '当前数据源不支持完整消耗明细。');
+    if (!queryEchoMatches(response.meta?.query, canonicalQuery, response.meta?.entity)) {
+      throw new Error('明细响应与当前筛选不一致，请重试。');
+    }
+    return response;
+  }, [currentTimezone, customRange, dataScope, detailFilters.machines, detailFilters.models, detailFilters.search, detailFilters.tools, deviceFilter, range]);
 
   const loadDetails = useCallback(async (cursor: string | null = null, append = false) => {
     const requestId = beginRequest(detailRequestId);
@@ -99,35 +133,8 @@ export function useUsageDetails({
       setDetails(null);
     }
     try {
-      const inheritedMachines = detailFilters.machines.length === 0
-        && dataScope === 'cloud'
-        && deviceFilter !== 'all_cloud'
-        ? [deviceFilter]
-        : detailFilters.machines;
-      const canonicalQuery = normalizeStatsQuery({
-        range,
-        start: customRange?.start,
-        end: customRange?.end,
-        timezone: currentTimezone(),
-        machines: inheritedMachines,
-        tools: detailFilters.tools,
-        models: detailFilters.models,
-        search: detailFilters.search,
-        tokenMode: 'effective',
-      });
-      const query: UsageDetailsQuery = {
-        scope: dataScope,
-        ...canonicalQuery,
-        cursor,
-        limit: 50,
-      };
-      const response = await invoke<UsageDetailsEnvelope>('get_usage_details', { query });
+      const response = await fetchDetailsPage(cursor, 50);
       if (!isCurrentRequest(detailRequestId, requestId)) return;
-      const unavailable = unavailableMessage(response, '当前数据源不支持完整消耗明细。');
-      if (isUnavailableEnvelope(response)) throw new Error(unavailable || '当前数据源不支持完整消耗明细。');
-      if (!queryEchoMatches(response.meta?.query, canonicalQuery, response.meta?.entity)) {
-        throw new Error('明细响应与当前筛选不一致，请重试。');
-      }
       setDetails((previous) => mergeUsageDetails(previous, response, append));
       setDetailsError('');
     } catch (err) {
@@ -140,7 +147,37 @@ export function useUsageDetails({
         setDetailsLoadingMore(false);
       }
     }
-  }, [currentTimezone, customRange, dataScope, detailFilters.machines, detailFilters.models, detailFilters.search, detailFilters.tools, deviceFilter, range, stats, statsError]);
+  }, [dataScope, fetchDetailsPage, stats, statsError]);
+
+  /**
+   * 用量 · 请求的「导出 CSV」：沿当前范围与筛选逐页取完（不只是已加载的行），生成 CSV 交给后端写文件。
+   * 与列表共用同一份查询，导出的就是列表能翻到的全部行。
+   */
+  const exportDetailsCsv = useCallback(async (): Promise<{ message: string; path: string }> => {
+    if (!details) throw new Error('明细尚未加载，无法导出');
+    // 退出登录、切换数据源或改筛选都会让 `detailRequestId` 前进；导出途中一旦变了就放弃，
+    // 不把旧账号或旧筛选的数据写到磁盘。
+    const generation = detailRequestId.current;
+    const assertCurrent = () => {
+      if (detailRequestId.current !== generation) throw new Error('导出期间数据范围或登录状态已变化，已取消导出');
+    };
+    setDetailsExporting(true);
+    try {
+      const { items, truncated } = await collectAllDetails(async (cursor) => {
+        assertCurrent();
+        const page = await fetchDetailsPage(cursor, 100);
+        assertCurrent();
+        return page;
+      });
+      assertCurrent();
+      const result = await invoke<{ message: string; path: string }>('export_usage_csv', { content: requestsToCsv(items, dataScope) });
+      return truncated
+        ? { ...result, message: `${result.message}（已达单次上限 ${REQUESTS_CSV_MAX_ROWS.toLocaleString('zh-CN')} 行，请缩小范围导出其余部分）` }
+        : result;
+    } finally {
+      setDetailsExporting(false);
+    }
+  }, [dataScope, details, fetchDetailsPage]);
 
   const updateDetailFilter = useCallback((key: keyof DetailFilters, value: string | string[]) => {
     setDetailFilters((previous) => ({ ...previous, [key]: value }) as DetailFilters);
@@ -157,6 +194,8 @@ export function useUsageDetails({
     setDetailsError,
     detailRequestId,
     loadDetails,
+    detailsExporting,
+    exportDetailsCsv,
     updateDetailFilter,
   };
 }

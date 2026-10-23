@@ -923,6 +923,7 @@ pub fn run() {
             models_dev::search_models_dev_prices,
             commands::get_db_info,
             commands::export_db_csv,
+            commands::export_usage_csv,
             commands::cleanup_db,
             commands::reset_local_sync,
             commands::refresh_scan,

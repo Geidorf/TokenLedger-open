@@ -675,6 +675,19 @@ pub async fn export_db_csv(state: tauri::State<'_, Arc<AppContext>>) -> Result<V
         .map_err(|error| format!("export_db_csv task panicked: {error}"))?
 }
 
+/// 用量 · 请求的「导出 CSV」：正文由前端按当前筛选逐页取完后生成（本地与云端同一条路径），
+/// 这里只负责写到应用数据目录下的固定文件名，前端给不了路径。
+#[tauri::command]
+pub async fn export_usage_csv(
+    state: tauri::State<'_, Arc<AppContext>>,
+    content: String,
+) -> Result<Value, String> {
+    let app = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || export_usage_csv_impl(&app, &content))
+        .await
+        .map_err(|error| format!("export_usage_csv task panicked: {error}"))?
+}
+
 #[tauri::command]
 pub async fn cleanup_db(
     state: tauri::State<'_, Arc<AppContext>>,
@@ -10898,6 +10911,64 @@ pub fn export_db_csv_impl(app: &AppContext) -> Result<Value, String> {
         "message": format!("成功导出 {} 条记录", count),
         "path": export_path.to_string_lossy().to_string(),
     }))
+}
+
+/// 请求明细 CSV 的上限：远大于逐页导出的条数上限，只用来挡住异常输入。
+const USAGE_CSV_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+pub fn export_usage_csv_impl(app: &AppContext, content: &str) -> Result<Value, String> {
+    if content.len() > USAGE_CSV_MAX_BYTES {
+        return Err("导出内容过大，请缩小范围或筛选后再导出".to_string());
+    }
+    let rows = content.lines().count().saturating_sub(1);
+    let export_path = app.app_data_dir().join("tokenledger_requests.csv");
+    // 加 BOM，Excel 直接打开时中文模型名与设备名不乱码。
+    let mut body = String::with_capacity(content.len() + 3);
+    body.push('\u{feff}');
+    body.push_str(content);
+    fs::write(&export_path, body).map_err(|e| e.to_string())?;
+    Ok(json!({
+        "message": format!("已导出 {} 条记录", rows),
+        "path": export_path.to_string_lossy().to_string(),
+    }))
+}
+
+#[cfg(test)]
+mod export_usage_csv_tests {
+    use super::*;
+
+    fn temp_app(tag: &str) -> AppContext {
+        let path = std::env::temp_dir().join(format!(
+            "tokenledger_usage_csv_{tag}_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&path);
+        AppContext::for_test(path)
+    }
+
+    #[test]
+    fn writes_fixed_file_with_bom_and_counts_rows() {
+        let app = temp_app("ok");
+        let result =
+            export_usage_csv_impl(&app, "time,tool\n2026-07-15,codex\n2026-07-15,claude\n")
+                .expect("export");
+        assert_eq!(result["message"], "已导出 2 条记录");
+        let written =
+            fs::read_to_string(app.app_data_dir().join("tokenledger_requests.csv")).expect("read");
+        assert!(written.starts_with('\u{feff}'));
+        assert_eq!(
+            written.trim_start_matches('\u{feff}').lines().next(),
+            Some("time,tool")
+        );
+    }
+
+    #[test]
+    fn rejects_oversized_content() {
+        let app = temp_app("big");
+        let content = "x".repeat(USAGE_CSV_MAX_BYTES + 1);
+        assert!(export_usage_csv_impl(&app, &content).is_err());
+        assert!(!app.app_data_dir().join("tokenledger_requests.csv").exists());
+    }
 }
 
 /// 导出 CSV 的正文与记录数。`prices` 只用于 `estimated_cost_usd`；由调用方传入，
