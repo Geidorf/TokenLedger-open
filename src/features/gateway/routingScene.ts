@@ -13,7 +13,7 @@
 //   state instead of an idle animation.
 
 import { GROUP_PREFIX } from './helpers';
-import type { LedgerRecord, RouteDecision } from './types';
+import type { RoutingFeedDecision, RoutingFeedRequest } from './types';
 
 /** How long a finished flow stays lit on the stage (12 s). */
 export const FLOW_LINGER_MS = 12_000;
@@ -128,8 +128,9 @@ export interface SceneInput {
     running: boolean;
     /** Why reading the gateway failed, when it did. */
     readError?: string;
-    decisions: RouteDecision[];
-    requests: LedgerRecord[];
+    /** Full records (main window) and the redacted feed (widgets) both fit. */
+    decisions: RoutingFeedDecision[];
+    requests: RoutingFeedRequest[];
   } | null;
   external?: ExternalLiveSnapshot | null;
 }

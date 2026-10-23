@@ -4,7 +4,7 @@
 //! dedupes against scanned logs (T10.264).
 
 use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -15,6 +15,9 @@ pub(crate) mod accounting;
 
 const LEDGER_FILE: &str = "usage-v1.jsonl";
 const ROTATE_BYTES: u64 = 16 * 1024 * 1024;
+/// How much of the ledger's end a live view reads: enough for the last few
+/// dozen records, so polling never reads the whole (up to 16 MB) file.
+const TAIL_BYTES: u64 = 256 * 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Usage {
@@ -245,6 +248,45 @@ impl Ledger {
         records.reverse();
         Ok(records)
     }
+
+    /// The newest `limit` records from the last [`TAIL_BYTES`] of the file,
+    /// newest first. Cheap enough to poll; may return fewer than `limit`
+    /// when records are large.
+    pub fn recent_tail(&self, limit: usize) -> Result<Vec<LedgerRecord>, String> {
+        let _guard = self
+            .lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut file = match fs::File::open(&self.path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.to_string()),
+        };
+        let len = file.metadata().map_err(|error| error.to_string())?.len();
+        let start = len.saturating_sub(TAIL_BYTES);
+        file.seek(SeekFrom::Start(start))
+            .map_err(|error| error.to_string())?;
+        let mut tail = Vec::new();
+        file.read_to_end(&mut tail)
+            .map_err(|error| error.to_string())?;
+        // Starting mid-file lands inside a line: drop it up to the first newline.
+        let body = if start > 0 {
+            match tail.iter().position(|byte| *byte == b'\n') {
+                Some(at) => &tail[at + 1..],
+                None => &[][..],
+            }
+        } else {
+            &tail[..]
+        };
+        let mut records: Vec<LedgerRecord> = body
+            .split(|byte| *byte == b'\n')
+            .filter_map(|line| serde_json::from_slice(line).ok())
+            .collect();
+        let skip = records.len().saturating_sub(limit);
+        records.drain(..skip);
+        records.reverse();
+        Ok(records)
+    }
 }
 
 /// "codex_cli_rs/0.48.0 (Mac OS 15.0; arm64)" → "codex".
@@ -398,6 +440,40 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["r2", "r1"]
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tail_read_skips_the_cut_line_and_returns_newest_first() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-ledger-tail-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let ledger = Ledger::new(&dir);
+        assert!(ledger.recent_tail(5).unwrap().is_empty());
+        let mut text = String::new();
+        let mut count = 0usize;
+        while (text.len() as u64) < TAIL_BYTES * 2 {
+            let line = format!(
+                r#"{{"ts":"t{count}","requestId":"r{count}","agent":"codex","session":null,"endpoint":"responses","provider":"p","requestedModel":"p/m","upstreamModel":"m","wire":"responses","stream":false,"status":200,"ok":true,"input":1,"output":2,"cacheRead":0,"cacheWrite":0,"latencyMs":5,"error":null}}"#
+            );
+            text.push_str(&line);
+            text.push('\n');
+            count += 1;
+        }
+        fs::write(&ledger.path, &text).unwrap();
+        let tail = ledger.recent_tail(3).unwrap();
+        let ids: Vec<_> = tail.iter().map(|r| r.request_id.clone()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                format!("r{}", count - 1),
+                format!("r{}", count - 2),
+                format!("r{}", count - 3)
+            ]
+        );
+        // Asking for more than the tail holds returns only whole records from it.
+        let all = ledger.recent_tail(usize::MAX).unwrap();
+        assert!(all.len() < count && all.len() > 3);
         let _ = fs::remove_dir_all(&dir);
     }
 

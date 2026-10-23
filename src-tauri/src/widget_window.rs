@@ -202,6 +202,7 @@ fn desktop_layout_height(layout: &str) -> f64 {
         "combo" => 172.0,
         "quota" => 272.0,
         "compact" => 104.0,
+        "routing" => 300.0,
         _ => 388.0,
     }
 }
@@ -1573,15 +1574,17 @@ mod tests {
         // 抄自 src/components/widget/cardModel.ts 的 DESKTOP_HEIGHTS / TRAY_BAR_EXTRA /
         // WIDGET_CARD_WIDTH（T10.192，方案 §6.4）。两边各自维护，不是自动跨语言比对；
         // 改任何一边先看另一边是否也要改（本任务日志的开放点也记了这件事）。
-        let cases: [(&str, &str, (f64, f64)); 8] = [
+        let cases: [(&str, &str, (f64, f64)); 10] = [
             ("desktop", "usage", (364.0, 388.0)),
             ("desktop", "combo", (364.0, 172.0)),
             ("desktop", "quota", (364.0, 272.0)),
             ("desktop", "compact", (364.0, 104.0)),
+            ("desktop", "routing", (364.0, 300.0)),
             ("popover", "usage", (364.0, 414.0)),
             ("popover", "combo", (364.0, 198.0)),
             ("popover", "quota", (364.0, 298.0)),
             ("popover", "compact", (364.0, 130.0)),
+            ("popover", "routing", (364.0, 326.0)),
         ];
         for (surface, layout, expected) in cases {
             assert_eq!(
