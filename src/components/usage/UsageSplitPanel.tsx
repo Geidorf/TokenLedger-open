@@ -34,7 +34,7 @@ const DIMENSION_LABEL: Record<SplitDimension, string> = { agent: 'Agent', model:
 function formatMetric(metric: SplitMetric, value: number | null): string {
   if (value === null) return '不可得';
   if (metric === 'tokens') return formatTokens(value);
-  if (metric === 'requests') return `${formatNum(value)} 次`;
+  if (metric === 'requests') return `${formatNum(value)} 条`;
   return formatEstimatedUsd(value);
 }
 
@@ -98,7 +98,7 @@ export function UsageSplitPanel({
                 className={shownMetric === id ? 'active' : ''}
                 aria-pressed={shownMetric === id}
                 disabled={!available}
-                title={available ? `按${label}排序` : 'Agent 与模型交叉时来源只给出有效 Token，请求数与费用不可得'}
+                title={available ? `按${label}排序` : 'Agent 与模型交叉时来源只给出有效 Token，记录数与费用不可得'}
                 onClick={() => onMetricChange(id)}
               >
                 {label}

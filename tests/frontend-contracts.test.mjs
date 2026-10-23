@@ -1861,7 +1861,8 @@ test('overview day drill opens a single-day review and model cost reports use ev
   assert.match(dashboardProps, /dateDrillUnavailable=\{dayDrill\.dayDrillUnavailable\}/);
   assert.match(app, /onReturnFromDayDrill=\{dayDrill\.returnFromDayDrill\}/);
   const drill = readSource(path.join(process.cwd(), 'src', 'hooks', 'useDayDrill.ts'));
-  assert.match(drill, /changeRange\('custom', \{ start: date, end: date \}\);\s*setFilters\(EMPTY_DETAIL_FILTERS\);/);
+  // 整体日历清空筛选；只看某个 Agent / 模型的日历只带上这一项（用量拆分焦点）。
+  assert.match(drill, /changeRange\('custom', \{ start: date, end: date \}\);\s*setFilters\(entity \? \{ \.\.\.EMPTY_DETAIL_FILTERS, tools: entity\.tools, models: entity\.models \} : EMPTY_DETAIL_FILTERS\);/);
   // Review P2-1: the header's cloud switch leaves a review first, so the
   // single-day range never reaches a cloud request; devices never cross scopes.
   assert.match(app, /onCloudScope=\{selectCloudScopeLeavingDayDrill\}/);

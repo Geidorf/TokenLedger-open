@@ -170,6 +170,13 @@ describe('overview day drill-down (audit P0-1)', () => {
     expect(new Set(page.items.map((item) => item.tool)).size).toBeGreaterThan(1);
   });
 
+  it('narrows the day to the focused Agent when the drill comes from a focused calendar', () => {
+    const { result } = renderHook(() => useAppSlice('local'));
+    act(() => { result.current.drill.drillIntoDay(DRILL_DAY, { tools: ['codex'], models: [] }); });
+    expect(result.current.details.detailFilters).toEqual({ ...EMPTY_DETAIL_FILTERS, tools: ['codex'] });
+    expect(result.current.activeTab).toBe('logs');
+  });
+
   it('returns to the remembered range, filters and page', () => {
     const { result } = renderHook(() => useAppSlice('local'));
     act(() => result.current.details.setDetailFilters(ORIGIN_FILTERS));

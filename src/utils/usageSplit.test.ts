@@ -5,7 +5,7 @@ import { cacheHitRate, splitHeatmap, splitUsage } from './usageSplit';
 const stats = {
   summary: { totalTokens: 1000, inputTokens: 800, outputTokens: 200, cachedTokens: 0, totalCost: 3, totalRequests: 10, avgTokensPerReq: 100 },
   tools: {
-    codex: { name: 'codex', input: 500, output: 100, cached: 400, cacheRead: 400, total: 1000, cost: 2, requests: 6, models: { 'gpt-5': 500, 'gpt-5-mini': 100 }, heatmap: { '2026-10-01': 600 } },
+    codex: { name: 'codex', input: 500, output: 100, cached: 400, cacheRead: 400, cacheWrite: 0, total: 1000, cost: 2, requests: 6, models: { 'gpt-5': 500, 'gpt-5-mini': 100 }, heatmap: { '2026-10-01': 600 } },
     claude: { name: 'claude', input: 300, output: 100, cached: 0, total: 400, cost: 1, requests: 4, models: { sonnet: 400 }, heatmap: { '2026-10-02': 400 } },
   },
   models: {
@@ -30,6 +30,21 @@ describe('splitUsage', () => {
     expect(rows[0].cacheHit).toBeCloseTo(400 / 900);
     expect(rows[1].cacheHit).toBeNull();
     expect(metrics).toEqual(['tokens', 'requests', 'cost']);
+  });
+
+  it('缓存读写拆分不可证明时不给命中率（与模型分布同一口径）', () => {
+    const inconsistent = {
+      ...stats,
+      models: { odd: { name: 'odd', total: 100, requests: 1, input: 80, output: 20, cost: 0, cached: 100, cacheRead: 80, cacheWrite: 10 } },
+    } as unknown as StatsData;
+    expect(splitUsage(inconsistent, 'model', 'tokens', null).rows[0].cacheHit).toBeNull();
+  });
+
+  it('费用占比以同范围总费用为分母，未归属的费用不会把已知行放大', () => {
+    const partial = { ...stats, summary: { ...stats.summary, totalCost: 10 } } as StatsData;
+    const [top] = splitUsage(partial, 'agent', 'cost', null).rows;
+    expect(top).toMatchObject({ id: 'codex', value: 2 });
+    expect(top.share).toBeCloseTo(0.2);
   });
 
   it('指标切换改变排序', () => {

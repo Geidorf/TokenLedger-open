@@ -208,6 +208,26 @@ describe('DashboardTab day drill-down (audit P0-1)', () => {
       vi.useRealTimers();
     }
   });
+
+  it('carries the focused Agent into the day drill when the calendar shows only that Agent', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HEATMAP_NOW);
+    try {
+      const stats = {
+        ...POPULATED_STATS,
+        heatmap: { [heatmapDay]: 5_000 },
+        tools: { codex: { ...POPULATED_STATS.tools.codex, heatmap: { [heatmapDay]: 5_000 } } },
+      };
+      const onSelectDate = vi.fn();
+      renderPopulated({ stats, range: 'year', onSelectDate });
+      const split = document.querySelector('section.usage-split') as HTMLElement;
+      fireEvent.click(within(split).getAllByRole('button', { pressed: false }).find((button) => button.classList.contains('usage-split-pick'))!);
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`${heatmapDay}.*点击查看当日明细`) }));
+      expect(onSelectDate).toHaveBeenCalledWith(heatmapDay, { tools: ['codex'], models: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('DashboardTab', () => {

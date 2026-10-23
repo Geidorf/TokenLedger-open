@@ -182,7 +182,8 @@ export function useDayDrill({
 
   const unavailable = dayDrillUnavailable(scope);
 
-  const drillIntoDay = useCallback((date: string) => {
+  /** `entity`：从只看某个 Agent 或模型的热力图点进来时，明细同时按它筛选，结果与格子一致。 */
+  const drillIntoDay = useCallback((date: string, entity?: Pick<DetailFilters, 'tools' | 'models'>) => {
     // Never navigate to a result the scope cannot produce; the entry points
     // are rendered disabled with the reason instead.
     if (unavailable || isoCalendarDayValue(date) === null) return false;
@@ -190,7 +191,7 @@ export function useDayDrill({
     const origin = active?.origin ?? { scope, tab: activeTab, range, customRange, filters };
     setDrill({ date, origin });
     changeRange('custom', { start: date, end: date });
-    setFilters(EMPTY_DETAIL_FILTERS);
+    setFilters(entity ? { ...EMPTY_DETAIL_FILTERS, tools: entity.tools, models: entity.models } : EMPTY_DETAIL_FILTERS);
     changeTab('logs', true);
     focusWhenMounted(() => document.getElementById('details-page-title'));
     return true;

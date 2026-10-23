@@ -1,10 +1,11 @@
 import type { StatsData } from '../types';
 import { effectiveTokens } from '../types';
+import { splitModelCacheRead } from './modelDistribution';
 
 /**
  * 统一「Split by」（对齐 magpie Usage 页）：同一份 StatsData 按 Agent、模型或设备拆分，
  * 选中一项后其他维度随之收窄。只用契约已有字段，不推断：
- * - Agent × 模型的交叉只有 `tools[].models` 里的有效 Token，没有请求数与费用；
+ * - Agent × 模型的交叉只有 `tools[].models` 里的有效 Token，没有记录数与费用；
  * - 设备只有 `machineDistribution` 的整体构成，不能与 Agent、模型交叉。
  * 交叉取不到的指标标为不可得，不按 0 显示。
  */
@@ -45,7 +46,7 @@ export const SPLIT_DIMENSIONS: { id: SplitDimension; label: string }[] = [
 
 export const SPLIT_METRICS: { id: SplitMetric; label: string }[] = [
   { id: 'tokens', label: 'Token' },
-  { id: 'requests', label: '请求' },
+  { id: 'requests', label: '记录数' },
   { id: 'cost', label: '费用' },
 ];
 
@@ -57,19 +58,30 @@ export function cacheHitRate(input: number | undefined, cacheRead: number | unde
   return denominator > 0 ? cacheRead / denominator : null;
 }
 
+/** 只有缓存读写之和等于缓存合计（拆分可证明）时才给命中率，与模型分布的口径一致。 */
+function provenCacheHit(source: { input?: number; cached?: number; cacheRead?: number; cacheWrite?: number }): number | null {
+  const { cacheRead } = splitModelCacheRead({ cached: source.cached ?? 0, cacheRead: source.cacheRead, cacheWrite: source.cacheWrite });
+  return cacheRead === null ? null : cacheHitRate(source.input, cacheRead);
+}
+
 function metricValue(row: Omit<SplitRow, 'value' | 'share'>, metric: SplitMetric): number | null {
   if (metric === 'tokens') return row.tokens;
   if (metric === 'requests') return row.requests;
   return row.cost;
 }
 
-function finish(rows: Omit<SplitRow, 'value' | 'share'>[], metric: SplitMetric, metrics: SplitMetric[], focusIgnored: boolean): SplitResult {
+/**
+ * `costTotal`：费用占比的分母用同范围汇总的总费用（与模型费用分布一致），
+ * 有费用没落到任何一行时，已知行不会被放大成 100%。
+ */
+function finish(rows: Omit<SplitRow, 'value' | 'share'>[], metric: SplitMetric, metrics: SplitMetric[], focusIgnored: boolean, costTotal = 0): SplitResult {
   const effectiveMetric = metrics.includes(metric) ? metric : 'tokens';
   const valued = rows
     .map((row) => ({ ...row, value: metricValue(row, effectiveMetric) }))
     .filter((row) => row.tokens > 0 || (row.value ?? 0) > 0)
     .sort((a, b) => (b.value ?? -1) - (a.value ?? -1) || b.tokens - a.tokens || a.id.localeCompare(b.id));
-  const total = valued.reduce((sum, row) => sum + (row.value ?? 0), 0);
+  const rowTotal = valued.reduce((sum, row) => sum + (row.value ?? 0), 0);
+  const total = effectiveMetric === 'cost' ? Math.max(rowTotal, costTotal) : rowTotal;
   return {
     rows: valued.map((row) => ({ ...row, share: row.value === null ? null : total > 0 ? row.value / total : 0 })),
     metrics,
@@ -83,7 +95,7 @@ function agentRows(stats: StatsData, withCache: boolean) {
     tokens: effectiveTokens(tool) + (withCache ? tool.cached || 0 : 0),
     requests: tool.requests,
     cost: tool.cost,
-    cacheHit: cacheHitRate(tool.input, tool.cacheRead),
+    cacheHit: provenCacheHit(tool),
   }));
 }
 
@@ -93,7 +105,7 @@ function modelRows(stats: StatsData, withCache: boolean) {
     tokens: (model.input || 0) + (model.output || 0) + (withCache ? model.cached || 0 : 0),
     requests: model.requests,
     cost: typeof model.cost === 'number' ? model.cost : null,
-    cacheHit: cacheHitRate(model.input, model.cacheRead),
+    cacheHit: provenCacheHit(model),
   }));
 }
 
@@ -113,9 +125,10 @@ function deviceRows(stats: StatsData, withCache: boolean) {
  */
 export function splitUsage(stats: StatsData, dimension: SplitDimension, metric: SplitMetric, focus: SplitFocus | null, withCache = false): SplitResult {
   const crossFocus = focus && focus.dimension !== dimension ? focus : null;
-  if (dimension === 'device') return finish(deviceRows(stats, withCache), metric, ALL_METRICS, Boolean(crossFocus));
+  const costTotal = stats.summary?.totalCost || 0;
+  if (dimension === 'device') return finish(deviceRows(stats, withCache), metric, ALL_METRICS, Boolean(crossFocus), costTotal);
   if (crossFocus?.dimension === 'device') {
-    return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, true);
+    return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, true, costTotal);
   }
   if (dimension === 'model' && crossFocus?.dimension === 'agent') {
     const models = stats.tools?.[crossFocus.id]?.models || {};
@@ -127,7 +140,7 @@ export function splitUsage(stats: StatsData, dimension: SplitDimension, metric: 
       .filter((row) => row.tokens > 0);
     return finish(rows, metric, ['tokens'], false);
   }
-  return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, false);
+  return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, false, costTotal);
 }
 
 /**

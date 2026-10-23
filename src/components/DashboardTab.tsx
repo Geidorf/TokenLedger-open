@@ -76,7 +76,8 @@ interface DashboardTabProps {
   onQuotaNotify: (message: string) => void;
   refreshCompletedAt: string;
   /** 日期下钻：进入该日的单日复盘（审计 P0-1）。 */
-  onSelectDate?: (date: string) => void;
+  /** `entity` 只在热力图只看某个 Agent 或模型时传：单日明细同时按它筛选。 */
+  onSelectDate?: (date: string, entity?: { tools: string[]; models: string[] }) => void;
   /** 当前作用域做不了单日复盘时（桌面云端）的说明；入口显示为不可用，绝不跳到空结果。 */
   dateDrillUnavailable?: DayDrillUnavailable | null;
   /**
@@ -895,7 +896,9 @@ export function DashboardTab({
               (the reason text there is still open, see T10.158 log). */}
           {showHeatmap && <HeatmapSection heatmap={focusedHeatmap ?? stats.heatmap} subject={focusedHeatmap && activeSplitFocus ? activeSplitFocus.id : undefined}
             subjectUnavailable={activeSplitFocus && !focusedHeatmap ? activeSplitFocus.id : undefined}
-            onSelectDate={dateDrillUnavailable ? undefined : onSelectDate} range={range} customRange={customRange} timeContext={insightTimeContext} />}
+            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (focusedHeatmap && activeSplitFocus
+              ? onSelectDate(date, { tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [], models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [] })
+              : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} />}
           <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />
         </section>;
       })}
