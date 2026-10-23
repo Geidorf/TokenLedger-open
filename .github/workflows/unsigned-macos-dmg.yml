@@ -117,7 +117,8 @@ jobs:
         env:
           # 维护者标识清单从 secret 注入；未配置时脚本只跑通用规则并给出警告。
           TOKENLEDGER_FORBIDDEN_JSON: ${{ secrets.RELEASE_FORBIDDEN_JSON }}
-        run: node scripts/verify-release-artifact-clean.mjs release-stage/macos/*.dmg release-stage/macos/*.zip
+        # DMG 是压缩镜像，脚本看不到里面；ZIP 里是同一个 .app，脚本会逐项解开扫描。
+        run: node scripts/verify-release-artifact-clean.mjs release-stage/macos/*.zip
 
       - uses: actions/upload-artifact@v4
         with:
