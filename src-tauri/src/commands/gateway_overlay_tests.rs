@@ -240,8 +240,8 @@ fn stats_connection_merges_ledger_without_touching_scanned_rows() {
         )
         .unwrap();
     assert_eq!(
-        gateway_provider(&merged, provider_id).as_deref(),
-        Some("openai")
+        gateway_provider(&merged, provider_id),
+        Some(("gateway".to_string(), "openai".to_string()))
     );
     let _ = fs::remove_dir_all(root);
 }

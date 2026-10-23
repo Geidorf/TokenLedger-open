@@ -287,10 +287,11 @@ fn collect_hours_with_scan_hook(
     let scans =
         gateway_overlay::scan_candidates(&tx, &gateway).map_err(|error| error.to_string())?;
     after_candidates();
-    let superseded =
-        gateway_overlay::superseded_scan_ids(&gateway, &scans, gateway_overlay::DEDUPE_WINDOW_SECS);
+    let gateway_overlay::OverlayResolution { superseded, held } =
+        gateway_overlay::resolve_overlay(&gateway, &scans, gateway_overlay::DEDUPE_WINDOW_SECS);
     let mut touched: BTreeSet<String> = gateway
         .iter()
+        .filter(|row| !held.contains(&row.id))
         .map(|row| hour_bucket(&row.timestamp))
         .collect();
     touched.extend(
@@ -349,7 +350,7 @@ fn collect_hours_with_scan_hook(
             hours.entry(hour).or_default().push(row);
         }
     }
-    for row in gateway.iter() {
+    for row in gateway.iter().filter(|row| !held.contains(&row.id)) {
         hours
             .entry(hour_bucket(&row.timestamp))
             .or_default()

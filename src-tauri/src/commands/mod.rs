@@ -6613,6 +6613,7 @@ fn read_local_rows_filtered(
 
 mod gateway_cloud;
 mod gateway_overlay;
+pub mod magpie_import;
 mod price_memo;
 mod price_repricing;
 mod scanner_sync;
@@ -8462,8 +8463,8 @@ fn get_usage_details_normalized_at(
                 .expect("local detail item is an object");
             if gateway_ledger {
                 match gateway_overlay::gateway_provider(&conn, row.id) {
-                    Some(provider) => {
-                        object.insert("source".to_string(), json!("gateway"));
+                    Some((source, provider)) => {
+                        object.insert("source".to_string(), json!(source));
                         object.insert("provider".to_string(), json!(provider));
                     }
                     None => {

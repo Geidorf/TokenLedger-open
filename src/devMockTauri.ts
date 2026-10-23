@@ -1989,6 +1989,28 @@ function mockPriceMigrationNotice(): PriceMigrationNotice | null {
   return mockDismissedPriceMigrationNotices.has(notice.id) ? null : notice;
 }
 
+const MOCK_MAGPIE_IMPORT = {
+  importedAt: '2026-10-20T08:00:00Z',
+  counts: { lines: 1280, imported: 1204, invalid: 0, zeroTokens: 70, rejected: 6, otherComputer: 0, repeated: 0 },
+  earliest: '2026-08-01T02:10:00Z',
+  latest: '2026-10-20T07:58:00Z',
+  duplicateOfGateway: 0,
+  matchedScans: 812,
+  held: 3,
+};
+let mockMagpieImport: typeof MOCK_MAGPIE_IMPORT | null = null;
+
+function mockMagpieImportStatus() {
+  return {
+    magpieFound: true,
+    usageFound: true,
+    usageBytes: 1_482_000,
+    usageModifiedAt: '2026-10-20T07:58:00Z',
+    imported: mockMagpieImport !== null,
+    lastImport: mockMagpieImport,
+  };
+}
+
 export function installDevMockTauri() {
   mockUnsyncedRecords = 12;
   mockCloudAuthenticated = true;
@@ -2364,6 +2386,14 @@ export function installDevMockTauri() {
         return { message: '登录成功' };
       case 'supabase_sign_up':
         return { message: '注册成功，请查收验证邮件' };
+      case 'magpie_import_status':
+        return mockMagpieImportStatus();
+      case 'magpie_import_run':
+        mockMagpieImport = MOCK_MAGPIE_IMPORT;
+        return MOCK_MAGPIE_IMPORT;
+      case 'magpie_import_clear':
+        mockMagpieImport = null;
+        return null;
       default: {
         const gatewayResult = handleGatewayMock(cmd, payload);
         if (gatewayResult !== undefined) return gatewayResult;
