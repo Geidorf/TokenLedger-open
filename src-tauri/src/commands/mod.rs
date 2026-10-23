@@ -8475,10 +8475,13 @@ fn get_usage_details_normalized_at(
                 .as_object_mut()
                 .expect("local detail item is an object");
             if gateway_ledger {
-                match gateway_overlay::gateway_provider(&conn, row.id) {
-                    Some((source, provider)) => {
-                        object.insert("source".to_string(), json!(source));
-                        object.insert("provider".to_string(), json!(provider));
+                match gateway_overlay::gateway_detail(&conn, row.id) {
+                    Some(detail) => {
+                        object.insert("source".to_string(), json!(detail.source));
+                        object.insert("provider".to_string(), json!(detail.provider));
+                        if let Some(latency_ms) = detail.latency_ms {
+                            object.insert("latencyMs".to_string(), json!(latency_ms));
+                        }
                     }
                     None => {
                         object.insert("source".to_string(), json!("scan"));

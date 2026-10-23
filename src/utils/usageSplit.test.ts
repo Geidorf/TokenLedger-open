@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StatsData } from '../types';
-import { cacheHitRate, splitHeatmap, splitUsage } from './usageSplit';
+import { cacheHitRate, outputTokensPerSecond, splitHeatmap, splitUsage } from './usageSplit';
 
 const stats = {
   summary: { totalTokens: 1000, inputTokens: 800, outputTokens: 200, cachedTokens: 0, totalCost: 3, totalRequests: 10, avgTokensPerReq: 100 },
@@ -92,5 +92,14 @@ describe('cacheHitRate', () => {
     expect(cacheHitRate(100, undefined)).toBeNull();
     expect(cacheHitRate(0, 0)).toBeNull();
     expect(cacheHitRate(100, 300)).toBe(0.75);
+  });
+});
+
+describe('outputTokensPerSecond', () => {
+  it('没有耗时或没有输出时不可得', () => {
+    expect(outputTokensPerSecond(100, undefined)).toBeNull();
+    expect(outputTokensPerSecond(100, 0)).toBeNull();
+    expect(outputTokensPerSecond(0, 1000)).toBeNull();
+    expect(outputTokensPerSecond(300, 1500)).toBe(200);
   });
 });

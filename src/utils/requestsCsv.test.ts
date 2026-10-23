@@ -67,6 +67,16 @@ describe('requestsToCsv', () => {
     expect(row).toContain(`"'=HYPERLINK(""x"")"`);
   });
 
+  it('writes duration and output speed only for rows that carry a latency', () => {
+    const at = (row: string, column: (typeof REQUESTS_CSV_COLUMNS)[number]) => row.split(',')[REQUESTS_CSV_COLUMNS.indexOf(column)];
+    const timed = requestCsvRow(item({ outputTokens: 300, latencyMs: 1500 }));
+    expect(at(timed, 'latency_ms')).toBe('1500');
+    expect(at(timed, 'output_tokens_per_sec')).toBe('200');
+    const untimed = requestCsvRow(item());
+    expect(at(untimed, 'latency_ms')).toBe('');
+    expect(at(untimed, 'output_tokens_per_sec')).toBe('');
+  });
+
   it('flattens embedded line breaks so every record stays on one line', () => {
     const csv = requestsToCsv([item({ model: 'a\r\nb', sessionId: 'x\ny' }), item({ id: 2 })]);
     const lines = csv.trimEnd().split('\n');

@@ -58,6 +58,16 @@ export function cacheHitRate(input: number | undefined, cacheRead: number | unde
   return denominator > 0 ? cacheRead / denominator : null;
 }
 
+/**
+ * 输出速度（tok/s）：输出 Token ÷ 整次请求耗时。耗时只有网关记录带（含首字等待），
+ * 所以这是偏保守的整体速度；没有耗时或没有输出时不可得。
+ */
+export function outputTokensPerSecond(output: number | undefined, latencyMs: number | undefined): number | null {
+  if (typeof latencyMs !== 'number' || !Number.isFinite(latencyMs) || latencyMs <= 0) return null;
+  if (typeof output !== 'number' || !Number.isFinite(output) || output <= 0) return null;
+  return output / (latencyMs / 1000);
+}
+
 /** 只有缓存读写之和等于缓存合计（拆分可证明）时才给命中率，与模型分布的口径一致。 */
 function provenCacheHit(source: { input?: number; cached?: number; cacheRead?: number; cacheWrite?: number }): number | null {
   const { cacheRead } = splitModelCacheRead({ cached: source.cached ?? 0, cacheRead: source.cacheRead, cacheWrite: source.cacheWrite });

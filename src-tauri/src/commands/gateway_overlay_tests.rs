@@ -240,8 +240,12 @@ fn stats_connection_merges_ledger_without_touching_scanned_rows() {
         )
         .unwrap();
     assert_eq!(
-        gateway_provider(&merged, provider_id),
-        Some(("gateway".to_string(), "openai".to_string()))
+        gateway_detail(&merged, provider_id),
+        Some(GatewayDetail {
+            source: "gateway".to_string(),
+            provider: "openai".to_string(),
+            latency_ms: Some(10),
+        })
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -273,8 +277,10 @@ fn usage_details_mark_gateway_source_and_capability() {
     assert_eq!(items[0]["source"], json!("gateway"));
     assert_eq!(items[0]["provider"], json!("openai"));
     assert_eq!(items[0]["model"], json!("gpt-5.5"));
+    assert_eq!(items[0]["latencyMs"], json!(10));
     assert_eq!(items[1]["source"], json!("scan"));
     assert!(items[1].get("provider").is_none());
+    assert!(items[1].get("latencyMs").is_none());
     assert_eq!(details["filteredSummary"]["totalTokens"], json!(290));
     let _ = fs::remove_dir_all(root);
 }
