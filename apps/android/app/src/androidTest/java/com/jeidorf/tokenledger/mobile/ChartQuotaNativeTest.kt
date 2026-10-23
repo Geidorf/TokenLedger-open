@@ -267,7 +267,7 @@ class ChartQuotaNativeTest {
             "pane-trend" to (hasText("趋势") and hasClickAction()),
             "pane-sources" to (hasText("来源") and hasClickAction()),
             "pane-calendar" to (hasText("日历") and hasClickAction()),
-            "pane-details" to (hasText("明细") and hasClickAction()),
+            "pane-details" to (hasText("请求") and hasClickAction()),
             "refresh" to (hasClickAction() and (hasText("重新读取") or hasText("读取中…")))
         )
         val firstBounds = linkedMapOf<String, Rect>()

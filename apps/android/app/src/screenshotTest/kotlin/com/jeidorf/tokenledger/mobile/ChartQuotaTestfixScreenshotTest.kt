@@ -28,7 +28,7 @@ private fun ControlStateFixture(state: ChartQuotaControlState) {
     Box(Modifier.fillMaxSize().onGloballyPositioned {
         val nodes = allNodes(root.semanticsOwner.rootSemanticsNode)
         val selectors = listOf("Token 消耗视图", "预估费用视图", "人民币币种", "美元币种",
-            "趋势", "来源", "日历", "明细", if(state == ChartQuotaControlState.Loading) "读取中…" else "重新读取")
+            "趋势", "来源", "日历", "请求", if(state == ChartQuotaControlState.Loading) "读取中…" else "重新读取")
         selectors.forEachIndexed { index, label ->
             val node = nodes.single { node ->
                 node.config.contains(SemanticsActions.OnClick) &&
