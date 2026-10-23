@@ -83,6 +83,7 @@ import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerSpace
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
+import com.jeidorf.tokenledger.mobile.ui.foundation.V2_ICON_TEXT
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_TOUCH_TARGET
 
 /** 「我的」页要往外调的动作。偏好类的回调直接改持久化设置，由上层回写状态。 */
@@ -219,7 +220,7 @@ internal fun V2MeRow(
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                     if (metaDot != null) {
                         Box(Modifier.size(6.dp).clip(CircleShape).background(metaDot).clearAndSetSemantics { })
-                        Spacer(Modifier.width(5.dp))
+                        Spacer(Modifier.width(6.dp))
                     }
                     Text(meta, color = palette.muted, style = LedgerType.meta, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -266,7 +267,7 @@ private fun V2MeIconTile(palette: MobileV2Palette, icon: ImageVector) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = null, tint = palette.muted, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, tint = palette.muted, modifier = Modifier.size(V2_ICON_TEXT))
     }
 }
 
@@ -319,7 +320,7 @@ private fun V2MeAccountCard(palette: MobileV2Palette, state: DashboardUiState) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                     if (account.signedIn) {
                         Box(Modifier.size(6.dp).clip(CircleShape).background(palette.green).clearAndSetSemantics { })
-                        Spacer(Modifier.width(5.dp))
+                        Spacer(Modifier.width(6.dp))
                     }
                     Text(account.status, color = palette.muted, style = LedgerType.meta)
                 }
