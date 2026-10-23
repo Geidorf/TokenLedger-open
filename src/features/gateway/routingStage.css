@@ -1,0 +1,94 @@
+/* Live routing stage (RoutingStage.tsx): Agent → gateway → upstream.
+   Pure SVG + CSS keyframes, colours only from tokens.css. Idle wires are
+   faint, an in-flight request's wire flows, a finished one's stays lit for
+   a while, and a packet runs each hop in turn so a failed member and the
+   switch to the next one are visible. */
+
+.rs-stage { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.rs-stage svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.rs-wire { fill: none; stroke: var(--color-border); stroke-width: 1.5; stroke-linecap: round; transition: stroke var(--motion-hover), opacity var(--motion-hover); }
+.rs-wire.is-lit { stroke: color-mix(in srgb, var(--agent, var(--color-primary)) 60%, transparent); }
+.rs-wire.is-lit.is-ok { stroke: color-mix(in srgb, var(--color-success) 60%, transparent); }
+.rs-wire.is-lit.is-failed { stroke: color-mix(in srgb, var(--color-danger) 55%, transparent); stroke-dasharray: 4 4; }
+.rs-wire.is-lit.is-skipped { stroke-dasharray: 2 6; }
+.rs-wire.is-live { stroke: var(--agent, var(--color-primary)); stroke-dasharray: 3 5; animation: rs-flow 0.7s linear infinite; }
+@keyframes rs-flow { to { stroke-dashoffset: -8; } }
+
+.rs-node-box { fill: var(--color-bg-elevated); stroke: var(--color-border); stroke-width: 1; }
+.rs-node-label { fill: var(--color-text-primary); font-size: 12px; font-family: var(--font-mono); }
+.rs-agent .rs-node-label { font-family: inherit; font-weight: 600; }
+.rs-node-dot { fill: var(--color-text-faint); }
+.rs-agent .rs-node-dot { fill: var(--agent, var(--color-primary)); }
+.rs-node.is-ok .rs-node-dot { fill: var(--color-success); }
+.rs-node.is-failed .rs-node-dot { fill: var(--color-danger); }
+.rs-node.is-failed .rs-node-box { stroke: var(--color-danger-soft-border); }
+.rs-node.is-busy .rs-node-box { stroke: var(--agent, var(--color-primary)); }
+.rs-node.is-busy .rs-node-dot { animation: rs-pulse 1.2s ease-in-out infinite; }
+.rs-node.is-more .rs-node-box { fill: none; stroke-dasharray: 3 3; }
+.rs-node.is-more .rs-node-label { fill: var(--color-text-muted); font-family: inherit; }
+.rs-tag rect { fill: var(--color-danger); }
+.rs-tag text { fill: var(--color-text-on-primary); font-size: 10px; font-weight: 600; font-family: var(--font-mono); }
+
+.rs-hub circle { fill: var(--color-bg-elevated); stroke: var(--color-text-primary); stroke-width: 1.5; }
+.rs-hub-icon { fill: none; stroke: var(--color-text-primary); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.rs-hub-label { fill: var(--color-text-muted); font-size: 11px; }
+.rs-hub.is-busy circle { animation: rs-ring 1.8s ease-out infinite; }
+@keyframes rs-ring {
+  0% { stroke-width: 1.5; stroke-opacity: 1; }
+  70%, 100% { stroke-width: 7; stroke-opacity: 0.15; }
+}
+
+/* A packet is a short dash running along its wire once (pathLength=100). */
+.rs-packet {
+  fill: none;
+  stroke: var(--agent, var(--color-primary));
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 5 95;
+  stroke-dashoffset: 5;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--agent, var(--color-primary)) 60%, transparent));
+  animation-name: rs-packet;
+  animation-timing-function: cubic-bezier(0.45, 0, 0.3, 1);
+  animation-fill-mode: both;
+  animation-iteration-count: 1;
+}
+.rs-packet.is-failed, .rs-packet.is-skipped { stroke: var(--color-danger); filter: drop-shadow(0 0 3px var(--color-danger-muted)); animation-name: rs-packet-bounce; }
+@keyframes rs-packet {
+  0% { stroke-dashoffset: 5; opacity: 1; }
+  92% { stroke-dashoffset: -95; opacity: 1; }
+  100% { stroke-dashoffset: -95; opacity: 0; }
+}
+/* A failed hop gets most of the way, then falls back: the switch reads as
+   "turned away there, tried the next one". */
+@keyframes rs-packet-bounce {
+  0% { stroke-dashoffset: 5; opacity: 1; }
+  70% { stroke-dashoffset: -88; opacity: 1; }
+  100% { stroke-dashoffset: -60; opacity: 0; }
+}
+.rs-held { fill: var(--agent, var(--color-primary)); animation: rs-pulse 1.2s ease-in-out infinite; }
+@keyframes rs-pulse { 50% { opacity: 0.35; } }
+
+.rs-caption { min-height: 1.45em; margin: 0; font-size: var(--font-size-sm); line-height: 1.45; color: var(--color-text-secondary); }
+.rs-stage.is-compact .rs-caption { font-size: 11.5px; min-height: 2.9em; }
+.rs-stage.is-compact .rs-node-label { font-size: 10.5px; }
+
+.rs-empty { display: grid; gap: 4px; padding: 18px 12px; border: 1px dashed var(--color-border); border-radius: var(--radius-card); text-align: center; font-size: var(--font-size-sm); color: var(--color-text-muted); }
+.rs-empty b { color: var(--color-text-primary); font-weight: 600; }
+.rs-empty.is-compact { padding: 12px 8px; font-size: 11.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-wire.is-live, .rs-node.is-busy .rs-node-dot, .rs-hub.is-busy circle, .rs-held { animation: none; }
+  .rs-packet { display: none; }
+}
+
+.rs-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 12px; }
+.rs-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rs-card-head h3 { margin: 0; }
+.rs-livedot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
+.rs-livedot.is-on { background: var(--color-success); animation: rs-pulse 1.8s ease-in-out infinite; }
+.rs-stats { display: flex; gap: 14px; margin: 0; font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.rs-stats div { display: flex; align-items: baseline; gap: 4px; }
+.rs-stats dt { margin: 0; }
+.rs-stats dd { margin: 0; font-size: var(--font-size-md); font-weight: 600; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .rs-livedot.is-on { animation: none; } }

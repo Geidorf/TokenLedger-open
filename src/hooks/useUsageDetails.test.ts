@@ -197,3 +197,71 @@ describe('云端 stats 失败后明细追上真实错误并可重试（T10.180 �
     expect(result.current.detailsError).toBe('');
   });
 });
+
+describe('useUsageDetails 导出 CSV', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  function detailsPage(id: number, nextCursor: string | null, query: Record<string, unknown>) {
+    return {
+      status: 'ok',
+      items: [{ id, tool: 'codex', model: 'gpt-5-codex', inputTokens: 10, outputTokens: 5, cachedTokens: 0, cost: 0, timestamp: '2026-07-15T14:00:00+08:00', sessionId: 's', machineId: 'm' }],
+      nextCursor,
+      hasMore: nextCursor !== null,
+      totalCount: 2,
+      filteredSummary: { totalTokens: 30, inputTokens: 20, outputTokens: 10, cachedTokens: 0, totalCost: 0, totalRequests: 2, avgTokensPerReq: 15 },
+      availableFilters: { tools: [], models: [], machines: [] },
+      granularity: 'request',
+      meta: { query },
+    };
+  }
+
+  it('pages through every row of the current filter and hands the CSV to the backend', async () => {
+    invokeMock.mockImplementation(async (cmd: string, args: { query?: Record<string, unknown>; content?: string }) => {
+      if (cmd === 'export_usage_csv') return { message: '已导出 2 条记录', path: 'x/tokenledger_requests.csv' };
+      const { scope: _scope, cursor, limit: _limit, ...echo } = args.query!;
+      return detailsPage(cursor ? 2 : 1, cursor ? null : 'c1', echo);
+    });
+    const { result } = renderHook((props) => useUsageDetails(props), {
+      initialProps: { ...cloudMonthProps, dataScope: 'local' as DataScope, stats: null as StatsData | null },
+    });
+    await act(async () => {
+      await result.current.loadDetails();
+    });
+    let exported: { message: string; path: string } | undefined;
+    await act(async () => {
+      exported = await result.current.exportDetailsCsv();
+    });
+    expect(exported?.message).toBe('已导出 2 条记录');
+    const pageCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'get_usage_details').slice(1);
+    expect(pageCalls.map(([, args]) => (args as { query: { cursor: unknown; limit: unknown } }).query))
+      .toMatchObject([{ cursor: null, limit: 100 }, { cursor: 'c1', limit: 100 }]);
+    const exportCall = invokeMock.mock.calls.find(([cmd]) => cmd === 'export_usage_csv');
+    expect(((exportCall?.[1] as { content: string }).content).trimEnd().split('\n')).toHaveLength(3);
+    expect(result.current.detailsExporting).toBe(false);
+  });
+
+  it('abandons the export without writing when sign-out or a new query invalidates it mid-way', async () => {
+    let hookRef: { current: ReturnType<typeof useUsageDetails> } | null = null;
+    invokeMock.mockImplementation(async (cmd: string, args: { query?: Record<string, unknown> }) => {
+      if (cmd === 'export_usage_csv') return { message: 'x', path: 'x' };
+      const { scope: _scope, cursor, limit: _limit, ...echo } = args.query!;
+      // 第二页返回前模拟退出登录：App 会推进 detailRequestId。
+      if (cursor === 'c1') hookRef!.current.detailRequestId.current += 1;
+      return detailsPage(cursor ? 2 : 1, cursor ? null : 'c1', echo);
+    });
+    const { result } = renderHook((props) => useUsageDetails(props), {
+      initialProps: { ...cloudMonthProps, dataScope: 'local' as DataScope, stats: null as StatsData | null },
+    });
+    hookRef = result;
+    await act(async () => {
+      await result.current.loadDetails();
+    });
+    await act(async () => {
+      await expect(result.current.exportDetailsCsv()).rejects.toThrow('已取消导出');
+    });
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === 'export_usage_csv')).toBe(false);
+    expect(result.current.detailsExporting).toBe(false);
+  });
+});

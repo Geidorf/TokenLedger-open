@@ -13,6 +13,7 @@ import {
 } from './SettingsPrimitives';
 import { ProjectDimensionCard } from './ProjectDimensionCard';
 import { MagpieImportCard } from './MagpieImportCard';
+import { PeerSyncCard } from './PeerSyncCard';
 
 export interface DataHelpSectionProps {
   dbInfo: DbInfo | null;
@@ -166,6 +167,8 @@ export function DataHelpSection(props: DataHelpSectionProps) {
       <ProjectDimensionCard />
 
       <MagpieImportCard />
+
+      <PeerSyncCard />
 
       <SettingsCard title="导出与分享">
         <SettingsGroup>

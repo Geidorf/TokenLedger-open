@@ -200,6 +200,19 @@ export function handleGatewayMock(cmd: string, payload: Record<string, unknown>)
       return groups;
     case 'gateway_recent_route_decisions':
       return decisions;
+    case 'gateway_routing_feed': {
+      const running = providers.some((provider) => provider.enabled);
+      if (!running) return { running, decisions: [], requests: [] };
+      return {
+        running,
+        decisions: decisions.map(({ ts, requestId, group, chosen, attempts }) => ({
+          ts, requestId, group, chosen, attempts: attempts.map(({ member, outcome, status }) => ({ member, outcome, status })),
+        })),
+        requests: requests.map(({ ts, requestId, logicalRequestId, agent, provider, requestedModel, upstreamModel, group, status, ok }) => ({
+          ts, requestId, logicalRequestId, agent, provider, requestedModel, upstreamModel, group, status, ok,
+        })),
+      };
+    }
     case 'gateway_codex_inspect':
       return codexInspection();
     case 'gateway_codex_preview':

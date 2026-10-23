@@ -2344,6 +2344,11 @@ export function installDevMockTauri() {
         return { message: 'Supabase 配置已保存' };
       case 'export_db_csv':
         return { message: '已导出 CSV', path: 'dev/tokenledger-export.csv' };
+      case 'export_usage_csv': {
+        const content = typeof payload.content === 'string' ? payload.content : '';
+        const rows = Math.max(0, content.split('\n').filter(Boolean).length - 1);
+        return { message: `已导出 ${rows} 条记录`, path: 'dev/tokenledger_requests.csv' };
+      }
       case 'reset_local_sync':
         return { message: '同步状态已重置' };
       case 'cleanup_db': {
@@ -2398,6 +2403,29 @@ export function installDevMockTauri() {
       case 'magpie_import_clear':
         mockMagpieImport = null;
         return null;
+      case 'peer_live_snapshot':
+        return {
+          reachable: true, port: 3425, requests: 2, waiting: 1, tools: 0,
+          active: [
+            { id: 7, agent: 'claude', model: 'claude-opus-5-5', provider: 'anthropic', started: new Date(Date.now() - 1200).toISOString(), ms: 1200, phase: 'upstream' },
+            { id: 8, agent: 'codex', model: '', provider: '', started: new Date(Date.now() - 300).toISOString(), ms: 300, phase: 'slot' },
+          ],
+          recent: [
+            {
+              id: '9', agent: 'claude', model: 'claude-opus-5-5', ended: new Date(Date.now() - 4000).toISOString(),
+              attempts: [
+                { provider: 'relay', outcome: 'failed', status: 529 },
+                { provider: 'anthropic', outcome: 'ok' },
+              ],
+            },
+          ],
+        };
+      case 'peer_sync_get_config':
+        return { url: '', user: '', hasPassword: false, hasPassphrase: false };
+      case 'peer_sync_save_config': {
+        const input = (payload.input ?? {}) as Record<string, unknown>;
+        return { url: String(input.url ?? ''), user: String(input.user ?? ''), hasPassword: Boolean(input.password), hasPassphrase: Boolean(input.passphrase) };
+      }
       default: {
         const gatewayResult = handleGatewayMock(cmd, payload);
         if (gatewayResult !== undefined) return gatewayResult;

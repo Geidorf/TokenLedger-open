@@ -34,9 +34,13 @@ use ledger::Ledger;
 pub use ledger::LedgerRecord;
 use routing::Router;
 pub use routing::{RouteDecision, RoutingGroup};
-use store::{ensure_local_token, provider_account, ProviderStore, WireApi};
+#[cfg(test)]
+pub use store::MemorySecrets;
+use store::{ensure_local_token, provider_account, ProviderStore};
 pub(crate) use store::{load_providers_readonly, read_provider_key};
-pub use store::{KeyringSecrets, ProviderRecord, SecretStore};
+pub use store::{
+    valid_id, validate_provider, AuthMode, KeyringSecrets, ProviderRecord, SecretStore, WireApi,
+};
 
 pub const DEFAULT_PORT: u16 = 3462;
 const MAX_KEY_LENGTH: usize = 4096;
@@ -83,6 +87,87 @@ pub struct GatewayStatus {
     pub error: Option<String>,
     pub provider_count: usize,
     pub enabled_count: usize,
+}
+
+/// Read-only routing view for the live routing stage in the widget windows.
+/// Carries only what the stage draws: no session ids, error bodies, decision
+/// details, token counts or endpoints.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutingFeed {
+    pub running: bool,
+    pub decisions: Vec<RoutingFeedDecision>,
+    pub requests: Vec<RoutingFeedRequest>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutingFeedDecision {
+    pub ts: String,
+    pub request_id: String,
+    pub group: String,
+    pub chosen: Option<String>,
+    pub attempts: Vec<RoutingFeedAttempt>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutingFeedAttempt {
+    pub member: String,
+    pub outcome: &'static str,
+    pub status: Option<u16>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutingFeedRequest {
+    pub ts: String,
+    pub request_id: String,
+    pub logical_request_id: Option<String>,
+    pub agent: Option<String>,
+    pub provider: String,
+    pub requested_model: String,
+    pub upstream_model: String,
+    pub group: Option<String>,
+    pub status: u16,
+    pub ok: bool,
+}
+
+impl From<RouteDecision> for RoutingFeedDecision {
+    fn from(decision: RouteDecision) -> Self {
+        Self {
+            ts: decision.ts,
+            request_id: decision.request_id,
+            group: decision.group,
+            chosen: decision.chosen,
+            attempts: decision
+                .attempts
+                .into_iter()
+                .map(|attempt| RoutingFeedAttempt {
+                    member: attempt.member,
+                    outcome: attempt.outcome,
+                    status: attempt.status,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<LedgerRecord> for RoutingFeedRequest {
+    fn from(record: LedgerRecord) -> Self {
+        Self {
+            ts: record.ts,
+            request_id: record.request_id,
+            logical_request_id: record.logical_request_id,
+            agent: record.agent,
+            provider: record.provider,
+            requested_model: record.requested_model,
+            upstream_model: record.upstream_model,
+            group: record.group,
+            status: record.status,
+            ok: record.ok,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -568,6 +653,26 @@ impl Gateway {
     pub fn recent_route_decisions(&self, limit: usize) -> Vec<RouteDecision> {
         self.shared.router.recent(limit.clamp(1, 200))
     }
+
+    /// The live routing stage's view: recent decisions plus the ledger's tail
+    /// (agent names and direct requests). Nothing is read while stopped.
+    pub fn routing_feed(&self, limit: usize) -> Result<RoutingFeed, String> {
+        let limit = limit.clamp(1, 100);
+        if !self.status().running {
+            return Ok(RoutingFeed {
+                running: false,
+                decisions: Vec::new(),
+                requests: Vec::new(),
+            });
+        }
+        let decisions = self.recent_route_decisions(limit);
+        let requests = self.shared.ledger.recent_tail(limit)?;
+        Ok(RoutingFeed {
+            running: true,
+            decisions: decisions.into_iter().map(Into::into).collect(),
+            requests: requests.into_iter().map(Into::into).collect(),
+        })
+    }
 }
 
 fn ensure_main_label(label: &str) -> Result<(), String> {
@@ -580,6 +685,16 @@ fn ensure_main_label(label: &str) -> Result<(), String> {
 
 fn ensure_main(window: &tauri::WebviewWindow) -> Result<(), String> {
     ensure_main_label(window.label())
+}
+
+/// The routing feed is the one gateway read the widget windows may make.
+fn ensure_routing_feed_label(label: &str) -> Result<(), String> {
+    match label {
+        "main"
+        | crate::widget_window::WIDGET_LABEL
+        | crate::widget_window::DESKTOP_WIDGET_LABEL => Ok(()),
+        _ => Err("实时路由只允许主窗口与挂件读取。".to_string()),
+    }
 }
 
 /// The full local token, only for an explicit 「复制」 click in the main
@@ -814,6 +929,17 @@ pub fn gateway_recent_route_decisions(
 ) -> Result<Vec<RouteDecision>, String> {
     ensure_main(&window)?;
     Ok(gateway.recent_route_decisions(limit.unwrap_or(50)))
+}
+
+/// Redacted live routing view for the main window and both widget windows.
+#[tauri::command]
+pub fn gateway_routing_feed(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+    limit: Option<usize>,
+) -> Result<RoutingFeed, String> {
+    ensure_routing_feed_label(window.label())?;
+    gateway.routing_feed(limit.unwrap_or(30))
 }
 
 #[cfg(test)]
@@ -1930,5 +2056,69 @@ mod tests {
         );
         assert_eq!(reveal_local_token("main", &gateway).unwrap(), token);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn routing_feed_is_readable_by_main_and_widgets_only() {
+        for label in ["main", "widget", "desktop-widget"] {
+            assert!(ensure_routing_feed_label(label).is_ok(), "{label}");
+        }
+        for label in ["wallpaper", "Main", "widget-evil", ""] {
+            assert!(ensure_routing_feed_label(label).is_err(), "{label}");
+        }
+    }
+
+    #[test]
+    fn routing_feed_drops_sessions_errors_and_details() {
+        let decision = RouteDecision {
+            ts: "2026-10-23T00:00:00Z".into(),
+            request_id: "r1".into(),
+            group: "coding".into(),
+            session: Some("session-secret".into()),
+            reason: "failover",
+            detail: "detail-secret".into(),
+            chosen: Some("b/m".into()),
+            attempts: vec![routing::RouteAttempt {
+                member: "a/m".into(),
+                outcome: "failed",
+                status: Some(429),
+                error: Some("error-secret".into()),
+            }],
+        };
+        let record = LedgerRecord {
+            ts: "2026-10-23T00:00:01Z".into(),
+            request_id: "att-1".into(),
+            logical_request_id: Some("r1".into()),
+            agent: Some("codex".into()),
+            session: Some("session-secret".into()),
+            endpoint: "endpoint-secret".into(),
+            provider: "b".into(),
+            requested_model: "group/coding".into(),
+            upstream_model: "m".into(),
+            wire: "responses".into(),
+            stream: true,
+            status: 200,
+            ok: true,
+            input: 1,
+            output: 1,
+            cache_read: 0,
+            cache_write: 0,
+            latency_ms: 5,
+            error: Some("error-secret".into()),
+            group: Some("coding".into()),
+            member: Some("b/m".into()),
+        };
+        let feed = RoutingFeed {
+            running: true,
+            decisions: vec![decision.into()],
+            requests: vec![record.into()],
+        };
+        let json = serde_json::to_string(&feed).unwrap();
+        assert!(!json.contains("secret"), "{json}");
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["decisions"][0]["attempts"][0]["status"], 429);
+        assert_eq!(value["decisions"][0]["chosen"], "b/m");
+        assert_eq!(value["requests"][0]["logicalRequestId"], "r1");
+        assert_eq!(value["requests"][0]["agent"], "codex");
     }
 }

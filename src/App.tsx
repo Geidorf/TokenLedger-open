@@ -831,6 +831,12 @@ function MainApp() {
                   dayDrill={dayDrill.dayDrill ? dayDrillCopy(dayDrill.dayDrill) : null}
                   onReturnFromDayDrill={dayDrill.returnFromDayDrill}
                   hasPageTitle
+                  exporting={usageDetails.detailsExporting}
+                  onExportCsv={() => {
+                    usageDetails.exportDetailsCsv()
+                      .then((result) => showMessage('success', `${result.message} → ${result.path}`))
+                      .catch((err) => showMessage('error', `导出失败：${err instanceof Error ? err.message : String(err)}`));
+                  }}
                 />
                 </Suspense>
               )}

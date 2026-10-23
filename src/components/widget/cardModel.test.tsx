@@ -372,14 +372,16 @@ describe('整张卡的显示模型', () => {
 });
 
 describe('方案 §6.4 尺寸', () => {
-  it('桌面小组件 364 宽，四种板式各自的高；托盘挂件多 26px 顶栏', () => {
+  it('桌面小组件 364 宽，五种板式各自的高；托盘挂件多 26px 顶栏', () => {
     expect(widgetCardSize('desktop', 'usage')).toEqual({ width: 364, height: 388 });
     expect(widgetCardSize('desktop', 'combo')).toEqual({ width: 364, height: 172 });
     expect(widgetCardSize('desktop', 'quota')).toEqual({ width: 364, height: 272 });
     expect(widgetCardSize('desktop', 'compact')).toEqual({ width: 364, height: 104 });
+    expect(widgetCardSize('desktop', 'routing')).toEqual({ width: 364, height: 300 });
     expect(widgetCardSize('popover', 'usage')).toEqual({ width: 364, height: 414 });
     expect(widgetCardSize('popover', 'combo')).toEqual({ width: 364, height: 198 });
     expect(widgetCardSize('popover', 'quota')).toEqual({ width: 364, height: 298 });
     expect(widgetCardSize('popover', 'compact')).toEqual({ width: 364, height: 130 });
+    expect(widgetCardSize('popover', 'routing')).toEqual({ width: 364, height: 326 });
   });
 });

@@ -127,7 +127,7 @@ describe("WidgetSection", () => {
     expect(layout.value).toBe("quota");
     expect(
       Array.from(layout.options).map((option) => option.value),
-    ).toEqual(["usage", "combo", "quota", "compact"]);
+    ).toEqual(["usage", "combo", "quota", "compact", "routing"]);
     expect(screen.getByText(/按吃紧程度排列/)).toBeInTheDocument();
   });
 

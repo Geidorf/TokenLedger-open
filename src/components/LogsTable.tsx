@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { CalendarDays, Check, ChevronDown, ChevronRight, Copy, Filter, History, LoaderCircle, Monitor, RotateCcw, Search, Undo2, X } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, ChevronRight, Copy, Download, Filter, History, LoaderCircle, Monitor, RotateCcw, Search, Undo2, X } from 'lucide-react';
 import type { DayDrillCopy } from '../hooks/useDayDrill';
 import type { CustomDateRange, DataScope, RangeKey, UsageDetailsResponse } from '../types';
 import { colorForTool, isEstimatedLogItem, toolColorMap } from '../types';
-import { cacheDetailMetrics } from '../utils/cacheDisplay';
+import { cacheDetailMetrics, resolveCacheBreakdown } from '../utils/cacheDisplay';
 import { detailGranularityLabel, rowGranularityLabel } from '../utils/detailGranularity';
 import { formatEstimatedUsd, formatNum, formatTokens } from '../utils/format';
+import { cacheHitRate } from '../utils/usageSplit';
 import { rangeDisplayName } from '../utils/rangeDisplay';
 import { useTheme } from '../utils/useTheme';
 import { FilterMultiSelect } from './FilterMultiSelect';
@@ -46,6 +47,9 @@ interface LogsTableProps {
   onReturnFromDayDrill?: () => void;
   /** 作为用量 · 请求子页渲染时为 true：页面标题已由用量页给出，这里只留读屏与焦点落点。 */
   hasPageTitle?: boolean;
+  /** 导出当前范围与筛选下的全部行为 CSV（不只是已加载的页）；不传则不显示入口。 */
+  onExportCsv?: () => void;
+  exporting?: boolean;
 }
 
 export interface DetailActionCopy {
@@ -97,6 +101,8 @@ export function LogsTable({
   dayDrill = null,
   onReturnFromDayDrill,
   hasPageTitle = false,
+  onExportCsv,
+  exporting = false,
 }: LogsTableProps) {
   const { effective } = useTheme();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -210,6 +216,8 @@ export function LogsTable({
   }, [details, effective]);
   const facets = details?.availableFilters || { tools: [], models: [], machines: [] };
   const summary = details?.filteredSummary;
+  const summaryCacheSplit = summary ? resolveCacheBreakdown(summary) : null;
+  const summaryCacheHit = summary && summaryCacheSplit?.kind === 'split' ? cacheHitRate(summary.inputTokens, summaryCacheSplit.read) : null;
   const granularityLabel = detailGranularityLabel(details);
   const detailRetry = detailActionCopy('retry', loading);
   const detailSearch = detailActionCopy('search', loading);
@@ -375,6 +383,10 @@ export function LogsTable({
             <span>预估费用</span>
             <strong>{formatEstimatedUsd(summary.totalCost)}</strong>
           </div>
+          <div title="缓存读 ÷（输入 + 缓存读）；来源没有给出缓存读写拆分时不可得">
+            <span>缓存命中率</span>
+            <strong>{summaryCacheHit === null ? '不可得' : `${(summaryCacheHit * 100).toFixed(1)}%`}</strong>
+          </div>
         </div>
       )}
 
@@ -403,6 +415,19 @@ export function LogsTable({
             <span className="logs-result-count">
               已显示 {formatNum(details.items.length)} / {formatNum(details.totalCount)}
             </span>
+          )}
+          {onExportCsv && (
+            <button
+              type="button"
+              className="secondary-inline logs-export"
+              onClick={onExportCsv}
+              disabled={!details || details.totalCount === 0 || exporting || loading}
+              aria-busy={exporting || undefined}
+              title="导出当前范围与筛选下的全部行，不只是已显示的部分"
+            >
+              {exporting ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="h-4 w-4" aria-hidden="true" />}
+              {exporting ? '导出中…' : '导出 CSV'}
+            </button>
           )}
         </div>
 
@@ -580,6 +605,11 @@ export function LogsTable({
                                 <strong>{formatNum(metric.tokens)}</strong>
                               </div>
                             ))}
+                            {(() => {
+                              const read = cacheMetrics.find((metric) => metric.label === '缓存读取');
+                              const hit = read ? cacheHitRate(log.inputTokens, read.tokens) : null;
+                              return hit === null ? null : <div><span>缓存命中率</span><strong>{(hit * 100).toFixed(1)}%</strong></div>;
+                            })()}
                             <div><span>记录数</span><strong>{formatNum(log.requests || 1)}</strong></div>
                             <div><span>数据粒度</span><strong>{rowGranularityLabel(log, details)}</strong></div>
                             <div><span>来源</span><strong>{recordSourceLabel(log)}</strong></div>

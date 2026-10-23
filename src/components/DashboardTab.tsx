@@ -595,7 +595,7 @@ export function DashboardTab({
 
   const activeToolsList = activeTools || Object.values(stats.tools || {});
   // One tool -> colour assignment for the whole screen, computed from the
-  // same rank-ordered list that feeds ToolStrip/DonutPanel/TrendPanel, so a
+  // same rank-ordered list that feeds ToolStrip/TrendPanel, so a
   // tool reads the same colour in every panel on this tab instead of each
   // panel resolving same-slot collisions from its own, differently-ordered
   // model/point list (T10.178 review P1-1: this was the actual cause of the

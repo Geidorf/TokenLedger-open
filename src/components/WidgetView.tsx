@@ -12,8 +12,11 @@ import {
 } from '../utils/widgetConfig';
 import { buildCardModel, buildCardQuota, type CardTheme, type WidgetQuotaRead } from './widget/cardModel';
 import { LedgerCard } from './widget/LedgerCard';
+import { RoutingCard } from './widget/RoutingCard';
 import { failedWidgetQuota, readWidgetQuota } from './widget/quotaRead';
 import { DesktopToolbar, TrayTopBar, type WidgetActions } from './widget/WidgetChrome';
+import { useRoutingLive } from '../features/gateway/useRoutingLive';
+import type { RoutingFeed } from '../features/gateway/types';
 import '../styles/widget.css';
 
 /**
@@ -39,6 +42,9 @@ export function readWidgetMode(search: string = window.location.search): WidgetM
 }
 
 const VISIBLE_RECONCILE_MS = 5 * 60 * 1000;
+
+/** 「实时路由」板式的数据：挂件窗口只被授权读这一条已脱敏的网关视图。 */
+const readRoutingFeed = () => invoke<RoutingFeed>('gateway_routing_feed', { limit: 30 });
 
 interface WidgetSnapshot {
   stats: StatsData;
@@ -71,8 +77,10 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
   const rangeRef = useRef(range);
   rangeRef.current = range;
   const layout = config.layout;
-  // 「单行消耗」不画额度：不去读可能要几十秒的额度来源。换到别的板式时重新读一次。
-  const needsQuota = !(layout === 'compact');
+  // 「单行消耗」「实时路由」不画额度：不去读可能要几十秒的额度来源。换到别的板式时重新读一次。
+  const needsQuota = !(layout === 'compact' || layout === 'routing');
+  // 「实时路由」只在选了这个板式时轮询网关（挂件唯一能读的网关命令，已脱敏）。
+  const routing = useRoutingLive({ enabled: configReady && layout === 'routing', readFeed: readRoutingFeed });
   const needsQuotaRef = useRef(needsQuota);
   needsQuotaRef.current = needsQuota;
 
@@ -266,7 +274,7 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
     close: mode === 'desktop' ? removeFromDesktop : hide,
   };
   // 「额度总览」只看额度，范围分段对它没有意义，藏起来而不是留一组点了没反应的按钮。
-  const showsRange = !(layout === 'quota');
+  const showsRange = !(layout === 'quota' || layout === 'routing');
   // 工具条盖在“更新于”上：「额度与用量」的“更新于”在右栏底部，其余板式在右上角。
   const toolbarAt = layout === 'combo' ? 'bottom' : 'top';
 
@@ -296,13 +304,21 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
       {mode === 'popover' && (
         <TrayTopBar range={range} showRange={showsRange} onRange={changeRange} actions={actions} busy={busy} />
       )}
-      <LedgerCard
-        layout={layout}
-        model={model}
-        now={now}
-        noticeActions={mode === 'popover' ? { openSettings, openMain } : null}
-        toolbar={mode === 'desktop' ? <DesktopToolbar shown={hovered} at={toolbarAt} actions={actions} busy={busy} /> : null}
-      />
+      {layout === 'routing' ? (
+        <RoutingCard
+          scene={routing.scene}
+          loaded={routing.loaded}
+          toolbar={mode === 'desktop' ? <DesktopToolbar shown={hovered} at={toolbarAt} actions={actions} busy={busy} /> : null}
+        />
+      ) : (
+        <LedgerCard
+          layout={layout}
+          model={model}
+          now={now}
+          noticeActions={mode === 'popover' ? { openSettings, openMain } : null}
+          toolbar={mode === 'desktop' ? <DesktopToolbar shown={hovered} at={toolbarAt} actions={actions} busy={busy} /> : null}
+        />
+      )}
     </div>
   );
 }

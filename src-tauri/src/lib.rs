@@ -32,6 +32,9 @@ mod project_index;
 mod quota;
 pub use quota::run_claude_statusline_helper;
 mod macos_wallpaper_window;
+mod peer_live;
+mod peer_sync;
+mod peer_wire;
 mod quota_sync;
 mod scanner;
 mod session_analysis;
@@ -860,6 +863,12 @@ pub fn run() {
             commands::magpie_import::magpie_import_status,
             commands::magpie_import::magpie_import_run,
             commands::magpie_import::magpie_import_clear,
+            peer_sync::peer_sync_get_config,
+            peer_sync::peer_sync_save_config,
+            peer_sync::peer_sync_clear_config,
+            peer_sync::peer_sync_preview,
+            peer_sync::peer_sync_import_providers,
+            peer_live::peer_live_snapshot,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,
@@ -881,6 +890,7 @@ pub fn run() {
             gateway::gateway_upsert_routing_group,
             gateway::gateway_delete_routing_group,
             gateway::gateway_recent_route_decisions,
+            gateway::gateway_routing_feed,
             gateway::gateway_reveal_local_token,
             commands::get_app_version,
             commands::get_claude_statusline_command,
@@ -923,6 +933,7 @@ pub fn run() {
             models_dev::search_models_dev_prices,
             commands::get_db_info,
             commands::export_db_csv,
+            commands::export_usage_csv,
             commands::cleanup_db,
             commands::reset_local_sync,
             commands::refresh_scan,

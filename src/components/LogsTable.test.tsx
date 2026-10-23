@@ -347,3 +347,46 @@ describe('LogsTable tool colours (T10.178 review P1-1)', () => {
     expect(new Set(colors).size).toBe(1);
   });
 });
+
+describe('LogsTable 导出与缓存命中率', () => {
+  const baseProps = {
+    filters: { tools: [], models: [], machines: [], search: '' },
+    loading: false,
+    loadingMore: false,
+    error: '',
+    scope: 'local' as const,
+    range: 'today' as const,
+    onFilterChange: vi.fn(),
+    onClearFilters: vi.fn(),
+    onRetry: vi.fn(),
+    onLoadMore: vi.fn(),
+    onOpenEntity: vi.fn(),
+  };
+
+  it('summarises the cache hit rate from the filtered summary', () => {
+    render(<LogsTable {...baseProps} details={details} />);
+    const summary = document.querySelector('.details-summary') as HTMLElement;
+    // 160 ÷ (1200 + 160)
+    expect(within(summary).getByText('缓存命中率').nextElementSibling?.textContent).toBe('11.8%');
+  });
+
+  it('says the hit rate is unavailable when the summary has no read/write split', () => {
+    const { cacheReadTokens: _read, cacheWriteTokens: _write, ...legacySummary } = details.filteredSummary;
+    render(<LogsTable {...baseProps} details={{ ...details, filteredSummary: legacySummary }} />);
+    const summary = document.querySelector('.details-summary') as HTMLElement;
+    expect(within(summary).getByText('缓存命中率').nextElementSibling?.textContent).toBe('不可得');
+  });
+
+  it('offers CSV export only when wired, and disables it while exporting', () => {
+    const onExportCsv = vi.fn();
+    const { rerender } = render(<LogsTable {...baseProps} details={details} />);
+    expect(screen.queryByRole('button', { name: /导出 CSV/ })).toBeNull();
+
+    rerender(<LogsTable {...baseProps} details={details} onExportCsv={onExportCsv} />);
+    fireEvent.click(screen.getByRole('button', { name: /导出 CSV/ }));
+    expect(onExportCsv).toHaveBeenCalledTimes(1);
+
+    rerender(<LogsTable {...baseProps} details={details} onExportCsv={onExportCsv} exporting />);
+    expect(screen.getByRole('button', { name: /导出中/ })).toBeDisabled();
+  });
+});

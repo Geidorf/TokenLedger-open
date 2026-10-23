@@ -38,6 +38,9 @@ jobs:
       - name: Verify run health probe contract
         run: npm run test:run-health
 
+      - name: Verify sensitive-term matcher
+        run: node --test scripts/check-sensitive-terms.test.mjs
+
       # 中文提交主题此前只由本地 .githooks 校验：需要每个 worktree 手动执行
       # git config core.hooksPath .githooks，忘了就完全失效，--no-verify 也能绕过。
       # 见 docs/audits/collaboration-process-20260725.md §六缺口 1。
@@ -61,6 +64,8 @@ jobs:
           fi
           echo "校验范围：$RANGE"
           node scripts/check-commit-message.mjs --range "$RANGE"
+          # 公开仓库红线：本次提交消息与新增内容里不得出现竞品信息（名单只存摘要）。
+          node scripts/check-sensitive-terms.mjs --range "$RANGE"
 
   frontend-check:
     name: Frontend Contracts & Build
@@ -108,7 +113,7 @@ jobs:
   desktop-e2e:
     name: Desktop Browser E2E (Playwright)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -121,13 +126,42 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers and system dependencies
-        run: npx playwright install --with-deps chromium webkit
+      # 浏览器二进制按 lockfile 缓存，命中时跳过下载；系统依赖每次都得装。
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        run: npx playwright install chromium webkit
+
+      # runner 的 apt 镜像偶尔会卡在个别包上，一卡就把整个 job 拖到超时。
+      # 给 apt 设单次连接超时和重试，再把整个安装包一层限时重试，卡住的那次很快被掐掉重来。
+      - name: Configure apt timeouts and retries
+        run: |
+          printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' \
+            | sudo tee /etc/apt/apt.conf.d/80-ci-retries
 
       # 截图基线依赖系统字体：样式的字体栈含 Inter，runner 默认没装就会回退到别的
       # 无衬线字体，整页文字像素都变。这里装与生成基线的 Ubuntu 24.04 环境相同的字体集。
-      - name: Install fonts used by the screenshot baselines
-        run: sudo apt-get install -y --no-install-recommends fonts-inter fonts-jetbrains-mono fonts-dejavu-core fonts-dejavu-mono fonts-liberation fonts-noto-color-emoji fonts-wqy-zenhei
+      - name: Install browser system dependencies and baseline fonts
+        timeout-minutes: 25
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 420 npx playwright install-deps chromium webkit \
+              && timeout 300 sudo apt-get install -y --no-install-recommends fonts-inter fonts-jetbrains-mono fonts-dejavu-core fonts-dejavu-mono fonts-liberation fonts-noto-color-emoji fonts-wqy-zenhei; then
+              exit 0
+            fi
+            echo "::warning::系统依赖安装第 ${attempt} 次失败或超时，重试"
+            # 被掐掉时可能停在解包阶段，先把半装的包配置完再重来；已下载的 .deb 留在缓存里会复用。
+            sudo dpkg --configure -a || true
+            sleep 10
+          done
+          exit 1
 
       - name: Type-check E2E specs
         run: npm run typecheck:e2e

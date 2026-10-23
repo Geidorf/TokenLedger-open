@@ -98,6 +98,20 @@ export interface RouteDecision {
   attempts: RouteAttempt[];
 }
 
+/**
+ * `gateway_routing_feed`: the redacted view the live routing stage draws in
+ * the widget windows (no session, error body, decision detail or tokens).
+ */
+export type RoutingFeedDecision = Pick<RouteDecision, 'ts' | 'requestId' | 'group' | 'chosen'> & {
+  attempts: Array<Pick<RouteAttempt, 'member' | 'outcome' | 'status'>>;
+};
+export type RoutingFeedRequest = Pick<LedgerRecord, 'ts' | 'requestId' | 'logicalRequestId' | 'agent' | 'provider' | 'requestedModel' | 'upstreamModel' | 'group' | 'status' | 'ok'>;
+export interface RoutingFeed {
+  running: boolean;
+  decisions: RoutingFeedDecision[];
+  requests: RoutingFeedRequest[];
+}
+
 export interface AgentBackup {
   createdAt: string;
   originalExisted: boolean;

@@ -1,0 +1,9 @@
+{
+  "format": "@FORMAT@",
+  "version": 1,
+  "kdf": "pbkdf2-sha256",
+  "iterations": 600000,
+  "salt": "MDEyMzQ1Njc4OWFiY2RlZg==",
+  "nonce": "bm9uY2UtMTJieXRl",
+  "data": "srqM0kYYedUyetJRtzR1AVkprwYJKRmVqH/W3LJsXPLqbRnsCtT9eDQQBLCLwnxkQeHTcA/Y1wZqRe8l2g+mxYjaa1rc076u77vulO5q65+2xzqhsVQy4xyoTuGO3RO7wjlmf6+hKApPR1q08aHmnPyg1hVrIHioj7O3yA9muGUADlyu/UBhWFf4yvav4Utm77R3w7dDBL5s0N9x2JYcrYai7+371+bQnk/7inn2XISWeoe+WPClsKASAAOj1sWo/SSVBAdrOME2QPNOxlr9Txay2u984u85gI8+z6HRl8km1ELmTZk8Ow93oQzwLWMnpELe+od6ufAx+zwAJQfBeMsz/6QyohSdiBJi3aF9vzadFxV6ucRJidL8M5YOHu/P5paqupZNzSHDxtaz/v1QL/Ha7hShn3ZVtvNPYzFWL4mVLNWncFMwOe/9gQpyXWhOG2BIrE0dve7hhQIkc4qJXxAIz/vYnTRfSQEX3LIrCnOSJn/k3zOSx0FacEf1cKFv85aMdLM1c7kO6D1GBltN0N4NF1HLCxNe72C+BODTd7iOV0oR7XLpjn6U7YlirgZ91KgPDBz4wlqMWob5ewuwjDrGGuSWWlFokQv3TVdhA2hnW0hJVOETjXjwGXY8fLxY3V+hr4xirYCSzYRc/kEYxnR1Ea6h7IbFQ2Ol5dbnyXzVF88w/1qrKXnox8aJcHpfHuoGMwmegXdV+Pti9RM6vk1+2tJsj8Z6PRdfLBfHusZJ3o3Zh6z62dM0CoqbdUAz+zjEj3K15fQGcmiy79yWpGoSRtLb6crPdI+qZ21vNvzd1p6KfFGup0/pVWJymYMy"
+}
