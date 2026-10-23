@@ -155,17 +155,29 @@ export function useUsageDetails({
    */
   const exportDetailsCsv = useCallback(async (): Promise<{ message: string; path: string }> => {
     if (!details) throw new Error('明细尚未加载，无法导出');
+    // 退出登录、切换数据源或改筛选都会让 `detailRequestId` 前进；导出途中一旦变了就放弃，
+    // 不把旧账号或旧筛选的数据写到磁盘。
+    const generation = detailRequestId.current;
+    const assertCurrent = () => {
+      if (detailRequestId.current !== generation) throw new Error('导出期间数据范围或登录状态已变化，已取消导出');
+    };
     setDetailsExporting(true);
     try {
-      const { items, truncated } = await collectAllDetails((cursor) => fetchDetailsPage(cursor, 100));
-      const result = await invoke<{ message: string; path: string }>('export_usage_csv', { content: requestsToCsv(items) });
+      const { items, truncated } = await collectAllDetails(async (cursor) => {
+        assertCurrent();
+        const page = await fetchDetailsPage(cursor, 100);
+        assertCurrent();
+        return page;
+      });
+      assertCurrent();
+      const result = await invoke<{ message: string; path: string }>('export_usage_csv', { content: requestsToCsv(items, dataScope) });
       return truncated
         ? { ...result, message: `${result.message}（已达单次上限 ${REQUESTS_CSV_MAX_ROWS.toLocaleString('zh-CN')} 行，请缩小范围导出其余部分）` }
         : result;
     } finally {
       setDetailsExporting(false);
     }
-  }, [details, fetchDetailsPage]);
+  }, [dataScope, details, fetchDetailsPage]);
 
   const updateDetailFilter = useCallback((key: keyof DetailFilters, value: string | string[]) => {
     setDetailFilters((previous) => ({ ...previous, [key]: value }) as DetailFilters);

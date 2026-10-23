@@ -54,6 +54,13 @@ describe('requestsToCsv', () => {
     expect(combined[REQUESTS_CSV_COLUMNS.indexOf('cached_tokens')]).toBe('120');
   });
 
+  it('leaves cloud provenance blank instead of claiming the row was scanned', () => {
+    const at = (row: string, column: (typeof REQUESTS_CSV_COLUMNS)[number]) => row.split(',')[REQUESTS_CSV_COLUMNS.indexOf(column)];
+    expect(at(requestCsvRow(item(), 'local'), 'source')).toBe('scan');
+    expect(at(requestCsvRow(item(), 'cloud'), 'source')).toBe('');
+    expect(at(requestCsvRow(item({ source: 'gateway' }), 'cloud'), 'source')).toBe('gateway');
+  });
+
   it('quotes separators and neutralises spreadsheet formulas', () => {
     const row = requestCsvRow(item({ model: 'a,"b"', sessionId: '=HYPERLINK("x")' }));
     expect(row).toContain('"a,""b"""');

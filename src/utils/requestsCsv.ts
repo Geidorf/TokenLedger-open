@@ -1,4 +1,4 @@
-import type { LogHistoryItem, UsageDetailsResponse } from '../types';
+import type { DataScope, LogHistoryItem, UsageDetailsResponse } from '../types';
 import { isEstimatedLogItem } from '../types';
 import { resolveCacheBreakdown } from './cacheDisplay';
 import { cacheHitRate } from './usageSplit';
@@ -23,7 +23,7 @@ export const REQUESTS_CSV_COLUMNS = [
   'cached_tokens',
   'cache_hit_rate',
   'cost_usd',
-  'cost_estimated',
+  'usage_estimated',
   'session_id',
   'machine_id',
 ] as const;
@@ -39,7 +39,11 @@ function csvCell(value: string | number | null | undefined): string {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-export function requestCsvRow(item: LogHistoryItem): string {
+/**
+ * `source`：本机明细缺省即扫描（契约 §2.5）；云端小时聚合可能混有网关与扫描记录且不带来源，留空不猜。
+ * `usage_estimated`：Token 用量是否为约数（来源日志未给精确用量），不是费用是否按价格表估算。
+ */
+export function requestCsvRow(item: LogHistoryItem, scope: DataScope = 'local'): string {
   const cache = resolveCacheBreakdown(item);
   const read = cache.kind === 'split' ? cache.read : null;
   const hit = read === null ? null : cacheHitRate(item.inputTokens, read);
@@ -48,7 +52,7 @@ export function requestCsvRow(item: LogHistoryItem): string {
     item.tool,
     item.model,
     item.provider,
-    item.source ?? 'scan',
+    item.source ?? (scope === 'local' ? 'scan' : null),
     item.granularity ?? 'request',
     item.requests || 1,
     item.inputTokens,
@@ -65,8 +69,8 @@ export function requestCsvRow(item: LogHistoryItem): string {
   return cells.map(csvCell).join(',');
 }
 
-export function requestsToCsv(items: LogHistoryItem[]): string {
-  return [REQUESTS_CSV_COLUMNS.join(','), ...items.map(requestCsvRow)].join('\n') + '\n';
+export function requestsToCsv(items: LogHistoryItem[], scope: DataScope = 'local'): string {
+  return [REQUESTS_CSV_COLUMNS.join(','), ...items.map((item) => requestCsvRow(item, scope))].join('\n') + '\n';
 }
 
 export interface CollectedDetails {

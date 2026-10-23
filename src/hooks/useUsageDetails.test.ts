@@ -241,4 +241,27 @@ describe('useUsageDetails 导出 CSV', () => {
     expect(((exportCall?.[1] as { content: string }).content).trimEnd().split('\n')).toHaveLength(3);
     expect(result.current.detailsExporting).toBe(false);
   });
+
+  it('abandons the export without writing when sign-out or a new query invalidates it mid-way', async () => {
+    let hookRef: { current: ReturnType<typeof useUsageDetails> } | null = null;
+    invokeMock.mockImplementation(async (cmd: string, args: { query?: Record<string, unknown> }) => {
+      if (cmd === 'export_usage_csv') return { message: 'x', path: 'x' };
+      const { scope: _scope, cursor, limit: _limit, ...echo } = args.query!;
+      // 第二页返回前模拟退出登录：App 会推进 detailRequestId。
+      if (cursor === 'c1') hookRef!.current.detailRequestId.current += 1;
+      return detailsPage(cursor ? 2 : 1, cursor ? null : 'c1', echo);
+    });
+    const { result } = renderHook((props) => useUsageDetails(props), {
+      initialProps: { ...cloudMonthProps, dataScope: 'local' as DataScope, stats: null as StatsData | null },
+    });
+    hookRef = result;
+    await act(async () => {
+      await result.current.loadDetails();
+    });
+    await act(async () => {
+      await expect(result.current.exportDetailsCsv()).rejects.toThrow('已取消导出');
+    });
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === 'export_usage_csv')).toBe(false);
+    expect(result.current.detailsExporting).toBe(false);
+  });
 });
