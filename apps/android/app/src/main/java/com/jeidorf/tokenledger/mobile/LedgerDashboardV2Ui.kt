@@ -13,6 +13,7 @@ import com.jeidorf.tokenledger.mobile.ui.charts.V2DailyCostsPreviewContent as Mo
 import com.jeidorf.tokenledger.mobile.ui.controls.V2CustomRangeDialogPreviewContent as ModularV2CustomRangeDialogPreviewContent
 import com.jeidorf.tokenledger.mobile.ui.controls.V2FilterSheetPreviewContent as ModularV2FilterSheetPreviewContent
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette as ModularMobileV2Palette
+import com.jeidorf.tokenledger.mobile.ui.me.V2MePage
 import com.jeidorf.tokenledger.mobile.ui.navigation.InsightPane as ModularInsightPane
 import com.jeidorf.tokenledger.mobile.ui.navigation.MobileDestination as ModularMobileDestination
 import com.jeidorf.tokenledger.mobile.ui.navigation.TodayReviewAction as ModularTodayReviewAction
@@ -328,7 +329,8 @@ internal fun LedgerDashboardV2Screen(
     onReturnFromDay: () -> Unit = {},
     initialDestination: MobileDestination = MobileDestination.Usage,
     initialInsightPane: InsightPane = InsightPane.Overview,
-    initialSettingsVisible: Boolean = false
+    initialSettingsVisible: Boolean = false,
+    initialMePage: V2MePage = V2MePage.Root
 ) {
     ModularLedgerDashboardV2Screen(
         state = state,
@@ -361,7 +363,8 @@ internal fun LedgerDashboardV2Screen(
         onReturnFromDay = onReturnFromDay,
         initialDestination = initialDestination,
         initialInsightPane = initialInsightPane,
-        initialSettingsVisible = initialSettingsVisible
+        initialSettingsVisible = initialSettingsVisible,
+        initialMePage = initialMePage
     )
 }
 
