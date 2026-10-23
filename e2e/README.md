@@ -53,7 +53,7 @@ test('取数失败', async ({ page, ipc }) => {
 
 ## 截图基线
 
-基线放在 `e2e/__screenshots__/` 并入库（与 Android 的截图回归参考图一样，属于测试输入，不是验收证据）。字体光栅化随系统变化，所以只在 Linux Chromium 上生成和比对；`@playwright/test` 钉在精确版本，浏览器构建跟着固定。
+基线放在 `e2e/__screenshots__/` 并入库（与 Android 的截图回归参考图一样，属于测试输入，不是验收证据）。字体光栅化随系统变化，所以只在 Linux Chromium 上生成和比对，生成环境是 Ubuntu 24.04 并装了 `fonts-inter`、`fonts-jetbrains-mono`、`fonts-dejavu-*`、`fonts-liberation`、`fonts-noto-color-emoji`、`fonts-wqy-zenhei`（CI 的 desktop-e2e job 装同一套；本机重生成基线前先装齐，否则整页文字会变）；`@playwright/test` 钉在精确版本，浏览器构建跟着固定。
 
 有意改变画面时：
 
