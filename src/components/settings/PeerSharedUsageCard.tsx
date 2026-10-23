@@ -102,7 +102,6 @@ export function PeerSharedUsageCard() {
     });
   };
 
-  const counting = Boolean(listing?.last?.computers.length) || Boolean(listing?.computers.some((c) => c.enabled));
   return (
     <SettingsCard title="其他电脑的共享用量">
       <SettingsGroup>
@@ -116,12 +115,11 @@ export function PeerSharedUsageCard() {
             {busy === 'list' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
             {busy === 'list' ? '读取中…' : '查看共享用量的电脑'}
           </button>
-          {counting && (
-            <button className="secondary-inline" type="button" onClick={() => void clear()} disabled={busy !== null}>
-              <Trash2 className="h-4 w-4" />
-              {busy === 'clear' ? '清除中…' : '停止统计并清除'}
-            </button>
-          )}
+          {/* 不依赖服务器：离线或改了密码也能停止统计并删除本机副本。 */}
+          <button className="secondary-inline" type="button" onClick={() => void clear()} disabled={busy !== null}>
+            <Trash2 className="h-4 w-4" />
+            {busy === 'clear' ? '清除中…' : '停止统计并清除'}
+          </button>
         </SettingsActionRow>
         {listing && listing.computers.length > 0 && (
           <div className="settings-peer-preview" aria-label="共享用量的电脑">

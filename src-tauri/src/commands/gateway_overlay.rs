@@ -21,7 +21,7 @@ use crate::gateway::{accounting, LedgerRecord};
 /// end-time match plus up to 1 s of second truncation on each side, plus 1 s.
 pub(super) const DEDUPE_WINDOW_SECS: i64 = 5;
 const LEDGER_FILES: [&str; 2] = ["usage-v1.jsonl.1", "usage-v1.jsonl"];
-const SYNTHETIC_SESSION_PREFIX: &str = "gateway:";
+pub(super) const SYNTHETIC_SESSION_PREFIX: &str = "gateway:";
 
 /// Where a merged row came from: TokenLedger's own gateway, or magpie's
 /// `usage.jsonl` imported by the user (`magpie_import`).

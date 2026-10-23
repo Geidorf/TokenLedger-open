@@ -148,7 +148,8 @@ fn rows_keep_session_tool_and_tokens() {
     assert_eq!(row.source, RowSource::SharedPeer);
     assert_eq!(row.machine_id.as_deref(), Some("peer:aa"));
     assert!(!row.real_session);
-    assert_eq!(row.session_id, row.request_id);
+    assert!(gateway_overlay::is_synthetic_session(&row.session_id));
+    assert!(row.session_id.ends_with(&row.request_id));
     assert_eq!((row.input_tokens, row.output_tokens), (7, 3));
     assert_eq!(row.timestamp, "2026-10-20 09:30:00");
     assert_eq!(row.start_timestamp, "2026-10-20 09:29:58");

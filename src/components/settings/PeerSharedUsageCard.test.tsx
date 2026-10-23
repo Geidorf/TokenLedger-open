@@ -52,8 +52,16 @@ describe('PeerSharedUsageCard', () => {
     fireEvent.click(screen.getByRole('button', { name: '停止统计并清除' }));
     expect(await screen.findByText(/已停止统计其他电脑的用量/)).toBeInTheDocument();
     expect(vi.mocked(invoke)).toHaveBeenCalledWith('peer_sync_shared_clear');
-    await waitFor(() => expect(screen.queryByRole('button', { name: '停止统计并清除' })).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: '不统计任何电脑' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '不统计任何电脑' })).toBeInTheDocument());
+  });
+
+  it('不连服务器也能停止统计', async () => {
+    vi.mocked(invoke).mockResolvedValue(null);
+    render(<PeerSharedUsageCard />);
+    fireEvent.click(screen.getByRole('button', { name: '停止统计并清除' }));
+    expect(await screen.findByText(/已停止统计其他电脑的用量/)).toBeInTheDocument();
+    expect(vi.mocked(invoke)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('peer_sync_shared_clear');
   });
 
   it('显示服务器错误', async () => {

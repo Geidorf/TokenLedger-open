@@ -266,8 +266,9 @@ pub(super) fn call_to_row(
         tool: gateway_overlay::tool_for_agent(agent.as_deref()),
         model: call.model.clone(),
         provider: call.provider.clone(),
+        // No session: a synthetic one, left out of session statistics.
         session_id: if call.session.is_empty() {
-            request_id.clone()
+            format!("{}{request_id}", gateway_overlay::SYNTHETIC_SESSION_PREFIX)
         } else {
             call.session.clone()
         },
