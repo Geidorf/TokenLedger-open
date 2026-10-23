@@ -22,6 +22,7 @@ import type { ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStr
 import { Sheet } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 import { RoutingStage, RoutingStageEmpty } from './RoutingStage';
+import { DecisionTrace } from './DecisionTrace';
 import { readExternalGateway, useRoutingLive } from './useRoutingLive';
 
 interface PageProps {
@@ -249,6 +250,12 @@ function DecisionList({ decisions }: { decisions: RouteDecision[] }) {
                 </span>
               ))}
             </div>
+          )}
+          {decision.trace && decision.trace.length > 0 && (
+            <details className="mw-trace-toggle">
+              <summary>为什么这样选（{decision.trace.length} 个成员）</summary>
+              <DecisionTrace decision={decision} />
+            </details>
           )}
         </li>
       ))}

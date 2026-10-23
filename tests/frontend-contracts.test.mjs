@@ -192,13 +192,12 @@ test('看板刷新入口根据本地或云端动作暴露准确的进行中文�
   );
 });
 
-test('侧栏云端同步入口在进行期间暴露动作级反馈并锁定重复工作', () => {
+test('顶栏云端同步入口在进行期间暴露动作级反馈并锁定重复工作', () => {
   const source = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  assert.match(source, /const syncActionLabel = busy\.sync \? '同步中…' : '同步';/);
   assert.match(source, /const syncActionAriaLabel = busy\.sync[\s\S]*?正在同步云端数据[\s\S]*?请先检查云端状态[\s\S]*?立即同步云端/);
   assert.match(source, /aria-label=\{syncActionAriaLabel\}[\s\S]*disabled=\{syncDisabled\}[\s\S]*aria-busy=\{busy\.sync \|\| undefined\}/);
   assert.match(source, /title=\{syncActionTitle\}/);
-  assert.match(source, /\{syncActionLabel\}/);
+  assert.match(source, /<Cloud className=\{`h-4 w-4 \$\{busy\.sync \? 'animate-spin' : ''\}`\}/);
 });
 
 test('明细加载、搜索和分页入口暴露准确的进行中文案', () => {
@@ -969,10 +968,11 @@ test('Android dashboard range and insight selectors expose one selected radio op
   assert.match(rangeSelector, /selected = query\.range == RangeKey\.Custom[\s\S]*?role = Role\.RadioButton[\s\S]*?stateDescription = if \(query\.range == RangeKey\.Custom\) "已选择" else "未选择"/);
   const rangeOption = block('V2RangeOption', 'V2QueryContext', 'V2FilterButton');
   assert.match(rangeOption, /this\.selected = active[\s\S]*?role = Role\.RadioButton[\s\S]*?stateDescription = if \(active\) "已选择" else "未选择"/);
-  // T10.130 把四种双态切换收敛成一个 V2SegmentedToggle，洞察页签也走它。
-  // 语义保证从这里移到共享控件里，所以两边都查。
+  // 重构 R2 把用量子页签换成下划线页签：不再走分段控件，单选语义在它自己身上查。
   const insightStrip = block('V2InsightStrip');
-  assert.match(insightStrip, /V2SegmentedToggle\([\s\S]*?role = Role\.RadioButton/);
+  assert.match(insightStrip, /\.semantics \{ selectableGroup\(\) \}/);
+  assert.match(insightStrip, /val active = pane == selected/);
+  assert.match(insightStrip, /\.clickable\(enabled = enabled, role = Role\.Tab\)[\s\S]*?this\.selected = active[\s\S]*?stateDescription = if \(active\) "已选择" else "未选择"/);
   const segmented = block('V2SegmentedToggle');
   assert.match(segmented, /\.semantics \{ selectableGroup\(\) \}/);
   assert.match(segmented, /val active = option\.value == selected/);
@@ -985,7 +985,8 @@ test('Android 导航复用分段控件，内容指标直接点击切换', () => 
   const androidUi = readAndroidDashboardUi();
 
   assert.equal((androidUi.match(/(?:private|internal) fun <T> V2SegmentedToggle\(/gu) ?? []).length, 1);
-  for (const caller of ['V2MetricModeToggle', 'V2CurrencyToggle', 'V2InsightStrip']) {
+  // 用量子页签（V2InsightStrip）自重构 R2 起是下划线页签，不在此列。
+  for (const caller of ['V2MetricModeToggle', 'V2CurrencyToggle']) {
     assert.match(androidUiDeclaration(caller), /V2SegmentedToggle\(/u, `${caller} 没走共享分段控件`);
   }
   // Token 口径不走分段控件：REQ-ANDROID-01 要求它「向 TalkBack 暴露 Switch 状态，不额外侵占一整行
@@ -3432,19 +3433,18 @@ test('云端账户与连接配置动作在提交期间暴露进行中语义', ()
   assert.match(cloud, /<SettingsActionRow busy=\{props\.busy\.auth\}>/);
 });
 
-test('sidebar status changes are announced without making action buttons live content', () => {
+test('top bar status changes are announced without making action buttons live content', () => {
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  assert.match(sidebar, /className="sidebar-status-header"[\s\S]*role="status"[\s\S]*aria-live="polite"[\s\S]*aria-atomic="true"/);
-  assert.doesNotMatch(sidebar, /className="sidebar-status-card" role="status"/);
+  assert.match(sidebar, /className="topbar-status"[\s\S]*role="status"[\s\S]*aria-live="polite"[\s\S]*aria-atomic="true"/);
+  assert.doesNotMatch(sidebar, /className="topbar-actions"[^>]*role="status"/);
 });
 
-test('sidebar scan action exposes a visible and accessible busy state', () => {
+test('top bar scan action exposes a visible and accessible busy state', () => {
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  assert.match(sidebar, /const scanActionLabel = busy\.scan \? '扫描中…' : '扫描';/);
   assert.match(sidebar, /const scanActionAriaLabel = busy\.scan \? '正在扫描本地各 AI 工具日志' : '扫描本地日志';/);
   assert.match(sidebar, /aria-label=\{scanActionAriaLabel\}[\s\S]*disabled=\{busy\.scan\}[\s\S]*aria-busy=\{busy\.scan \|\| undefined\}/);
   assert.match(sidebar, /aria-label=\{scanActionAriaLabel\}[\s\S]*data-tooltip=\{scanActionTitle\}/);
-  assert.match(sidebar, /title=\{scanActionTitle\}[\s\S]*<span>\{scanActionLabel\}<\/span>/);
+  assert.match(sidebar, /<RefreshCw className=\{`h-4 w-4 \$\{busy\.scan \? 'animate-spin' : ''\}`\}/);
 });
 
 test('看板同步与恢复入口共享进行中语义', () => {
@@ -3535,47 +3535,29 @@ test('cloud sync entry points share the Stats v2 capability gate', () => {
   assert.match(cloud, /!props\.setup\.capabilityVerified/);
 });
 
-test('sidebar quick actions preserve a 44px target across desktop and narrow rail', () => {
-  const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
+test('top bar segments and icon actions preserve a 44px target (GLB-03)', () => {
+  const shell = readSource(path.join(process.cwd(), 'src', 'styles', 'shell.css'));
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  const sidebarButtonStart = css.lastIndexOf('.sidebar-compact-btn {');
-  const sidebarButtonEnd = css.indexOf('\n}', sidebarButtonStart) + 2;
-  const sidebarButtonBlock = css.slice(sidebarButtonStart, sidebarButtonEnd);
-  assert.match(sidebarButtonBlock, /min-block-size:\s*44px;/);
-  const narrowBlock = css.slice(css.indexOf('@media (max-width: 860px)'));
-  assert.match(narrowBlock, /\.sidebar-status-actions \{[\s\S]*flex-direction:\s*column;[\s\S]*align-items:\s*center;/);
-  assert.match(narrowBlock, /\.sidebar-status-card \{[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*padding:\s*4px;/);
-  assert.match(narrowBlock, /\.sidebar-footer-version \{[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*overflow:\s*hidden;/);
-  assert.match(narrowBlock, /\.sidebar-compact-btn \{[\s\S]*width:\s*44px;[\s\S]*min-height:\s*44px;/);
-  assert.match(narrowBlock, /\.sidebar-compact-btn \{[\s\S]*min-width:\s*0;/);
-  assert.match(narrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn \{[\s\S]*flex-direction:\s*row;[\s\S]*gap:\s*0;/);
-  assert.match(narrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn > span,\s*\.sidebar-status-recovery > span \{[\s\S]*position:\s*absolute;[\s\S]*clip-path:\s*inset\(50%\);/);
-  assert.match(css, /@media \(max-width: 860px\) \{\n  \.app-sidebar \.sidebar-group-title \{[^}]*height: 1px;[^}]*font-size: 0;/);
-  assert.match(narrowBlock, /\.sidebar-tool-item,[\s\S]*\.sidebar-wallpaper-btn \{[\s\S]*min-height:\s*44px;/);
+  assert.match(shell, /\.topbar-nav > button,\n\.usage-subnav > button \{[^}]*min-height: 44px;/);
+  assert.match(shell, /\.topbar-icon-btn,\n\.topbar-text-btn \{[^}]*min-height: 44px;/);
+  assert.match(shell, /\.topbar-icon-btn,\n\.topbar-text-btn \{[^}]*min-width: 44px;/);
+  assert.match(shell, /\n\.topbar-icon-btn \{\n  width: 44px;/);
+  const surfaces = readSource(path.join(process.cwd(), 'src', 'styles', 'surfaces.css'));
+  assert.match(surfaces, /\n\.app-header \.theme-toggle \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
+  // The actions column never shrinks under its content, so it cannot overlap the switch.
+  assert.match(shell, /\n\.app-topbar \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto minmax\(max-content, 1fr\);/);
+  // The visible thumb, track and hover fill are drawn inset, not the hit area.
+  assert.match(shell, /--seg-inset-y: 8px;/);
+  assert.match(shell, /\.topbar-icon-btn::after,\n\.topbar-text-btn::after \{[^}]*inset: 8px 7px;/);
   assert.match(sidebar, /role="group" aria-label="快捷工具与战报"/);
-  assert.match(sidebar, /aria-label=\{item\.label\}[\s\S]*title=\{item\.label\}/);
   assert.match(sidebar, /aria-label="生成数据战报卡片"[\s\S]*title="生成数据战报卡片"/);
-  assert.match(sidebar, /sidebar-wallpaper-row" role="group" aria-label="快捷设置壁纸" aria-busy=\{wallpaperBusy \|\| undefined\}/);
-  assert.match(sidebar, /const wallpaperActionLabel = wallpaperBusy \? '设置中…' : '桌面壁纸';/);
   assert.match(sidebar, /aria-label=\{wallpaperBusy \? '正在设置桌面壁纸' : '一键设置桌面壁纸'\}/);
-  assert.match(sidebar, /wallpaperBusy \? <LoaderCircle className="h-3\.5 w-3\.5 animate-spin" \/> : <ImageIcon/);
   assert.match(sidebar, /aria-label=\{wallpaperBusy \? '正在设置锁屏壁纸' : '一键设置锁屏壁纸'\}/);
-  assert.match(sidebar, /className="sidebar-status-compact-label" aria-hidden="true"/);
+  assert.match(sidebar, /className="topbar-status-label" aria-hidden="true"/);
   assert.match(sidebar, /title=\{cloudStatusLabel\}/);
-  assert.match(narrowBlock, /\.app-sidebar \.sidebar-status-text \{[\s\S]*display:\s*block;[\s\S]*clip-path:\s*inset\(50%\);/);
-  assert.match(narrowBlock, /\.app-sidebar \.sidebar-status-compact-label \{[\s\S]*display:\s*inline;/);
-  assert.match(narrowBlock, /\.sidebar-status-recovery \{[\s\S]*min-width:\s*0;/);
-  const finalNarrowBlock = css.slice(css.lastIndexOf('@media (max-width: 860px)'));
-  assert.match(finalNarrowBlock, /\.sidebar-status-card \{[\s\S]*padding:\s*4px;/);
-  assert.match(finalNarrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn \{[\s\S]*width:\s*44px;[\s\S]*min-width:\s*44px;[\s\S]*min-height:\s*44px;/);
-  assert.match(finalNarrowBlock, /\.sidebar-status-recovery \{[\s\S]*width:\s*44px;[\s\S]*min-width:\s*44px;[\s\S]*max-width:\s*44px;/);
-  assert.match(finalNarrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn,\s*\.sidebar-status-recovery \{[\s\S]*flex-direction:\s*row;[\s\S]*gap:\s*0;/);
-  assert.match(finalNarrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn > span,\s*\.sidebar-status-recovery > span \{[\s\S]*position:\s*absolute;[\s\S]*clip-path:\s*inset\(50%\);/);
-  assert.match(finalNarrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn\[data-tooltip\],[\s\S]*\.sidebar-status-recovery\[data-tooltip\] \{[\s\S]*position:\s*relative;/);
-  assert.match(finalNarrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn\[data-tooltip\]::after,[\s\S]*\.sidebar-status-recovery\[data-tooltip\]::after \{[\s\S]*content:\s*attr\(data-tooltip\)[\s\S]*opacity:\s*0;/);
-  assert.match(finalNarrowBlock, /\.sidebar-status-actions \.sidebar-compact-btn\[data-tooltip\]:hover::after,[\s\S]*\.sidebar-status-recovery\[data-tooltip\]:focus-visible::after \{[\s\S]*opacity:\s*1;/);
   assert.match(sidebar, /aria-label=\{syncActionAriaLabel\}[\s\S]*data-tooltip=\{syncActionTitle\}/);
   assert.match(sidebar, /aria-label=\{syncRecoveryAriaLabel\}[\s\S]*data-tooltip=\{syncRecoveryLabel\}/);
+  assert.match(sidebar, /id="sidebar-sync-recovery-hint"/);
 });
 
 test('侧栏紧凑布局：二级入口统一 44px，快捷工具桌面并排，恢复原因只留给读屏（T10.300e）', () => {
@@ -3588,26 +3570,15 @@ test('侧栏紧凑布局：二级入口统一 44px，快捷工具桌面并排，
   assert.match(sidebar, /id="sidebar-sync-recovery-hint"/);
 });
 
-test('侧栏底色与滚动提示：浏览器不透明、只有原生窗口毛玻璃，溢出端用遮罩渐隐（T10.277）', () => {
-  const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
+test('顶栏底色：浏览器不透明，只有原生 macOS 窗口标记毛玻璃（T10.277 延续）', () => {
+  const shell = readSource(path.join(process.cwd(), 'src', 'styles', 'shell.css'));
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  // 半透明的 --color-bg-sidebar 只给真实 macOS Tauri 窗口；其余表面用不透明的 --sidebar-fill。
-  assert.match(css, /\.app-sidebar \{\n    --sidebar-fill: var\(--color-bg-page\);[^}]*background: var\(--sidebar-fill\);/);
-  assert.match(css, /:root\[data-platform='macos'\] \.app-sidebar \{[^}]*background: var\(--sidebar-fill\);/);
-  assert.doesNotMatch(css.match(/:root\[data-platform='macos'\] \.app-sidebar \{[^}]*\}/)[0], /backdrop-filter/);
-  assert.match(css, /:root\[data-platform='macos'\] \.app-sidebar\[data-vibrancy='native'\] \{[^}]*background: var\(--color-bg-sidebar\);[^}]*backdrop-filter: blur/);
+  assert.match(shell, /\n\.app-topbar \{[^}]*background: var\(--color-bg-page\);/);
+  assert.match(shell, /\.app-topbar\[data-vibrancy="native"\] \{[^}]*background: var\(--color-bg-header\);/);
+  // macOS Overlay titlebar: the brand clears the window controls.
+  assert.match(shell, /:root\[data-platform='macos'\] \.app-topbar \{[^}]*padding-left: 84px;/);
   assert.match(sidebar, /data-vibrancy=\{nativeVibrancy \? 'native' : undefined\}/);
-  assert.match(sidebar, /__TAURI_INTERNALS__\?\.metadata\?\.currentWindow\?\.label|internals\?\.metadata\?\.currentWindow\?\.label/);
-  // 不再用半透明遮盖层叠在 --color-bg-app 上（两条深色横带的来源）。
-  const scrollBlock = css.match(/\n  \.sidebar-scroll \{[^}]*\}/)[0];
-  assert.doesNotMatch(scrollBlock, /background/);
-  assert.doesNotMatch(css, /linear-gradient\(var\(--color-bg-app\), var\(--color-bg-app\)\)/);
-  assert.match(css, /\.sidebar-scroll\[data-fade-top\],\n  \.sidebar-scroll\[data-fade-bottom\] \{[^}]*mask-image: linear-gradient/);
-  assert.match(sidebar, /data-fade-top=\{scrollEdges\.top \|\| undefined\}/);
-  assert.match(sidebar, /data-fade-bottom=\{scrollEdges\.bottom \|\| undefined\}/);
-  // 二级入口不画导引竖线，选中态与一级入口同色。
-  assert.doesNotMatch(css, /\.nav-sub-item::after/);
-  assert.match(css, /\.app-sidebar \.nav-sub-item:hover,\n\.app-sidebar \.nav-sub-item\.nav-item-active \{\s*color: var\(--color-text-primary\);/);
+  assert.match(sidebar, /internals\?\.metadata\?\.currentWindow\?\.label/);
 });
 
 test('danger settings actions preserve the shared 44px touch target', () => {

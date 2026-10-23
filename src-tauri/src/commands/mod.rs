@@ -8139,6 +8139,46 @@ fn query_filtered_summary_with_entity(
     Ok(summary)
 }
 
+/// 筛选范围内带耗时的网关与导入行：(行数, 输出 Token, 耗时毫秒)。没有这样的行时为 `None`。
+fn query_timed_output_summary(
+    conn: &Connection,
+    query: &NormalizedStatsQuery,
+    bounds: &QueryBounds,
+    entity: Option<&NormalizedEntitySelector>,
+) -> Result<Option<(i64, i64, i64)>, String> {
+    let mut sql = "SELECT COUNT(*), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(latency_ms), 0) \
+                   FROM temp.gw_rows WHERE latency_ms > 0 AND output_tokens > 0 \
+                   AND id IN (SELECT id FROM token_logs WHERE 1 = 1"
+        .to_string();
+    let mut values = Vec::new();
+    append_stats_filters_with_entity(
+        &mut sql,
+        &mut values,
+        bounds.current_start.as_ref(),
+        &bounds.current_end,
+        query,
+        entity,
+    );
+    sql.push(')');
+    let (requests, output, latency): (i64, i64, i64) = conn
+        .query_row(&sql, params_from_iter(values.iter()), |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(|e| e.to_string())?;
+    Ok((requests > 0).then_some((requests, output, latency)))
+}
+
+/// 契约 §2.5：有带耗时的行时，合计另带 `timedRequests` / `timedOutputTokens` / `timedLatencyMs`。
+fn filtered_summary_json(summary: &SummaryAccumulator, timed: Option<(i64, i64, i64)>) -> Value {
+    let mut value = summary.as_json();
+    if let (Some((requests, output, latency)), Some(object)) = (timed, value.as_object_mut()) {
+        object.insert("timedRequests".to_string(), json!(requests));
+        object.insert("timedOutputTokens".to_string(), json!(output));
+        object.insert("timedLatencyMs".to_string(), json!(latency));
+    }
+    value
+}
+
 #[cfg(test)]
 mod details_summary_matches_overview_tests {
     use super::*;
@@ -8425,6 +8465,11 @@ fn get_usage_details_normalized_at(
     let transaction = conn.transaction().map_err(|e| e.to_string())?;
     let summary =
         query_filtered_summary_with_entity(&transaction, &query, &bounds, &prices, entity)?;
+    let timed = if gateway_ledger {
+        query_timed_output_summary(&transaction, &query, &bounds, entity)?
+    } else {
+        None
+    };
     let mut rows = query_detail_items_with_entity(
         &transaction,
         &query,
@@ -8476,10 +8521,13 @@ fn get_usage_details_normalized_at(
                 .as_object_mut()
                 .expect("local detail item is an object");
             if gateway_ledger {
-                match gateway_overlay::gateway_provider(&conn, row.id) {
-                    Some((source, provider)) => {
-                        object.insert("source".to_string(), json!(source));
-                        object.insert("provider".to_string(), json!(provider));
+                match gateway_overlay::gateway_detail(&conn, row.id) {
+                    Some(detail) => {
+                        object.insert("source".to_string(), json!(detail.source));
+                        object.insert("provider".to_string(), json!(detail.provider));
+                        if let Some(latency_ms) = detail.latency_ms {
+                            object.insert("latencyMs".to_string(), json!(latency_ms));
+                        }
                     }
                     None => {
                         object.insert("source".to_string(), json!("scan"));
@@ -8537,7 +8585,7 @@ fn get_usage_details_normalized_at(
         "nextCursor": next_cursor,
         "hasMore": has_more,
         "totalCount": summary.requests,
-        "filteredSummary": summary.as_json(),
+        "filteredSummary": filtered_summary_json(&summary, timed),
         "availableFilters": {
             "tools": available_tools,
             "models": available_models,

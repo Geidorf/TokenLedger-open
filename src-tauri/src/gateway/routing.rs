@@ -122,6 +122,33 @@ pub struct RouteDecision {
     pub detail: String,
     pub chosen: Option<String>,
     pub attempts: Vec<RouteAttempt>,
+    /// Why each group member was chosen, tried, passed over or left out:
+    /// candidates in plan order, then members outside the plan.
+    pub trace: Vec<MemberTrace>,
+}
+
+/// One group member's part in a decision. `verdict` is `chosen` | `failed`
+/// | `rejected` | `skipped` | `not_reached` | `excluded`; `reasons` are
+/// machine codes (see `docs/design/routing-decision-trace-v1.md`), `detail` a
+/// short human note.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberTrace {
+    pub member: String,
+    /// Position among the candidates; `None` when left out of the plan.
+    pub rank: Option<u8>,
+    pub verdict: &'static str,
+    pub reasons: Vec<&'static str>,
+    pub detail: Option<String>,
+}
+
+/// A member the plan left out before any try (e.g. cooling down or out of
+/// quota), with a reason code from the trace table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Exclusion {
+    pub member: String,
+    pub reason: &'static str,
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -280,6 +307,8 @@ pub struct Plan {
     pub candidates: Vec<String>,
     pub reason: &'static str,
     pub detail: String,
+    /// Members dropped before any try; the trace explains each one.
+    pub excluded: Vec<Exclusion>,
 }
 
 impl Plan {
@@ -341,7 +370,125 @@ pub fn plan_members(
         candidates,
         reason,
         detail,
+        excluded: Vec::new(),
     }
+}
+
+const DETAIL_CHARS: usize = 200;
+
+fn primary_code(reason: &str) -> &'static str {
+    match reason {
+        "rule" => "rule_match",
+        "affinity" => "affinity",
+        "failover" => "strategy_first",
+        "rotate" => "rotate_turn",
+        "weighted" => "weighted_pick",
+        "manual" => "manual_pick",
+        _ => "strategy_first",
+    }
+}
+
+fn mentions_quota(error: Option<&str>) -> bool {
+    error.is_some_and(|text| {
+        let text = text.to_ascii_lowercase();
+        ["quota", "billing", "credit", "余额", "额度"]
+            .iter()
+            .any(|word| text.contains(word))
+    })
+}
+
+/// Reason codes for a member's own try, read from its outcome and status.
+fn attempt_code(attempt: &RouteAttempt) -> &'static str {
+    let error = attempt.error.as_deref();
+    match (attempt.outcome, attempt.status) {
+        ("ok", _) => "answered",
+        ("failed", Some(429)) if mentions_quota(error) => "quota_exhausted",
+        ("rejected", Some(402)) => "quota_exhausted",
+        ("failed", Some(429)) => "rate_limited",
+        ("failed", None) => "connect_failed",
+        ("failed", _) => "upstream_failed",
+        ("rejected", Some(401 | 403)) => "auth_failed",
+        ("rejected", _) => "upstream_rejected",
+        ("skipped", None) => "provider_missing",
+        ("skipped", Some(401)) => "key_missing",
+        ("skipped", Some(400)) => "protocol_unsupported",
+        ("skipped", _) => "credential_unavailable",
+        _ => "unknown",
+    }
+}
+
+fn clip(text: &str) -> String {
+    text.chars().take(DETAIL_CHARS).collect()
+}
+
+/// Pure: explains every group member for one decision. Candidates come
+/// first in plan order (why it was ranked there, then how its try went),
+/// then members the plan left out.
+pub fn build_trace(
+    group: &RoutingGroup,
+    plan: &Plan,
+    attempts: &[RouteAttempt],
+) -> Vec<MemberTrace> {
+    let mut trace: Vec<MemberTrace> = plan
+        .candidates
+        .iter()
+        .enumerate()
+        .map(|(index, member)| {
+            let mut reasons = vec![if index == 0 {
+                primary_code(plan.reason)
+            } else {
+                "fallback"
+            }];
+            let attempt = attempts.iter().find(|attempt| attempt.member == *member);
+            let (verdict, detail) = match attempt {
+                Some(attempt) => {
+                    reasons.push(attempt_code(attempt));
+                    let verdict = if attempt.outcome == "ok" {
+                        "chosen"
+                    } else {
+                        attempt.outcome
+                    };
+                    let detail = match (&attempt.error, index) {
+                        (Some(error), _) => Some(clip(error)),
+                        (None, 0) => Some(clip(&plan.detail)),
+                        (None, _) => None,
+                    };
+                    (verdict, detail)
+                }
+                None => {
+                    reasons.push("not_reached");
+                    ("not_reached", (index == 0).then(|| clip(&plan.detail)))
+                }
+            };
+            MemberTrace {
+                member: member.clone(),
+                rank: u8::try_from(index).ok(),
+                verdict,
+                reasons,
+                detail,
+            }
+        })
+        .collect();
+    for member in &group.members {
+        if plan.candidates.contains(member) {
+            continue;
+        }
+        let (reason, detail) = match plan.excluded.iter().find(|item| item.member == *member) {
+            Some(item) => (item.reason, item.detail.as_deref().map(clip)),
+            None if group.strategy == Strategy::Manual => {
+                ("manual_only", Some("固定分配只用一个成员".to_string()))
+            }
+            None => ("not_planned", None),
+        };
+        trace.push(MemberTrace {
+            member: member.clone(),
+            rank: None,
+            verdict: "excluded",
+            reasons: vec![reason],
+            detail,
+        });
+    }
+    trace
 }
 
 pub fn validate_group(group: &RoutingGroup, provider_ids: &[String]) -> Result<(), String> {
@@ -612,6 +759,111 @@ mod tests {
         assert_eq!(pinned.reason, "affinity");
         let stale = plan_members(&group(Strategy::Failover, vec![]), &none, Some("gone/x"), 0);
         assert_eq!(stale.reason, "failover");
+    }
+
+    fn tried(
+        member: &str,
+        outcome: &'static str,
+        status: Option<u16>,
+        error: Option<&str>,
+    ) -> RouteAttempt {
+        RouteAttempt {
+            member: member.into(),
+            outcome,
+            status,
+            error: error.map(str::to_string),
+        }
+    }
+
+    fn row(trace: &[MemberTrace], member: &str) -> (Option<u8>, &'static str, Vec<&'static str>) {
+        let item = trace.iter().find(|item| item.member == member).unwrap();
+        (item.rank, item.verdict, item.reasons.clone())
+    }
+
+    #[test]
+    fn trace_explains_every_member_of_a_failover() {
+        let g = group(Strategy::Failover, vec![]);
+        let plan = plan_members(&g, &Features::default(), None, 0);
+        let attempts = [
+            tried("a/m1", "failed", Some(429), Some("上游返回 429：slow down")),
+            tried("b/m2", "ok", Some(200), None),
+        ];
+        let trace = build_trace(&g, &plan, &attempts);
+        assert_eq!(trace.len(), 3);
+        assert_eq!(
+            row(&trace, "a/m1"),
+            (Some(0), "failed", vec!["strategy_first", "rate_limited"])
+        );
+        assert_eq!(
+            row(&trace, "b/m2"),
+            (Some(1), "chosen", vec!["fallback", "answered"])
+        );
+        assert_eq!(
+            row(&trace, "c/m3"),
+            (Some(2), "not_reached", vec!["fallback", "not_reached"])
+        );
+        assert_eq!(trace[0].detail.as_deref(), Some("上游返回 429：slow down"));
+    }
+
+    #[test]
+    fn trace_names_rule_affinity_quota_and_left_out_members() {
+        let g = group(
+            Strategy::Failover,
+            vec![rule(RuleCondition::HasImage, "c/m3")],
+        );
+        let image = Features {
+            has_image: true,
+            ..Features::default()
+        };
+        let plan = plan_members(&g, &image, None, 0);
+        let trace = build_trace(
+            &g,
+            &plan,
+            &[tried(
+                "c/m3",
+                "failed",
+                Some(429),
+                Some("insufficient_quota"),
+            )],
+        );
+        assert_eq!(row(&trace, "c/m3").2, ["rule_match", "quota_exhausted"]);
+        assert_eq!(trace[0].detail.as_deref(), Some("insufficient_quota"));
+
+        let plan = plan_members(&g, &Features::default(), Some("b/m2"), 0);
+        let trace = build_trace(&g, &plan, &[]);
+        assert_eq!(
+            row(&trace, "b/m2"),
+            (Some(0), "not_reached", vec!["affinity", "not_reached"])
+        );
+        assert_eq!(trace[0].detail.as_deref(), Some("同一会话沿用上次成员"));
+
+        let manual = group(Strategy::Manual, vec![]);
+        let plan = plan_members(&manual, &Features::default(), None, 0);
+        let trace = build_trace(
+            &manual,
+            &plan,
+            &[tried("b/m2", "skipped", Some(401), Some("没有 key"))],
+        );
+        assert_eq!(
+            row(&trace, "b/m2"),
+            (Some(0), "skipped", vec!["manual_pick", "key_missing"])
+        );
+        assert_eq!(row(&trace, "a/m1"), (None, "excluded", vec!["manual_only"]));
+
+        let mut plan = plan_members(&g, &Features::default(), None, 0);
+        plan.candidates.retain(|member| member != "b/m2");
+        plan.excluded.push(Exclusion {
+            member: "b/m2".into(),
+            reason: "cooling_down",
+            detail: Some("冷却中".into()),
+        });
+        let trace = build_trace(&g, &plan, &[tried("a/m1", "rejected", Some(402), None)]);
+        assert_eq!(row(&trace, "a/m1").2, ["strategy_first", "quota_exhausted"]);
+        assert_eq!(trace.last().unwrap().member, "b/m2");
+        assert_eq!(
+            row(&trace, "b/m2"),
+            (None, "excluded", vec!["cooling_down"])
+        );
     }
 
     #[test]

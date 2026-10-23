@@ -113,7 +113,7 @@ jobs:
   desktop-e2e:
     name: Desktop Browser E2E (Playwright)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
 
@@ -139,29 +139,10 @@ jobs:
         timeout-minutes: 10
         run: npx playwright install chromium webkit
 
-      # runner 的 apt 镜像偶尔会卡在个别包上，一卡就把整个 job 拖到超时。
-      # 给 apt 设单次连接超时和重试，再把整个安装包一层限时重试，卡住的那次很快被掐掉重来。
-      - name: Configure apt timeouts and retries
-        run: |
-          printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' \
-            | sudo tee /etc/apt/apt.conf.d/80-ci-retries
-
-      # 截图基线依赖系统字体：样式的字体栈含 Inter，runner 默认没装就会回退到别的
-      # 无衬线字体，整页文字像素都变。这里装与生成基线的 Ubuntu 24.04 环境相同的字体集。
+      # apt 镜像偶尔逐包缓慢：限时、重试、换镜像，细节见脚本开头的说明。
       - name: Install browser system dependencies and baseline fonts
-        timeout-minutes: 25
-        run: |
-          for attempt in 1 2 3; do
-            if timeout 420 npx playwright install-deps chromium webkit \
-              && timeout 300 sudo apt-get install -y --no-install-recommends fonts-inter fonts-jetbrains-mono fonts-dejavu-core fonts-dejavu-mono fonts-liberation fonts-noto-color-emoji fonts-wqy-zenhei; then
-              exit 0
-            fi
-            echo "::warning::系统依赖安装第 ${attempt} 次失败或超时，重试"
-            # 被掐掉时可能停在解包阶段，先把半装的包配置完再重来；已下载的 .deb 留在缓存里会复用。
-            sudo dpkg --configure -a || true
-            sleep 10
-          done
-          exit 1
+        timeout-minutes: 32
+        run: bash scripts/install-e2e-system-deps.sh
 
       - name: Type-check E2E specs
         run: npm run typecheck:e2e

@@ -64,6 +64,8 @@ pub(super) struct GatewayRow {
     pub cache_write_tokens: i64,
     /// Machine the row is counted under; `None` is this computer.
     pub machine_id: Option<String>,
+    /// Request duration in milliseconds as the gateway measured it; 0 when unknown.
+    pub latency_ms: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -161,6 +163,7 @@ pub(super) fn map_record(
         cached_tokens: to_i64(record.cache_read.saturating_add(record.cache_write)),
         cache_write_tokens: to_i64(record.cache_write),
         machine_id: None,
+        latency_ms: to_i64(record.latency_ms),
     })
 }
 
@@ -518,7 +521,8 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
              input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
              cached_tokens INTEGER NOT NULL, cache_write_tokens INTEGER NOT NULL,
              timestamp TEXT NOT NULL, session_id TEXT NOT NULL, cost_usd REAL,
-             machine_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
+             machine_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL,
+             latency_ms INTEGER NOT NULL);
          CREATE TEMP TABLE gw_superseded (id INTEGER PRIMARY KEY);
          CREATE TEMP VIEW token_logs AS
              SELECT id, tool, model, input_tokens, output_tokens, cached_tokens,
@@ -531,7 +535,7 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
                FROM temp.gw_rows;",
     )?;
     let mut insert_row = conn.prepare(
-        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12)",
+        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12, ?13)",
     )?;
     for row in gateway.iter().filter(|row| !held.contains(&row.id)) {
         insert_row.execute(params![
@@ -547,6 +551,7 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
             row.machine_id.as_deref().unwrap_or(&machine_id),
             row.provider,
             row.source.as_str(),
+            row.latency_ms,
         ])?;
     }
     let mut insert_superseded = conn.prepare("INSERT INTO temp.gw_superseded VALUES (?1)")?;
@@ -567,16 +572,31 @@ pub(super) fn open_stats_connection(db_path: &Path) -> Result<Connection, String
     Ok(conn)
 }
 
-/// Source (`gateway` or `imported-magpie`) and provider of a merged row on a
-/// connection from `open_stats_connection`.
-pub(super) fn gateway_provider(conn: &Connection, id: i64) -> Option<(String, String)> {
+#[derive(Debug, PartialEq)]
+pub(super) struct GatewayDetail {
+    pub source: String,
+    pub provider: String,
+    /// `None` when the gateway did not record a duration.
+    pub latency_ms: Option<i64>,
+}
+
+/// Source (`gateway` or `imported-magpie`), provider and duration of a merged
+/// row on a connection from `open_stats_connection`.
+pub(super) fn gateway_detail(conn: &Connection, id: i64) -> Option<GatewayDetail> {
     if id >= 0 {
         return None;
     }
     conn.query_row(
-        "SELECT source, provider FROM temp.gw_rows WHERE id = ?1",
+        "SELECT source, provider, latency_ms FROM temp.gw_rows WHERE id = ?1",
         params![id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| {
+            let latency_ms: i64 = row.get(2)?;
+            Ok(GatewayDetail {
+                source: row.get(0)?,
+                provider: row.get(1)?,
+                latency_ms: (latency_ms > 0).then_some(latency_ms),
+            })
+        },
     )
     .ok()
 }

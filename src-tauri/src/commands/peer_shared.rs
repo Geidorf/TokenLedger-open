@@ -282,6 +282,7 @@ pub(super) fn call_to_row(
         cached_tokens: call.cache_read.saturating_add(call.cache_write),
         cache_write_tokens: call.cache_write,
         machine_id: Some(machine_id(&call.computer)),
+        latency_ms: call.ms,
     })
 }
 

@@ -28,6 +28,14 @@ export interface Summary {
   totalCost: number;
   totalRequests: number;
   avgTokensPerReq: number;
+  /**
+   * Local usage-details summary only (contract §2.5): gateway/imported rows in range
+   * that recorded a duration, with their output tokens and summed duration. Absent
+   * when no such row exists; never present on overview stats or cloud responses.
+   */
+  timedRequests?: number;
+  timedOutputTokens?: number;
+  timedLatencyMs?: number;
 }
 
 /** Where the unit prices behind `cacheSavings` come from (contract §2.4). */
@@ -146,6 +154,8 @@ export interface LogHistoryItem {
   source?: 'scan' | 'gateway' | 'imported-magpie' | (string & {});
   /** Gateway provider id; present only on gateway rows. */
   provider?: string;
+  /** Whole-request duration in ms (contract §2.5); present only on gateway/imported rows that recorded one. */
+  latencyMs?: number;
 }
 
 export interface FacetOption {

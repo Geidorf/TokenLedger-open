@@ -122,8 +122,12 @@ fn shared_calls_are_counted_under_their_computer_and_never_replace_a_scan() {
         )
         .unwrap();
     assert_eq!(
-        gateway_overlay::gateway_provider(&conn, id),
-        Some(("shared-peer".to_string(), "anthropic".to_string()))
+        gateway_overlay::gateway_detail(&conn, id),
+        Some(gateway_overlay::GatewayDetail {
+            source: "shared-peer".to_string(),
+            provider: "anthropic".to_string(),
+            latency_ms: Some(2000),
+        })
     );
     drop(conn);
 

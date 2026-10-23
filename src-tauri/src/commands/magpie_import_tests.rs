@@ -175,8 +175,12 @@ fn import_supersedes_session_duplicates_and_adds_unseen_calls_without_touching_m
         )
         .unwrap();
     assert_eq!(
-        gateway_overlay::gateway_provider(&conn, id),
-        Some(("imported-magpie".to_string(), "anthropic".to_string()))
+        gateway_overlay::gateway_detail(&conn, id),
+        Some(gateway_overlay::GatewayDetail {
+            source: "imported-magpie".to_string(),
+            provider: "anthropic".to_string(),
+            latency_ms: Some(2000),
+        })
     );
     drop(conn);
 

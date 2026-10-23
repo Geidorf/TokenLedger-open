@@ -87,6 +87,19 @@ export interface RouteAttempt {
   error?: string | null;
 }
 
+/**
+ * Why one group member was chosen, tried, passed over or left out of a
+ * decision. `reasons` are machine codes; unknown codes are shown as is.
+ */
+export interface MemberTrace {
+  member: string;
+  /** Position among the candidates; null when left out of the plan. */
+  rank?: number | null;
+  verdict: 'chosen' | 'failed' | 'rejected' | 'skipped' | 'not_reached' | 'excluded' | string;
+  reasons: string[];
+  detail?: string | null;
+}
+
 export interface RouteDecision {
   ts: string;
   requestId: string;
@@ -96,6 +109,8 @@ export interface RouteDecision {
   detail: string;
   chosen?: string | null;
   attempts: RouteAttempt[];
+  /** One entry per group member; absent from builds before the trace existed. */
+  trace?: MemberTrace[];
 }
 
 /**

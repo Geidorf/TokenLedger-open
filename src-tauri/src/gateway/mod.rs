@@ -2095,6 +2095,13 @@ mod tests {
                 status: Some(429),
                 error: Some("error-secret".into()),
             }],
+            trace: vec![routing::MemberTrace {
+                member: "a/m".into(),
+                rank: Some(0),
+                verdict: "failed",
+                reasons: vec!["strategy_first", "rate_limited"],
+                detail: Some("detail-secret".into()),
+            }],
         };
         let record = LedgerRecord {
             ts: "2026-10-23T00:00:01Z".into(),

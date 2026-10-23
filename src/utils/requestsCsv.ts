@@ -1,12 +1,12 @@
 import type { DataScope, LogHistoryItem, UsageDetailsResponse } from '../types';
 import { isEstimatedLogItem } from '../types';
 import { resolveCacheBreakdown } from './cacheDisplay';
-import { cacheHitRate } from './usageSplit';
+import { cacheHitRate, outputTokensPerSecond } from './usageSplit';
 
 /**
  * 用量 · 请求的「导出 CSV」：导出当前范围与筛选下的全部行，
  * 不只是已加载的那一页。列与界面同一口径：缓存读写只在拆分可证明时分列，否则只给合计；
- * 缺失的值写空，不写 0。
+ * 缺失的值写空，不写 0。耗时与输出速度只有网关记录带，新列追加在末尾。
  */
 export const REQUESTS_CSV_COLUMNS = [
   'time',
@@ -26,6 +26,8 @@ export const REQUESTS_CSV_COLUMNS = [
   'usage_estimated',
   'session_id',
   'machine_id',
+  'latency_ms',
+  'output_tokens_per_sec',
 ] as const;
 
 /** 一次导出最多取的行数；超过时只导出前这么多行并告知，避免把界面卡死。 */
@@ -49,6 +51,7 @@ export function requestCsvRow(item: LogHistoryItem, scope: DataScope = 'local'):
   const cache = resolveCacheBreakdown(item);
   const read = cache.kind === 'split' ? cache.read : null;
   const hit = read === null ? null : cacheHitRate(item.inputTokens, read);
+  const speed = outputTokensPerSecond(item.outputTokens, item.latencyMs);
   const cells: (string | number | null | undefined)[] = [
     item.timestamp,
     item.tool,
@@ -67,6 +70,8 @@ export function requestCsvRow(item: LogHistoryItem, scope: DataScope = 'local'):
     isEstimatedLogItem(item) ? 'true' : 'false',
     item.sessionId,
     item.machineId,
+    item.latencyMs,
+    speed === null ? null : Number(speed.toFixed(2)),
   ];
   return cells.map(csvCell).join(',');
 }
