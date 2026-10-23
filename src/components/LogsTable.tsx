@@ -223,6 +223,7 @@ export function LogsTable({
   const summary = details?.filteredSummary;
   const summaryCacheSplit = summary ? resolveCacheBreakdown(summary) : null;
   const summaryCacheHit = summary && summaryCacheSplit?.kind === 'split' ? cacheHitRate(summary.inputTokens, summaryCacheSplit.read) : null;
+  const summaryOutputSpeed = summary?.timedRequests ? outputTokensPerSecond(summary.timedOutputTokens, summary.timedLatencyMs) : null;
   const granularityLabel = detailGranularityLabel(details);
   const detailRetry = detailActionCopy('retry', loading);
   const detailSearch = detailActionCopy('search', loading);
@@ -392,6 +393,12 @@ export function LogsTable({
             <span>缓存命中率</span>
             <strong>{summaryCacheHit === null ? '不可得' : `${(summaryCacheHit * 100).toFixed(1)}%`}</strong>
           </div>
+          {summaryOutputSpeed !== null && (
+            <div title={`按 ${formatNum(summary.timedRequests || 0)} 条带耗时的网关记录：输出 Token 合计 ÷ 耗时合计（含首字等待）`}>
+              <span>输出速度</span>
+              <strong>{summaryOutputSpeed.toFixed(1)} tok/s</strong>
+            </div>
+          )}
         </div>
       )}
 

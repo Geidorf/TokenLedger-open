@@ -390,6 +390,19 @@ describe('LogsTable 导出与缓存命中率', () => {
     expect(screen.getByRole('button', { name: /导出中/ })).toBeDisabled();
   });
 
+  it('summarises output speed only when the summary carries timed gateway rows', () => {
+    const { rerender } = render(<LogsTable {...baseProps} details={details} />);
+    let summary = document.querySelector('.details-summary') as HTMLElement;
+    expect(within(summary).queryByText('输出速度')).toBeNull();
+
+    rerender(<LogsTable {...baseProps} details={{
+      ...details,
+      filteredSummary: { ...details.filteredSummary, timedRequests: 2, timedOutputTokens: 600, timedLatencyMs: 4000 },
+    }} />);
+    summary = document.querySelector('.details-summary') as HTMLElement;
+    expect(within(summary).getByText('输出速度').nextElementSibling?.textContent).toBe('150.0 tok/s');
+  });
+
   it('shows duration and output speed only for rows that carry a latency', () => {
     const timed: UsageDetailsResponse = {
       ...details,

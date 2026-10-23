@@ -282,6 +282,19 @@ fn usage_details_mark_gateway_source_and_capability() {
     assert!(items[1].get("provider").is_none());
     assert!(items[1].get("latencyMs").is_none());
     assert_eq!(details["filteredSummary"]["totalTokens"], json!(290));
+    assert_eq!(details["filteredSummary"]["timedRequests"], json!(1));
+    assert_eq!(details["filteredSummary"]["timedOutputTokens"], json!(80));
+    assert_eq!(details["filteredSummary"]["timedLatencyMs"], json!(10));
+
+    let scan_only: super::super::UsageDetailsQuery = serde_json::from_value(json!({
+        "range": "today",
+        "timezone": iana_time_zone::get_timezone().unwrap(),
+        "models": ["openai/gpt-5.5"],
+    }))
+    .unwrap();
+    let details =
+        super::super::get_usage_details_impl_at(&app, scan_only, local_ts(12, 0, 0)).unwrap();
+    assert!(details["filteredSummary"].get("timedRequests").is_none());
     let _ = fs::remove_dir_all(root);
 }
 
