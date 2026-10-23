@@ -90,6 +90,34 @@ describe('RoutingPage', () => {
     }));
   });
 
+  it('嵌套组：可把其他启用的路由组加为成员，但不能选自己', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    await screen.findByText('编码主力');
+    fireEvent.click(screen.getByRole('button', { name: /新建路由组/ }));
+    const dialog = screen.getByRole('dialog', { name: '新建路由组' });
+    fireEvent.change(within(dialog).getByLabelText('名称'), { target: { value: '总入口' } });
+    fireEvent.change(within(dialog).getByLabelText(/^ID/), { target: { value: 'entry' } });
+    fireEvent.change(within(dialog).getByLabelText('选择成员'), { target: { value: 'group/coding' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加成员/ }));
+    fireEvent.change(within(dialog).getByLabelText('选择成员'), { target: { value: 'deepseek/deepseek-chat' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加成员/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.upsertRoutingGroup).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'entry',
+      members: ['group/coding', 'deepseek/deepseek-chat'],
+    })));
+  });
+
+  it('嵌套组：编辑时成员候选里没有自己', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    await screen.findByText('编码主力');
+    fireEvent.click(screen.getByRole('button', { name: '编辑 编码主力' }));
+    const edit = screen.getByRole('dialog');
+    const choices = within(edit).getAllByRole('option').map((option) => option.getAttribute('value'));
+    expect(choices).toContain('deepseek/deepseek-reasoner');
+    expect(choices).not.toContain('group/coding');
+  });
+
   it('按权重：每个成员可设权重并显示占比，只提交非默认权重', async () => {
     render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
     await screen.findByText('编码主力');
