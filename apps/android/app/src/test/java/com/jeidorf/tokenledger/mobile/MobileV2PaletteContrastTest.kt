@@ -205,12 +205,12 @@ class MobileV2PaletteContrastTest {
     /** R-16 与 R-17 的实测值（T10.177 修复轮日志引用这些数）。 */
     @Test
     fun otherNeutralAndWidgetTrackMatchRootDecisions() {
-        // R-16：「其他」取桌面同值后对卡片深 7.79、浅 6.16（此前借 outline，深 4.17、浅 3.83）。
-        assertEquals(7.79, contrast(LedgerPalettes.Dark.chartOther, LedgerPalettes.Dark.card), 0.011)
+        // R-16：「其他」取桌面同值；对齐参考设计 后对卡片深 6.86、浅 6.16（此前借 outline，深 4.17、浅 3.83）。
+        assertEquals(6.86, contrast(LedgerPalettes.Dark.chartOther, LedgerPalettes.Dark.card), 0.011)
         assertEquals(6.16, contrast(LedgerPalettes.Light.chartOther, LedgerPalettes.Light.card), 0.011)
-        // R-17：挂件轨道对挂件容器深 1.34、浅 1.25（此前 raised，深 1.08、浅 1.14）。不新增色值，也不求 3:1——
+        // R-17：挂件轨道对挂件容器深 1.39、浅 1.36（对齐参考设计 后重算；更早取 raised，深 1.08、浅 1.14）。不新增色值，也不求 3:1——
         // 轨道是装饰性的整圈参照，进度本身由填充色与百分比文字表达。
-        listOf(true to 1.34, false to 1.25).forEach { (night, expected) ->
+        listOf(true to 1.39, false to 1.36).forEach { (night, expected) ->
             val w = com.jeidorf.tokenledger.mobile.widget.WidgetColors(night)
             val ratio = contrast(w.trackColor, w.backgroundColor)
             assertEquals("${if (night) "深色" else "浅色"}挂件轨道/容器", expected, ratio, 0.011)
@@ -238,14 +238,14 @@ class MobileV2PaletteContrastTest {
         assertContrast("EInk 分段胶囊/轨道", LedgerPalettes.EInk.selected, LedgerPalettes.EInk.card, 3.0)
         val d = LedgerPalettes.Dark
         val l = LedgerPalettes.Light
-        assertEquals(7.21, contrast(d.primary, d.page), 0.011)
-        assertEquals(5.51, contrast(d.primary, d.primaryContainerSolid), 0.011)
-        assertEquals(6.21, contrast(d.primary, d.raised), 0.011)
-        assertEquals(4.98, contrast(d.primary, d.selected), 0.011)
-        assertEquals(5.25, contrast(l.primary, l.page), 0.011)
-        assertEquals(5.05, contrast(l.primary, l.primaryContainerSolid), 0.011)
-        assertEquals(5.02, contrast(l.primary, l.raised), 0.011)
-        assertEquals(5.73, contrast(l.primary, l.selected), 0.011)
+        assertEquals(8.70, contrast(d.primary, d.page), 0.011)
+        assertEquals(5.63, contrast(d.primary, d.primaryContainerSolid), 0.011)
+        assertEquals(6.86, contrast(d.primary, d.raised), 0.011)
+        assertEquals(4.69, contrast(d.primary, d.selected), 0.011)
+        assertEquals(5.77, contrast(l.primary, l.page), 0.011)
+        assertEquals(5.48, contrast(l.primary, l.primaryContainerSolid), 0.011)
+        assertEquals(5.58, contrast(l.primary, l.raised), 0.011)
+        assertEquals(6.29, contrast(l.primary, l.selected), 0.011)
     }
 
     @Test
@@ -257,20 +257,20 @@ class MobileV2PaletteContrastTest {
         }
     }
 
-    /** T10.173 §3.1「对比度」表，逐格：每格依次是深色 / 浅色 / 墨水屏（墨水屏只在表里给出的行才比）。 */
+    /** T10.173 §3.1「对比度」表（2026-10 对齐参考设计 后重算），逐格：每格依次是深色 / 浅色 / 墨水屏（墨水屏只在表里给出的行才比）。 */
     @Test
     fun contrastTableMatchesSection31CellByCell() {
         val table: Map<String, List<List<Double?>>> = mapOf(
-            "text" to listOf(listOf(17.41, 16.39, 21.00), listOf(16.13, 17.87, 21.00), listOf(15.00, 15.66, 18.76), listOf(14.64, 17.87, 21.00)),
-            "muted" to listOf(listOf(11.43, 8.86, 12.63), listOf(10.59, 9.67, 12.63), listOf(9.85, 8.47, 11.29), listOf(9.61, 9.67, 12.63)),
-            "faint" to listOf(listOf(7.46, 5.24, 7.00), listOf(6.92, 5.71, 7.00), listOf(6.43, 5.00, 6.26), listOf(6.28, 5.71, 7.00)),
-            "primary" to listOf(listOf(7.21, 5.25, 21.00), listOf(6.68, 5.73, 21.00), listOf(6.21, 5.02, 18.76), listOf(6.06, 5.73, 21.00)),
-            "accent" to listOf(listOf(7.05, 5.19, null), listOf(6.53, 5.67, null), listOf(6.07, 4.96, null), listOf(5.93, 5.67, null)),
-            "successText" to listOf(listOf(11.01, 6.54, null), listOf(10.20, 7.13, null), listOf(9.48, 6.25, null), listOf(9.26, 7.13, null)),
-            "warningText" to listOf(listOf(11.49, 6.24, null), listOf(10.65, 6.80, null), listOf(9.90, 5.96, null), listOf(9.66, 6.80, null)),
-            "dangerText" to listOf(listOf(7.13, 5.19, null), listOf(6.61, 5.67, null), listOf(6.14, 4.96, null), listOf(5.99, 5.67, null)),
-            "outline" to listOf(listOf(4.50, 3.51, null), listOf(4.17, 3.83, null), listOf(3.88, 3.35, null), listOf(3.79, 3.83, null)),
-            "divider" to listOf(listOf(1.18, 1.17, null), listOf(1.21, 1.17, null), listOf(1.23, 1.17, null), listOf(1.24, 1.17, null))
+            "text" to listOf(listOf(14.86, 15.59, 21.00), listOf(13.41, 16.97, 21.00), listOf(11.72, 15.05, 18.76), listOf(11.23, 16.97, 21.00)),
+            "muted" to listOf(listOf(9.39, 8.72, 12.63), listOf(8.48, 9.50, 12.63), listOf(7.41, 8.42, 11.29), listOf(7.10, 9.50, 12.63)),
+            "faint" to listOf(listOf(6.37, 5.22, 7.00), listOf(5.75, 5.68, 7.00), listOf(5.03, 5.04, 6.26), listOf(4.81, 5.68, 7.00)),
+            "primary" to listOf(listOf(8.70, 5.77, 21.00), listOf(7.85, 6.29, 21.00), listOf(6.86, 5.58, 18.76), listOf(6.58, 6.29, 21.00)),
+            "accent" to listOf(listOf(9.40, 5.23, null), listOf(8.48, 5.70, null), listOf(7.41, 5.06, null), listOf(7.10, 5.70, null)),
+            "successText" to listOf(listOf(9.98, 5.37, null), listOf(9.00, 5.84, null), listOf(7.87, 5.18, null), listOf(7.54, 5.84, null)),
+            "warningText" to listOf(listOf(9.47, 5.97, null), listOf(8.55, 6.50, null), listOf(7.47, 5.77, null), listOf(7.16, 6.50, null)),
+            "dangerText" to listOf(listOf(7.26, 5.45, null), listOf(6.55, 5.93, null), listOf(5.73, 5.26, null), listOf(5.49, 5.93, null)),
+            "outline" to listOf(listOf(4.20, 3.79, null), listOf(3.79, 4.13, null), listOf(3.31, 3.66, null), listOf(3.17, 4.13, null)),
+            "divider" to listOf(listOf(1.25, 1.19, null), listOf(1.26, 1.19, null), listOf(1.27, 1.19, null), listOf(1.27, 1.19, null))
         )
         table.forEach { (fg, cells) ->
             cells.forEachIndexed { surfaceIndex, perTheme ->
@@ -285,19 +285,19 @@ class MobileV2PaletteContrastTest {
             }
         }
         // 表下的成对组合。
-        assertEquals(7.36, contrast(LedgerPalettes.Dark.onPrimary, LedgerPalettes.Dark.primary), 0.011)
-        assertEquals(4.81, contrast(LedgerPalettes.Dark.onPrimaryFill, LedgerPalettes.Dark.primaryFill), 0.011)
-        assertEquals(5.73, contrast(LedgerPalettes.Light.onPrimaryFill, LedgerPalettes.Light.primaryFill), 0.011)
-        assertEquals(12.03, contrast(LedgerPalettes.Dark.onSelected, LedgerPalettes.Dark.selected), 0.011)
-        assertEquals(17.87, contrast(LedgerPalettes.Light.onSelected, LedgerPalettes.Light.selected), 0.011)
-        assertEquals(7.61, contrast(LedgerPalettes.Dark.faint, LedgerPalettes.Dark.chrome), 0.011)
-        assertEquals(4.92, contrast(LedgerPalettes.Light.faint, LedgerPalettes.Light.chrome), 0.011)
-        assertEquals(12.35, contrast(LedgerPalettes.Dark.onErrorContainer, LedgerPalettes.Dark.errorContainer), 0.011)
-        assertEquals(9.36, contrast(LedgerPalettes.Light.onErrorContainer, LedgerPalettes.Light.errorContainer), 0.011)
-        assertEquals(4.39, contrast(LedgerPalettes.Light.success, LedgerPalettes.Light.raised), 0.011)
+        assertEquals(9.06, contrast(LedgerPalettes.Dark.onPrimary, LedgerPalettes.Dark.primary), 0.011)
+        assertEquals(6.29, contrast(LedgerPalettes.Dark.onPrimaryFill, LedgerPalettes.Dark.primaryFill), 0.011)
+        assertEquals(6.29, contrast(LedgerPalettes.Light.onPrimaryFill, LedgerPalettes.Light.primaryFill), 0.011)
+        assertEquals(8.01, contrast(LedgerPalettes.Dark.onSelected, LedgerPalettes.Dark.selected), 0.011)
+        assertEquals(16.97, contrast(LedgerPalettes.Light.onSelected, LedgerPalettes.Light.selected), 0.011)
+        assertEquals(6.69, contrast(LedgerPalettes.Dark.faint, LedgerPalettes.Dark.chrome), 0.011)
+        assertEquals(4.82, contrast(LedgerPalettes.Light.faint, LedgerPalettes.Light.chrome), 0.011)
+        assertEquals(10.31, contrast(LedgerPalettes.Dark.onErrorContainer, LedgerPalettes.Dark.errorContainer), 0.011)
+        assertEquals(8.78, contrast(LedgerPalettes.Light.onErrorContainer, LedgerPalettes.Light.errorContainer), 0.011)
+        assertEquals(3.40, contrast(LedgerPalettes.Light.success, LedgerPalettes.Light.raised), 0.011)
         // §3.8：图表系列在卡片上（U-4 方案 B 的取值，数字出自 _coord/scratch/U-4/summary.md §5）。
         assertEquals(
-            listOf(6.68, 5.08, 9.55, 10.65, 6.61, 10.68, 8.31, 7.85),
+            listOf(5.88, 4.48, 8.41, 9.38, 5.82, 9.41, 7.32, 6.92),
             LedgerPalettes.Dark.chart.map { Math.round(contrast(it, LedgerPalettes.Dark.card) * 100) / 100.0 }
         )
         assertEquals(

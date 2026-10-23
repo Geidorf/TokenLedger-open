@@ -26,6 +26,7 @@ import com.jeidorf.tokenledger.mobile.LedgerAppearance
 import com.jeidorf.tokenledger.mobile.LedgerFont
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_CONTROL_HEIGHT
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 @Composable
 internal fun V2SettingsPage(
@@ -80,7 +81,7 @@ internal fun V2SettingsPage(
                 onClick = onSignOut,
                 modifier = Modifier.fillMaxWidth().heightIn(min = V2_CONTROL_HEIGHT),
                 border = BorderStroke(1.dp, palette.divider),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(LedgerRadius.xl)
             ) {
                 Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = palette.danger)
                 Spacer(Modifier.width(8.dp))

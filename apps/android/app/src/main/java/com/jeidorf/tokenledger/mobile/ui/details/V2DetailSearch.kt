@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.jeidorf.tokenledger.mobile.LedgerFont
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_ICON_INLINE
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 @Composable
 internal fun V2DetailSearch(
@@ -46,7 +47,7 @@ internal fun V2DetailSearch(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 50.dp)
-            .clip(RoundedCornerShape(13.dp))
+            .clip(RoundedCornerShape(LedgerRadius.md))
             .background(palette.surface)
             .padding(start = 12.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -289,8 +289,13 @@ function watchInsertions() {
 }
 
 const chartInstances = () => screen.queryAllByTestId('echart').map((node) => node.getAttribute('data-instance'));
-const modelRanking = () => [...screen.getByRole('group', { name: '可下钻的模型排行' }).querySelectorAll('button')]
-  .map((button) => `${button.querySelector('span.truncate')?.textContent} ${button.querySelector('strong')?.textContent}`);
+/** 模型排行在「用量拆分」的模型维度下（对齐 magpie 的 Split by）。 */
+const modelRanking = () => {
+  const byModel = within(screen.getByRole('group', { name: '拆分维度' })).getByRole('button', { name: '模型' });
+  if (byModel.getAttribute('aria-pressed') !== 'true') fireEvent.click(byModel);
+  return [...document.querySelectorAll('.usage-split-pick')]
+    .map((button) => `${button.querySelector('.usage-split-name > span:last-child')?.textContent} ${button.querySelector('.usage-split-value b')?.textContent}`);
+};
 const dashboardRoot = () => document.querySelector('.content-stack');
 /** 页头标题下常驻的 role="status"：持有旧帧时写明新旧两段，其余时候为空。 */
 const heldNotice = () => document.querySelector('.page-heading [role="status"]');
@@ -353,7 +358,8 @@ describe('DashboardTab 切到未缓存的范围（T10.181）', () => {
   it('清空、加载、到数三拍都不闪错误面板，图表实例一个都不重建', () => {
     const view = render(<DashboardTab {...propsFor(TODAY)} />);
     const before = chartInstances();
-    expect(before.length).toBeGreaterThanOrEqual(3);
+    // 分布面板改成无图表的用量拆分后，剩下的图表实例（趋势等）仍不得重建。
+    expect(before.length).toBeGreaterThanOrEqual(1);
     expectSettled(TODAY, 'today');
 
     view.rerender(<DashboardTab {...propsFor(null, { range: 'week' })} />);
@@ -456,20 +462,20 @@ describe('DashboardTab 切到未缓存的范围（T10.181）', () => {
   it('持有期间切换 Token 口径：旧帧按新口径重排后继续留着，不走骨架，排行与 KPI 同一口径（T10.200）', () => {
     const view = render(<DashboardTab {...propsFor(CACHED)} />);
     const before = chartInstances();
-    expect(modelRanking()).toEqual(['1. gpt-5-codex 100.0K', '2. claude-sonnet 80.0K']);
+    expect(modelRanking()).toEqual(['gpt-5-codex 100.0K', 'claude-sonnet 80.0K']);
     view.rerender(<DashboardTab {...propsFor(null, { range: 'week', statsLoading: true })} />);
     expectHeldFrame(before, { loading: '本周', shown: '今日', stats: CACHED });
 
     view.rerender(<DashboardTab {...propsFor(null, { range: 'week', statsLoading: true, showTotalTokens: true })} />);
     expectHeldFrame(before, { loading: '本周', shown: '今日', stats: CACHED });
-    expect(modelRanking()).toEqual(['1. claude-sonnet 280.0K', '2. gpt-5-codex 100.0K']);
+    expect(modelRanking()).toEqual(['claude-sonnet 280.0K', 'gpt-5-codex 100.0K']);
     expect(screen.getByText(/当前显示/)).toHaveTextContent('总计 380.0K Tokens（包含缓存）');
     expect(screen.getByRole('region', { name: '当前看板上下文' })).toHaveTextContent('旧范围快照');
 
     // 换回来也一样：还是同一份旧数据，按有效 Token 重排。
     view.rerender(<DashboardTab {...propsFor(null, { range: 'week', statsLoading: true })} />);
     expectHeldFrame(before, { loading: '本周', shown: '今日', stats: CACHED });
-    expect(modelRanking()).toEqual(['1. gpt-5-codex 100.0K', '2. claude-sonnet 80.0K']);
+    expect(modelRanking()).toEqual(['gpt-5-codex 100.0K', 'claude-sonnet 80.0K']);
   });
 
   it.each([
@@ -656,9 +662,9 @@ describe('口径、设备、账户与 Token 口径切换接真实 useStats（T10
     insertions.read();
 
     view.rerender(<StatsBackedDashboard showTotalTokens />);
-    expect(modelRanking()).toEqual(['1. claude-sonnet 280.0K', '2. gpt-5-codex 100.0K']);
+    expect(modelRanking()).toEqual(['claude-sonnet 280.0K', 'gpt-5-codex 100.0K']);
     view.rerender(<StatsBackedDashboard />);
-    expect(modelRanking()).toEqual(['1. gpt-5-codex 100.0K', '2. claude-sonnet 80.0K']);
+    expect(modelRanking()).toEqual(['gpt-5-codex 100.0K', 'claude-sonnet 80.0K']);
     expect(chartInstances()).toEqual(before);
     expect(lifecycle.unmounted).toEqual([]);
     expect(statsReads()).toHaveLength(reads);
