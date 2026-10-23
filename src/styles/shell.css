@@ -41,7 +41,10 @@
   position: relative;
   z-index: 40;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* Equal side columns keep the switch centred; when the window is tight the
+     brand side gives way first and the actions never shrink under their
+     content, so they cannot slide over the switch. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
   gap: 12px;
   flex: none;
@@ -64,6 +67,7 @@
 .topbar-brand {
   display: flex;
   min-width: 0;
+  overflow: hidden;
   align-items: center;
   gap: 7px;
   color: var(--color-text-primary);
