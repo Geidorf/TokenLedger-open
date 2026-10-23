@@ -3,6 +3,13 @@ package com.jeidorf.tokenledger.mobile.ui.quota
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
+import com.jeidorf.tokenledger.mobile.ui.foundation.v2QuotaBandColor
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +32,7 @@ import com.jeidorf.tokenledger.mobile.quotaSeverityForFraction
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import java.time.Duration
 import java.time.Instant
+import java.time.OffsetDateTime
 
 /**
  * 额度剩余量的三档配色。**颜色只表达还剩多少**，供应商身份交给行首的圆点与名字，
@@ -32,9 +40,8 @@ import java.time.Instant
  */
 internal fun v2SeverityColor(palette: MobileV2Palette, severity: QuotaSeverity): Color = when {
     palette.isEInk -> palette.text
-    severity == QuotaSeverity.Critical -> palette.danger
-    severity == QuotaSeverity.Warning -> palette.amber
-    else -> palette.green
+    // 重构 R3：接入用户决定 V-Q1 的三档图形色——充足 = primary、偏紧 = warning、告急 = danger。
+    else -> v2QuotaBandColor(palette.tokens, severity)
 }
 
 /**
@@ -48,7 +55,12 @@ internal fun V2QuotaProgressBar(
     degraded: Boolean,
     height: Dp = 6.dp,
     /** 历史读数仍按档位着色，填充降到 45%，表示「不是现在」。默认关，额度页不改。 */
-    historical: Boolean = false
+    historical: Boolean = false,
+    /**
+     * 匀速线（重构 R3，对齐参考设计）：按时间匀速用完时此刻「应剩」的比例，画成一条 2dp 竖线。
+     * 条短于它就是用快了。为 null（窗口长度或重置时间未知、历史读数）时不画。
+     */
+    pace: Float? = null
 ) {
     val motion = ledgerMotionEnabled(palette.isEInk)
     val severity = quotaSeverityForFraction(fraction)
@@ -70,22 +82,59 @@ internal fun V2QuotaProgressBar(
         label = "quotaProgressColor"
     )
     val shape = RoundedCornerShape(999.dp)
-    LinearProgressIndicator(
-        progress = { animated },
-        modifier = Modifier
+    val paceColor = palette.text
+    Box(
+        Modifier
             .fillMaxWidth()
-            .height(height)
-            .clip(shape)
-            // 见底的最后一档不能只靠色相：墨水屏没有色相，色觉障碍也读不出红。
-            .then(
-                if (severity == QuotaSeverity.Critical && !degraded && !historical) {
-                    Modifier.border(1.dp, v2SeverityColor(palette, severity), shape)
-                } else Modifier
-            ),
-        color = barColor,
-        trackColor = if (palette.isEInk) palette.raised else if (degraded) palette.surfaceContainerHigh else target.copy(alpha = 0.16f),
-        strokeCap = StrokeCap.Round
-    )
+            .height(if (pace != null) maxOf(height, QUOTA_PACE_MARKER_HEIGHT) else height)
+            .drawWithContent {
+                drawContent()
+                if (pace != null) {
+                    val markerWidth = QUOTA_PACE_MARKER_WIDTH.toPx()
+                    val x = (size.width * pace.coerceIn(0f, 1f) - markerWidth / 2f).coerceIn(0f, size.width - markerWidth)
+                    drawRoundRect(
+                        color = paceColor,
+                        topLeft = Offset(x, 0f),
+                        size = Size(markerWidth, size.height),
+                        cornerRadius = CornerRadius(markerWidth / 2f)
+                    )
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        LinearProgressIndicator(
+            progress = { animated },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(shape)
+                // 见底的最后一档不能只靠色相：墨水屏没有色相，色觉障碍也读不出红。
+                .then(
+                    if (severity == QuotaSeverity.Critical && !degraded && !historical) {
+                        Modifier.border(1.dp, v2SeverityColor(palette, severity), shape)
+                    } else Modifier
+                ),
+            color = barColor,
+            trackColor = if (palette.isEInk) palette.raised else if (degraded) palette.surfaceContainerHigh else target.copy(alpha = 0.16f),
+            strokeCap = StrokeCap.Round
+        )
+    }
+}
+
+private val QUOTA_PACE_MARKER_HEIGHT = 14.dp
+private val QUOTA_PACE_MARKER_WIDTH = 2.dp
+
+/**
+ * 匀速线位置：窗口还剩多少时间占窗口长度的比例，即匀速用完时此刻应剩的额度比例。
+ * 窗口长度、重置时间缺失或解析不出时返回 null，不编造；已过重置时间记为 0。
+ */
+internal fun quotaPaceRemainingFraction(windowMinutes: Int?, resetsAt: String?, now: Instant): Float? {
+    val minutes = windowMinutes?.takeIf { it > 0 } ?: return null
+    val reset = resetsAt?.let { raw ->
+        runCatching { OffsetDateTime.parse(raw).toInstant() }.getOrNull() ?: runCatching { Instant.parse(raw) }.getOrNull()
+    } ?: return null
+    val left = Duration.between(now, reset).seconds.toDouble() / 60.0
+    return (left / minutes).coerceIn(0.0, 1.0).toFloat()
 }
 
 /**

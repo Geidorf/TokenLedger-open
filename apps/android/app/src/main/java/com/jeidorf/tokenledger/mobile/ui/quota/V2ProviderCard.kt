@@ -31,6 +31,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.jeidorf.tokenledger.mobile.toolChartSlot
+import com.jeidorf.tokenledger.mobile.ui.sources.V2SourceTile
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -129,6 +131,8 @@ internal fun V2ProviderCard(
             }
         } else {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                V2SourceTile(palette, providerName, palette.tokens.chartSlot(toolChartSlot(providerName)))
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         providerName, color = palette.text, style = LedgerType.titleM,
@@ -319,7 +323,10 @@ internal fun V2ProviderWindowRow(
             V2QuotaProgressBar(
                 palette = palette,
                 fraction = v2QuotaRemainingFraction(value),
-                degraded = presentation.status != QuotaWindowStatus.Ok
+                degraded = presentation.status != QuotaWindowStatus.Ok,
+                pace = if (presentation.status == QuotaWindowStatus.Ok) {
+                    quotaPaceRemainingFraction(window.windowMinutes, window.resetsAt, LocalLedgerNow.current())
+                } else null
             )
         }
 
