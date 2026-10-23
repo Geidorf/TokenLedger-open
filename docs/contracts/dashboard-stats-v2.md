@@ -176,7 +176,7 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 
 规则只在本机执行（本机看板合并与云端上传前的合并，见下），结果是派生的：不修改、不删除扫描入库的原始行，网关文件或扫描数据变化后整体重算。
 
-**明细与能力声明（可选扩展）。** 本机明细 `items[]` 可带可选 `source: "scan" | "gateway" | "imported-magpie"`，网关来源与 magpie 导入来源另带可选 `provider`；字段缺失按 `scan` 理解（旧生产者）。`imported-magpie` 是从 magpie 本机 `usage.jsonl` 导入的调用，读取范围、字段与去重顺序见 [magpie-import-v1](magpie-import-v1.md)：导入行按本节维度映射与规则 A/B 并入，与 TokenLedger 网关记录重复时以网关记录为准，取代扫描记录的方式与网关记录相同，规则 B 下有多条同指纹候选时导入行暂不计入。本机响应在合并生效时声明 `meta.capabilities.gatewayLedger = true`（网关记录与导入行都已按本节合并）；缺失表示生产者未合并网关记录。读者遇到未知 `source` 取值时按未知来源显示，不丢弃该行。
+**明细与能力声明（可选扩展）。** 本机明细 `items[]` 可带可选 `source: "scan" | "gateway" | "imported-magpie"`，网关来源与 magpie 导入来源另带可选 `provider`，记有耗时（大于 0）时另带可选 `latencyMs`（整次请求耗时，毫秒，与去重用的同一个值）；字段缺失按 `scan` 理解（旧生产者），`latencyMs` 缺失即耗时未知，读者不得按 0 计算速度。`imported-magpie` 是从 magpie 本机 `usage.jsonl` 导入的调用，读取范围、字段与去重顺序见 [magpie-import-v1](magpie-import-v1.md)：导入行按本节维度映射与规则 A/B 并入，与 TokenLedger 网关记录重复时以网关记录为准，取代扫描记录的方式与网关记录相同，规则 B 下有多条同指纹候选时导入行暂不计入。本机响应在合并生效时声明 `meta.capabilities.gatewayLedger = true`（网关记录与导入行都已按本节合并）；缺失表示生产者未合并网关记录。读者遇到未知 `source` 取值时按未知来源显示，不丢弃该行。
 
 **兼容与边界。**
 
@@ -401,3 +401,4 @@ v2 内的只增扩展逐条记在这里；`meta.contractVersion` 只在 §7 第 
 - 2026-10-04 T10.264（U-95、ADR-017）：新增 §2.5 网关记录来源与去重（规则 A 会话跨度、规则 B 指纹兜底，`W = 120 秒` 待用户确认）、明细可选 `source`/`provider` 与 `meta.capabilities.gatewayLedger`；本期只进本机看板，云端与 Android 不变；`contractVersion` 仍为 2。
 - 2026-10-04 T10.273（U-96）：§2.5 窗口由 120 秒改为 5 秒，并改为对网关记录的 `[ts − latencyMs, ts]` 区间比较；新增「云端合并上传」：桌面合并去重后上传小时聚合，聚合行可选 `gateway_requests` 列，RPC 签名与响应不变，云端不声明 `gatewayLedger`；`contractVersion` 仍为 2。
 - 2026-10-23（magpie 数据打通）：§2.5 明细 `source` 增加取值 `imported-magpie`，引用 `magpie-import-v1`；读者对未知取值仍按未知来源显示，旧版本不丢行；`contractVersion` 仍为 2。
+- 2026-10-23（输出速度）：§2.5 本机明细的网关与导入行增加可选 `latencyMs`；扫描行、小时聚合与云端不带；旧读者忽略该字段；`contractVersion` 仍为 2。

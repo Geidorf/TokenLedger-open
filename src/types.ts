@@ -146,6 +146,8 @@ export interface LogHistoryItem {
   source?: 'scan' | 'gateway' | 'imported-magpie' | (string & {});
   /** Gateway provider id; present only on gateway rows. */
   provider?: string;
+  /** Whole-request duration in ms (contract §2.5); present only on gateway/imported rows that recorded one. */
+  latencyMs?: number;
 }
 
 export interface FacetOption {
