@@ -62,7 +62,8 @@ These are the rules the test suite enforces. If your change touches one of them,
 
 ## Git conventions
 
-- **One task, one branch.** Branch names follow `codex/<task-id>-<slug>`.
+- **One task, one branch.** Any descriptive branch name works for external contributions. Maintainer workstations follow the naming and claiming rules in [`docs/COLLABORATION.md`](docs/COLLABORATION.md).
+- **PR titles contain Chinese too.** PRs are squash-merged, so the PR title becomes the commit subject on `main`; CI checks it.
 - **Commit subjects contain Chinese.** For example `统计：增加上一周期曲线（T1.2）`. Technical names, task IDs, and paths may stay in their original form.
 - **Stage precisely.** Never use `git add .` or `git add -A`; add only the files you own.
 - **Never rewrite published history.** Historical commit SHAs are referenced by task logs and multi-machine handoffs.

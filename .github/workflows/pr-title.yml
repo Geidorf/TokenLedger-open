@@ -1,0 +1,30 @@
+name: PR Title
+
+# squash 合并时 PR 标题直接成为 main 上的提交主题。主 CI 只在推送时触发，
+# 改标题不会重跑，所以单独用一个轻量工作流在 edited 时也校验一次。
+on:
+  pull_request:
+    types: [ opened, edited, synchronize, reopened ]
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: PR title contains Chinese
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 标题经环境变量传入，不直接拼进 shell，避免标题里的引号或命令替换被执行。
+      - name: Verify PR title contains Chinese
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/check-commit-message.mjs --subject "$PR_TITLE"

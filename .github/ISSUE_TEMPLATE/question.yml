@@ -1,0 +1,52 @@
+name: 问询（维护方）
+description: 工位拿不准时向协调者或负责人提问；给出选项、推荐与默认做法
+title: "[问询] "
+labels: ["问询"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        正文第一行以 `[工位名]` 开头。非阻塞的问题按你的推荐继续，阻塞的转做别的任务，不要空等（docs/COLLABORATION.md 第 8 节）。
+
+  - type: input
+    id: related
+    attributes:
+      label: 关联任务
+      description: 任务 Issue 与 PR，例如 `#12 / #15`。
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 问题与背景
+      description: 一句话问题；已经查过哪些文档、哪几行（`文件:行号`），为什么还不清楚。
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: 选项
+      description: 至少两个，每个写后果。
+    validations:
+      required: true
+
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: 推荐与默认做法
+      description: 你推荐哪个、为什么；答复前你按什么做。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: blocking
+    attributes:
+      label: 是否阻塞
+      description: 碰铁律、契约、迁移、密钥、发版的问题一律算阻塞。
+      options:
+        - 不阻塞：按推荐继续
+        - 阻塞：先转做别的任务
+    validations:
+      required: true

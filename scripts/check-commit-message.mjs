@@ -57,14 +57,19 @@ function usage() {
     '用法：',
     '  node scripts/check-commit-message.mjs --file <提交消息文件>',
     '  node scripts/check-commit-message.mjs --range <起点..终点>',
+    '  node scripts/check-commit-message.mjs --subject <PR 标题>',
   ].join('\n');
 }
 
 function main(args) {
   const [mode, value] = args;
-  if (!value || !['--file', '--range'].includes(mode)) throw new Error(usage());
+  if (!value || !['--file', '--range', '--subject'].includes(mode)) throw new Error(usage());
   if (mode === '--file') checkMessageFile(path.resolve(value));
-  else checkRange(value);
+  else if (mode === '--subject') {
+    // squash 合并时 PR 标题直接成为 main 上的提交主题，所以 PR 标题同样要含中文。
+    const result = validateCommitSubject(value);
+    if (!result.valid) throw new Error(result.error);
+  } else checkRange(value);
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : '';
