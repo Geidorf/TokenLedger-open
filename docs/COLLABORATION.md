@@ -17,15 +17,15 @@
 
 ## 2. 工位
 
-工位名 = `智能体@代号`。代号是不透明的短码，**不得使用机器名、用户名或任何能定位到人或设备的标识**；代号与真实设备、订阅账号的对应关系只记在各自本机未跟踪的 `~/.config/tokenledger/stations.json` 里。
+工位名 = `智能体@代号`。代号是两位小写字母或数字组成的不透明短码，**不得使用机器名、用户名或任何能定位到人或设备的标识**；代号与真实设备、订阅账号的对应关系只记在各自本机未跟踪的 `~/.config/tokenledger/stations.json` 里。
 
 | 代号 | 系统 | 能做的门禁 | 适合领的任务 |
 |---|---|---|---|
 | `w1`、`w2` | Windows | Tauri 桌面、WebView2、缩放与 Snap、托盘；有 Android SDK 时含 Android 门禁 | 桌面交互、Windows 专属行为、Android |
 | `m1`、`m2` | macOS | macOS 窗口、DMG 打包 | macOS 窗口与打包、跨端复核 |
-| `cloud-<短码>` | Linux 云容器 | Vite 浏览器走查、Rust 测试、前端测试、文档门禁 | 前端、Rust、契约与文档、CI 修复 |
+| 分支短码末两位，如 `v2` | Linux 云容器 | Vite 浏览器走查、Rust 测试、前端测试、文档门禁 | 前端、Rust、契约与文档、CI 修复 |
 
-- 云端 Claude 线程的代号取它分支名 `claude/project-thread-<短码>` 的末段，例如 `claude@cloud-84xjv2`。云端没有 Android 模拟器、Supabase 本地栈与签名证书，不领带 `需Android`、`需Supabase` 的任务的验收部分。
+- 云端 Claude 线程的代号取它分支名 `claude/project-thread-<短码>` 末段的**最后两位**，例如分支 `claude/project-thread-84xjv2` 的工位名是 `claude@v2`。和工位表里已有的代号重复时改取最后三位，并在登记评论里写明。云端没有 Android 模拟器、Supabase 本地栈与签名证书，不领带 `需Android`、`需Supabase` 的任务的验收部分。
 - 智能体名用小写：`claude`（含云端线程与本机 Claude Code）、`minimax`、`codex`，新增的按同样方式命名。
 - 工位表放在置顶的「工位表」Issue 里，每个工位一条评论：工位名、能力、当前任务、最后心跳。工位登记时自己发这条评论并记下评论 ID。
 
