@@ -68,24 +68,47 @@ function checkCommitMessages(range) {
     .map(([sha]) => `提交消息 ${sha.slice(0, 12)}`);
 }
 
-/** 范围内新增的行与新增或改名后的文件路径；删除旧内容不算违规。 */
+/** `A..B` 改成 `A...B`：只看 B 相对两者合并基点的改动，分支落后于 main 时不会把 main 的新内容算进来。 */
+export function diffRange(range) {
+  return range.includes('...') ? range : range.replace('..', '...');
+}
+
+/** 范围内新增的行与新增或改名后的文件路径；删除或原样保留已有内容不算违规。 */
 function checkAddedContent(range) {
   const violations = [];
-  for (const file of git(['diff', '--name-only', '--diff-filter=ACMR', range]).split('\n')) {
+  const diff = diffRange(range);
+  for (const file of git(['diff', '--name-only', '--diff-filter=AR', diff]).split('\n')) {
     if (file && containsSensitiveTerm(file)) violations.push(`文件路径 ${file}`);
   }
-  let file = '';
+  // 已有的提及不追究：改动一行原本就含名单词的内容（例如改错字）不算新增，
+  // 只有某个文件里含名单词的新增行多于删去的含名单词的行时，才把多出来的报出来。
+  const files = new Map();
+  let entry = null;
   let line = 0;
-  for (const text of git(['diff', '--unified=0', '--no-color', '--no-ext-diff', range]).split('\n')) {
-    if (text.startsWith('+++ ')) {
-      file = text.startsWith('+++ b/') ? text.slice(6) : '';
+  let inHunk = false;
+  for (const text of git(['diff', '--unified=0', '--no-color', '--no-ext-diff', diff]).split('\n')) {
+    if (text.startsWith('diff --git ')) {
+      inHunk = false;
+      entry = null;
+    } else if (!inHunk && text.startsWith('--- ')) {
+      continue;
+    } else if (!inHunk && text.startsWith('+++ ')) {
+      const file = text.startsWith('+++ b/') ? text.slice(6) : '';
+      entry = file ? { file, added: [], removed: 0 } : null;
+      if (entry) files.set(file, entry);
     } else if (text.startsWith('@@')) {
+      inHunk = true;
       const match = /\+(\d+)/u.exec(text);
       line = match ? Number(match[1]) : 0;
-    } else if (text.startsWith('+')) {
-      if (file && containsSensitiveTerm(text.slice(1))) violations.push(`${file}:${line}`);
+    } else if (inHunk && text.startsWith('+')) {
+      if (entry && containsSensitiveTerm(text.slice(1))) entry.added.push(line);
       line += 1;
+    } else if (inHunk && text.startsWith('-')) {
+      if (entry && containsSensitiveTerm(text.slice(1))) entry.removed += 1;
     }
+  }
+  for (const { file, added, removed } of files.values()) {
+    for (const at of added.slice(removed)) violations.push(`${file}:${at}`);
   }
   return violations;
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { TERM_DIGESTS, containsSensitiveTerm } from './check-sensitive-terms.mjs';
+import { TERM_DIGESTS, containsSensitiveTerm, diffRange } from './check-sensitive-terms.mjs';
 
 // 名单本身不能以明文出现在仓库里，所以用一个无关的替身词验证匹配规则。
 const word = 'zebrafish';
@@ -36,4 +36,9 @@ test('leaves unrelated text alone', () => {
   for (const text of ['zebra fish', 'zebrafis', '斑马鱼', '', undefined]) {
     assert.equal(hit(text), false, String(text));
   }
+});
+
+test('diffs from the merge base, so a branch behind main is not blamed for main', () => {
+  assert.equal(diffRange('origin/main..abc123'), 'origin/main...abc123');
+  assert.equal(diffRange('origin/main...abc123'), 'origin/main...abc123');
 });
