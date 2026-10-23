@@ -139,29 +139,6 @@ internal fun quotaPaceRemainingFraction(windowMinutes: Int?, resetsAt: String?, 
     return (left / minutes).coerceIn(0.0, 1.0).toFloat()
 }
 
-/**
- * 用尽预测（重构 R3，对齐参考设计）：按窗口开始到现在的平均速度外推，返回会比重置早多少分钟用完。
- * 不会提前用完、已经用完或刚开窗（已过不足 10 分钟或窗口的 5%，样本太少）时返回 null。
- */
-internal fun quotaProjectedShortfallMinutes(
-    windowMinutes: Int?,
-    resetsAt: String?,
-    remainingFraction: Float,
-    now: Instant
-): Long? {
-    val pace = quotaPaceRemainingFraction(windowMinutes, resetsAt, now) ?: return null
-    val minutes = windowMinutes?.toDouble() ?: return null
-    val remaining = remainingFraction.toDouble()
-    if (remaining <= 0.0 || remaining >= 1.0) return null
-    val left = pace * minutes
-    val elapsed = minutes - left
-    if (left <= 0.0 || elapsed < maxOf(QUOTA_PROJECTION_MIN_ELAPSED_MINUTES, minutes * 0.05)) return null
-    val toExhaust = remaining * elapsed / (1.0 - remaining)
-    return Math.round(left - toExhaust).takeIf { it >= 1L }
-}
-
-private const val QUOTA_PROJECTION_MIN_ELAPSED_MINUTES = 10.0
-
 /** 匀速线的读屏说法：「按时间匀速应剩 40%，用得偏快」。与条同为四舍五入后的整数百分比比较。 */
 internal fun quotaPaceAccessibilityNote(remainingFraction: Float, pace: Float): String {
     val remaining = Math.round(remainingFraction * 100f)

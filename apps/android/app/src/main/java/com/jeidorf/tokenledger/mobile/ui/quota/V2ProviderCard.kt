@@ -281,9 +281,12 @@ internal fun V2ProviderWindowRow(
     val okProgress = (value as? QuotaDisplayValue.Progress)
         ?.takeIf { presentation.status == QuotaWindowStatus.Ok }
     val remainingFraction = okProgress?.let(::v2QuotaRemainingFraction)
-    val pace = okProgress?.let { quotaPaceRemainingFraction(window.windowMinutes, window.resetsAt, now) }
+    // experimental 来源的窗口时长或重置时间由推断得到，匀速线与用尽预测都不画（与桌面同规则）。
+    val trustedTimeline = quotaCapabilityTrustsTimeline(provider.capability)
+    val pace = okProgress?.takeIf { trustedTimeline }
+        ?.let { quotaPaceRemainingFraction(window.windowMinutes, window.resetsAt, now) }
     val shortfallNote = remainingFraction
-        ?.let { quotaProjectedShortfallMinutes(window.windowMinutes, window.resetsAt, it, now) }
+        ?.let { quotaForecastShortfallMinutes(window, provider.capability, 1.0 - it, now) }
         ?.let { quotaShortfallNote(name, it) }
     // 匀速线只画在画布上，读屏要靠这里的文字拿到同样的比较（父级 clearAndSetSemantics 会吞掉子节点语义）。
     val paceNote = if (remainingFraction != null && pace != null) {
