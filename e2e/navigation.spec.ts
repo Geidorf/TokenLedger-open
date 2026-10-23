@@ -1,4 +1,5 @@
-import { expect, expectNoHorizontalOverflow, openPage, test, type Page } from './fixtures';
+import type { Page } from '@playwright/test';
+import { expect, expectNoHorizontalOverflow, openPage, test } from './fixtures';
 
 // 主要页面：hash 锚点 → 应标为当前页的入口与页内应出现的文案。锚点与 src/hooks/useHashNavigation.ts 一致。
 // 一级入口在顶栏「主要页面导航」（顺序：Agent、供应商、网关、路由、用量，设置是右侧齿轮），
