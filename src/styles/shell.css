@@ -54,6 +54,13 @@
   background: var(--color-bg-header);
 }
 
+/* Traffic-light safe area: with titleBarStyle "Overlay" the macOS window
+   controls float over the bar's top-left corner, so the brand starts after
+   them. */
+:root[data-platform='macos'] .app-topbar {
+  padding-left: 84px;
+}
+
 .topbar-brand {
   display: flex;
   min-width: 0;
@@ -160,6 +167,7 @@
   position: relative;
   isolation: isolate;
   display: inline-flex;
+  min-width: 44px;
   min-height: 44px;
   flex: none;
   align-items: center;
@@ -171,7 +179,7 @@
 }
 
 .topbar-icon-btn {
-  width: 34px;
+  width: 44px;
 }
 
 .topbar-text-btn {
@@ -186,7 +194,7 @@
   content: "";
   position: absolute;
   z-index: -1;
-  inset: 8px 2px;
+  inset: 8px 7px;
   border-radius: 7px;
   background: transparent;
   transition: background-color var(--motion-hover) var(--easing-standard);

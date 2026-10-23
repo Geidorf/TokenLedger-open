@@ -3538,9 +3538,11 @@ test('top bar segments and icon actions preserve a 44px target (GLB-03)', () => 
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
   assert.match(shell, /\.topbar-nav > button,\n\.usage-subnav > button \{[^}]*min-height: 44px;/);
   assert.match(shell, /\.topbar-icon-btn,\n\.topbar-text-btn \{[^}]*min-height: 44px;/);
+  assert.match(shell, /\.topbar-icon-btn,\n\.topbar-text-btn \{[^}]*min-width: 44px;/);
+  assert.match(shell, /\n\.topbar-icon-btn \{\n  width: 44px;/);
   // The visible thumb, track and hover fill are drawn inset, not the hit area.
   assert.match(shell, /--seg-inset-y: 8px;/);
-  assert.match(shell, /\.topbar-icon-btn::after,\n\.topbar-text-btn::after \{[^}]*inset: 8px 2px;/);
+  assert.match(shell, /\.topbar-icon-btn::after,\n\.topbar-text-btn::after \{[^}]*inset: 8px 7px;/);
   assert.match(sidebar, /role="group" aria-label="快捷工具与战报"/);
   assert.match(sidebar, /aria-label="生成数据战报卡片"[\s\S]*title="生成数据战报卡片"/);
   assert.match(sidebar, /aria-label=\{wallpaperBusy \? '正在设置桌面壁纸' : '一键设置桌面壁纸'\}/);
@@ -3567,6 +3569,8 @@ test('顶栏底色：浏览器不透明，只有原生 macOS 窗口标记毛玻�
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
   assert.match(shell, /\n\.app-topbar \{[^}]*background: var\(--color-bg-page\);/);
   assert.match(shell, /\.app-topbar\[data-vibrancy="native"\] \{[^}]*background: var\(--color-bg-header\);/);
+  // macOS Overlay titlebar: the brand clears the window controls.
+  assert.match(shell, /:root\[data-platform='macos'\] \.app-topbar \{[^}]*padding-left: 84px;/);
   assert.match(sidebar, /data-vibrancy=\{nativeVibrancy \? 'native' : undefined\}/);
   assert.match(sidebar, /internals\?\.metadata\?\.currentWindow\?\.label/);
 });
