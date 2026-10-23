@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import type { PeerLiveSnapshot } from '../../hooks/usePeerLive';
 import { errorText, gatewayStatus, recentRequests, recentRouteDecisions } from './api';
 import type { RoutingFeed } from './types';
 import { buildRoutingScene, type ExternalLiveSnapshot, type RoutingScene, type SceneInput } from './routingScene';
@@ -22,6 +24,16 @@ export interface RoutingLiveOptions {
 }
 
 type GatewayInput = NonNullable<SceneInput['gateway']>;
+
+/**
+ * The external local gateway's live snapshot (`peer_live_snapshot`, contract
+ * peer-live-v1; main window only). Not running is `reachable: false`, not an
+ * error; a failed read rejects and the hook marks the source unreachable.
+ */
+export async function readExternalGateway(): Promise<ExternalLiveSnapshot> {
+  const snapshot = await invoke<PeerLiveSnapshot>('peer_live_snapshot', {});
+  return { ...snapshot, active: snapshot.active.map((request) => ({ ...request, id: String(request.id) })) };
+}
 
 async function readGateway(ledger: { at: number; requests: GatewayInput['requests'] }): Promise<GatewayInput> {
   const status = await gatewayStatus();

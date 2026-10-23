@@ -82,7 +82,7 @@ describe('buildRoutingScene', () => {
       now: NOW,
       external: { reachable: true, active: [{ id: 'm1', agent: 'claude', model: 'sonnet', provider: 'anthropic', ms: 800, phase: 'upstream' }, { id: 'm2', agent: 'codex', ms: 100, phase: 'slot' }] },
     });
-    expect(scene.flows.map((flow) => [flow.id, flow.phase, flow.hops.length])).toEqual([['mp:m2', 'inflight', 0], ['mp:m1', 'inflight', 1]]);
+    expect(scene.flows.map((flow) => [flow.id, flow.phase, flow.hops.length])).toEqual([['ext:m2', 'inflight', 0], ['ext:m1', 'inflight', 1]]);
     expect(scene.stats.inflight).toBe(2);
     expect(scene.targets[0]).toMatchObject({ id: 'anthropic/sonnet', state: 'busy' });
     expect(describeFlow(scene.flows[0])).toBe('codex 的请求正在选路，排队等空位');
@@ -122,7 +122,7 @@ describe('外部网关最近完成的请求', () => {
     const recent = [{ id: 'q1', agent: 'claude', model: 'sonnet', ended: ago(1_000), attempts: [{ provider: 'acct-a', outcome: 'failed', status: 529 }, { provider: 'acct-b', outcome: 'ok', status: 200 }] }];
     const scene = buildRoutingScene({ now: NOW, external: { reachable: false, active: [], recent } });
     expect(scene.empty).toBeNull();
-    expect(scene.flows[0]).toMatchObject({ id: 'mp:q1', phase: 'done', fresh: true });
+    expect(scene.flows[0]).toMatchObject({ id: 'ext:q1', phase: 'done', fresh: true });
     expect(scene.flows[0].hops.map((hop) => hop.target)).toEqual(['acct-a/sonnet', 'acct-b/sonnet']);
     expect(describeFlow(scene.flows[0])).toBe('claude 的请求：acct-a/sonnet 返回 529，已切换到 acct-b/sonnet，已完成');
   });
