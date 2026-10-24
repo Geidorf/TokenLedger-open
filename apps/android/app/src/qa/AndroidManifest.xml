@@ -3,5 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application
         android:label="TokenLedger QA"
-        tools:replace="android:label" />
+        tools:replace="android:label">
+        <!-- 性能探针：只在 QA 构建里有，供模拟器上的 am start 拉起，见 PerfProbeActivity。 -->
+        <activity
+            android:name=".PerfProbeActivity"
+            android:exported="true" />
+    </application>
 </manifest>

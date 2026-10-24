@@ -127,6 +127,10 @@ pub struct BudgetSettings {
     /// settings page and the tray tooltip when this is off.
     #[serde(default)]
     pub notify: bool,
+    /// Publish a redacted status snapshot for the phone (budget-snapshot-v1).
+    /// Off by default; turning it off deletes this computer's snapshot.
+    #[serde(default)]
+    pub sync_to_phone: bool,
     #[serde(default)]
     pub rules: Vec<BudgetRule>,
 }
@@ -195,6 +199,7 @@ pub struct BudgetStatusReport {
     pub statuses: Vec<BudgetStatus>,
     /// Scope ids seen this month, offered as suggestions on the settings page.
     pub choices: BudgetChoices,
+    pub phone_sync: crate::budget_publish::PhoneSyncStatus,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -277,6 +282,7 @@ pub async fn set_budget_settings(
     // waiting for the next scan. The saved settings do not wait for it.
     let app = app_state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || crate::refresh_tray_status(&app, &app_handle));
+    crate::budget_publish::wake();
     Ok(settings)
 }
 
@@ -318,6 +324,10 @@ fn settings_from_value(value: &Value) -> BudgetSettings {
     BudgetSettings {
         notify: value
             .get("notify")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        sync_to_phone: value
+            .get("syncToPhone")
             .and_then(Value::as_bool)
             .unwrap_or(false),
         rules,
@@ -370,6 +380,7 @@ pub(crate) fn evaluate_report(app: &AppContext, settings: &BudgetSettings) -> Bu
         generated_at: now.with_timezone(&Utc).to_rfc3339(),
         statuses,
         choices: choices_from(month.as_ref()),
+        phone_sync: crate::budget_publish::status(),
     }
 }
 
@@ -450,6 +461,7 @@ pub(crate) fn check_budget_alerts(app: &AppContext) -> Vec<BudgetStatus> {
         return Vec::new();
     }
     let statuses = evaluate_report(app, &settings).statuses;
+    crate::budget_publish::hand_over(&settings, &statuses);
     if settings.notify {
         if let Some(notifier) = crate::quota::alerts::notifier() {
             run_alerts(
@@ -588,7 +600,7 @@ pub(crate) fn plan_alerts(
     planned
 }
 
-fn rule_definition(rule: &BudgetRule) -> String {
+pub(crate) fn rule_definition(rule: &BudgetRule) -> String {
     serde_json::to_string(&(
         rule.period,
         rule.metric,
@@ -614,7 +626,7 @@ fn notification_text(rule: &BudgetRule, status: &BudgetStatus) -> (String, Strin
     (title, body)
 }
 
-fn scope_label(rule: &BudgetRule) -> String {
+pub(crate) fn scope_label(rule: &BudgetRule) -> String {
     let fallback = match rule.scope_kind {
         BudgetScopeKind::All => return "全部用量".to_string(),
         BudgetScopeKind::Tool => "Agent",
@@ -773,6 +785,7 @@ mod tests {
         disabled.enabled = false;
         let settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: vec![
                 rule("a", BudgetPeriod::Day, BudgetMetric::Tokens, 2_000.0),
                 rule("b", BudgetPeriod::Day, BudgetMetric::Cost, 4.0),
@@ -812,6 +825,7 @@ mod tests {
         all_with_id.scope_id = "ignored".to_string();
         let settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: vec![
                 low,
                 all_with_id,
@@ -836,6 +850,7 @@ mod tests {
 
         let many = BudgetSettings {
             notify: false,
+            sync_to_phone: false,
             rules: (0..40)
                 .map(|i| rule(&format!("r{i}"), BudgetPeriod::Day, BudgetMetric::Cost, 1.0))
                 .collect(),
@@ -874,6 +889,7 @@ mod tests {
         let budget = rule("a", BudgetPeriod::Day, BudgetMetric::Cost, 10.0);
         let settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: vec![budget.clone()],
         };
         let mut state = AlertState::default();
@@ -902,6 +918,7 @@ mod tests {
         let budget = rule("a", BudgetPeriod::Month, BudgetMetric::Tokens, 1_000.0);
         let mut settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: vec![budget.clone()],
         };
         let mut state = AlertState::default();
@@ -931,6 +948,7 @@ mod tests {
         );
         let mut settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: vec![budget.clone()],
         };
         let mut state = AlertState::default();
@@ -969,6 +987,7 @@ mod tests {
         rules.extend(dailies.iter().cloned());
         let settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: rules.clone(),
         };
         let mut state = AlertState::default();
@@ -1001,6 +1020,7 @@ mod tests {
         let budget = rule("a", BudgetPeriod::Month, BudgetMetric::Cost, 10.0);
         let mut settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: vec![budget.clone()],
         };
         let mut state = AlertState::default();
@@ -1068,6 +1088,7 @@ mod tests {
             .collect();
         let settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: rules.clone(),
         };
         let used = [11.0, 9.0, 12.0, 8.0, 15.0, 9.5];
@@ -1091,6 +1112,7 @@ mod tests {
 
         let quiet = BudgetSettings {
             notify: false,
+            sync_to_phone: false,
             rules,
         };
         assert!(plan_alerts(&quiet, &mut AlertState::default(), &statuses, now).is_empty());
@@ -1176,6 +1198,7 @@ mod tests {
         let budget = rule("a", BudgetPeriod::Day, BudgetMetric::Cost, 10.0);
         let settings = BudgetSettings {
             notify: true,
+            sync_to_phone: false,
             rules: vec![budget.clone()],
         };
         save_settings(&dir, &settings).unwrap();
