@@ -94,6 +94,11 @@ const REPORT_EXTRA_STYLES = `
 .note { color: var(--text-muted); font-size: 12px; margin: -16px 0 24px; }
 `;
 
+/** 导出文件里不写账号名：按账号拆分整段不导出，账号预算只写「账号预算」。 */
+function exportBudgetScopeName(budget: ReportBudget): string {
+  return budget.rule.scopeKind === 'provider' ? '账号预算' : budgetScopeName(budget.rule);
+}
+
 export function generatePeriodReportHtml(report: PeriodReport, options: PeriodReportExportOptions = {}): string {
   const hideCosts = options.hideCosts ?? false;
   const { period, totals, deltas } = report;
@@ -119,7 +124,7 @@ export function generatePeriodReportHtml(report: PeriodReport, options: PeriodRe
         </tr>`).join('');
   const budgetRows = report.budgets.map((budget) => `
         <tr>
-          <td class="name-cell">${escapeHtml(budgetScopeName(budget.rule))} · ${escapeHtml(BUDGET_METRIC_LABELS[budget.rule.metric])}</td>
+          <td class="name-cell">${escapeHtml(exportBudgetScopeName(budget))} · ${escapeHtml(BUDGET_METRIC_LABELS[budget.rule.metric])}</td>
           <td class="num">${budgetAmount(budget, budget.used, hideCosts)}</td>
           <td class="num">${budgetAmount(budget, budget.rule.limit, hideCosts)}</td>
           <td class="num">${budgetPercentText(budget, hideCosts)}</td>
@@ -174,8 +179,7 @@ ${REPORT_EXTRA_STYLES}</style>
       <div class="day-labels"><span>${escapeHtml(period.start)}</span><span>${report.peakDay ? `峰值 ${escapeHtml(report.peakDay.date)} · ${escapeHtml(formatTokens(report.peakDay.tokens))}` : '暂无用量'}</span><span>${escapeHtml(period.end)}</span></div>
       ${breakdownTable('按 Agent', report.agents, hideCosts)}
       ${breakdownTable('按模型', report.models, hideCosts)}
-      ${report.accounts ? breakdownTable('按账号', report.accounts, hideCosts) : ''}
-      ${report.sessions && report.sessions.length ? `
+      ${report.sessions && report.sessions.length && !hideCosts ? `
       <h2 class="section-title">最贵的会话</h2>
       <div class="table-container" tabindex="0" role="region" aria-label="最贵的会话">
         <table>
@@ -183,6 +187,7 @@ ${REPORT_EXTRA_STYLES}</style>
           <tbody>${sessionRows}</tbody>
         </table>
       </div>` : ''}
+      ${report.sessions && report.sessions.length && hideCosts ? '<p class="note">费用已隐藏：按费用排出的会话名单不写入文件。</p>' : ''}
       ${report.sessionsNote ? `<p class="note">${escapeHtml(report.sessionsNote)}</p>` : ''}
       ${report.budgets.length ? `
       <h2 class="section-title">预算达成</h2>

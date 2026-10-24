@@ -76,6 +76,8 @@ export async function loadPeriodReportData(scope: DataScope, period: ReportPerio
   return { current, previous, behavior, budgetRules };
 }
 
+export const RUNNING_REPORT_REFRESH_MS = 5 * 60 * 1000;
+
 /** 报告页的数据：所选期次一变就重读；本机统计更新（`stats-updated`）时静默刷新。 */
 export function usePeriodReport({ scope, period, timezone, active }: {
   scope: DataScope;
@@ -116,6 +118,23 @@ export function usePeriodReport({ scope, period, timezone, active }: {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // 网关记账不发 stats-updated：进行中的一期在窗口可见时每 5 分钟、以及回到窗口时重读。
+  const running = !period.complete;
+  useEffect(() => {
+    if (!active || !running) return undefined;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void reload();
+    };
+    const timer = window.setInterval(refreshIfVisible, RUNNING_REPORT_REFRESH_MS);
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshIfVisible);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [active, running, reload]);
 
   useEffect(() => {
     if (!active) return undefined;

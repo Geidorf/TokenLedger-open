@@ -159,6 +159,25 @@ describe('generatePeriodReportHtml', () => {
     expect(generatePeriodReportHtml(report)).toContain('$12.50');
   });
 
+  it('keeps account names and cost-ranked sessions out of shareable files', () => {
+    const current = stats(100, 100, { providers: { 'acct-secret@example': { name: 'acct-secret@example', input: 50, output: 50, cached: 0, total: 100, cost: 1, requests: 2 } } } as Partial<StatsData>);
+    const behavior = {
+      meta: { sessionsTruncated: false, sessionLimit: 100 },
+      sessions: [{ id: 'session-abcdef123456', tool: 'codex', tokens: 9, requests: 1, cost: 2 }],
+    } as unknown as BehaviorAnalysisResponse;
+    const report = buildPeriodReport({
+      period, scope: 'local', current, previous: null, behavior,
+      budgetRules: [rule({ id: 'acct', scopeKind: 'provider', scopeId: 'acct-secret@example', limit: 5 })],
+    });
+    const shown = generatePeriodReportHtml(report);
+    expect(shown).not.toContain('acct-secret');
+    expect(shown).toContain('账号预算');
+    expect(shown).toContain('最贵的会话');
+    const hidden = generatePeriodReportHtml(report, { hideCosts: true });
+    expect(hidden).not.toContain('最贵的会话');
+    expect(hidden).not.toContain('123456');
+  });
+
   it('hides the spent ratio of cost budgets but not of token budgets', () => {
     const report = buildPeriodReport({
       period, scope: 'local', current: stats(100, 100), previous: null,

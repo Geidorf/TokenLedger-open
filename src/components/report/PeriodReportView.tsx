@@ -312,7 +312,7 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
               onClick={() => void reminder.save(kind === 'week' ? { ...reminder.settings, weekly: !remindOn } : { ...reminder.settings, monthly: !remindOn })}
             />
           </section>
-          <p className="report-footnote"><Download size={12} aria-hidden="true" /> 有效 Token = 输入 + 输出，缓存读写另列；预估费用按本机价格表估算。导出文件只含统计摘要，不含会话内容、项目名或设备标识。</p>
+          <p className="report-footnote"><Download size={12} aria-hidden="true" /> 有效 Token = 输入 + 输出，缓存读写另列；预估费用按本机价格表估算。导出文件只含统计摘要，不含会话内容、项目名、账号名或设备标识。</p>
         </>
       )}
     </div>
