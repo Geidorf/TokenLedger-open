@@ -40,6 +40,7 @@ const FULLY_LOCALIZED = [
   'src/types/sessionAnalysis.ts',
   'src/utils/projectDimension.ts',
   'src/components/behavior/BehaviorProjectPanel.tsx',
+  'src/components/settings/QuotaSection.tsx',
   'src/components/BehaviorAnalysisView.tsx',
   'src/components/settings/BudgetSection.tsx',
   'src/hooks/useBudget.ts',

@@ -30,6 +30,7 @@ import {
 import type { RequestConfirmation } from '../../utils/confirmation';
 import { focusWrapTarget, quotaClearFeedback, quotaSyncCapacityMessage } from '../../utils/frontendContracts';
 import { QUOTA_ALERT_THRESHOLDS, toggleQuotaAlertThreshold, useQuotaAlertSettings } from '../../hooks/useQuota';
+import { localized, t, useLang, getLang, type MessageKey } from '../../i18n';
 
 export interface QuotaSectionProps {
   appSettings: AppSettings;
@@ -131,49 +132,59 @@ interface ReasonCopy {
   detail: string;
 }
 
+interface ReasonCopyKeys {
+  sentence: MessageKey;
+  action: QuotaSourceAction | null;
+  detail: MessageKey;
+}
+
 const LOGIN_REASON_CODES = new Set([
   'app_server_auth_required',
   'claude_native_authorization_required',
   'antigravity_native_authorization_required',
 ]);
 
-const SOURCE_REASON_COPY: Record<string, ReasonCopy> = {
-  app_server_auth_required: { sentence: '请在 Codex 中登录 ChatGPT 账户后回来刷新。', action: null, detail: 'Codex 当前未完成 ChatGPT 登录，或账户没有可读取的额度窗口。' },
-  app_server_unavailable: { sentence: 'Codex 官方本地接口暂不可用，可升级 Codex 后重试。', action: null, detail: 'Codex app-server 不可用，受限回退也没有可信值。' },
-  app_server_timeout: { sentence: 'Codex 响应超时，稍后会自动重试。', action: null, detail: 'Codex app-server 在限定时间内没有返回。' },
-  claude_statusline_snapshot_missing: { sentence: '还没收到 Claude Code 的额度数据，新开一个会话跑一轮即可。', action: null, detail: '尚未收到含 rate_limits 的 status line 输入；首次 API 响应后才会出现额度字段。' },
-  claude_statusline_snapshot_invalid: { sentence: 'Claude Code 交来的额度数据无效，请重新一键接入。', action: null, detail: 'status line 快照越界、损坏、过期或身份检查失败。' },
-  claude_native_authorization_required: { sentence: '请在 Claude Desktop 或 Claude Code 中重新登录。', action: 'read', detail: '本机 Claude 代理返回登录失效。' },
-  claude_native_cli_unavailable: { sentence: '没有找到可用的 Claude CLI。', action: 'install', detail: '内置 /usage 未发现 Claude Desktop 随附代理或本机 Claude Code。' },
-  claude_native_timeout: { sentence: 'Claude /usage 读取超时。', action: 'read', detail: '内置 /usage PTY 在限定时间内没有返回。' },
-  claude_native_usage_unavailable: { sentence: 'Claude CLI 的 /usage 暂时打不开。', action: 'read', detail: 'Claude CLI 的 /usage 通道加载失败；Claude Desktop 网页额度可能同时正常。' },
-  claude_native_subscription_unavailable: { sentence: '当前 Claude 订阅没有提供可量化的额度窗口。', action: null, detail: '/usage 只返回订阅提示，没有 5 小时或每周数值。' },
-  claude_native_response_invalid: { sentence: 'Claude /usage 没有返回可验证的额度。', action: 'read', detail: '输出超限、百分比或重置时间越界，或没有合法窗口。' },
-  claude_codexbar_unavailable: { sentence: '实验来源没有读到 Claude 额度。', action: 'read', detail: '未找到 CodexBar CLI，内置 /usage 也未成功。' },
-  claude_codexbar_timeout: { sentence: 'CodexBar 读取超时。', action: 'read', detail: 'CodexBar Claude 额度读取超时。' },
-  claude_codexbar_response_invalid: { sentence: 'CodexBar 没有返回可验证的 Claude 额度。', action: 'read', detail: '请在 CodexBar 中确认 Claude 来源已授权。' },
-  antigravity_native_authorization_required: { sentence: '请在 Antigravity 中完成登录。', action: 'read', detail: 'Antigravity 本地服务拒绝访问或登录不可用。' },
-  antigravity_native_source_not_found: { sentence: '请先打开 Antigravity，再立即读取。', action: 'read', detail: '未发现正在运行的 Antigravity App、IDE 或 agy 本地服务。' },
-  antigravity_native_port_unavailable: { sentence: '请先打开 Antigravity，再立即读取。', action: 'read', detail: '未发现 Antigravity 本地额度服务端口。' },
-  antigravity_native_timeout: { sentence: 'Antigravity 读取超时。', action: 'read', detail: 'Antigravity 本地服务在限定时间内没有返回。' },
-  antigravity_native_response_invalid: { sentence: 'Antigravity 没有返回可验证的额度。', action: 'read', detail: '本地服务响应越界或没有合法额度窗口。' },
-  antigravity_codexbar_unavailable: { sentence: 'Antigravity 内置读取失败，也没有可用的 CodexBar。', action: 'read', detail: '内置读取失败，且未找到可用的 CodexBar CLI 兜底。' },
-  antigravity_codexbar_timeout: { sentence: 'CodexBar 读取超时。', action: 'read', detail: 'CodexBar 的 Antigravity 额度读取超时。' },
-  antigravity_codexbar_response_invalid: { sentence: 'CodexBar 没有返回可验证的额度。', action: 'read', detail: 'CodexBar 未返回可验证的 Antigravity 本地额度。' },
-  permission_denied: { sentence: '本机来源没有读取权限。', action: null, detail: '允许范围内的本地来源不可读。' },
-  source_not_found: { sentence: '没有找到可读取的本机来源。', action: null, detail: '允许范围内未找到本地来源。' },
-  observation_stale: { sentence: '来源暂未刷新，下面是上次的值。', action: 'read', detail: '当前只有历史快照，或窗口已过新鲜期。' },
-  reset_elapsed: { sentence: '额度窗口已到重置时间，等待来源刷新。', action: 'read', detail: '来源仍新鲜，但该窗口的重置时间已过。' },
+const SOURCE_REASON_COPY: Record<string, ReasonCopyKeys> = {
+  app_server_auth_required: { sentence: 'qs.reason.appServerAuthRequired', action: null, detail: 'qs.reason.appServerAuthRequired.detail' },
+  app_server_unavailable: { sentence: 'qs.reason.appServerUnavailable', action: null, detail: 'qs.reason.appServerUnavailable.detail' },
+  app_server_timeout: { sentence: 'qs.reason.appServerTimeout', action: null, detail: 'qs.reason.appServerTimeout.detail' },
+  claude_statusline_snapshot_missing: { sentence: 'qs.reason.claudeStatuslineSnapshotMissing', action: null, detail: 'qs.reason.claudeStatuslineSnapshotMissing.detail' },
+  claude_statusline_snapshot_invalid: { sentence: 'qs.reason.claudeStatuslineSnapshotInvalid', action: null, detail: 'qs.reason.claudeStatuslineSnapshotInvalid.detail' },
+  claude_native_authorization_required: { sentence: 'qs.reason.claudeNativeAuthorizationRequired', action: 'read', detail: 'qs.reason.claudeNativeAuthorizationRequired.detail' },
+  claude_native_cli_unavailable: { sentence: 'qs.reason.claudeNativeCliUnavailable', action: 'install', detail: 'qs.reason.claudeNativeCliUnavailable.detail' },
+  claude_native_timeout: { sentence: 'qs.reason.claudeNativeTimeout', action: 'read', detail: 'qs.reason.claudeNativeTimeout.detail' },
+  claude_native_usage_unavailable: { sentence: 'qs.reason.claudeNativeUsageUnavailable', action: 'read', detail: 'qs.reason.claudeNativeUsageUnavailable.detail' },
+  claude_native_subscription_unavailable: { sentence: 'qs.reason.claudeNativeSubscriptionUnavailable', action: null, detail: 'qs.reason.claudeNativeSubscriptionUnavailable.detail' },
+  claude_native_response_invalid: { sentence: 'qs.reason.claudeNativeResponseInvalid', action: 'read', detail: 'qs.reason.claudeNativeResponseInvalid.detail' },
+  claude_codexbar_unavailable: { sentence: 'qs.reason.claudeCodexbarUnavailable', action: 'read', detail: 'qs.reason.claudeCodexbarUnavailable.detail' },
+  claude_codexbar_timeout: { sentence: 'qs.reason.claudeCodexbarTimeout', action: 'read', detail: 'qs.reason.claudeCodexbarTimeout.detail' },
+  claude_codexbar_response_invalid: { sentence: 'qs.reason.claudeCodexbarResponseInvalid', action: 'read', detail: 'qs.reason.claudeCodexbarResponseInvalid.detail' },
+  antigravity_native_authorization_required: { sentence: 'qs.reason.antigravityNativeAuthorizationRequired', action: 'read', detail: 'qs.reason.antigravityNativeAuthorizationRequired.detail' },
+  antigravity_native_source_not_found: { sentence: 'qs.reason.antigravityNativeSourceNotFound', action: 'read', detail: 'qs.reason.antigravityNativeSourceNotFound.detail' },
+  antigravity_native_port_unavailable: { sentence: 'qs.reason.antigravityNativePortUnavailable', action: 'read', detail: 'qs.reason.antigravityNativePortUnavailable.detail' },
+  antigravity_native_timeout: { sentence: 'qs.reason.antigravityNativeTimeout', action: 'read', detail: 'qs.reason.antigravityNativeTimeout.detail' },
+  antigravity_native_response_invalid: { sentence: 'qs.reason.antigravityNativeResponseInvalid', action: 'read', detail: 'qs.reason.antigravityNativeResponseInvalid.detail' },
+  antigravity_codexbar_unavailable: { sentence: 'qs.reason.antigravityCodexbarUnavailable', action: 'read', detail: 'qs.reason.antigravityCodexbarUnavailable.detail' },
+  antigravity_codexbar_timeout: { sentence: 'qs.reason.antigravityCodexbarTimeout', action: 'read', detail: 'qs.reason.antigravityCodexbarTimeout.detail' },
+  antigravity_codexbar_response_invalid: { sentence: 'qs.reason.antigravityCodexbarResponseInvalid', action: 'read', detail: 'qs.reason.antigravityCodexbarResponseInvalid.detail' },
+  permission_denied: { sentence: 'qs.reason.permissionDenied', action: null, detail: 'qs.reason.permissionDenied.detail' },
+  source_not_found: { sentence: 'qs.reason.sourceNotFound', action: null, detail: 'qs.reason.sourceNotFound.detail' },
+  observation_stale: { sentence: 'qs.reason.observationStale', action: 'read', detail: 'qs.reason.observationStale.detail' },
+  reset_elapsed: { sentence: 'qs.reason.resetElapsed', action: 'read', detail: 'qs.reason.resetElapsed.detail' },
 };
 
-const GENERIC_READ_FAILURE: ReasonCopy = { sentence: '这次没有读到额度。', action: 'read', detail: '' };
+function sourceReasonCopy(reasonCode: string | undefined): ReasonCopy {
+  const keys = reasonCode ? SOURCE_REASON_COPY[reasonCode] : undefined;
+  if (!keys) return { sentence: t('qs.readFailedGeneric'), action: 'read', detail: '' };
+  return { sentence: t(keys.sentence), action: keys.action, detail: t(keys.detail) };
+}
 
 function formatSourceRelative(observedAt: number, now: number): string {
   const minutes = Math.max(0, Math.floor((now - observedAt) / 60_000));
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes} 分钟前`;
-  if (minutes < 1_440) return `${Math.floor(minutes / 60)} 小时前`;
-  return `${Math.floor(minutes / 1_440)} 天前`;
+  if (minutes < 1) return t('qs.justNow');
+  if (minutes < 60) return t('qs.ago.minutes', { n: minutes });
+  if (minutes < 1_440) return t('qs.ago.hours', { n: Math.floor(minutes / 60) });
+  return t('qs.ago.days', { n: Math.floor(minutes / 1_440) });
 }
 
 function formatSourceReset(resetsAt: string | undefined, now: number): string | null {
@@ -181,16 +192,16 @@ function formatSourceReset(resetsAt: string | undefined, now: number): string | 
   const at = new Date(resetsAt).getTime();
   if (!Number.isFinite(at)) return null;
   const minutes = Math.round((at - now) / 60_000);
-  if (minutes <= 0) return '正在重置';
-  if (minutes < 120) return `${minutes} 分钟后重置`;
-  if (minutes < 2_880) return `${Math.round(minutes / 60)} 小时后重置`;
-  return `${Math.round(minutes / 1_440)} 天后重置`;
+  if (minutes <= 0) return t('qs.resetting');
+  if (minutes < 120) return t('qs.resetIn.minutes', { n: minutes });
+  if (minutes < 2_880) return t('qs.resetIn.hours', { n: Math.round(minutes / 60) });
+  return t('qs.resetIn.days', { n: Math.round(minutes / 1_440) });
 }
 
 export function formatSourceAsOf(observedAt: string): string {
   const date = new Date(observedAt);
   if (Number.isNaN(date.getTime())) return observedAt;
-  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+  return new Intl.DateTimeFormat(getLang() === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
 }
 
 function latestObservedAt(provider: QuotaProviderEnvelope | undefined): string | undefined {
@@ -227,24 +238,24 @@ function sourceWindows(provider: QuotaProviderEnvelope | undefined, now: number)
 export function quotaSourceCardView({ name, enabled, installed, provider, now }: QuotaSourceCardInput): QuotaSourceCardView {
   if (!enabled) {
     if (installed === false) {
-      return { state: 'not-installed', label: '未安装', sentence: `这台电脑上没有检测到 ${name}。`, action: 'install', windows: [] };
+      return { state: 'not-installed', label: t('qs.state.notInstalled'), sentence: t('qs.notInstalled', { name }), action: 'install', windows: [] };
     }
-    return { state: 'needs-authorization', label: '待授权', sentence: '打开开关后才会读取。', action: null, windows: [] };
+    return { state: 'needs-authorization', label: t('qs.state.needsAuth'), sentence: t('qs.offUntilEnabled'), action: null, windows: [] };
   }
   if (!provider) {
-    return { state: 'needs-authorization', label: '待授权', sentence: '正在等待首次读取。', action: null, windows: [] };
+    return { state: 'needs-authorization', label: t('qs.state.needsAuth'), sentence: t('qs.waitingFirstRead'), action: null, windows: [] };
   }
   const windows = sourceWindows(provider, now);
   const observedAt = latestObservedAt(provider);
   const reasonCode = provider.reasonCode;
-  const copy = (reasonCode && SOURCE_REASON_COPY[reasonCode]) || GENERIC_READ_FAILURE;
-  const detail = reasonCode ? `${copy.detail || copy.sentence}（${reasonCode}）` : undefined;
+  const copy = sourceReasonCopy(reasonCode);
+  const detail = reasonCode ? t('qs.detailWithCode', { detail: copy.detail || copy.sentence, code: reasonCode }) : undefined;
   if (provider.status === 'ok') {
     const observedMs = observedAt ? new Date(observedAt).getTime() : Number.NaN;
     return {
       state: 'connected',
-      label: Number.isFinite(observedMs) ? `已连接 · ${formatSourceRelative(observedMs, now)}` : '已连接',
-      sentence: windows.length > 0 ? '额度来自本机官方客户端。' : '已连接，来源暂未返回可展示的窗口。',
+      label: Number.isFinite(observedMs) ? t('qs.connectedAgo', { ago: formatSourceRelative(observedMs, now) }) : t('qs.connected'),
+      sentence: windows.length > 0 ? t('qs.fromOfficialClient') : t('qs.connectedNoWindows'),
       action: 'read',
       windows,
     };
@@ -253,7 +264,7 @@ export function quotaSourceCardView({ name, enabled, installed, provider, now }:
     || (provider.status === 'auth-required' && !reasonCode?.endsWith('_local_authorization_required'))) {
     return {
       state: 'login-required',
-      label: '需在原应用登录',
+      label: t('qs.state.loginRequired'),
       sentence: copy.sentence,
       action: copy.action,
       detail,
@@ -262,17 +273,17 @@ export function quotaSourceCardView({ name, enabled, installed, provider, now }:
     };
   }
   if (provider.status === 'auth-required') {
-    return { state: 'needs-authorization', label: '待授权', sentence: '授权尚未生效，稍后自动刷新。', action: null, detail, windows: [] };
+    return { state: 'needs-authorization', label: t('qs.state.needsAuth'), sentence: t('qs.authPending'), action: null, detail, windows: [] };
   }
   if (installed === false && windows.length === 0) {
-    return { state: 'not-installed', label: '未安装', sentence: `这台电脑上没有检测到 ${name}。`, action: 'install', detail, windows: [] };
+    return { state: 'not-installed', label: t('qs.state.notInstalled'), sentence: t('qs.notInstalled', { name }), action: 'install', detail, windows: [] };
   }
   if (reasonCode === 'claude_statusline_snapshot_missing' && windows.length === 0) {
-    return { state: 'needs-authorization', label: '待授权', sentence: copy.sentence, action: null, detail, windows: [] };
+    return { state: 'needs-authorization', label: t('qs.state.needsAuth'), sentence: copy.sentence, action: null, detail, windows: [] };
   }
   return {
     state: 'read-failed',
-    label: windows.length > 0 ? '读取失败（保留旧值）' : '读取失败',
+    label: windows.length > 0 ? t('qs.state.readFailedKept') : t('qs.state.readFailed'),
     sentence: copy.sentence,
     action: copy.action,
     detail,
@@ -329,20 +340,20 @@ function QuotaSourceStatus({ providerId, name, view, readLabel, readBusyLabel, r
         <span className={`settings-value quota-setup-stage quota-setup-stage-${SOURCE_STATE_TONES[view.state]}`} role="status">
           {view.label}
         </span>
-        {view.asOf && <span className="quota-source-asof">截至 {formatSourceAsOf(view.asOf)}</span>}
+        {view.asOf && <span className="quota-source-asof">{t('qs.asOf', { time: formatSourceAsOf(view.asOf) })}</span>}
       </div>
       <div className="quota-source-message">
         <p>
           {view.sentence}
           {view.detail && (
-            <span className="quota-source-info" role="note" tabIndex={0} title={view.detail} aria-label={`${name} 详细原因：${view.detail}`}>
+            <span className="quota-source-info" role="note" tabIndex={0} title={view.detail} aria-label={t('qs.detailAria', { name, detail: view.detail })}>
               <Info className="h-3.5 w-3.5" aria-hidden="true" />
             </span>
           )}
         </p>
         {view.action === 'install' && installUrl && (
-          <a className="secondary-inline" href={installUrl} target="_blank" rel="noopener noreferrer" aria-label={`${name} 官方安装说明`}>
-            安装说明
+          <a className="secondary-inline" href={installUrl} target="_blank" rel="noopener noreferrer" aria-label={t('qs.installAria', { name })}>
+            {t('qs.installGuide')}
           </a>
         )}
         {view.action === 'read' && onRead && (
@@ -356,23 +367,23 @@ function QuotaSourceStatus({ providerId, name, view, readLabel, readBusyLabel, r
             onClick={onRead}
           >
             {readBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-            {readBusy ? '读取中…' : '立即读取'}
+            {readBusy ? t('qs.reading') : t('qs.readNow')}
           </button>
         )}
       </div>
       {view.windows.length > 0 && (
-        <ul className="quota-source-windows" aria-label={`${name} 额度窗口`}>
+        <ul className="quota-source-windows" aria-label={t('qs.windowsAria', { name })}>
           {view.windows.map((window) => (
             <li key={window.windowId} className="quota-source-window">
               <div className="quota-source-window-head">
                 <span>{window.label}</span>
-                <b>剩余 {window.remaining}%</b>
+                <b>{t('qs.remaining', { pct: window.remaining })}</b>
               </div>
               <div
                 className="quota-source-meter"
                 data-level={quotaLevel(window.remaining)}
                 role="progressbar"
-                aria-label={`${name} ${window.label} 剩余额度`}
+                aria-label={t('qs.remainingAria', { name, window: window.label })}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={window.remaining}
@@ -513,22 +524,22 @@ function ClaudeSetupPreviewDialog({ preview, busy, onCancel, onConfirm }: {
           <FileDiff className="h-5 w-5" />
         </div>
         <div className="confirm-dialog-copy">
-          <h2 id="claude-setup-preview-title" className="confirm-dialog-title">写入 Claude Code 配置？</h2>
+          <h2 id="claude-setup-preview-title" className="confirm-dialog-title">{t('qs.claude.previewTitle')}</h2>
           <p className="confirm-dialog-description">
-            {preview.fileExists ? preview.settingsPath : `${preview.settingsPath}（新建）`}
+            {preview.fileExists ? preview.settingsPath : t('qs.newFile', { path: preview.settingsPath })}
           </p>
           {preview.changed ? (
-            <pre className="settings-code settings-code-block" aria-label="statusLine 改动预览" tabIndex={0}>{preview.diff}</pre>
+            <pre className="settings-code settings-code-block" aria-label={t('qs.claude.previewAria')} tabIndex={0}>{preview.diff}</pre>
           ) : (
-            <p className="confirm-dialog-description">已经接入，无需改动。</p>
+            <p className="confirm-dialog-description">{t('qs.claude.alreadyWired')}</p>
           )}
           <p className="confirm-dialog-description">
-            {preview.keepsOriginal ? '只改 statusLine；原有 status line 会保留并照常显示。' : '只改 statusLine，写入前自动备份。'}
+            {preview.keepsOriginal ? t('qs.claude.keepsOriginal') : t('qs.claude.backupFirst')}
           </p>
         </div>
         <footer className="confirm-dialog-actions">
           <button ref={cancelRef} className="ghost-inline" type="button" onClick={onCancel} disabled={busy}>
-            取消
+            {t('qs.cancel')}
           </button>
           <button
             className="primary-inline"
@@ -537,7 +548,7 @@ function ClaudeSetupPreviewDialog({ preview, busy, onCancel, onConfirm }: {
             disabled={busy || !preview.changed}
             aria-busy={busy || undefined}
           >
-            {busy ? '写入中…' : '确认写入'}
+            {busy ? t('qs.writing') : t('qs.confirmWrite')}
           </button>
         </footer>
       </section>
@@ -552,19 +563,19 @@ function QuotaAlertsCard() {
   const { settings, loaded, saving, error, save } = useQuotaAlertSettings();
   const disabled = !loaded || saving;
   return (
-    <SettingsCard title="额度提醒">
+    <SettingsCard title={t('qs.alerts.title')}>
       <SettingsGroup>
         <SettingsToggleRow
-          label="额度不足时提醒"
-          hint="系统通知，每个窗口每档每周期一次。"
+          label={t('qs.alerts.toggle')}
+          hint={t('qs.alerts.toggleHint')}
           icon={Bell}
           checked={settings.enabled}
           disabled={disabled}
           busy={saving}
           onChange={(enabled) => void save({ ...settings, enabled })}
         />
-        <SettingsRow label="提醒档位" hint="剩余低于所选比例时提醒。">
-          <div className="settings-inline-actions" role="group" aria-label="提醒档位">
+        <SettingsRow label={t('qs.alerts.levels')} hint={t('qs.alerts.levelsHint')}>
+          <div className="settings-inline-actions" role="group" aria-label={t('qs.alerts.levels')}>
             {QUOTA_ALERT_THRESHOLDS.map((threshold) => {
               const selected = settings.thresholds.includes(threshold);
               const onlySelected = selected && settings.thresholds.length === 1;
@@ -575,7 +586,7 @@ function QuotaAlertsCard() {
                   className={selected ? 'primary-inline' : 'secondary-inline'}
                   aria-pressed={selected}
                   disabled={disabled || !settings.enabled || onlySelected}
-                  title={onlySelected ? '至少保留一档' : undefined}
+                  title={onlySelected ? t('qs.alerts.keepOne') : undefined}
                   onClick={() => void save({
                     ...settings,
                     thresholds: toggleQuotaAlertThreshold(settings.thresholds, threshold),
@@ -594,8 +605,9 @@ function QuotaAlertsCard() {
 }
 
 export function QuotaSection(props: QuotaSectionProps) {
+  useLang();
   const { appSettings, busy, cloudStatus, quotaSyncStatus } = props;
-  const [claudeStatuslineCommand, setClaudeStatuslineCommand] = useState('正在读取当前客户端路径…');
+  const [claudeStatuslineCommand, setClaudeStatuslineCommand] = useState(t('qs.claude.readingPath'));
   const [claudeSetup, setClaudeSetup] = useState<ClaudeQuotaSetup | null>(null);
   const [claudeSetupReloadKey, setClaudeSetupReloadKey] = useState(0);
   const [statuslineCopyState, setStatuslineCopyState] = useState<'idle' | 'copied' | 'manual'>('idle');
@@ -635,30 +647,30 @@ export function QuotaSection(props: QuotaSectionProps) {
   const quotaSyncLabel = (() => {
     if (quotaSyncRecoveryMessage) return quotaSyncRecoveryMessage;
     switch (quotaSyncStatus.state) {
-      case 'active': return quotaSyncStatus.lastSyncedAt ? '已同步' : '已启用，等待首个快照';
-      case 'syncing': return '正在同步';
-      case 'paused': return '已暂停，需要重新显式启用';
-      case 'auth-required': return '等待云端登录';
-      case 'unavailable': return '云端能力尚未部署';
-      case 'error': return '最近一次同步失败';
-      default: return '未启用';
+      case 'active': return quotaSyncStatus.lastSyncedAt ? t('qs.sync.synced') : t('qs.sync.waitingFirst');
+      case 'syncing': return t('qs.sync.syncing');
+      case 'paused': return t('qs.sync.paused');
+      case 'auth-required': return t('qs.sync.authRequired');
+      case 'unavailable': return t('qs.sync.unavailable');
+      case 'error': return t('qs.sync.error');
+      default: return t('qs.sync.off');
     }
   })();
   const quotaSyncBusy = quotaSyncStatus.state === 'syncing';
-  const quotaSyncButtonLabel = quotaSyncBusy ? '同步中…' : '同步额度';
-  const quotaSyncButtonAriaLabel = quotaSyncBusy ? '正在同步额度' : '同步额度';
+  const quotaSyncButtonLabel = quotaSyncBusy ? t('qs.sync.busy') : t('qs.sync.button');
+  const quotaSyncButtonAriaLabel = quotaSyncBusy ? t('qs.sync.busyAria') : t('qs.sync.button');
   const quotaSyncActionDisabledReason = busy.settings
-    ? '正在保存设置，请稍候'
+    ? t('qs.sync.savingWait')
     : quotaSyncBusy
-      ? '正在同步额度，请稍候'
+      ? t('qs.sync.syncingWait')
       : !appSettings.quota_snapshot_sync_enabled
         ? cloudStatus.authenticated
-          ? '请先启用跨设备同步'
-          : '请先登录云端账户，再启用跨设备同步'
+          ? t('qs.sync.enableFirst')
+          : t('qs.sync.signInFirst')
         : undefined;
   const quotaSyncButtonTitle = quotaSyncActionDisabledReason
-    ? `${quotaSyncButtonAriaLabel}：${quotaSyncActionDisabledReason}`
-    : '立即同步已授权的额度快照';
+    ? t('qs.sync.ariaWithReason', { label: quotaSyncButtonAriaLabel, reason: quotaSyncActionDisabledReason })
+    : t('qs.sync.nowAria');
   const claudeReadBusy = activeQuotaRead === 'claude' && busy.settings;
   const antigravityReadBusy = activeQuotaRead === 'antigravity' && busy.settings;
   const providerById = (providerId: string) => props.quotaProviders.find((provider) => provider.providerId === providerId);
@@ -684,7 +696,7 @@ export function QuotaSection(props: QuotaSectionProps) {
     && claudeBaseView.state === 'needs-authorization'
     && claudeSetup
     && !claudeSetup.statusLineWired
-    ? { ...claudeBaseView, sentence: '还没接入 Claude Code，用下方「一键接入」完成。' }
+    ? { ...claudeBaseView, sentence: t('qs.claude.notWired') }
     : claudeBaseView;
   const antigravityView = quotaSourceCardView({
     name: 'Antigravity',
@@ -757,7 +769,7 @@ export function QuotaSection(props: QuotaSectionProps) {
         setClaudeSetup(setup);
       })
       .catch(() => {
-        if (active) setClaudeStatuslineCommand('无法读取当前客户端路径');
+        if (active) setClaudeStatuslineCommand(t('qs.claude.pathUnreadable'));
       });
     return () => {
       active = false;
@@ -845,9 +857,9 @@ export function QuotaSection(props: QuotaSectionProps) {
 
   const deleteCustomEndpoint = async (endpoint: CustomQuotaEndpointView) => {
     if (!(await props.onConfirm({
-      title: `删除“${endpoint.displayName}”的本机额度来源？`,
-      description: '本机地址与 API key 会被删除，云端历史快照不会被隐式删除。',
-      confirmLabel: '删除来源',
+      title: t('qs.custom.deleteTitle', { name: endpoint.displayName }),
+      description: t('qs.custom.deleteBody'),
+      confirmLabel: t('qs.custom.deleteConfirm'),
       tone: 'danger',
     }))) return;
     setActiveCustomEndpointAction({ kind: 'delete', id: endpoint.id });
@@ -872,10 +884,10 @@ export function QuotaSection(props: QuotaSectionProps) {
     customEndpointBusy && activeCustomEndpointAction?.kind === kind && activeCustomEndpointAction.id === id;
   const customEndpointSaveBusy = customEndpointBusy && activeCustomEndpointAction === null;
   const customEndpointSaveLabel = customEndpointSaveBusy
-    ? customEditingId ? '正在保存公司额度来源' : '正在添加公司额度来源'
-    : customEditingId ? '保存修改并刷新额度' : '添加并刷新额度';
+    ? customEditingId ? t('qs.custom.savingBusy') : t('qs.custom.addingBusy')
+    : customEditingId ? t('qs.custom.saveRefresh') : t('qs.custom.addRefresh');
   const customEndpointSaveTitle = customEndpointSaveBusy
-    ? `${customEndpointSaveLabel}，请稍候`
+    ? t('qs.custom.pleaseWait', { label: customEndpointSaveLabel })
     : customEndpointSaveLabel;
 
   const beginQuotaSnapshotAction = (trigger: HTMLButtonElement) => {
@@ -961,7 +973,7 @@ export function QuotaSection(props: QuotaSectionProps) {
     setClaudeSetupError('');
     try {
       await invoke('apply_claude_statusline_setup', { expectedVersion: claudePreview.beforeVersion });
-      setClaudeSetupNotice('已写入，新开 Claude Code 会话后生效');
+      setClaudeSetupNotice(t('qs.claude.written'));
     } catch (error) {
       setClaudeSetupError(String(error));
     } finally {
@@ -976,17 +988,17 @@ export function QuotaSection(props: QuotaSectionProps) {
     const force = !claudeBackup.restorableWithoutForce;
     const confirmed = await props.onConfirm(force
       ? {
-          title: '强制恢复 Claude 原配置？',
-          description: '接入后 statusLine 又被改过，恢复会换回接入前的 statusLine，丢掉这项改动；其他设置不受影响。',
-          confirmLabel: '强制恢复',
+          title: t('qs.claude.forceRestoreTitle'),
+          description: t('qs.claude.forceRestoreBody'),
+          confirmLabel: t('qs.claude.forceRestore'),
           tone: 'danger',
         }
       : {
-          title: '恢复 Claude 原配置？',
+          title: t('qs.claude.restoreTitle'),
           description: claudeBackup.originalExisted
-            ? 'statusLine 会换回接入前的样子，其他设置保持现状。'
-            : '会去掉 TokenLedger 写入的 statusLine；接入时新建的 settings.json 若没有别的内容会一并删除。',
-          confirmLabel: '恢复',
+            ? t('qs.claude.restoreBodyChained')
+            : t('qs.claude.restoreBody'),
+          confirmLabel: t('qs.claude.restore'),
         });
     if (!confirmed) return;
     setClaudeSetupAction('restore');
@@ -994,7 +1006,7 @@ export function QuotaSection(props: QuotaSectionProps) {
     setClaudeSetupNotice('');
     try {
       await invoke('restore_claude_statusline_setup', { force });
-      setClaudeSetupNotice('已恢复原配置');
+      setClaudeSetupNotice(t('qs.claude.restored'));
     } catch (error) {
       setClaudeSetupError(String(error));
     } finally {
@@ -1004,38 +1016,38 @@ export function QuotaSection(props: QuotaSectionProps) {
   };
 
   return (
-    <SettingsSection id="quota" title="订阅额度">
-      <section className="quota-overview" aria-label="额度配置总览">
+    <SettingsSection id="quota" title={t('qs.title')}>
+      <section className="quota-overview" aria-label={t('qs.overview.aria')}>
         <div className="quota-overview-head">
           <div>
-            <span className="quota-overview-kicker">先看状态，再配置来源</span>
-            <h3>额度来源总览</h3>
-            <p>只展示来源实际返回的额度，不推算、不补齐。</p>
+            <span className="quota-overview-kicker">{t('qs.overview.kicker')}</span>
+            <h3>{t('qs.overview.title')}</h3>
+            <p>{t('qs.overview.body')}</p>
           </div>
           <span className={`quota-overview-badge${overview.localConnectedCount + overview.companyEnabledCount > 0 ? ' is-active' : ''}`}>
             {overview.localAttentionCount > 0
-              ? '有来源需处理'
-              : overview.localConnectedCount + overview.companyEnabledCount > 0 ? '有来源已连接' : '等待授权'}
+              ? t('qs.overview.needsAttention')
+              : overview.localConnectedCount + overview.companyEnabledCount > 0 ? t('qs.overview.someConnected') : t('qs.overview.waiting')}
           </span>
         </div>
         <div className="quota-overview-grid">
           <div className="quota-overview-item">
-            <span>本机订阅已连接</span>
+            <span>{t('qs.overview.localConnected')}</span>
             <strong>{overview.localConnectedCount}/3</strong>
             <small>
-              {overview.localEnabledCount > 0 ? `${overview.localEnabledCount} 个已开启` : '尚未开启'}
-              {overview.localAttentionCount > 0 ? ` · ${overview.localAttentionCount} 个需处理` : ''}
+              {overview.localEnabledCount > 0 ? t('qs.overview.enabledCount', { n: overview.localEnabledCount }) : t('qs.overview.notEnabled')}
+              {overview.localAttentionCount > 0 ? t('qs.overview.attentionCount', { n: overview.localAttentionCount }) : ''}
             </small>
           </div>
           <div className="quota-overview-item">
-            <span>公司 OpenAPI</span>
+            <span>{t('qs.company')}</span>
             <strong>{overview.companyConfiguredCount > 0 ? `${overview.companyEnabledCount}/${overview.companyConfiguredCount}` : '—'}</strong>
-            <small>{overview.companyConfiguredCount > 0 ? `${overview.companyConfiguredCount} 个配置 · ${overview.companyEnabledCount} 个启用` : '尚未配置来源'}</small>
+            <small>{overview.companyConfiguredCount > 0 ? t('qs.overview.companyCount', { configured: overview.companyConfiguredCount, enabled: overview.companyEnabledCount }) : t('qs.overview.noCompany')}</small>
           </div>
           <div className="quota-overview-item">
-            <span>跨设备同步</span>
+            <span>{t('qs.sync.title')}</span>
             <strong>{overview.syncLabel}</strong>
-            <small>独立授权，默认关闭</small>
+            <small>{t('qs.overview.syncNote')}</small>
           </div>
         </div>
       </section>
@@ -1044,24 +1056,24 @@ export function QuotaSection(props: QuotaSectionProps) {
           providerId="openai-codex-local"
           name="Codex"
           view={codexView}
-          readLabel="立即读取 Codex 额度"
-          readBusyLabel="正在读取 Codex 额度"
+          readLabel={t('qs.codex.readNow')}
+          readBusyLabel={t('qs.codex.readBusy')}
           readBusy={false}
           readDisabled
         />
         <SettingsGroup>
           <SettingsToggleRow
-            label="读取 Codex 额度"
-            hint="走 Codex 官方本地接口，不读取 OAuth Token。"
+            label={t('qs.codex.toggle')}
+            hint={t('qs.codex.toggleHint')}
             icon={Gauge}
             checked={appSettings.quota_codex_local_enabled}
             disabled={busy.settings || (codexInstalled === false && !appSettings.quota_codex_local_enabled)}
             busy={busy.settings}
             onChange={(checked) => props.onSettingChange('quota_codex_local_enabled', checked)}
           />
-          <DisclosurePanel ariaLabel="Codex：权限与数据边界" openSignal={codexSignal}>
-            <p>通过 Codex 官方 app-server 读取当前账户的额度窗口，不读取或复用 OAuth Token，不上传账户数据。</p>
-            <p>旧版 Codex 没有 app-server 时，才受限读取 session 尾部的 rate_limits 字段，并标为实验性。</p>
+          <DisclosurePanel ariaLabel={t('qs.codex.boundary')} openSignal={codexSignal}>
+            <p>{t('qs.codex.boundary1')}</p>
+            <p>{t('qs.codex.boundary2')}</p>
           </DisclosurePanel>
         </SettingsGroup>
       </SettingsCard>
@@ -1071,8 +1083,8 @@ export function QuotaSection(props: QuotaSectionProps) {
           providerId="anthropic-claude-consumer"
           name="Claude"
           view={claudeView}
-          readLabel="立即读取 Claude 订阅额度"
-          readBusyLabel="正在读取 Claude 订阅额度"
+          readLabel={t('qs.claude.readNow')}
+          readBusyLabel={t('qs.claude.readBusy')}
           readBusy={claudeReadBusy}
           readDisabled={busy.settings}
           onRead={appSettings.quota_claude_codexbar_enabled
@@ -1081,8 +1093,8 @@ export function QuotaSection(props: QuotaSectionProps) {
         />
         <SettingsGroup>
           <SettingsToggleRow
-            label="读取 Claude 额度"
-            hint="自动选择来源，Claude Code status line 优先。"
+            label={t('qs.claude.toggle')}
+            hint={t('qs.claude.toggleHint')}
             icon={Gauge}
             checked={appSettings.quota_claude_enabled}
             disabled={busy.settings || (claudeInstalled === false && !appSettings.quota_claude_enabled)}
@@ -1090,12 +1102,12 @@ export function QuotaSection(props: QuotaSectionProps) {
             onChange={(checked) => props.onSettingChange('quota_claude_enabled', checked)}
           />
           <SettingsRow
-            label="一键接入"
+            label={t('qs.claude.setup')}
             hint={claudeSetupNotice || (claudeSetup?.statusLineWired
-              ? claudeSetup.chainPresent ? '原 status line 照常显示，可随时恢复。' : '已写入 statusLine，可随时恢复。'
+              ? claudeSetup.chainPresent ? t('qs.claude.chainKept') : t('qs.claude.wired')
               : appSettings.quota_claude_enabled
-                ? '只改 settings.json 的 statusLine，写入前先预览。'
-                : '先打开上面的开关。')}
+                ? t('qs.claude.previewFirst')
+                : t('qs.claude.turnOnFirst'))}
             busy={claudeSetupAction !== null}
           >
             <div className="settings-inline-actions">
@@ -1108,7 +1120,7 @@ export function QuotaSection(props: QuotaSectionProps) {
                   onClick={() => void previewClaudeSetup()}
                 >
                   {claudeSetupAction === 'preview' && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                  {claudeSetupAction === 'preview' ? '读取中…' : '一键接入'}
+                  {claudeSetupAction === 'preview' ? t('qs.reading') : t('qs.claude.setup')}
                 </button>
               )}
               {claudeBackup && (
@@ -1120,32 +1132,32 @@ export function QuotaSection(props: QuotaSectionProps) {
                   onClick={() => void restoreClaudeSetup()}
                 >
                   {claudeSetupAction === 'restore' && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                  {claudeSetupAction === 'restore' ? '恢复中…' : '恢复原配置'}
+                  {claudeSetupAction === 'restore' ? t('qs.claude.restoring') : t('qs.claude.restoreOriginal')}
                 </button>
               )}
             </div>
           </SettingsRow>
           {claudeSetupError && <p className="settings-error" role="alert">{claudeSetupError}</p>}
-          <DisclosurePanel title="手动配置" ariaLabel="Claude：手动配置" decorative>
+          <DisclosurePanel title={t('qs.claude.manual')} ariaLabel={t('qs.claude.manualAria')} decorative>
             <p>
               {claudeSetup?.settingsPath
-                ? `把下面这段合并进 ${claudeSetup.settingsPath}（最外层），保存后新开一个 Claude Code 会话生效。`
-                : '把下面这段合并进 Claude Code 的 settings.json 最外层，保存后新开一个会话生效。'}
+                ? t('qs.claude.manualMergeInto', { path: claudeSetup.settingsPath })
+                : t('qs.claude.manualMerge')}
             </p>
-            <pre className="settings-code settings-code-block" aria-label="statusLine 配置">{claudeStatuslineBlock || claudeStatuslineCommand}</pre>
+            <pre className="settings-code settings-code-block" aria-label={t('qs.claude.configAria')}>{claudeStatuslineBlock || claudeStatuslineCommand}</pre>
             <button
               className="secondary-inline"
               type="button"
               onClick={copyClaudeStatuslineCommand}
               disabled={!claudeStatuslineReady}
             >
-              {statuslineCopyState === 'copied' ? '已复制' : statuslineCopyState === 'manual' ? '请手动复制' : '复制完整配置'}
+              {statuslineCopyState === 'copied' ? t('qs.copied') : statuslineCopyState === 'manual' ? t('qs.copyManually') : t('qs.copyAll')}
             </button>
           </DisclosurePanel>
-          <DisclosurePanel title="高级" ariaLabel="Claude：高级" decorative>
+          <DisclosurePanel title={t('qs.advanced')} ariaLabel={t('qs.claude.advancedAria')} decorative>
             <SettingsToggleRow
-              label="实验来源：内置 /usage 与 CodexBar"
-              hint="默认不参与。status line 缺数据时补位，开启后立即读取一次。"
+              label={t('qs.claude.experimental')}
+              hint={t('qs.claude.experimentalHint')}
               icon={FlaskConical}
               checked={appSettings.quota_claude_codexbar_enabled}
               disabled={busy.settings || !appSettings.quota_claude_enabled}
@@ -1153,10 +1165,10 @@ export function QuotaSection(props: QuotaSectionProps) {
               onChange={props.onClaudeNativeQuotaChange}
             />
             {appSettings.quota_claude_codexbar_enabled && (
-              <SettingsRow label="内置 /usage 探针" hint="依次尝试下列 CLI。" wideControl>
+              <SettingsRow label={t('qs.claude.probe')} hint={t('qs.claude.probeHint')} wideControl>
                 {claudeSetup && claudeSetup.cliCandidates.length === 0 ? (
                   <span className="settings-value quota-setup-stage quota-setup-stage-blocked">
-                    本机找不到 Claude CLI，内置 /usage 无法工作
+                    {t('qs.claude.noCli')}
                   </span>
                 ) : (
                   <ul className="quota-cli-candidates">
@@ -1168,9 +1180,9 @@ export function QuotaSection(props: QuotaSectionProps) {
               </SettingsRow>
             )}
           </DisclosurePanel>
-          <DisclosurePanel ariaLabel="Claude：权限与数据边界" openSignal={claudeSignal}>
-            <p>只接收 Claude Code 通过 status line 交出的官方 rate_limits 字段，不保存 cwd、session_id 或原始输入；不读钥匙串、Cookie 或 OAuth Token。</p>
-            <p>一键接入只改 settings.json 的 statusLine 一项，写入前备份；原有 status line 由 TokenLedger 继续执行并原样显示，可一键恢复。</p>
+          <DisclosurePanel ariaLabel={t('qs.claude.boundary')} openSignal={claudeSignal}>
+            <p>{t('qs.claude.boundary1')}</p>
+            <p>{t('qs.claude.boundary2')}</p>
           </DisclosurePanel>
         </SettingsGroup>
       </SettingsCard>
@@ -1188,26 +1200,26 @@ export function QuotaSection(props: QuotaSectionProps) {
           providerId="google-antigravity-consumer"
           name="Antigravity"
           view={antigravityView}
-          readLabel="立即读取 Antigravity 额度"
-          readBusyLabel="正在读取 Antigravity 额度"
+          readLabel={t('qs.antigravity.readNow')}
+          readBusyLabel={t('qs.antigravity.readBusy')}
           readBusy={antigravityReadBusy}
           readDisabled={busy.settings}
           onRead={appSettings.quota_antigravity_local_enabled ? () => runQuotaRead('antigravity') : undefined}
         />
         <SettingsGroup>
           <SettingsToggleRow
-            label="读取 Antigravity 额度"
-            hint="实验性，只连接本机正在运行的 Antigravity。"
+            label={t('qs.antigravity.toggle')}
+            hint={t('qs.antigravity.toggleHint')}
             icon={Gauge}
             checked={appSettings.quota_antigravity_local_enabled}
             disabled={busy.settings || (antigravityInstalled === false && !appSettings.quota_antigravity_local_enabled)}
             busy={busy.settings}
             onChange={props.onAntigravityLocalQuotaChange}
           />
-          <DisclosurePanel title="高级" ariaLabel="Antigravity：高级" decorative>
+          <DisclosurePanel title={t('qs.advanced')} ariaLabel={t('qs.antigravity.advancedAria')} decorative>
             <SettingsToggleRow
-              label="CodexBar 兜底"
-              hint="默认不参与。内置读取失败后才调用 CodexBar CLI。"
+              label={t('qs.antigravity.codexbar')}
+              hint={t('qs.antigravity.codexbarHint')}
               icon={FlaskConical}
               checked={appSettings.quota_antigravity_codexbar_enabled}
               disabled={busy.settings || !appSettings.quota_antigravity_local_enabled}
@@ -1215,9 +1227,9 @@ export function QuotaSection(props: QuotaSectionProps) {
               onChange={(checked) => props.onSettingChange('quota_antigravity_codexbar_enabled', checked)}
             />
           </DisclosurePanel>
-          <DisclosurePanel ariaLabel="Antigravity：权限与数据边界" openSignal={antigravitySignal}>
-            <p>只请求当前用户 Antigravity App、IDE 或 agy 的 127.0.0.1 本地服务，不读取 Cookie、云端 OAuth Token 或账户身份。</p>
-            <p>CodexBar 兜底固定为 local/cli 来源，不允许远端 OAuth 抓取。</p>
+          <DisclosurePanel ariaLabel={t('qs.antigravity.boundary')} openSignal={antigravitySignal}>
+            <p>{t('qs.antigravity.boundary1')}</p>
+            <p>{t('qs.antigravity.boundary2')}</p>
           </DisclosurePanel>
         </SettingsGroup>
       </SettingsCard>
@@ -1227,24 +1239,24 @@ export function QuotaSection(props: QuotaSectionProps) {
         disabled={busy.settings}
         onChanged={props.onCustomQuotaChanged}
       />
-      <SettingsCard title="公司 OpenAPI">
+      <SettingsCard title={t('qs.company')}>
         <SettingsGroup>
           {customEndpoints.length === 0 && (
-            <SettingsRow label="尚未配置" hint="可以添加 2～3 组不同地址和对应 API key，最多 5 组。">
-              <span className="settings-value">没有公司额度来源</span>
+            <SettingsRow label={t('qs.custom.empty')} hint={t('qs.custom.emptyHint')}>
+              <span className="settings-value">{t('qs.custom.none')}</span>
             </SettingsRow>
           )}
           {customEndpoints.map((endpoint) => {
             const toggleBusy = customEndpointActionBusy('toggle', endpoint.id);
             const deleteBusy = customEndpointActionBusy('delete', endpoint.id);
             const cloudDeleteBusy = quotaSnapshotProviderBusy(endpoint.providerId);
-            const toggleLabel = endpoint.enabled ? '停用' : '启用';
-            const toggleBusyLabel = endpoint.enabled ? '正在停用' : '正在启用';
+            const toggleLabel = endpoint.enabled ? t('qs.custom.disable') : t('qs.custom.enable');
+            const toggleBusyLabel = endpoint.enabled ? t('qs.custom.disabling') : t('qs.custom.enabling');
             const apiKeyLabel = endpoint.hasApiKey === true
-              ? 'key 已安全保存'
+              ? t('qs.custom.keySaved')
               : endpoint.hasApiKey === false
-                ? '缺少 key'
-                : 'key 状态待检查';
+                ? t('qs.custom.keyMissing')
+                : t('qs.custom.keyUnchecked');
             return (
               <SettingsRow
                 key={endpoint.id}
@@ -1255,7 +1267,7 @@ export function QuotaSection(props: QuotaSectionProps) {
               >
               <div className="settings-inline-actions">
                 <span className="settings-value">
-                  {endpoint.enabled ? '已启用' : '已停用'} · {apiKeyLabel} · {endpoint.schemaVerified ? '响应格式已验证' : '响应格式待实测（仅本机）'}
+                  {endpoint.enabled ? t('qs.custom.enabled') : t('qs.custom.disabled')} · {apiKeyLabel} · {endpoint.schemaVerified ? t('qs.custom.schemaVerified') : t('qs.custom.schemaUnverified')}
                 </span>
                 <button
                   className="secondary-inline"
@@ -1267,17 +1279,17 @@ export function QuotaSection(props: QuotaSectionProps) {
                   title={toggleBusy ? `${toggleBusyLabel} ${endpoint.displayName}` : `${toggleLabel} ${endpoint.displayName}`}
                 >
                   {toggleBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                  {toggleBusy ? '处理中…' : toggleLabel}
+                  {toggleBusy ? t('qs.working') : toggleLabel}
                 </button>
                 <button
                   className="secondary-inline"
                   type="button"
                   disabled={customEndpointBusy || busy.settings}
                   onClick={() => editCustomEndpoint(endpoint)}
-                  aria-label={`编辑 ${endpoint.displayName} 公司额度来源`}
-                  title={`编辑 ${endpoint.displayName} 公司额度来源`}
+                  aria-label={t('qs.custom.editAria', { name: endpoint.displayName })}
+                  title={t('qs.custom.editAria', { name: endpoint.displayName })}
                 >
-                  编辑
+                  {t('qs.edit')}
                 </button>
                 <button
                   className="secondary-inline"
@@ -1288,24 +1300,24 @@ export function QuotaSection(props: QuotaSectionProps) {
                     'api-organization',
                     event.currentTarget,
                   )}
-                  aria-label={cloudDeleteBusy ? `正在删除 ${endpoint.displayName} 云端快照` : `删除 ${endpoint.displayName} 云端快照`}
+                  aria-label={t(cloudDeleteBusy ? 'qs.cloudDelete.busyAria' : 'qs.cloudDelete.aria', { name: endpoint.displayName })}
                   aria-busy={cloudDeleteBusy || undefined}
-                  title={cloudDeleteBusy ? `正在删除 ${endpoint.displayName} 云端快照` : `删除 ${endpoint.displayName} 云端快照`}
+                  title={t(cloudDeleteBusy ? 'qs.cloudDelete.busyAria' : 'qs.cloudDelete.aria', { name: endpoint.displayName })}
                 >
                   {cloudDeleteBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                  {cloudDeleteBusy ? '删除中…' : '删除云端快照'}
+                  {cloudDeleteBusy ? t('qs.deleting') : t('qs.cloudDelete.button')}
                 </button>
                 <button
                   className="danger-inline"
                   type="button"
                   disabled={customEndpointBusy || busy.settings}
                   onClick={() => void deleteCustomEndpoint(endpoint)}
-                  aria-label={deleteBusy ? `正在删除本机配置 ${endpoint.displayName}` : `删除本机配置 ${endpoint.displayName}`}
+                  aria-label={t(deleteBusy ? 'qs.localDelete.busyAria' : 'qs.localDelete.aria', { name: endpoint.displayName })}
                   aria-busy={deleteBusy || undefined}
-                  title={deleteBusy ? `正在删除本机配置 ${endpoint.displayName}` : `删除本机配置 ${endpoint.displayName}`}
+                  title={t(deleteBusy ? 'qs.localDelete.busyAria' : 'qs.localDelete.aria', { name: endpoint.displayName })}
                 >
                   {deleteBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                  {deleteBusy ? '删除中…' : '删除本机配置'}
+                  {deleteBusy ? t('qs.deleting') : t('qs.localDelete.button')}
                 </button>
               </div>
               </SettingsRow>
@@ -1317,12 +1329,12 @@ export function QuotaSection(props: QuotaSectionProps) {
               <SettingsRow
                 key={provider.providerId}
                 label={provider.displayName}
-                hint="本机配置已删除，仅保留云端历史快照。"
+                hint={t('qs.orphan.hint')}
                 icon={Cloud}
                 wideControl
               >
                 <div className="settings-inline-actions">
-                  <span className="settings-value">云端历史</span>
+                  <span className="settings-value">{t('qs.orphan.cloudHistory')}</span>
                   <button
                     className="danger-inline"
                     type="button"
@@ -1332,12 +1344,12 @@ export function QuotaSection(props: QuotaSectionProps) {
                       'api-organization',
                       event.currentTarget,
                     )}
-                    aria-label={cloudDeleteBusy ? `正在删除 ${provider.displayName} 云端快照` : `删除 ${provider.displayName} 云端快照`}
+                    aria-label={t(cloudDeleteBusy ? 'qs.cloudDelete.busyAria' : 'qs.cloudDelete.aria', { name: provider.displayName })}
                     aria-busy={cloudDeleteBusy || undefined}
-                    title={cloudDeleteBusy ? `正在删除 ${provider.displayName} 云端快照` : `删除 ${provider.displayName} 云端快照`}
+                    title={t(cloudDeleteBusy ? 'qs.cloudDelete.busyAria' : 'qs.cloudDelete.aria', { name: provider.displayName })}
                   >
                     {cloudDeleteBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                    {cloudDeleteBusy ? '删除中…' : '删除这条云端快照'}
+                    {cloudDeleteBusy ? t('qs.deleting') : t('qs.orphan.delete')}
                   </button>
                 </div>
               </SettingsRow>
@@ -1346,8 +1358,8 @@ export function QuotaSection(props: QuotaSectionProps) {
 
           <form onSubmit={saveCustomEndpoint}>
             <SettingsRow
-              label={customEditingId ? '编辑公司额度来源' : '新增公司额度来源'}
-              hint="名称会显示在桌面额度卡、Android 额度页、全屏摆件和 Launcher 小组件。"
+              label={customEditingId ? t('qs.custom.editTitle') : t('qs.custom.addTitle')}
+              hint={t('qs.custom.nameHint')}
               icon={Plus}
               wideControl
               busy={customEndpointSaveBusy}
@@ -1356,13 +1368,13 @@ export function QuotaSection(props: QuotaSectionProps) {
                 className="settings-input"
                 value={customName}
                 onChange={(event) => setCustomName(event.target.value)}
-                placeholder="例如：研发账号额度"
+                placeholder={t('qs.custom.namePlaceholder')}
                 maxLength={40}
                 required
-                aria-label="公司额度来源名称"
+                aria-label={t('qs.custom.nameAria')}
               />
             </SettingsRow>
-            <SettingsRow label="查询接口地址" hint="填写完整地址；只填 HTTPS 域名时会自动补 /v1/me/quota。" wideControl>
+            <SettingsRow label={t('qs.custom.url')} hint={t('qs.custom.urlHint')} wideControl>
               <input
                 className="settings-input"
                 value={customUrl}
@@ -1370,12 +1382,12 @@ export function QuotaSection(props: QuotaSectionProps) {
                 placeholder="https://your-gateway.example.com/v1/me/quota"
                 inputMode="url"
                 required
-                aria-label="公司额度查询接口地址"
+                aria-label={t('qs.custom.urlAria')}
               />
             </SettingsRow>
             <SettingsRow
               label="API key"
-              hint={customEditingId ? '留空会保留原 key；输入新值才会替换。' : '只写入当前电脑的系统安全存储，不进入设置文件或云端。'}
+              hint={customEditingId ? t('qs.custom.keyKeepHint') : t('qs.custom.keyStoreHint')}
               wideControl
             >
               <input
@@ -1383,10 +1395,10 @@ export function QuotaSection(props: QuotaSectionProps) {
                 type="password"
                 value={customApiKey}
                 onChange={(event) => setCustomApiKey(event.target.value)}
-                placeholder={customEditingId ? '留空保留现有 key' : '输入 API key'}
+                placeholder={customEditingId ? t('qs.custom.keyKeepPlaceholder') : t('qs.custom.keyPlaceholder')}
                 autoComplete="new-password"
                 required={!customEditingId}
-                aria-label="公司额度 API key"
+                aria-label={t('qs.custom.keyAria')}
               />
               <div className="settings-inline-actions">
                 <button
@@ -1398,23 +1410,23 @@ export function QuotaSection(props: QuotaSectionProps) {
                   title={customEndpointSaveTitle}
                 >
                   {customEndpointSaveBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                  {customEndpointSaveBusy ? '保存中…' : customEditingId ? '保存修改并刷新额度' : '添加并刷新额度'}
+                  {customEndpointSaveBusy ? t('qs.saving') : customEditingId ? t('qs.custom.saveRefresh') : t('qs.custom.addRefresh')}
                 </button>
                 {customEditingId && (
                   <button className="secondary-inline" type="button" disabled={customEndpointBusy} onClick={resetCustomEditor}>
-                    取消编辑
+                    {t('qs.custom.cancelEdit')}
                   </button>
                 )}
               </div>
             </SettingsRow>
           </form>
           {customEndpointError && <p className="settings-error" role="alert">{customEndpointError}</p>}
-          <DisclosurePanel ariaLabel="公司 OpenAPI：权限与数据边界" openSignal={customEndpoints.length + orphanedCustomProviders.length}>
-            <p>打开设置只读取配置元数据，不读取已保存的 API key；旧配置会显示“key 状态待检查”。设置内只有启用、保存或删除等明确动作，以及已启用来源的额度读取/同步，才会访问系统安全存储。</p>
-            <p>每个配置使用独立稳定 Provider ID，因此 2～3 个接口会分别显示；删除本机配置后，仍可在这里单独删除对应的云端历史。</p>
-            <p>请求固定使用 <code>Authorization: Bearer</code>，禁止重定向、URL 凭据、query key 和非本机明文 HTTP；响应最多读取 256 KiB。</p>
-            <p>已用百分比直接按同一人民币单位计算：Key 当日消耗 ÷ Key 当日有效上限，用户日/月消耗 ÷ 对应日/月上限。只同步换算后的百分比，不上传金额、URL、API key 或原始响应。</p>
-            <p>余额缺少总额，接口自带综合比率含义也未确认，因此两者都不用于百分比；Key 过期时间不冒充额度重置时间。</p>
+          <DisclosurePanel ariaLabel={t('qs.custom.boundary')} openSignal={customEndpoints.length + orphanedCustomProviders.length}>
+            <p>{t('qs.custom.boundary1')}</p>
+            <p>{t('qs.custom.boundary2')}</p>
+            <p>{t('qs.custom.boundary3a')}<code>Authorization: Bearer</code>{t('qs.custom.boundary3b')}</p>
+            <p>{t('qs.custom.boundary4')}</p>
+            <p>{t('qs.custom.boundary5')}</p>
           </DisclosurePanel>
         </SettingsGroup>
       </SettingsCard>
@@ -1427,18 +1439,18 @@ export function QuotaSection(props: QuotaSectionProps) {
       />
       <QuotaAlertsCard />
 
-      <SettingsCard title="跨设备同步">
+      <SettingsCard title={t('qs.sync.title')}>
         <SettingsGroup>
           <SettingsToggleRow
-            label="同步脱敏额度快照到我的设备"
-            hint="第二层独立授权，默认关闭。只同步契约校验过的额度窗口。"
+            label={t('qs.sync.toggle')}
+            hint={t('qs.sync.toggleHint')}
             icon={Cloud}
             checked={appSettings.quota_snapshot_sync_enabled}
             disabled={busy.settings || (!appSettings.quota_snapshot_sync_enabled && !cloudStatus.authenticated)}
             busy={busy.settings}
             onChange={props.onQuotaSyncToggle}
           />
-          <SettingsRow label="跨设备同步状态" hint="停用或撤权只停止这台设备，云端历史仍保留。" busy={quotaSyncBusy} wideControl={Boolean(quotaSyncRecoveryMessage)}>
+          <SettingsRow label={t('qs.sync.status')} hint={t('qs.sync.statusHint')} busy={quotaSyncBusy} wideControl={Boolean(quotaSyncRecoveryMessage)}>
             <span
               className="settings-value"
               role="status"
@@ -1462,15 +1474,15 @@ export function QuotaSection(props: QuotaSectionProps) {
               {quotaSyncButtonLabel}
             </button>
           </SettingsRow>
-          <DisclosurePanel ariaLabel="跨设备同步：权限与数据边界" openSignal={syncSignal}>
-            <p>第二层独立授权，默认关闭。只同步通过契约校验的额度窗口；不会上传 action、账户标签、Token、Cookie、session、status-line 输入或本地路径。</p>
-            <p>关闭同步、退出账户或撤销本机 Provider 权限，只会停止这台设备，不会删除云端历史。云端按 Provider 独立保存，并以来源 observedAt 较新的可用快照为准。</p>
-            <p>云端最多保留 8 个活跃来源，已删除的来源不占名额。关闭本机来源不会释放已保留的云端名额；容量满时不会自动删除历史，也不会只选前 8 个来源上传。</p>
+          <DisclosurePanel ariaLabel={t('qs.sync.boundary')} openSignal={syncSignal}>
+            <p>{t('qs.sync.boundary1')}</p>
+            <p>{t('qs.sync.boundary2')}</p>
+            <p>{t('qs.sync.boundary3')}</p>
           </DisclosurePanel>
           <DangerZone>
             <SettingsRow
-              label="云端额度快照管理"
-              hint="删除单个来源后，新的本机观测仍可同步；删除全部会关闭本机额度同步。全部删除包括其他设备留下的账户额度历史，无法撤销，不会删除本机用量账本。"
+              label={t('qs.snapshots.title')}
+              hint={t('qs.snapshots.hint')}
               icon={Trash2}
               danger
               wideControl
@@ -1493,12 +1505,12 @@ export function QuotaSection(props: QuotaSectionProps) {
                         'consumer-subscription',
                         event.currentTarget,
                       )}
-                      aria-label={cloudDeleteBusy ? `正在删除 ${displayName} 云端快照` : `删除 ${displayName} 云端快照`}
+                      aria-label={t(cloudDeleteBusy ? 'qs.cloudDelete.busyAria' : 'qs.cloudDelete.aria', { name: displayName })}
                       aria-busy={cloudDeleteBusy || undefined}
-                      title={cloudDeleteBusy ? `正在删除 ${displayName} 云端快照` : `删除 ${displayName} 云端快照`}
+                      title={t(cloudDeleteBusy ? 'qs.cloudDelete.busyAria' : 'qs.cloudDelete.aria', { name: displayName })}
                     >
                       {cloudDeleteBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                      {cloudDeleteBusy ? '删除中…' : `删除 ${displayName} 云端快照`}
+                      {cloudDeleteBusy ? t('qs.deleting') : t('qs.cloudDelete.aria', { name: displayName })}
                     </button>
                   );
                 })}
@@ -1507,12 +1519,12 @@ export function QuotaSection(props: QuotaSectionProps) {
                   type="button"
                   disabled={busy.settings || !cloudStatus.authenticated || quotaSnapshotBusy}
                   onClick={(event: ReactMouseEvent<HTMLButtonElement>) => void runClearQuotaSnapshots(event.currentTarget)}
-                  aria-label={quotaSnapshotAllBusy ? '正在删除全部云端额度' : '删除全部云端额度'}
+                  aria-label={quotaSnapshotAllBusy ? t('qs.snapshots.deletingAll') : t('qs.snapshots.deleteAll')}
                   aria-busy={quotaSnapshotAllBusy || undefined}
-                  title={quotaSnapshotAllBusy ? '正在删除全部云端额度' : '删除全部云端额度'}
+                  title={quotaSnapshotAllBusy ? t('qs.snapshots.deletingAll') : t('qs.snapshots.deleteAll')}
                 >
                   {quotaSnapshotAllBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                  {quotaSnapshotAllBusy ? '删除中…' : '删除全部云端额度'}
+                  {quotaSnapshotAllBusy ? t('qs.deleting') : t('qs.snapshots.deleteAll')}
                 </button>
               </div>
             </SettingsRow>
@@ -1561,31 +1573,31 @@ export function balanceAmounts(provider: QuotaProviderEnvelope | undefined): Bal
   });
 }
 
-const BALANCE_REASON_SENTENCES: Record<string, string> = {
-  balance_unavailable: '余额接口没有返回可验证的余额数值或币种。',
-  rate_limited: '请求过于频繁，稍后会自动重试。',
-  upstream_unavailable: '供应商服务暂时不可用。',
-  source_temporarily_unavailable: '供应商这次没有正常返回。',
-  source_schema_unsupported: '余额响应格式不兼容或超过大小上限。',
-  secure_storage_unavailable: '系统钥匙串暂时无法读取，解锁后点「刷新额度」。',
-  provider_worker_failed: '余额读取进程暂时失败。',
-};
+const BALANCE_REASON_SENTENCES = localized<string>({
+  balance_unavailable: 'qs.msg.balanceUnavailable',
+  rate_limited: 'qs.msg.rateLimited',
+  upstream_unavailable: 'qs.msg.upstreamUnavailable',
+  source_temporarily_unavailable: 'qs.msg.sourceTemporarilyUnavailable',
+  source_schema_unsupported: 'qs.msg.balanceSchemaUnsupported',
+  secure_storage_unavailable: 'qs.msg.secureStorageUnavailable',
+  provider_worker_failed: 'qs.msg.balanceWorkerFailed',
+});
 
 export function balanceCardView({ enabled, provider, now }: {
   enabled: boolean;
   provider: QuotaProviderEnvelope | undefined;
   now: number;
 }): BalanceCardView {
-  if (!enabled) return { state: 'off', label: '未开启', sentence: '打开后读取这家的官方余额。', amounts: [] };
-  if (!provider) return { state: 'waiting', label: '等待读取', sentence: '正在等待首次读取。', amounts: [] };
+  if (!enabled) return { state: 'off', label: t('qs.balance.off'), sentence: t('qs.balance.offSentence'), amounts: [] };
+  if (!provider) return { state: 'waiting', label: t('qs.balance.waiting'), sentence: t('qs.waitingFirstRead'), amounts: [] };
   const amounts = balanceAmounts(provider);
   const observedAt = latestObservedAt(provider);
   if (provider.status === 'ok' && amounts.length > 0) {
     const observedMs = observedAt ? new Date(observedAt).getTime() : Number.NaN;
     return {
       state: 'connected',
-      label: Number.isFinite(observedMs) ? `已连接 · ${formatSourceRelative(observedMs, now)}` : '已连接',
-      sentence: '余额来自供应商官方接口。',
+      label: Number.isFinite(observedMs) ? t('qs.connectedAgo', { ago: formatSourceRelative(observedMs, now) }) : t('qs.connected'),
+      sentence: t('qs.balance.fromOfficial'),
       amounts,
     };
   }
@@ -1593,19 +1605,19 @@ export function balanceCardView({ enabled, provider, now }: {
   if (provider.status === 'auth-required' || reasonCode === 'api_key_required') {
     return {
       state: 'key-required',
-      label: '需要 API key',
-      sentence: '请在「供应商」页为它填写或更新 API key；OpenRouter 需要 Management key。',
-      detail: reasonCode ? `供应商拒绝了当前 key，或还没有 key（${reasonCode}）` : undefined,
+      label: t('qs.balance.needsKey'),
+      sentence: t('qs.balance.needsKeySentence'),
+      detail: reasonCode ? t('qs.balance.keyRejected', { code: reasonCode }) : undefined,
       amounts,
       asOf: amounts.length > 0 ? observedAt : undefined,
     };
   }
-  const sentence = (reasonCode && BALANCE_REASON_SENTENCES[reasonCode]) || '这次没有读到余额。';
+  const sentence = (reasonCode && BALANCE_REASON_SENTENCES[reasonCode]) || t('qs.balance.readFailedGeneric');
   return {
     state: 'read-failed',
-    label: amounts.length > 0 ? '读取失败（保留旧值）' : '读取失败',
+    label: amounts.length > 0 ? t('qs.state.readFailedKept') : t('qs.state.readFailed'),
     sentence,
-    detail: reasonCode ? `${sentence}（${reasonCode}）` : undefined,
+    detail: reasonCode ? t('qs.detailWithCode', { detail: sentence, code: reasonCode }) : undefined,
     amounts,
     asOf: amounts.length > 0 ? observedAt : undefined,
   };
@@ -1619,13 +1631,13 @@ const BALANCE_STATE_TONES: Record<BalanceCardState, 'pending' | 'waiting' | 'rea
   'read-failed': 'blocked',
 };
 
-const BALANCE_VENDOR_HINTS: Record<QuotaBalanceVendor, string> = {
-  moonshot: '官方余额接口',
-  deepseek: '官方余额接口',
-  openrouter: '官方余额接口 · 需 Management key',
-  siliconflow: '官方余额接口',
-  relay: '没有已知的官方余额接口 · 中转站可填写同源余额地址',
-};
+const BALANCE_VENDOR_HINTS = localized<QuotaBalanceVendor>({
+  moonshot: 'qs.vendor.official',
+  deepseek: 'qs.vendor.official',
+  openrouter: 'qs.vendor.openrouter',
+  siliconflow: 'qs.vendor.official',
+  relay: 'qs.vendor.relay',
+});
 
 type RelayDraft = QuotaRelayBalanceConfig;
 
@@ -1640,24 +1652,24 @@ function BalanceSourceStatus({ name, view }: { name: string; view: BalanceCardVi
         <span className={`settings-value quota-setup-stage quota-setup-stage-${BALANCE_STATE_TONES[view.state]}`} role="status">
           {view.label}
         </span>
-        {view.asOf && <span className="quota-source-asof">截至 {formatSourceAsOf(view.asOf)}</span>}
+        {view.asOf && <span className="quota-source-asof">{t('qs.asOf', { time: formatSourceAsOf(view.asOf) })}</span>}
       </div>
       <div className="quota-source-message">
         <p>
           {view.sentence}
           {view.detail && (
-            <span className="quota-source-info" role="note" tabIndex={0} title={view.detail} aria-label={`${name} 详细原因：${view.detail}`}>
+            <span className="quota-source-info" role="note" tabIndex={0} title={view.detail} aria-label={t('qs.detailAria', { name, detail: view.detail })}>
               <Info className="h-3.5 w-3.5" aria-hidden="true" />
             </span>
           )}
         </p>
       </div>
       {view.amounts.length > 0 && (
-        <ul className="quota-source-windows" aria-label={`${name} 余额`}>
+        <ul className="quota-source-windows" aria-label={t('qs.balance.ofName', { name })}>
           {view.amounts.map((amount) => (
             <li key={amount.windowId} className="quota-source-window">
               <div className="quota-source-window-head">
-                <span>余额（{amount.currency}）</span>
+                <span>{t('qs.balance.amount', { currency: amount.currency })}</span>
                 <b>{amount.text}</b>
               </div>
             </li>
@@ -1675,6 +1687,7 @@ export function QuotaBalanceCard({ quotaProviders, now, disabled, onChanged }: {
   disabled: boolean;
   onChanged: () => void;
 }) {
+  useLang();
   const [sources, setSources] = useState<QuotaBalanceSourceView[] | null>(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1716,11 +1729,11 @@ export function QuotaBalanceCard({ quotaProviders, now, disabled, onChanged }: {
   const enabledCount = sources?.filter((source) => source.enabled).length ?? 0;
 
   return (
-    <SettingsCard title="供应商余额" description="读取「供应商」页里已配置 key 的官方余额；只显示余额数值与币种，不换汇、不画进度。">
+    <SettingsCard title={t('qs.balance.title')} description={t('qs.balance.description')}>
       <SettingsGroup>
         {sources !== null && sources.length === 0 && (
-          <SettingsRow label="还没有供应商" hint="先在「供应商」页添加供应商并填入 API key。">
-            <span className="settings-value">没有可读取余额的供应商</span>
+          <SettingsRow label={t('qs.balance.noProviders')} hint={t('qs.balance.noProvidersHint')}>
+            <span className="settings-value">{t('qs.balance.noReadable')}</span>
           </SettingsRow>
         )}
         {(sources ?? []).map((source) => {
@@ -1736,7 +1749,7 @@ export function QuotaBalanceCard({ quotaProviders, now, disabled, onChanged }: {
           return (
             <div key={source.gatewayProviderId} className="quota-balance-source">
               <SettingsToggleRow
-                label={`${name} 余额`}
+                label={t('qs.balance.ofName', { name })}
                 hint={`${source.host} · ${BALANCE_VENDOR_HINTS[source.vendor]}`}
                 icon={Wallet}
                 checked={source.enabled}
@@ -1747,20 +1760,20 @@ export function QuotaBalanceCard({ quotaProviders, now, disabled, onChanged }: {
               {source.enabled && <BalanceSourceStatus name={name} view={view} />}
               {isRelay && !editing && (
                 <SettingsRow
-                  label="中转余额地址"
-                  hint={source.relay ? `${source.relay.balanceUrl} · 取值 ${source.relay.valuePath} · ${source.relay.currency}` : '还没配置；必须与该中转站的接口地址同源。'}
+                  label={t('qs.relay.title')}
+                  hint={source.relay ? t('qs.relay.summary', { url: source.relay.balanceUrl, path: source.relay.valuePath, currency: source.relay.currency }) : t('qs.relay.notConfigured')}
                 >
                   <button
                     className="secondary-inline"
                     type="button"
                     disabled={disabled || busyId !== null}
-                    aria-label={`配置 ${name} 的中转余额地址`}
+                    aria-label={t('qs.relay.configureAria', { name })}
                     onClick={() => {
                       setRelayEditingId(source.gatewayProviderId);
                       setRelayDraft(emptyRelayDraft(source));
                     }}
                   >
-                    {source.relay ? '修改' : '配置'}
+                    {source.relay ? t('qs.relay.change') : t('qs.relay.configure')}
                   </button>
                 </SettingsRow>
               )}
@@ -1771,38 +1784,38 @@ export function QuotaBalanceCard({ quotaProviders, now, disabled, onChanged }: {
                     void save(source, true, relayDraft);
                   }}
                 >
-                  <SettingsRow label="余额地址" hint={`只能是 ${source.host} 下的地址，不能带 query 或账号。`} wideControl>
+                  <SettingsRow label={t('qs.relay.url')} hint={t('qs.relay.urlHint', { host: source.host })} wideControl>
                     <input
                       className="settings-input"
                       value={relayDraft.balanceUrl}
                       onChange={(event) => setRelayDraft({ ...relayDraft, balanceUrl: event.target.value })}
                       inputMode="url"
                       required
-                      aria-label={`${name} 余额地址`}
+                      aria-label={t('qs.relay.urlAria', { name })}
                     />
                   </SettingsRow>
-                  <SettingsRow label="取值路径" hint="响应 JSON 里余额字段的位置，用点分隔，例如 data.balance。" wideControl>
+                  <SettingsRow label={t('qs.relay.path')} hint={t('qs.relay.pathHint')} wideControl>
                     <input
                       className="settings-input"
                       value={relayDraft.valuePath}
                       onChange={(event) => setRelayDraft({ ...relayDraft, valuePath: event.target.value })}
                       required
-                      aria-label={`${name} 取值路径`}
+                      aria-label={t('qs.relay.pathAria', { name })}
                     />
                   </SettingsRow>
-                  <SettingsRow label="币种" hint="三个大写字母，例如 CNY、USD；不会从响应里猜。" wideControl busy={busy}>
+                  <SettingsRow label={t('qs.relay.currency')} hint={t('qs.relay.currencyHint')} wideControl busy={busy}>
                     <input
                       className="settings-input"
                       value={relayDraft.currency}
                       onChange={(event) => setRelayDraft({ ...relayDraft, currency: event.target.value.toUpperCase() })}
                       maxLength={3}
                       required
-                      aria-label={`${name} 币种`}
+                      aria-label={t('qs.relay.currencyAria', { name })}
                     />
                     <div className="settings-inline-actions">
                       <button className="secondary-inline" type="submit" disabled={disabled || busyId !== null} aria-busy={busy || undefined}>
                         {busy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                        {busy ? '保存中…' : '保存并开启'}
+                        {busy ? t('qs.saving') : t('qs.relay.saveEnable')}
                       </button>
                       <button
                         className="secondary-inline"
@@ -1813,7 +1826,7 @@ export function QuotaBalanceCard({ quotaProviders, now, disabled, onChanged }: {
                           setRelayDraft(null);
                         }}
                       >
-                        取消
+                        {t('qs.cancel')}
                       </button>
                     </div>
                   </SettingsRow>
@@ -1823,30 +1836,30 @@ export function QuotaBalanceCard({ quotaProviders, now, disabled, onChanged }: {
           );
         })}
         {error && <p className="settings-error" role="alert">{error}</p>}
-        <DisclosurePanel ariaLabel="供应商余额：权限与数据边界" openSignal={enabledCount}>
-          <p>直接复用「供应商」页保存在系统钥匙串里的 key（同一条目，不另存一份），只发往该供应商官方文档里的余额地址；中转站只能请求它自己域名下、你显式填写的地址。</p>
-          <p>禁止重定向和 URL 里的账号或 query，响应最多读取 256 KiB；遇到限流会退避，失败时保留上次的余额并标「截至」。</p>
-          <p>开启跨设备同步后，只同步余额数值与币种，不同步 key、地址或原始响应；旧版客户端看不到余额。</p>
+        <DisclosurePanel ariaLabel={t('qs.balance.boundary')} openSignal={enabledCount}>
+          <p>{t('qs.balance.boundary1')}</p>
+          <p>{t('qs.balance.boundary2')}</p>
+          <p>{t('qs.balance.boundary3')}</p>
         </DisclosurePanel>
       </SettingsGroup>
     </SettingsCard>
   );
 }
 
-const EXPERIMENTAL_PLAN_REASON_SENTENCES: Record<string, string> = {
-  experimental_consent_required: '风险提示有更新，重新确认后才会读取。',
-  api_key_required: '请在「供应商」页为它填写或更新 API key。',
-  secure_storage_unavailable: '系统钥匙串暂时无法读取，解锁后点「刷新额度」。',
-  source_schema_unsupported: '接口返回的格式变了，暂时读不到。',
-  rate_limited: '请求过于频繁，稍后会自动重试。',
-  upstream_unavailable: '供应商服务暂时不可用。',
-  source_temporarily_unavailable: '供应商这次没有正常返回。',
-  provider_worker_failed: '读取进程暂时失败。',
-};
+const EXPERIMENTAL_PLAN_REASON_SENTENCES = localized<string>({
+  experimental_consent_required: 'qs.msg.consentRequired',
+  api_key_required: 'qs.msg.apiKeyRequired',
+  secure_storage_unavailable: 'qs.msg.secureStorageUnavailable',
+  source_schema_unsupported: 'qs.msg.planSchemaUnsupported',
+  rate_limited: 'qs.msg.rateLimited',
+  upstream_unavailable: 'qs.msg.upstreamUnavailable',
+  source_temporarily_unavailable: 'qs.msg.sourceTemporarilyUnavailable',
+  provider_worker_failed: 'qs.msg.planWorkerFailed',
+});
 
 /** 实验套餐的原因码文案（含 `experimental_consent_required`）；未登记的码统一回落为读取失败。 */
 export function experimentalPlanReasonSentence(reasonCode: string | undefined): string {
-  return (reasonCode && EXPERIMENTAL_PLAN_REASON_SENTENCES[reasonCode]) || '这次没有读到套餐用量。';
+  return (reasonCode && EXPERIMENTAL_PLAN_REASON_SENTENCES[reasonCode]) || t('qs.plan.readFailedGeneric');
 }
 
 /** 状态卡复用订阅来源的五态外观；风险未确认、缺 key 与读取失败各给一句话。 */
@@ -1855,32 +1868,32 @@ export function experimentalPlanCardView({ plan, provider, now }: {
   provider: QuotaProviderEnvelope | undefined;
   now: number;
 }): QuotaSourceCardView {
-  if (!plan.enabled) return { state: 'needs-authorization', label: '未开启', sentence: '开启前会先说明风险。', action: null, windows: [] };
+  if (!plan.enabled) return { state: 'needs-authorization', label: t('qs.balance.off'), sentence: t('qs.plan.offSentence'), action: null, windows: [] };
   const reasonCode = provider?.reasonCode;
   if (!plan.consentCurrent || reasonCode === 'experimental_consent_required') {
-    return { state: 'needs-authorization', label: '待确认风险', sentence: experimentalPlanReasonSentence('experimental_consent_required'), action: null, windows: [] };
+    return { state: 'needs-authorization', label: t('qs.plan.confirmRisk'), sentence: experimentalPlanReasonSentence('experimental_consent_required'), action: null, windows: [] };
   }
-  if (!provider) return { state: 'needs-authorization', label: '等待读取', sentence: '正在等待首次读取。', action: null, windows: [] };
+  if (!provider) return { state: 'needs-authorization', label: t('qs.balance.waiting'), sentence: t('qs.waitingFirstRead'), action: null, windows: [] };
   const windows = sourceWindows(provider, now);
   const observedAt = latestObservedAt(provider);
   if (provider.status === 'ok' && windows.length > 0) {
     const observedMs = observedAt ? new Date(observedAt).getTime() : Number.NaN;
     return {
       state: 'connected',
-      label: Number.isFinite(observedMs) ? `已连接 · ${formatSourceRelative(observedMs, now)}` : '已连接',
-      sentence: '实验性接口，数值仅供参考。',
+      label: Number.isFinite(observedMs) ? t('qs.connectedAgo', { ago: formatSourceRelative(observedMs, now) }) : t('qs.connected'),
+      sentence: t('qs.plan.experimentalNote'),
       action: null,
       windows,
     };
   }
   const sentence = experimentalPlanReasonSentence(reasonCode);
-  const detail = reasonCode ? `${sentence}（${reasonCode}）` : undefined;
+  const detail = reasonCode ? t('qs.detailWithCode', { detail: sentence, code: reasonCode }) : undefined;
   if (provider.status === 'auth-required' || reasonCode === 'api_key_required') {
-    return { state: 'login-required', label: '需要 API key', sentence, action: null, detail, windows, asOf: windows.length > 0 ? observedAt : undefined };
+    return { state: 'login-required', label: t('qs.balance.needsKey'), sentence, action: null, detail, windows, asOf: windows.length > 0 ? observedAt : undefined };
   }
   return {
     state: 'read-failed',
-    label: windows.length > 0 ? '读取失败（保留旧值）' : '读取失败',
+    label: windows.length > 0 ? t('qs.state.readFailedKept') : t('qs.state.readFailed'),
     sentence,
     action: null,
     detail,
@@ -1937,7 +1950,7 @@ function ExperimentalPlanRiskDialog({ plan, busy, onCancel, onConfirm }: {
     };
   }, []);
 
-  const host = plan.host ?? '该供应商的官方域名';
+  const host = plan.host ?? t('qs.plan.officialHost');
   const dialog = (
     <div
       className="modal-overlay confirm-overlay"
@@ -1959,20 +1972,20 @@ function ExperimentalPlanRiskDialog({ plan, busy, onCancel, onConfirm }: {
           <FlaskConical className="h-5 w-5" />
         </div>
         <div className="confirm-dialog-copy">
-          <h2 id="experimental-plan-risk-title" className="confirm-dialog-title">开启{plan.displayName}？</h2>
+          <h2 id="experimental-plan-risk-title" className="confirm-dialog-title">{t('qs.plan.riskTitle', { name: plan.displayName })}</h2>
           <div id="experimental-plan-risk-body">
-            <p className="confirm-dialog-description">接口没有公开文档，可能随时变化或失效。</p>
-            <p className="confirm-dialog-description">请求会用到你在「供应商」页保存的 API key，只发往 {host}。</p>
-            <p className="confirm-dialog-description">不读取订阅登录、Cookie 或 OAuth，也不会替你消耗额度。</p>
+            <p className="confirm-dialog-description">{t('qs.plan.riskUndocumented')}</p>
+            <p className="confirm-dialog-description">{t('qs.plan.riskKey', { host })}</p>
+            <p className="confirm-dialog-description">{t('qs.plan.riskNoLogin')}</p>
           </div>
-          <p className="confirm-dialog-description">风险提示第 {plan.riskVersion} 版；更新后需要重新确认。</p>
+          <p className="confirm-dialog-description">{t('qs.plan.riskVersion', { version: plan.riskVersion })}</p>
         </div>
         <footer className="confirm-dialog-actions">
           <button ref={cancelRef} className="ghost-inline" type="button" onClick={onCancel} disabled={busy}>
-            取消
+            {t('qs.cancel')}
           </button>
           <button className="primary-inline" type="button" onClick={onConfirm} disabled={busy} aria-busy={busy || undefined}>
-            {busy ? '开启中…' : '确认风险并开启'}
+            {busy ? t('qs.plan.enabling') : t('qs.plan.confirmEnable')}
           </button>
         </footer>
       </section>
@@ -1989,6 +2002,7 @@ export function QuotaExperimentalPlansCard({ quotaProviders, now, disabled, onCh
   disabled: boolean;
   onChanged: () => void;
 }) {
+  useLang();
   const [plans, setPlans] = useState<QuotaExperimentalPlanView[] | null>(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -2028,12 +2042,12 @@ export function QuotaExperimentalPlansCard({ quotaProviders, now, disabled, onCh
   const enabledCount = plans?.filter((plan) => plan.enabled).length ?? 0;
 
   return (
-    <SettingsCard title="编码套餐">
+    <SettingsCard title={t('qs.plan.title')}>
       <SettingsGroup>
-        <DisclosurePanel title="高级" ariaLabel="编码套餐：高级" decorative openSignal={enabledCount}>
+        <DisclosurePanel title={t('qs.advanced')} ariaLabel={t('qs.plan.advancedAria')} decorative openSignal={enabledCount}>
           <p>
-            <span className="experimental-badge" style={{ marginRight: 6 }}>实验性</span>
-            智谱 GLM、MiniMax、Kimi Code 的套餐用量，默认关闭。
+            <span className="experimental-badge" style={{ marginRight: 6 }}>{t('qs.plan.experimental')}</span>
+            {t('qs.plan.intro')}
           </p>
           {(plans ?? []).map((plan) => {
             const view = experimentalPlanCardView({
@@ -2046,7 +2060,7 @@ export function QuotaExperimentalPlansCard({ quotaProviders, now, disabled, onCh
               <div key={plan.providerId}>
                 <SettingsToggleRow
                   label={plan.displayName}
-                  hint={missingProvider ? '先在「供应商」页添加这家并填入 API key。' : `${plan.host} · 实验性`}
+                  hint={missingProvider ? t('qs.plan.missingProvider') : t('qs.plan.hostExperimental', { host: plan.host ?? '' })}
                   icon={FlaskConical}
                   checked={plan.enabled}
                   disabled={disabled || busyId !== null || (missingProvider && !plan.enabled)}
@@ -2072,9 +2086,9 @@ export function QuotaExperimentalPlansCard({ quotaProviders, now, disabled, onCh
           })}
           {error && <p className="settings-error" role="alert">{error}</p>}
         </DisclosurePanel>
-        <DisclosurePanel ariaLabel="编码套餐：权限与数据边界">
-          <p>只用「供应商」页里这家的 API key（同一钥匙串条目），只发往它的固定域名；不读订阅登录、Cookie 或 OAuth，不预热窗口。</p>
-          <p>结果只在本机显示，不进跨设备同步；读取失败时保留上次的值并标「截至」。</p>
+        <DisclosurePanel ariaLabel={t('qs.plan.boundary')}>
+          <p>{t('qs.plan.boundary1')}</p>
+          <p>{t('qs.plan.boundary2')}</p>
         </DisclosurePanel>
       </SettingsGroup>
       {riskPlan && (

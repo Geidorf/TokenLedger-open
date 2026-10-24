@@ -159,6 +159,17 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('设置：订阅额度整页是英文', async ({ page }) => {
+    await openEnglish(page, 'settings-quota');
+    await expect(page.getByRole('heading', { name: 'Subscription quota' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Quota setup overview' })).toContainText('Local subscriptions connected');
+    await expect(page.getByText('Read Codex quota', { exact: true })).toBeVisible();
+    await expect(page.getByText('One-click setup', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Quota alerts', { exact: true })).toBeVisible();
+    await expect(page.getByText('Provider balances', { exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('设置：云端账户与壁纸是英文', async ({ page }) => {
     await openEnglish(page, 'settings-cloud');
     await expect(page.getByRole('heading', { name: 'Cloud account' })).toBeVisible();

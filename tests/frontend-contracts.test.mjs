@@ -121,6 +121,14 @@ function readSource(target) {
   return fs.readFileSync(target, 'utf8').replaceAll('\r\n', '\n');
 }
 
+// 订阅额度设置页的文案在 zh.ts 里；只查文字是否还在时，把两份源码拼在一起读。
+function readQuotaSectionWithCopy() {
+  return [
+    readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx')),
+    readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')),
+  ].join('\n');
+}
+
 
 test('task log SHA validation rejects annotations, abbreviations, and placeholders', () => {
   assert.equal(isFullGitSha('fee429c7624c7c2bc2fdcacd1e5841e5f62bbef8'), true);
@@ -2490,8 +2498,7 @@ test('verified company OpenAPI quota uses CNY ratios and stays secret-free', () 
     path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'custom.rs'));
   const settings = readSource(
     path.join(process.cwd(), 'src-tauri', 'src', 'settings.rs'));
-  const quotaSettings = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quotaSettings = readQuotaSectionWithCopy();
   const androidWidget = readSource(
     path.join(
       process.cwd(),
@@ -2562,8 +2569,7 @@ test('quota stop is local-only while cloud deletion remains explicit and tombsto
     readSource(path.join(process.cwd(), 'src', 'App.tsx')),
     readSource(path.join(process.cwd(), 'src', 'hooks', 'useQuota.ts')),
   ].join('\n');
-  const settingsSource = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const settingsSource = readQuotaSectionWithCopy();
   assert.match(appSource, /跨设备额度同步已关闭；本机停止读写，云端历史仍保留/);
   assert.match(appSource, /invoke<unknown>\('delete_quota_snapshot_provider'/);
   assert.match(appSource, /invoke<unknown>\('clear_quota_snapshots'/);
@@ -2662,10 +2668,11 @@ test('设置页额度同步在进行中暴露状态并禁用重复点击', () =>
   const primitives = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'SettingsPrimitives.tsx'));
   assert.match(source, /const quotaSyncBusy = quotaSyncStatus\.state === 'syncing';/);
-  assert.match(source, /const quotaSyncButtonLabel = quotaSyncBusy \? '同步中…' : '同步额度';/);
-  assert.match(source, /const quotaSyncButtonAriaLabel = quotaSyncBusy \? '正在同步额度' : '同步额度';/);
+  assert.match(source, /const quotaSyncButtonLabel = quotaSyncBusy \? t\('qs\.sync\.busy'\) : t\('qs\.sync\.button'\);/);
+  assert.match(source, /const quotaSyncButtonAriaLabel = quotaSyncBusy \? t\('qs\.sync\.busyAria'\) : t\('qs\.sync\.button'\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'qs\.sync\.busy': '同步中…',[\s\S]*'qs\.sync\.button': '同步额度',[\s\S]*'qs\.sync\.busyAria': '正在同步额度'/);
   assert.match(source, /const quotaSyncActionDisabledReason = busy\.settings/);
-  assert.match(source, /<SettingsRow label="跨设备同步状态" hint="停用或撤权只停止这台设备，云端历史仍保留。" busy=\{quotaSyncBusy\} wideControl=\{Boolean\(quotaSyncRecoveryMessage\)\}>/);
+  assert.match(source, /<SettingsRow label=\{t\('qs\.sync\.status'\)\} hint=\{t\('qs\.sync\.statusHint'\)\} busy=\{quotaSyncBusy\} wideControl=\{Boolean\(quotaSyncRecoveryMessage\)\}>/);
   assert.match(source, /style=\{quotaSyncRecoveryMessage \? \{ display: 'block', overflow: 'visible', WebkitLineClamp: 'unset' \} : undefined\}/);
   assert.match(source, /aria-label=\{quotaSyncButtonAriaLabel\}/);
   assert.match(source, /id="quota-sync-action-hint"/);
@@ -2683,11 +2690,11 @@ test('云端额度快照删除在进行中暴露 provider 级反馈并禁用重�
     path.join(process.cwd(), 'src', 'hooks', 'useQuota.ts'));
   assert.match(source, /const runDeleteQuotaSnapshot = async/);
   assert.match(source, /const runClearQuotaSnapshots = async/);
-  assert.match(source, /aria-label=\{cloudDeleteBusy \? `正在删除/);
+  assert.match(source, /aria-label=\{t\(cloudDeleteBusy \? 'qs\.cloudDelete\.busyAria'/);
   assert.match(source, /aria-busy=\{cloudDeleteBusy \|\| undefined\}/);
-  assert.match(source, /\{cloudDeleteBusy \? '删除中…' : '删除云端快照'\}/);
+  assert.match(source, /\{cloudDeleteBusy \? t\('qs\.deleting'\) : t\('qs\.cloudDelete\.button'\)\}/);
   assert.match(source, /aria-busy=\{quotaSnapshotAllBusy \|\| undefined\}/);
-  assert.match(source, /\{quotaSnapshotAllBusy \? '删除中…' : '删除全部云端额度'\}/);
+  assert.match(source, /\{quotaSnapshotAllBusy \? t\('qs\.deleting'\) : t\('qs\.snapshots\.deleteAll'\)\}/);
   assert.match(hook, /if \(!\(await confirm\(\{[\s\S]*title: '删除这个来源的云端额度快照？'/);
   assert.match(hook, /if \(!\(await confirm\(\{[\s\S]*title: '删除全部云端额度快照？'/);
   assert.match(source, /onConfirm: RequestConfirmation/);
@@ -4133,8 +4140,7 @@ test('wallpaper consent and cleanup actions expose progress while locking duplic
 });
 
 test('quota provider immediate-read actions expose progress while locking duplicate work', () => {
-  const quota = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   assert.match(quota, /const \[activeQuotaRead, setActiveQuotaRead\] = useState<'claude' \| 'antigravity' \| null>\(null\);/);
   assert.match(quota, /const claudeReadBusy = activeQuotaRead === 'claude' && busy\.settings;/);
   assert.match(quota, /const antigravityReadBusy = activeQuotaRead === 'antigravity' && busy\.settings;/);
@@ -4152,8 +4158,7 @@ test('quota provider immediate-read actions expose progress while locking duplic
 });
 
 test('custom quota endpoint actions expose provider-specific progress while locking duplicate work', () => {
-  const quota = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   assert.match(quota, /activeCustomEndpointAction/);
   assert.match(quota, /正在启用/);
   assert.match(quota, /正在停用/);
@@ -4370,8 +4375,7 @@ test('quota backend reason codes have localized user-facing copy', () => {
 test('Claude enhanced quota prefers the bounded in-process PTY and keeps CodexBar as fallback', () => {
   const backend = readSource(
     path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'mod.rs'));
-  const settings = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const settings = readQuotaSectionWithCopy();
   assert.match(backend, /capture_claude_cli_usage/);
   assert.match(backend, /native_pty_system/);
   assert.match(backend, /authorize_claude_native_quota/);
@@ -4395,8 +4399,7 @@ test('Claude enhanced quota prefers the bounded in-process PTY and keeps CodexBa
 test('Antigravity quota is native-first on every desktop and restricts CodexBar to local CLI fallback', () => {
   const backend = readSource(
     path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'antigravity.rs'));
-  const settings = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const settings = readQuotaSectionWithCopy();
   assert.match(backend, /RetrieveUserQuotaSummary/);
   assert.match(backend, /GetUserStatus/);
   assert.match(backend, /GetCommandModelConfigs/);
@@ -6206,7 +6209,7 @@ test('Android 原型趋势图带真实时间刻度，单值指标走网格', () 
 // 立项实测：用户两个开关都开着、界面只显示 10 天前的陈旧值，而 ~/.claude/settings.json
 // 里根本没有 statusLine —— 界面既不检查也不提示，只给一行无法直接使用的 JSON 片段。
 test('Claude 接入方式给出完整可粘贴的 statusLine 对象与目标文件路径', () => {
-  const quota = readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   const commands = readSource(path.join(process.cwd(), 'src-tauri', 'src', 'commands', 'mod.rs'));
 
   // 后端必须能产出带 statusLine 外层与 type 的完整对象，而不只是 "command" 片段。
@@ -6220,11 +6223,12 @@ test('Claude 接入方式给出完整可粘贴的 statusLine 对象与目标文�
   assert.match(quota, /const claudeStatuslineBlock = claudeSetup\?\.settingsBlock/u);
   assert.match(quota, /navigator\.clipboard\.writeText\(claudeStatuslineBlock\)/u);
   assert.match(quota, /复制完整配置/u);
-  assert.match(quota, /把下面这段合并进 \$\{claudeSetup\.settingsPath\}/u);
+  assert.match(quota, /t\('qs\.claude\.manualMergeInto', \{ path: claudeSetup\.settingsPath \}\)/u);
+  assert.match(quota, /'qs\.claude\.manualMergeInto': '把下面这段合并进 \{path\}/u);
 });
 
 test('额度来源状态卡五种状态各有文案与色调，Claude 没接上时直说（T10.283）', () => {
-  const quota = readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
 
   assert.match(quota, /statusLineWired/u);
@@ -6242,7 +6246,7 @@ test('额度来源状态卡五种状态各有文案与色调，Claude 没接上�
 
 test('内置 /usage 探针在 Windows 上认得 npm 生成的 shim 并列出实际候选', () => {
   const rust = readSource(path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'mod.rs'));
-  const quota = readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
 
   // npm 在 Windows 上只生成 claude / claude.cmd / claude.ps1，没有 .exe；
   // 此前只找 .exe，等于把用户 PATH 里真正在用的 CLI 整个跳过。
