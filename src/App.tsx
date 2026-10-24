@@ -587,6 +587,11 @@ function MainApp() {
     changeTab('settings');
   }, [changeTab]);
 
+  const openBudgetSettings = useCallback(() => {
+    setSettingsAnchor('settings-budget');
+    changeTab('settings');
+  }, [changeTab]);
+
   const handleOpenShareCard = useCallback(() => {
     if (statsHook.stats) {
       setShareCardOpen(true);
@@ -829,6 +834,7 @@ function MainApp() {
                   }}
                   onRefreshQuotas={() => void quota.loadQuotas(cloud.cloudStatusKnown && cloud.cloudStatus.authenticated, true)}
                   onOpenQuotaSettings={openQuotaSettings}
+                  onOpenBudgetSettings={openBudgetSettings}
                   onQuotaNotify={(text) => showMessage('info', text)}
                   refreshCompletedAt={statsHook.refreshCompletedAt}
                   onSelectDate={dayDrill.drillIntoDay}

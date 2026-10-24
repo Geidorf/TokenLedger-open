@@ -10,15 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Weekly and monthly usage reports under Usage › Reports: totals, cache reuse, splits by Agent, model and account, change against the previous period, the most expensive sessions, quota readings and budget results. Reports export as a share image, a single-file HTML page or a PDF via print, and an optional reminder posts a system notification every Monday (or on the 1st) at 09:00.
+- Unsigned Linux x64 packages (AppImage, deb, rpm) built by `unsigned-linux-packages.yml`, with `tokenledger-cli` bundled. Every build installs the deb and runs the AppImage under Xvfb to check the main window, tray registration, start-at-login entry, XDG data folder, first scan and single-instance handoff.
+- Start at login on Linux: the toggle in Settings › Scan & startup writes an XDG autostart entry (for the AppImage it points at the image file and follows it when moved). Windows and macOS still show it as unsupported.
 - Command-line tool `tokenledger-cli`: today/week/month usage with Agent, model and account breakdowns, quota remaining, budget status, gateway state and recent routes, on-demand scans, and CSV/JSON ledger export. Every command has table output and `--json` for scripts and status bars; numbers come from the same Rust code as the desktop app. See `docs/cli.md`.
 - Local model gateway with a persistent accounting ledger: old logs import idempotently, and both local statistics and cloud aggregates read from that ledger. A failed import preserves newly billed usage instead of dropping it.
 - Antigravity CLI scanning across both of its roots, reading real input, output, and cache-read values. Local schema advanced to v16 to record usage provenance and the "cache write unknown" state; rows estimated by older versions carry an estimate badge.
 - Quota clearing now persists a local stop before dispatching, so an interrupted clear can recover. Compatible with older PostgREST versions; the cloud rejects observations more than five minutes in the future.
 - Deep links into settings now switch pages correctly while the app is running. The usage records page shows the active filter and can clear it in one action.
 - Android widget and dashboard visual refresh, including brand icons, input/output share bars on KPI cards, quota overview progress bars, and reduced visual noise in settings.
+- VS Code status bar extension (`extensions/vscode/`): shows today's estimated cost or the tightest quota window's remaining percentage, with a hover card and details panel for quota bars, today's per-agent split, budgets and gateway health. All figures come from the local `tokenledger-cli`; the extension reads no credentials and makes no network requests. Packaged as a .vsix by a dependency-free script; not published to the marketplace.
 - Settings cards open their target page directly, and an overview line reports a quota read that is still waiting for the first observation.
 
 ### Changed
+
+- Linux scan paths honour `XDG_DATA_HOME` and `XDG_CONFIG_HOME` (OpenCode, Kilo, Hermes, Kimi Desktop, Trae, DeepSeek GUI, WorkBuddy), and the Marvis path on Linux no longer points at a macOS-style folder.
 
 - The source and cross-platform build version moved from 1.2.77 to 2.0.0; the Android `versionCode` moved from 1002077 to 2000000.
 - The version bump tool now accepts an explicit target version and keeps the Rust lockfile in sync; the default patch increment stays backwards compatible.

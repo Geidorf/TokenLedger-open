@@ -10,7 +10,7 @@ import { diffLineClass, modelOptions, type ModelOption } from './helpers';
 import type { AgentInspection, AgentPreview } from './types';
 import { CopyButton, RevealCopyButton, Sheet } from './ui';
 import { LegacyRestoreCard } from './LegacyRestoreCard';
-import { useT } from '../../i18n';
+import { t, useLang } from '../../i18n';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3462/v1';
 
@@ -41,13 +41,13 @@ function ModelPicker({ agentName, options, current, onPick, onClose }: {
   const filtered = options.filter((option) => `${option.value} ${option.section}`.toLowerCase().includes(q));
   const sections = [...new Set(filtered.map((option) => option.section))];
   return (
-    <div className="mw-popover" role="dialog" aria-label={`为 ${agentName} 选择模型`}>
+    <div className="mw-popover" role="dialog" aria-label={t('agents.picker.aria', { name: agentName })}>
       <label className="mw-search is-compact">
         <Search className="h-4 w-4" aria-hidden="true" />
-        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索模型或路由组" aria-label="搜索模型" />
+        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('agents.picker.placeholder')} aria-label={t('agents.picker.searchAria')} />
       </label>
       <div className="mw-popover-body tl-scrollbar">
-        {sections.length === 0 && <p className="mw-caption">没有可选模型。先在供应商页启用供应商并列出模型。</p>}
+        {sections.length === 0 && <p className="mw-caption">{t('agents.noModels')}</p>}
         {sections.map((section) => (
           <section key={section}>
             <h4>{filtered.find((option) => option.section === section)?.isGroup && <GroupIcon size={16} />}{section}</h4>
@@ -60,7 +60,7 @@ function ModelPicker({ agentName, options, current, onPick, onClose }: {
           </section>
         ))}
       </div>
-      <footer className="mw-popover-foot">选择后先预览配置改动，确认才写入</footer>
+      <footer className="mw-popover-foot">{t('agents.picker.foot')}</footer>
     </div>
   );
 }
@@ -74,20 +74,20 @@ function DiffSheet({ agent, model, preview, busy, onApply, onClose }: {
   onClose: () => void;
 }) {
   return (
-    <Sheet title={`${agent.name} 配置改动`} subtitle={preview.configPath} icon={<span className="mw-head-icon"><FileDiff className="h-4 w-4" /></span>} onClose={onClose}>
+    <Sheet title={t('agents.diff.title', { name: agent.name })} subtitle={preview.configPath} icon={<span className="mw-head-icon"><FileDiff className="h-4 w-4" /></span>} onClose={onClose}>
       <div className="mw-editor">
-        <p className="mw-caption">目标模型 <span className="mw-mono-text">{model}</span>。写入前备份原文件，只改网关相关的键，其余内容与注释保持不变。配置里只有网关地址和本地 token，没有供应商 key。</p>
+        <p className="mw-caption">{t('agents.diff.target')} <span className="mw-mono-text">{model}</span>{t('agents.diff.note')}</p>
         {preview.warnings.length > 0 && (
           <ul className="mw-warning-list">{preview.warnings.map((warning) => <li key={warning} className="mw-note is-warning">{warning}</li>)}</ul>
         )}
         {preview.changed ? (
-          <pre className="mw-diff mw-diff-lines" aria-label="配置 diff">
+          <pre className="mw-diff mw-diff-lines" aria-label={t('agents.diff.aria')}>
             {preview.diff.split('\n').map((line, index) => <span key={index} className={diffLineClass(line)}>{line}{'\n'}</span>)}
           </pre>
-        ) : <p className="mw-note">配置已经是这个模型，无需改动。</p>}
+        ) : <p className="mw-note">{t('agents.diff.unchanged')}</p>}
         <div className="mw-form-actions">
-          <button type="button" className="mw-btn is-ghost" onClick={onClose}>取消</button>
-          <button type="button" className="mw-btn is-primary" disabled={busy || !preview.changed} onClick={onApply}>{busy ? '写入中…' : '写入配置'}</button>
+          <button type="button" className="mw-btn is-ghost" onClick={onClose}>{t('agents.cancel')}</button>
+          <button type="button" className="mw-btn is-primary" disabled={busy || !preview.changed} onClick={onApply}>{busy ? t('agents.writing') : t('agents.write')}</button>
         </div>
       </div>
     </Sheet>
@@ -132,7 +132,7 @@ function AgentRow({ agent, options, onNotify, onConfirm, startPicker = false }: 
     setBusy(true);
     try {
       await agent.apply(pending.model, pending.preview.beforeVersion);
-      onNotify('success', `${agent.name} 已切换到 ${pending.model}，新会话生效`);
+      onNotify('success', t('agents.toast.switched', { name: agent.name, model: pending.model }));
       setPending(null);
       await inspect();
     } catch (error) {
@@ -147,13 +147,13 @@ function AgentRow({ agent, options, onNotify, onConfirm, startPicker = false }: 
     if (!backup) return;
     const force = !backup.restorableWithoutForce;
     const confirmed = await onConfirm(force
-      ? { title: `强制恢复 ${agent.name} 配置？`, description: '接入后配置文件又被改过，恢复会覆盖这些改动，回到接入前的备份。', confirmLabel: '强制恢复', tone: 'danger' }
-      : { title: `恢复 ${agent.name} 配置？`, description: backup.originalExisted ? '回到接入网关前的备份。' : '接入前没有配置文件，恢复会删除它。', confirmLabel: '恢复' });
+      ? { title: t('agents.restore.forceTitle', { name: agent.name }), description: t('agents.restore.forceBody'), confirmLabel: t('agents.restore.forceLabel'), tone: 'danger' }
+      : { title: t('agents.restore.title', { name: agent.name }), description: t(backup.originalExisted ? 'agents.restore.body' : 'agents.restore.bodyDelete'), confirmLabel: t('agents.restore.label') });
     if (!confirmed) return;
     setBusy(true);
     try {
       await agent.restore(force);
-      onNotify('success', `${agent.name} 配置已恢复`);
+      onNotify('success', t('agents.toast.restored', { name: agent.name }));
       await inspect();
     } catch (error) {
       onNotify('error', errorText(error));
@@ -171,27 +171,27 @@ function AgentRow({ agent, options, onNotify, onConfirm, startPicker = false }: 
       <BrandIcon id={agent.icon} fallback={agent.monogram} size={30} />
       <span className="mw-row-title">
         <strong>{agent.name}</strong>
-        <small className="mw-mono-text">{inspection?.configPath ?? '读取配置…'}</small>
+        <small className="mw-mono-text">{inspection?.configPath ?? t('agents.reading')}</small>
         <span className="mw-agent-status">
-          {inspectError && <span className="mw-chip is-danger" title={inspectError}>读取失败</span>}
+          {inspectError && <span className="mw-chip is-danger" title={inspectError}>{t('agents.readFailed')}</span>}
           {inspection && (onGateway
-            ? <span className="mw-chip is-success">已接入网关</span>
-            : <span className="mw-chip">{inspection.exists ? `未接入 · 当前 ${inspection.model ?? '默认模型'}` : '未找到配置，写入时创建'}</span>)}
-          {inspection?.warnings.map((warning) => <span key={warning} className="mw-chip is-warning" title={warning}>注意</span>)}
+            ? <span className="mw-chip is-success">{t('agents.connected')}</span>
+            : <span className="mw-chip">{inspection.exists ? t('agents.notConnected', { model: inspection.model ?? t('agents.defaultModel') }) : t('agents.noConfig')}</span>)}
+          {inspection?.warnings.map((warning) => <span key={warning} className="mw-chip is-warning" title={warning}>{t('agents.warning')}</span>)}
         </span>
       </span>
       <div className="mw-field-col">
-        <button type="button" className={`mw-value-btn ${pickerOpen ? 'is-open' : ''}`} aria-expanded={pickerOpen} aria-label={`${agent.name} 模型`} disabled={busy || !inspection} onClick={() => setPickerOpen((open) => !open)}>
+        <button type="button" className={`mw-value-btn ${pickerOpen ? 'is-open' : ''}`} aria-expanded={pickerOpen} aria-label={t('agents.modelAria', { name: agent.name })} disabled={busy || !inspection} onClick={() => setPickerOpen((open) => !open)}>
           {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : currentOption?.isGroup ? <GroupIcon size={18} /> : null}
-          <span><strong>{current ? currentOption?.label ?? current : '选择模型'}</strong><small>{current ?? '经网关转发'}</small></span>
+          <span><strong>{current ? currentOption?.label ?? current : t('agents.pickModel')}</strong><small>{current ?? t('agents.viaGateway')}</small></span>
           <ChevronDown className="h-3.5 w-3.5" />
         </button>
         {pickerOpen && <ModelPicker agentName={agent.name} options={options} current={current} onPick={(value) => void pick(value)} onClose={() => setPickerOpen(false)} />}
       </div>
       <div className="mw-agent-actions">
         {inspection?.backup && (
-          <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => void restore()} title={`备份于 ${inspection.backup.createdAt}`}>
-            <Undo2 className="h-3.5 w-3.5" />恢复
+          <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => void restore()} title={t('agents.backupAt', { time: inspection.backup.createdAt })}>
+            <Undo2 className="h-3.5 w-3.5" />{t('agents.restore.label')}
           </button>
         )}
       </div>
@@ -206,27 +206,27 @@ function ManualSheet({ agent, baseUrl, options, onClose }: { agent: ManualAgent;
   const gatewayRoot = baseUrl.replace(/\/v1\/?$/, '');
   const value = (field: ManualField) => {
     switch (field.value.kind) {
-      case 'text': return <><span className="mw-copy-value">{field.value.text}</span><CopyButton text={field.value.text} label={`复制 ${field.label}`} /></>;
-      case 'baseUrl': return <><span className="mw-copy-value is-mono">{baseUrl}</span><CopyButton text={baseUrl} label={`复制 ${field.label}`} /></>;
-      case 'gatewayRoot': return <><span className="mw-copy-value is-mono">{gatewayRoot}</span><CopyButton text={gatewayRoot} label={`复制 ${field.label}`} /></>;
-      case 'token': return <RevealCopyButton resolve={revealLocalToken} label={`复制 ${field.label}（本地 token）`}>复制本地 token</RevealCopyButton>;
+      case 'text': return <><span className="mw-copy-value">{field.value.text}</span><CopyButton text={field.value.text} label={t('agents.copy', { label: field.label })} /></>;
+      case 'baseUrl': return <><span className="mw-copy-value is-mono">{baseUrl}</span><CopyButton text={baseUrl} label={t('agents.copy', { label: field.label })} /></>;
+      case 'gatewayRoot': return <><span className="mw-copy-value is-mono">{gatewayRoot}</span><CopyButton text={gatewayRoot} label={t('agents.copy', { label: field.label })} /></>;
+      case 'token': return <RevealCopyButton resolve={revealLocalToken} label={t('agents.copyToken', { label: field.label })}>{t('agents.copyTokenButton')}</RevealCopyButton>;
       case 'model': return options.length === 0
-        ? <span className="mw-caption">没有可选模型。先在供应商页启用供应商并列出模型。</span>
+        ? <span className="mw-caption">{t('agents.noModels')}</span>
         : <>
-          <select className="mw-native-select is-compact" aria-label={`${agent.name} 模型`} value={model} onChange={(event) => setModel(event.target.value)}>
+          <select className="mw-native-select is-compact" aria-label={t('agents.modelAria', { name: agent.name })} value={model} onChange={(event) => setModel(event.target.value)}>
             {options.map((option) => <option key={option.value} value={option.value}>{option.value}</option>)}
           </select>
-          <CopyButton text={model} label={`复制 ${field.label}`} />
+          <CopyButton text={model} label={t('agents.copy', { label: field.label })} />
         </>;
     }
   };
   return (
-    <Sheet title={`${agent.name} 手动配置`} subtitle="复制以下设置到 Agent 里" icon={<span className="mw-head-icon"><ClipboardList className="h-4 w-4" /></span>} onClose={onClose}>
+    <Sheet title={t('agents.manual.title', { name: agent.name })} subtitle={t('agents.manual.subtitle')} icon={<span className="mw-head-icon"><ClipboardList className="h-4 w-4" /></span>} onClose={onClose}>
       <div className="mw-editor">
         <p className="mw-note is-warning">{agent.reason}</p>
         <p className="mw-caption">{agent.where}</p>
         {agent.steps && (
-          <ol className="mw-warning-list" aria-label={`${agent.name} 配置步骤`}>
+          <ol className="mw-warning-list" aria-label={t('agents.manual.stepsAria', { name: agent.name })}>
             {agent.steps.map((step, index) => <li key={step} className="mw-caption">{index + 1}. {step}</li>)}
           </ol>
         )}
@@ -238,11 +238,11 @@ function ManualSheet({ agent, baseUrl, options, onClose }: { agent: ManualAgent;
             </div>
           ))}
         </div>
-        {agent.fields.filter((field) => field.hint).map((field) => <p key={field.label} className="mw-caption">{field.label}：{field.hint}</p>)}
+        {agent.fields.filter((field) => field.hint).map((field) => <p key={field.label} className="mw-caption">{t('agents.manual.hint', { label: field.label, hint: field.hint ?? '' })}</p>)}
         {agent.notes && (
           <ul className="mw-warning-list">{agent.notes.map((note) => <li key={note} className="mw-note">{note}</li>)}</ul>
         )}
-        <p className="mw-caption">本地 token 只在点击时读取并写入剪贴板，不在界面显示。选路由组后，切换成员在路由页完成，不用再改 Agent 设置。</p>
+        <p className="mw-caption">{t('agents.manual.tokenNote')}</p>
       </div>
     </Sheet>
   );
@@ -256,11 +256,11 @@ function ManualRow({ agent, baseUrl, options }: { agent: ManualAgent; baseUrl: s
       <span className="mw-row-title">
         <strong>{agent.name}</strong>
         <small>{agent.reason}</small>
-        <span className="mw-agent-status"><span className="mw-chip">手动配置</span></span>
+        <span className="mw-agent-status"><span className="mw-chip">{t('agents.manual.chip')}</span></span>
       </span>
       <div className="mw-agent-actions">
         <button type="button" className="mw-btn is-ghost" onClick={() => setOpen(true)}>
-          <ClipboardList className="h-3.5 w-3.5" />配置步骤
+          <ClipboardList className="h-3.5 w-3.5" />{t('agents.manual.steps')}
         </button>
       </div>
       {open && <ManualSheet agent={agent} baseUrl={baseUrl} options={options} onClose={() => setOpen(false)} />}
@@ -269,7 +269,7 @@ function ManualRow({ agent, baseUrl, options }: { agent: ManualAgent; baseUrl: s
 }
 
 export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, manual = MANUAL_AGENTS, pending = PENDING_AGENTS, onOpenProviders }: PageProps) {
-  const t = useT();
+  useLang();
   const [options, setOptions] = useState<ModelOption[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
@@ -292,9 +292,9 @@ export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, 
     <>
       <LegacyRestoreCard onConfirm={onConfirm} onResolved={(chooseGateway) => setLegacyResolution((previous) => ({ revision: previous.revision + 1, chooseGateway }))} />
       <div className="mw-toolbar">
-        <span className="mw-caption">{options?.length ?? 0} 个可选模型与路由组 · Agent 配置只写网关地址和本地 token</span>
+        <span className="mw-caption">{t('agents.toolbar', { count: options?.length ?? 0 })}</span>
       </div>
-      {loadError && <p className="mw-note is-danger" role="alert">读取模型列表失败：{loadError}</p>}
+      {loadError && <p className="mw-note is-danger" role="alert">{t('agents.loadFailed', { error: loadError })}</p>}
       {options?.length === 0 && (
         <EmptyState variant="banner" icon={Waypoints} title={t('empty.agents.title')} description={t('empty.agents.description')}>
           {onOpenProviders && <button type="button" className="mw-btn is-primary" onClick={onOpenProviders}><Plus className="h-4 w-4" />{t('empty.agents.action')}</button>}
@@ -307,11 +307,11 @@ export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, 
           <div key={agent.id} className="mw-row mw-agent is-off">
             <BrandIcon id={agent.icon} fallback={agent.monogram} size={30} />
             <span className="mw-row-title"><strong>{agent.name}</strong>{agent.note && <small>{agent.note}</small>}</span>
-            <span className="mw-agent-soon"><span className="mw-chip">即将支持</span></span>
+            <span className="mw-agent-soon"><span className="mw-chip">{t('agents.soon')}</span></span>
           </div>
         ))}
       </div>
-      <p className="mw-caption mw-list-note">选路由组后，切换成员在路由页完成，不用再改 Agent 配置。</p>
+      <p className="mw-caption mw-list-note">{t('agents.groupNote')}</p>
     </>
   );
 }

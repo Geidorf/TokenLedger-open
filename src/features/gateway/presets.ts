@@ -1,5 +1,6 @@
 import type { BrandIconId } from '../../prototypes/prototypeKit';
 import type { WireApi } from './types';
+import { t } from '../../i18n';
 
 export interface ProviderPreset {
   id: string;
@@ -26,7 +27,7 @@ export interface ProviderPresetGroup {
 export const PROVIDER_PRESET_GROUPS: ProviderPresetGroup[] = [
   {
     id: 'global',
-    label: '国际厂商',
+    get label() { return t('presets.group.global'); },
     presets: [
       { id: 'openai', name: 'OpenAI', monogram: 'AI', icon: 'openai', baseUrl: 'https://api.openai.com/v1', wire: 'responses', models: ['gpt-5', 'gpt-5-mini'] },
       { id: 'anthropic', name: 'Anthropic', monogram: 'A', icon: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', wire: 'anthropic', models: [] },
@@ -39,27 +40,27 @@ export const PROVIDER_PRESET_GROUPS: ProviderPresetGroup[] = [
   },
   {
     id: 'cn',
-    label: '国内厂商',
+    get label() { return t('presets.group.cn'); },
     presets: [
       { id: 'deepseek', name: 'DeepSeek', monogram: 'DS', icon: 'deepseek-color', baseUrl: 'https://api.deepseek.com/v1', wire: 'chat', models: ['deepseek-chat', 'deepseek-reasoner'] },
       { id: 'kimi', name: 'Kimi', monogram: 'K', icon: 'moonshot', baseUrl: 'https://api.moonshot.cn/v1', wire: 'chat', models: [] },
-      { id: 'glm', name: '智谱 GLM', monogram: 'Z', icon: 'zhipu-color', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', wire: 'chat', models: [] },
-      { id: 'qwen', name: '通义千问', monogram: 'Q', icon: 'qwen-color', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', wire: 'chat', models: [] },
-      { id: 'ark', name: '火山方舟', monogram: '火', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', wire: 'chat', models: [] },
-      { id: 'siliconflow', name: '硅基流动', monogram: 'SF', icon: 'siliconcloud-color', baseUrl: 'https://api.siliconflow.cn/v1', wire: 'chat', models: [] },
+      { id: 'glm', get name() { return t('presets.glm'); }, monogram: 'Z', icon: 'zhipu-color', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', wire: 'chat', models: [] },
+      { id: 'qwen', get name() { return t('presets.qwen'); }, monogram: 'Q', icon: 'qwen-color', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', wire: 'chat', models: [] },
+      { id: 'ark', get name() { return t('presets.ark'); }, monogram: '火', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', wire: 'chat', models: [] },
+      { id: 'siliconflow', get name() { return t('presets.siliconflow'); }, monogram: 'SF', icon: 'siliconcloud-color', baseUrl: 'https://api.siliconflow.cn/v1', wire: 'chat', models: [] },
     ],
   },
   {
     id: 'relay',
-    label: '中转与自定义',
+    get label() { return t('presets.group.relay'); },
     presets: [
-      { id: 'custom', name: '自定义 OpenAI 兼容', monogram: '+', baseUrl: '', wire: 'chat', models: [], custom: true },
-      { id: 'custom-anthropic', name: '自定义 Anthropic 兼容', monogram: '+A', baseUrl: '', wire: 'anthropic', models: [], custom: true },
+      { id: 'custom', get name() { return t('presets.customOpenai'); }, monogram: '+', baseUrl: '', wire: 'chat', models: [], custom: true },
+      { id: 'custom-anthropic', get name() { return t('presets.customAnthropic'); }, monogram: '+A', baseUrl: '', wire: 'anthropic', models: [], custom: true },
     ],
   },
   {
     id: 'local',
-    label: '本地模型',
+    get label() { return t('presets.group.local'); },
     presets: [
       { id: 'ollama', name: 'Ollama', monogram: 'OL', icon: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1', wire: 'chat', models: [], keyless: true, authMode: 'none' },
       { id: 'lmstudio', name: 'LM Studio', monogram: 'LM', baseUrl: 'http://127.0.0.1:1234/v1', wire: 'chat', models: [], keyless: true, authMode: 'none' },
