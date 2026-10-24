@@ -19,8 +19,12 @@ export interface OnboardingFacts {
   totalRecords: number | null;
   /** Model access master switch; undefined until settings are read. */
   modelAccessEnabled: boolean | undefined;
-  /** Enabled gateway providers; null when unknown or model access is off. */
-  enabledProviders: number | null;
+  /**
+   * Gateway status; null when unknown or model access is off. A positive
+   * provider count alone does not mean the listener started (the port can be
+   * taken), so `running` and `error` come along.
+   */
+  gateway: { enabledProviders: number; running: boolean; error: string | null } | null;
   cloudAuthenticated: boolean;
   cloudCapabilityVerified: boolean;
   cloudFirstSyncCompleted: boolean;
@@ -32,6 +36,7 @@ export type OnboardingAction =
   | 'scan'
   | 'enable-model-access'
   | 'open-providers'
+  | 'open-gateway'
   | 'open-cloud-settings'
   | 'sync-now'
   | 'enable-phone-routing'
@@ -85,10 +90,11 @@ function gatewayStep(facts: OnboardingFacts): OnboardingStep {
       actionLabel: '开启模型接入',
     };
   }
-  if (facts.enabledProviders === null) {
+  if (facts.gateway === null) {
     return { id: 'gateway', status: 'unknown', detail: '正在读取网关状态…', action: null, actionLabel: '' };
   }
-  if (facts.enabledProviders === 0) {
+  const { enabledProviders, running, error } = facts.gateway;
+  if (enabledProviders === 0) {
     return {
       id: 'gateway',
       status: 'todo',
@@ -97,10 +103,19 @@ function gatewayStep(facts: OnboardingFacts): OnboardingStep {
       actionLabel: '添加供应商',
     };
   }
+  if (!running) {
+    return {
+      id: 'gateway',
+      status: 'todo',
+      detail: `已启用 ${enabledProviders} 个供应商，但网关没有启动${error ? `：${error}` : '。'}`,
+      action: 'open-gateway',
+      actionLabel: '查看网关',
+    };
+  }
   return {
     id: 'gateway',
     status: 'done',
-    detail: `网关运行中，${facts.enabledProviders} 个供应商已启用。`,
+    detail: `网关运行中，${enabledProviders} 个供应商已启用。`,
     action: null,
     actionLabel: '',
   };

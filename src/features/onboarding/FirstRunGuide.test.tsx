@@ -20,6 +20,7 @@ function renderGuide(overrides: Partial<FirstRunGuideProps> = {}, facts: Partial
       routingPublishEnabled: false,
       ...facts,
     },
+    latestError: '',
     scanBusy: false,
     syncBusy: false,
     settingsBusy: false,
@@ -29,6 +30,7 @@ function renderGuide(overrides: Partial<FirstRunGuideProps> = {}, facts: Partial
     onModelAccessChanged: vi.fn(),
     onEnablePhoneRouting: vi.fn(),
     onOpenProviders: vi.fn(),
+    onOpenGateway: vi.fn(),
     onOpenCloudSettings: vi.fn(),
     onNotify: vi.fn(),
     ...overrides,
@@ -97,6 +99,17 @@ describe('FirstRunGuide', () => {
     rerender(<FirstRunGuide {...props} facts={{ ...props.facts, cloudAuthenticated: true, cloudCapabilityVerified: true, cloudFirstSyncCompleted: true }} />);
     fireEvent.click(screen.getByRole('button', { name: '开启同步到手机' }));
     expect(props.onEnablePhoneRouting).toHaveBeenCalledTimes(1);
+  });
+
+  it('网关没起来时引导去网关页，App 的报错在引导里也看得到', async () => {
+    vi.mocked(api.gatewayStatus).mockResolvedValue({ running: false, port: 3462, providerCount: 1, enabledCount: 1, error: '端口 3462 已被占用' });
+    const { props, rerender } = renderGuide({}, { totalRecords: 3, modelAccessEnabled: true });
+    act(() => requestOpenOnboarding());
+    expect(await screen.findByText(/端口 3462 已被占用/)).toBeInTheDocument();
+    rerender(<FirstRunGuide {...props} latestError="扫描失败: 磁盘只读" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('扫描失败: 磁盘只读');
+    fireEvent.click(screen.getByRole('button', { name: '查看网关' }));
+    expect(props.onOpenGateway).toHaveBeenCalledTimes(1);
   });
 
   it('不读取任何订阅凭据：只调用网关状态与模型接入两个命令', () => {

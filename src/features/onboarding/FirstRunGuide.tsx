@@ -28,7 +28,12 @@ const STEP_COPY: Record<OnboardingStepId, { title: string; icon: LucideIcon; opt
 const GATEWAY_POLL_MS = 5_000;
 
 export interface FirstRunGuideProps {
-  facts: Omit<OnboardingFacts, 'enabledProviders'>;
+  facts: Omit<OnboardingFacts, 'gateway'>;
+  /**
+   * The app's latest error notice. Toasts render under the guide's backdrop,
+   * so while the dialog is open it repeats the error inside itself.
+   */
+  latestError: string;
   scanBusy: boolean;
   syncBusy: boolean;
   settingsBusy: boolean;
@@ -39,6 +44,7 @@ export interface FirstRunGuideProps {
   onModelAccessChanged: (settings: AppSettings) => void;
   onEnablePhoneRouting: () => void;
   onOpenProviders: () => void;
+  onOpenGateway: () => void;
   onOpenCloudSettings: () => void;
   onNotify: (message: string) => void;
 }
@@ -58,7 +64,7 @@ function viewFor(stored: OnboardingVisibility | null): View {
 export function FirstRunGuide(props: FirstRunGuideProps) {
   const { facts, gatewayRefreshKey, onNotify } = props;
   const [view, setView] = useState<View>(() => viewFor(readOnboardingVisibility()));
-  const [enabledProviders, setEnabledProviders] = useState<number | null>(null);
+  const [gateway, setGateway] = useState<OnboardingFacts['gateway']>(null);
   const [accessBusy, setAccessBusy] = useState(false);
 
   const show = useCallback((next: View, persist: OnboardingVisibility | null) => {
@@ -81,14 +87,14 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
   const watchGateway = view !== 'hidden' && facts.modelAccessEnabled === true;
   useEffect(() => {
     if (!watchGateway) {
-      setEnabledProviders(null);
+      setGateway(null);
       return undefined;
     }
     let cancelled = false;
     const read = () => {
       gatewayStatus()
-        .then((status) => { if (!cancelled) setEnabledProviders(status.enabledCount); })
-        .catch(() => { if (!cancelled) setEnabledProviders(null); });
+        .then((status) => { if (!cancelled) setGateway({ enabledProviders: status.enabledCount, running: status.running, error: status.error ?? null }); })
+        .catch(() => { if (!cancelled) setGateway(null); });
     };
     read();
     const timer = window.setInterval(read, GATEWAY_POLL_MS);
@@ -101,8 +107,8 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
   }, [watchGateway, gatewayRefreshKey]);
 
   const steps = useMemo(
-    () => deriveOnboardingSteps({ ...facts, enabledProviders }),
-    [facts, enabledProviders],
+    () => deriveOnboardingSteps({ ...facts, gateway }),
+    [facts, gateway],
   );
   const done = completedCount(steps);
   const allDone = done === steps.length;
@@ -131,6 +137,10 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
       case 'open-providers':
         minimize();
         props.onOpenProviders();
+        return;
+      case 'open-gateway':
+        minimize();
+        props.onOpenGateway();
         return;
       case 'open-cloud-settings':
         minimize();
@@ -164,6 +174,7 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
       done={done}
       allDone={allDone}
       actionBusy={actionBusy}
+      error={props.latestError}
       onAction={runAction}
       onMinimize={minimize}
       onDismiss={dismiss}
@@ -198,11 +209,12 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
   );
 }
 
-function GuideDialog({ steps, done, allDone, actionBusy, onAction, onMinimize, onDismiss }: {
+function GuideDialog({ steps, done, allDone, actionBusy, error, onAction, onMinimize, onDismiss }: {
   steps: OnboardingStep[];
   done: number;
   allDone: boolean;
   actionBusy: (action: OnboardingAction) => boolean;
+  error: string;
   onAction: (action: OnboardingAction) => void;
   onMinimize: () => void;
   onDismiss: () => void;
@@ -291,6 +303,8 @@ function GuideDialog({ steps, done, allDone, actionBusy, onAction, onMinimize, o
             />
           ))}
         </ol>
+
+        {error && <p className="onboarding-error" role="alert">{error}</p>}
 
         <footer className="onboarding-footer">
           <span className="onboarding-privacy"><Lock className="h-3.5 w-3.5" aria-hidden="true" />数据默认只留在本机；不读取任何订阅账号的登录凭据。</span>

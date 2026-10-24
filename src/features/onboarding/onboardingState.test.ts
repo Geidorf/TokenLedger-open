@@ -12,7 +12,7 @@ import {
 const fresh: OnboardingFacts = {
   totalRecords: 0,
   modelAccessEnabled: false,
-  enabledProviders: null,
+  gateway: null,
   cloudAuthenticated: false,
   cloudCapabilityVerified: false,
   cloudFirstSyncCompleted: false,
@@ -34,12 +34,19 @@ describe('deriveOnboardingSteps', () => {
     const steps = byId({ ...fresh, totalRecords: null, modelAccessEnabled: undefined });
     expect(steps.scan).toMatchObject({ status: 'unknown', action: null });
     expect(steps.gateway).toMatchObject({ status: 'unknown', action: null });
-    expect(byId({ ...fresh, modelAccessEnabled: true, enabledProviders: null }).gateway.status).toBe('unknown');
+    expect(byId({ ...fresh, modelAccessEnabled: true, gateway: null }).gateway.status).toBe('unknown');
   });
 
   it('网关：开了模型接入但没有启用的供应商时引导去添加', () => {
-    expect(byId({ ...fresh, modelAccessEnabled: true, enabledProviders: 0 }).gateway).toMatchObject({ status: 'todo', action: 'open-providers' });
-    expect(byId({ ...fresh, modelAccessEnabled: true, enabledProviders: 2 }).gateway).toMatchObject({ status: 'done', action: null });
+    const on = (gateway: OnboardingFacts['gateway']) => byId({ ...fresh, modelAccessEnabled: true, gateway }).gateway;
+    expect(on({ enabledProviders: 0, running: false, error: null })).toMatchObject({ status: 'todo', action: 'open-providers' });
+    expect(on({ enabledProviders: 2, running: true, error: null })).toMatchObject({ status: 'done', action: null });
+  });
+
+  it('网关：有启用的供应商但监听没起来（如端口被占）不算完成', () => {
+    const step = byId({ ...fresh, modelAccessEnabled: true, gateway: { enabledProviders: 1, running: false, error: '端口 3462 已被占用' } }).gateway;
+    expect(step).toMatchObject({ status: 'todo', action: 'open-gateway' });
+    expect(step.detail).toContain('端口 3462 已被占用');
   });
 
   it('云端按登录、检查连接、首次同步逐步推进；完成后手机可开', () => {
@@ -58,7 +65,7 @@ describe('deriveOnboardingSteps', () => {
     const steps = deriveOnboardingSteps({
       totalRecords: 12,
       modelAccessEnabled: true,
-      enabledProviders: 1,
+      gateway: { enabledProviders: 1, running: true, error: null },
       cloudAuthenticated: true,
       cloudCapabilityVerified: true,
       cloudFirstSyncCompleted: true,

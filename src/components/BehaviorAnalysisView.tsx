@@ -59,7 +59,8 @@ interface Props {
   onRebuildProjectIndex?: () => void;
   /** 本机索引回填进度；没有时用响应里的范围内计数。 */
   projectBackfill?: { done: number; total: number } | null;
-  /** Empty local ledger: the empty state offers a scan. */
+  /** The local ledger has no rows at all (not just this range): the empty state offers a scan. */
+  ledgerEmpty?: boolean;
   onScan?: () => void;
   scanBusy?: boolean;
 }
@@ -232,7 +233,7 @@ function valueAxis(theme: ChartThemeTokens, formatter: (value: number) => string
   };
 }
 
-export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loading, refreshing = false, updatedAt = null, error, scope, range, customRange, onRangeChange, onRetry, onViewLocal, onSelectDate, onOpenTool, onOpenSession, projectFilter = [], onProjectFilterChange, onOpenProjectSettings, onRebuildProjectIndex, projectBackfill = null, onScan, scanBusy = false }: Props) {
+export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loading, refreshing = false, updatedAt = null, error, scope, range, customRange, onRangeChange, onRetry, onViewLocal, onSelectDate, onOpenTool, onOpenSession, projectFilter = [], onProjectFilterChange, onOpenProjectSettings, onRebuildProjectIndex, projectBackfill = null, ledgerEmpty = false, onScan, scanBusy = false }: Props) {
   const { effective } = useTheme(); // Tool-ranking/session-ranking colours below must recompute on theme toggle (T10.178 review P2-1).
   const { hidden: hideProjectNames, setHidden: setHideProjectNames } = useHideProjectNames();
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
@@ -543,8 +544,8 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
         hideNames={hideProjectNames}
         onHideNamesChange={setHideProjectNames}
       />
-      {data.summary.requests === 0 ? (data.meta.firstRecordAt ? (
-        <EmptyState icon={CalendarDays} title="这段时间没有会话" description={`本机最早的记录在 ${data.meta.firstRecordAt.slice(0, 10)}。换成更长的时间范围看看。`}>
+      {data.summary.requests === 0 ? (!ledgerEmpty ? (
+        <EmptyState icon={CalendarDays} title="这段时间没有会话" description="所选范围内没有本机账本记录。换成更长的时间范围看看，或先扫描一次本机日志。">
           {range !== 'custom' || preset !== 'thirtyDays' ? <button type="button" className="secondary-inline" onClick={() => choosePreset('thirtyDays')}>看近 30 天</button> : null}
         </EmptyState>
       ) : (

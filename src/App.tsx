@@ -875,6 +875,7 @@ function MainApp() {
                   projectBackfill={projectDimension.status?.backfill ?? null}
                   onScan={() => void statsHook.triggerScan()}
                   scanBusy={busy.scan}
+                  ledgerEmpty={localLedgerEmpty}
                   onSelectDate={(date) => {
                     statsHook.changeRange('custom', { start: date, end: date });
                     usageDetails.setDetailFilters(EMPTY_DETAIL_FILTERS);
@@ -1094,6 +1095,8 @@ function MainApp() {
         onModelAccessChanged={handleModelAccessChanged}
         onEnablePhoneRouting={() => settings.updateSetting('routing_publish_enabled', true)}
         onOpenProviders={() => changeTab('providers')}
+        onOpenGateway={() => changeTab('gateway')}
+        latestError={message?.type === 'error' ? message.text : ''}
         onOpenCloudSettings={openCloudSettings}
         onNotify={(text) => showMessage('error', text)}
       />

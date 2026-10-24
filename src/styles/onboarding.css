@@ -460,3 +460,14 @@
   color: var(--color-text-tertiary);
   font-size: var(--font-size-sm);
 }
+
+.onboarding-error {
+  margin: -4px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--color-danger-soft-border);
+  border-radius: var(--radius-button);
+  background: var(--color-danger-subtle, var(--color-danger-soft-bg));
+  color: var(--color-danger-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
