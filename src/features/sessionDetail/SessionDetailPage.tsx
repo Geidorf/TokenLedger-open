@@ -7,6 +7,7 @@ import { t as translate, useLang, useT, type Lang } from '../../i18n';
 import type { SessionAnalysisRecord } from '../../types/sessionAnalysis';
 import { getChartAnimation, getChartGrid, getChartThemeTokens, getChartTooltip, lineAreaGradient, type ChartThemeTokens } from '../../utils/chartTheme';
 import { CONTEXT_SEGMENTS } from '../../utils/contextComposition';
+import { escapeHtml } from '../../utils/frontendContracts';
 import { formatAxisTokens, formatEstimatedUsd, formatNum, formatTokens, isKnownCost } from '../../utils/format';
 import { useTheme } from '../../utils/useTheme';
 import { contextSeries, effectiveTokens, localDay, ratioToAverage, requestCount, topExpensive, type PeerAverage, type SessionSummary, type TimelineEntry } from './sessionDetailData';
@@ -84,8 +85,8 @@ function costOption(timeline: TimelineEntry[], theme: ChartThemeTokens, lang: La
         if (!entry) return '';
         const cost = isKnownCost(entry.item.cost) ? usd(entry.item.cost) : t('sessionDetail.unavailableValue');
         return [
-          `<b>#${entry.ordinal}</b> · ${formatTime(entry.item.timestamp, lang)}`,
-          entry.item.model,
+          `<b>#${entry.ordinal}</b> · ${escapeHtml(formatTime(entry.item.timestamp, lang))}`,
+          escapeHtml(entry.item.model),
           `${t('sessionDetail.cost.request')}: ${cost}`,
           `${t('sessionDetail.cost.series')}: ${usd(entry.cumulativeCost)}`,
         ].join('<br/>');
@@ -290,7 +291,7 @@ export default function SessionDetailPage({ sessionRef, timezone, onBack, onOpen
           <div className="session-detail-stats">
             <Stat icon={Coins} label={t('sessionDetail.stat.cost')} value={summary.cost !== null ? usd(summary.cost) : usd(summary.knownCost)} note={summary.unknownCostRows > 0 ? t('sessionDetail.stat.costPartial', { count: formatNum(summary.unknownCostRows) }) : null} />
             <Stat icon={Zap} label={t('sessionDetail.stat.tokens')} value={formatTokens(summary.effectiveTokens)} note={t('sessionDetail.stat.tokensNote', { input: formatTokens(summary.inputTokens), output: formatTokens(summary.outputTokens) })} />
-            <Stat icon={Rows3} label={t('sessionDetail.stat.requests')} value={formatNum(summary.requests)} note={t('sessionDetail.stat.requestsNote', { rows: formatNum(summary.rows) })} />
+            <Stat icon={Rows3} label={t('sessionDetail.stat.requests')} value={formatNum(summary.rows)} note={summary.requests !== null && summary.requests !== summary.rows ? t('sessionDetail.stat.requestsNote', { count: formatNum(summary.requests) }) : null} />
             <Stat icon={Database} label={t('sessionDetail.stat.cacheHit')} value={summary.cacheHit === null ? t('sessionDetail.unavailableValue') : percent(summary.cacheHit)} note={summary.cacheHit === null ? t('sessionDetail.stat.cacheUnknown') : t('sessionDetail.stat.cacheNote', { cached: formatTokens(summary.cachedTokens) })} />
             <Stat icon={GitBranch} label={t('sessionDetail.stat.switches')} value={formatNum(summary.modelSwitches)} note={t('sessionDetail.stat.switchesNote', { count: formatNum(summary.models.length) })} />
             <Stat icon={Timer} label={t('sessionDetail.stat.latency')} value={summary.latencyMedianMs === null ? t('sessionDetail.unavailableValue') : formatLatency(summary.latencyMedianMs)} note={summary.latencyTotalMs === null ? t('sessionDetail.stat.latencyNone') : t('sessionDetail.stat.latencyNote', { total: formatDuration(summary.latencyTotalMs, t), count: formatNum(summary.latencyRows) })} />
@@ -360,7 +361,7 @@ export default function SessionDetailPage({ sessionRef, timezone, onBack, onOpen
                     return (
                       <tr key={`${item.id}-${entry.ordinal}`} id={`session-detail-row-${entry.ordinal}`} tabIndex={-1} className={highlight === entry.ordinal ? 'is-highlighted' : undefined}>
                         <td className="is-index">{entry.ordinal}</td>
-                        <td>{formatTime(item.timestamp, lang)}{count > 1 && <small className="session-detail-aggregated">{t('sessionDetail.timeline.aggregated', { count: formatNum(count) })}</small>}</td>
+                        <td>{formatTime(item.timestamp, lang)}{count !== null && count > 1 && <small className="session-detail-aggregated">{t('sessionDetail.timeline.aggregated', { count: formatNum(count) })}</small>}</td>
                         <td className="is-model">
                           <span title={item.model}>{item.model}</span>
                           {entry.switchedFrom !== null && <span className="session-detail-switch" title={t('sessionDetail.timeline.switchTitle', { from: entry.switchedFrom, to: item.model })}>{t('sessionDetail.timeline.switch')}</span>}

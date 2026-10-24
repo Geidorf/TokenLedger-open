@@ -33,11 +33,11 @@ describe('SessionDetailPage', () => {
     mockBackend();
     const onOpenRequests = vi.fn();
     render(<SessionDetailPage sessionRef={{ sessionId: 'sess-1', tool: 'claude' }} timezone="Asia/Shanghai" onBack={vi.fn()} onOpenRequests={onOpenRequests} />);
-    expect(await screen.findByText('请求时间线')).toBeTruthy();
+    expect(await screen.findByText('逐条时间线')).toBeTruthy();
     expect(screen.getAllByText('≈$1.30').length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByText('×2.6')).toBeTruthy());
     expect(screen.getAllByText('切换')).toHaveLength(2);
-    const top = screen.getByRole('heading', { name: /最贵的请求/ }).closest('section')!;
+    const top = screen.getByRole('heading', { name: /费用最高的记录/ }).closest('section')!;
     expect(top.querySelector('.session-detail-top button')?.textContent).toContain('≈$0.9000');
     fireEvent.click(screen.getByRole('button', { name: /在请求明细中查看/ }));
     expect(onOpenRequests).toHaveBeenCalledWith({ sessionId: 'sess-1', tool: 'claude', range: { start: '2026-07-15', end: '2026-07-15' } });
@@ -66,6 +66,6 @@ describe('SessionDetailPage', () => {
     render(<SessionDetailPage sessionRef={{ sessionId: 'sess-1', tool: 'claude' }} timezone="UTC" onBack={vi.fn()} onOpenRequests={vi.fn()} />);
     expect(await screen.findByText('读取会话失败')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /重新读取/ }));
-    expect(await screen.findByText('请求时间线')).toBeTruthy();
+    expect(await screen.findByText('逐条时间线')).toBeTruthy();
   });
 });

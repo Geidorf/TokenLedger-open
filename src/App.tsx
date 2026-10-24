@@ -615,12 +615,15 @@ function MainApp() {
   const openBehaviorSession = useCallback((drill: { session: { id: string; tool: string } }) => {
     openSessionDetail({ sessionId: drill.session.id, tool: drill.session.tool });
   }, []);
+  const { selectLocalScope } = statsHook;
   const openSessionRequests = useCallback((target: { sessionId: string; tool: string | null; range: { start: string; end: string } | null }) => {
+    // 详情读的是本机账本；云端只有小时汇总、没有会话 ID，所以明细也要回到本机范围。
+    selectLocalScope();
     openBehaviorSessionDetails({
       filters: { tools: target.tool ? [target.tool] : [], models: [], machines: [], search: target.sessionId },
       range: target.range,
     });
-  }, [openBehaviorSessionDetails]);
+  }, [openBehaviorSessionDetails, selectLocalScope]);
 
   const syncCloudStatus = cloud.cloudStatus;
   const syncCloudStatusKnown = cloud.cloudStatusKnown;

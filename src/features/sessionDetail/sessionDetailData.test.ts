@@ -94,7 +94,8 @@ describe('时间线与概要', () => {
   it('概要是逐行求和，费用有缺失时合计为 null', () => {
     const summary = summarizeSession(timeline);
     expect(summary.rows).toBe(4);
-    expect(summary.requests).toBe(7);
+    expect(summary.requests).toBeNull();
+    expect(summarizeSession(buildTimeline([row(1, { requests: 3 }), row(2, { requests: 2 })])).requests).toBe(5);
     expect(summary.effectiveTokens).toBe(600);
     expect(summary.cost).toBeNull();
     expect(summary.knownCost).toBeCloseTo(0.8);

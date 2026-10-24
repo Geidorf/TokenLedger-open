@@ -12,7 +12,7 @@ test.describe('会话详情', () => {
     const detail = page.getByTestId('session-detail');
     await expect(detail.getByRole('heading', { name: '会话详情' })).toBeVisible();
     await expect(page).toHaveURL(/#session\//);
-    await expect(detail.getByText('请求时间线')).toBeVisible();
+    await expect(detail.getByText('逐条时间线')).toBeVisible();
     await detail.getByRole('button', { name: '返回会话列表' }).click();
     await expect(detail).toHaveCount(0);
     await expect(page).toHaveURL(/#sessions$/);
@@ -25,7 +25,7 @@ test.describe('会话详情', () => {
     await expect(stats).toContainText('模型切换');
     await expect(stats).toContainText('34');
     await expect(detail.locator('.session-detail-chart').first()).toBeVisible();
-    await expect(detail.getByText('34 次请求带构成')).toBeVisible();
+    await expect(detail.getByText('34 条记录带构成')).toBeVisible();
     await expect(detail.locator('.session-detail-peer')).toContainText('同类平均');
     await expect(detail.locator('.session-detail-switch')).toHaveCount(2);
 
@@ -41,7 +41,7 @@ test.describe('会话详情', () => {
     await page.locator('.log-detail-toggle').first().click();
     await page.getByRole('button', { name: /打开会话 .* 的详情/ }).first().click();
     const detail = page.getByTestId('session-detail');
-    await expect(detail.getByText('请求时间线')).toBeVisible();
+    await expect(detail.getByText('逐条时间线')).toBeVisible();
     const sessionId = (await detail.locator('.session-detail-id').textContent())!;
     await detail.getByRole('button', { name: '在请求明细中查看' }).click();
     await expect(page.locator('#details-page-title')).toBeVisible();
@@ -64,7 +64,7 @@ test.describe('会话详情', () => {
     await openPage(page, 'session/claude/preview-session-refactor', '?lang=en');
     const detail = page.getByTestId('session-detail');
     await expect(detail.getByRole('heading', { name: 'Session detail' })).toBeVisible();
-    await expect(detail.getByText('Request timeline')).toBeVisible();
+    await expect(detail.locator('#session-detail-timeline-title')).toContainText('Timeline');
     await expect(detail.getByText('Compared with similar sessions')).toBeVisible();
   });
 });

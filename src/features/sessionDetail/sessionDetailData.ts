@@ -72,9 +72,13 @@ export async function loadSessionRequests(ref: SessionDetailRef, timezone: strin
 
 const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
 
-/** 一行明细代表的请求数：小时聚合行带 `requests`，逐请求行为 1。 */
-export function requestCount(item: LogHistoryItem): number {
-  return Math.max(1, Math.round(num(item.requests) || 1));
+/**
+ * 来源记下的请求数（`requests`）；没有时为 null。本机明细的一行是一条账本记录，
+ * 有的来源按会话或累计记账，一行不一定是一次请求，所以不按 1 补。
+ */
+export function requestCount(item: LogHistoryItem): number | null {
+  const value = num(item.requests);
+  return value > 0 ? Math.round(value) : null;
 }
 
 export function effectiveTokens(item: Pick<LogHistoryItem, 'inputTokens' | 'outputTokens'>): number {
@@ -106,7 +110,8 @@ export interface SessionSummary {
   lastAt: string | null;
   durationMs: number | null;
   rows: number;
-  requests: number;
+  /** 每行都带来源请求数时的合计；否则为 null，界面只显示账本记录数。 */
+  requests: number | null;
   inputTokens: number;
   outputTokens: number;
   cachedTokens: number;
@@ -173,7 +178,7 @@ export function summarizeSession(timeline: TimelineEntry[]): SessionSummary {
     lastAt,
     durationMs: Number.isFinite(first) && Number.isFinite(last) ? Math.max(0, last - first) : null,
     rows: items.length,
-    requests: items.reduce((sum, item) => sum + requestCount(item), 0),
+    requests: items.every(item => requestCount(item) !== null) ? items.reduce((sum, item) => sum + (requestCount(item) ?? 0), 0) : null,
     inputTokens: items.reduce((sum, item) => sum + num(item.inputTokens), 0),
     outputTokens: items.reduce((sum, item) => sum + num(item.outputTokens), 0),
     cachedTokens: items.reduce((sum, item) => sum + num(item.cachedTokens), 0),
