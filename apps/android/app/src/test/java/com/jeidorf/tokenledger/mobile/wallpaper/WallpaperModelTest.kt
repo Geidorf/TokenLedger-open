@@ -77,6 +77,25 @@ class WallpaperModelTest {
     }
 
     @Test
+    fun aQueuedFlowIsDroppedWhenItsOwnDeviceGoesOffline() {
+        val model = WallpaperModel()
+        fun twoDevices(now: Long, vararg d1Flows: RoutingFlow) = RoutingSnapshotsResult(
+            serverTimeMs = now,
+            snapshots = listOf(
+                RoutingDeviceSnapshot("d2", now - 2_000, listOf(RoutingSourceState(RoutingSourceId.TokenLedger, true)), emptyList()),
+                RoutingDeviceSnapshot("d1", server - 3_000, listOf(RoutingSourceState(RoutingSourceId.TokenLedger, true)), d1Flows.toList())
+            )
+        )
+        model.accept(WallpaperRead.Ok(twoDevices(server, flow("a", 3_000), flow("b", 2_000)), 0), 0)
+        assertEquals("a", model.frame(0, false).active!!.flow.id)
+
+        // d1 stops publishing while "b" waits; d2 staying online must not let it play late.
+        val later = 5 * 60_000L
+        model.accept(WallpaperRead.Ok(twoDevices(server + later, flow("a", 3_000), flow("b", 2_000)), later), later)
+        assertNull(model.frame(later, false).active)
+    }
+
+    @Test
     fun inFlightRequestsAnimateOnlyWhileLive() {
         val model = WallpaperModel()
         model.accept(WallpaperRead.Ok(result(flow("live", ageMs = 1_000, phase = RoutingFlowPhase.Inflight)), 0), 0)

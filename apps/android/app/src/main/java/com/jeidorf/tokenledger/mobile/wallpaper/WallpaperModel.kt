@@ -4,6 +4,7 @@ import com.jeidorf.tokenledger.mobile.routing.RoutingEmptyReason
 import com.jeidorf.tokenledger.mobile.routing.RoutingFlow
 import com.jeidorf.tokenledger.mobile.routing.RoutingFlowPhase
 import com.jeidorf.tokenledger.mobile.routing.RoutingLiveness
+import com.jeidorf.tokenledger.mobile.routing.RoutingPlaybackQueue
 import com.jeidorf.tokenledger.mobile.routing.RoutingPlaybackTracker
 import com.jeidorf.tokenledger.mobile.routing.RoutingReadFailure
 import com.jeidorf.tokenledger.mobile.routing.RoutingScene
@@ -52,19 +53,19 @@ internal data class WallpaperFrame(
  *
  * 诚实规则：
  * - 每条光点都对应快照里一条真实记录，且只在它第一次出现时播一次（[RoutingPlaybackTracker]）。
+ * - 是否可播一律问 [RoutingScene.canPlay]：整体在线、所属设备在线、10 分钟内；排队的流出队时再问一遍。
  * - 桌面离线、没有快照、未登录、云端未部署时只显示原因，不播放。
  * - 说明里写「N 秒前」，不把几秒到一分钟后的回放说成实时。
  */
 internal class WallpaperModel(
     private val tracker: RoutingPlaybackTracker = RoutingPlaybackTracker(),
-    private val maxQueued: Int = 3,
 ) {
     private data class Playing(val flow: RoutingFlow, val startMs: Long, val plan: WallpaperTimeline.Plan)
     private data class Lit(val flow: RoutingFlow, val ok: Boolean, val finishedAtMs: Long)
 
     private var latest: WallpaperRead? = null
     private var lastGood: WallpaperRead.Ok? = null
-    private val queue = ArrayDeque<RoutingFlow>()
+    private var queue = RoutingPlaybackQueue()
     private var playing: Playing? = null
     private val lit = LinkedHashMap<String, Lit>()
 
@@ -74,9 +75,7 @@ internal class WallpaperModel(
             is WallpaperRead.Ok -> {
                 lastGood = read
                 val scene = sceneAt(nowElapsedMs) ?: return
-                val fresh = tracker.takeNew(scene, serverNow(nowElapsedMs))
-                queue.addAll(fresh)
-                while (queue.size > maxQueued) queue.removeFirst()
+                queue.offer(tracker.takeNew(scene, serverNow(nowElapsedMs)))
             }
             // 换账号或退出登录：旧账号的数据不能再画。
             WallpaperRead.SignedOut, WallpaperRead.NotConfigured -> clear()
@@ -86,7 +85,7 @@ internal class WallpaperModel(
 
     private fun clear() {
         lastGood = null
-        queue.clear()
+        queue = RoutingPlaybackQueue()
         playing = null
         lit.clear()
     }
@@ -101,8 +100,8 @@ internal class WallpaperModel(
 
     fun frame(nowElapsedMs: Long, reduceMotion: Boolean): WallpaperFrame {
         val scene = sceneAt(nowElapsedMs)
-        advance(nowElapsedMs, reduceMotion, scene?.playable == true)
         val serverNow = serverNow(nowElapsedMs)
+        advance(nowElapsedMs, reduceMotion, scene, serverNow)
         val active = playing?.let { current ->
             WallpaperTimeline.cursor(current.plan, nowElapsedMs - current.startMs)
                 ?.let { ActivePlay(current.flow, it.segment, it.progress) }
@@ -121,28 +120,27 @@ internal class WallpaperModel(
         )
     }
 
-    private fun advance(nowMs: Long, reduceMotion: Boolean, playable: Boolean) {
+    private fun advance(nowMs: Long, reduceMotion: Boolean, scene: RoutingScene?, serverNow: Long) {
         playing?.let { current ->
             if (nowMs - current.startMs >= current.plan.totalMs) {
                 lit[current.flow.id] = Lit(current.flow, current.flow.phase != RoutingFlowPhase.Failed, current.startMs + current.plan.totalMs)
                 playing = null
             }
         }
-        if (!playable) {
-            // 离线时不播放排队的旧流（恢复在线后也不补播）。
-            queue.clear()
-        }
+        // 出队时按当前场景复查：离线、设备掉线或已超出窗口的流直接丢掉，恢复在线后也不补播。
+        fun nextPlayable(): RoutingFlow? = scene?.let { queue.next(it, serverNow) }
         if (reduceMotion) {
             // 减少动态效果：不跑光点，直接按结果点亮。
             playing?.let { lit[it.flow.id] = Lit(it.flow, it.flow.phase != RoutingFlowPhase.Failed, nowMs) }
             playing = null
-            while (queue.isNotEmpty()) {
-                val flow = queue.removeFirst()
+            while (true) {
+                val flow = nextPlayable() ?: break
                 lit[flow.id] = Lit(flow, flow.phase != RoutingFlowPhase.Failed, nowMs)
             }
-        } else if (playing == null && queue.isNotEmpty()) {
-            val flow = queue.removeFirst()
-            playing = Playing(flow, nowMs, WallpaperTimeline.plan(flow.hops.size))
+        } else if (playing == null) {
+            nextPlayable()?.let { flow ->
+                playing = Playing(flow, nowMs, WallpaperTimeline.plan(flow.hops.size))
+            }
         }
         lit.entries.removeAll { !WallpaperTimeline.lit(it.value.finishedAtMs, nowMs) }
     }

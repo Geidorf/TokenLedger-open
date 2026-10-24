@@ -8,6 +8,7 @@ import com.jeidorf.tokenledger.mobile.SessionRevokedException
 import com.jeidorf.tokenledger.mobile.routing.RoutingReadFailure
 import com.jeidorf.tokenledger.mobile.routing.RoutingRepository
 import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshotSource
+import com.jeidorf.tokenledger.mobile.routing.fetchWithStoredSession
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -22,8 +23,7 @@ internal class WallpaperReader(
     suspend fun read(): WallpaperRead {
         if (!repository.isConfigured) return WallpaperRead.NotConfigured
         return try {
-            val result = repository.readWithStoredSession { session -> source.fetch(session) }
-                ?: return WallpaperRead.SignedOut
+            val result = source.fetchWithStoredSession(repository) ?: return WallpaperRead.SignedOut
             WallpaperRead.Ok(result, SystemClock.elapsedRealtime())
         } catch (cancelled: CancellationException) {
             throw cancelled
