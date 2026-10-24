@@ -1,0 +1,108 @@
+{
+  "name": "tokenledger-status",
+  "displayName": "TokenLedger 状态栏",
+  "description": "在 VS Code 状态栏显示 TokenLedger 记下的今日费用或最紧额度的可用%，悬停看额度条、今日拆分、预算与网关健康。",
+  "version": "0.1.0",
+  "publisher": "tokenledger",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Geidorf/TokenLedger-open.git",
+    "directory": "extensions/vscode"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "token",
+    "usage",
+    "quota",
+    "budget",
+    "status bar"
+  ],
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "tokenledger.refresh",
+        "title": "立即刷新",
+        "category": "TokenLedger",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tokenledger.showDetails",
+        "title": "显示今日详情",
+        "category": "TokenLedger"
+      },
+      {
+        "command": "tokenledger.openSettings",
+        "title": "打开插件设置",
+        "category": "TokenLedger"
+      }
+    ],
+    "configuration": {
+      "title": "TokenLedger",
+      "properties": {
+        "tokenledger.statusBar.metric": {
+          "type": "string",
+          "enum": [
+            "cost",
+            "quota",
+            "both"
+          ],
+          "enumDescriptions": [
+            "今日预估费用，与托盘、菜单栏标题相同",
+            "最紧额度窗口的可用%，没有可读额度时显示今日费用",
+            "两个都显示"
+          ],
+          "default": "cost",
+          "description": "状态栏显示什么。"
+        },
+        "tokenledger.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 15,
+          "description": "多少秒刷新一次（最少 15 秒）。窗口不在前台时暂停，切回来时补一次。"
+        },
+        "tokenledger.quota.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "读取额度。额度来源就是桌面端「设置 · 订阅额度」里已授权的那些；关掉后命令行带 --no-quota，只读本机账本。"
+        },
+        "tokenledger.cliPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "tokenledger-cli 的完整路径。留空时先在 PATH 里找，再找桌面安装包的默认位置。"
+        },
+        "tokenledger.dataDirectory": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "可选：让命令行读另一个数据目录（设置环境变量 TOKENLEDGER_APPDATA）。留空就用桌面端的数据目录。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "package": "node scripts/package-vsix.mjs"
+  }
+}

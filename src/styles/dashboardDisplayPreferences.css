@@ -10,13 +10,15 @@
 .dashboard-preferences-tabs [role='tab'][aria-selected='true'] { border-bottom-color: var(--color-primary); color: var(--color-text-primary); }
 .dashboard-preferences-panel { min-height: 0; overflow-y: auto; padding-right: 2px; align-content: start; }
 .dashboard-preference-list { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
-.dashboard-preference-row { min-height: 52px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 8px; border-bottom: 1px solid var(--color-border); transition: background-color var(--motion-hover) var(--ease-out-quart); }
+.dashboard-preference-row { min-height: 52px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 8px; border-bottom: 1px solid var(--color-border); transition: background-color var(--motion-hover) var(--ease-out-quart); }
 .dashboard-preference-row:last-child { border-bottom: 0; }
 .dashboard-preference-row:hover { background: var(--color-bg-hover-soft); }
 .dashboard-preferences-dialog .dashboard-preference-toggle { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 7px; background: var(--color-bg-subtle); color: var(--color-text-secondary); font-size: 12px; }
 .dashboard-preference-toggle[aria-checked='true'] { color: var(--color-primary); }
-.dashboard-preference-label { overflow-wrap: anywhere; }
-.dashboard-preference-move { display: flex; gap: 2px; }
+.dashboard-preference-label { overflow-wrap: anywhere; grid-column: 2; }
+.dashboard-preference-width { grid-column: 3; min-height: 32px; padding: 0 8px; border: 0; border-radius: 7px; background: var(--color-bg-input); color: var(--color-text-primary); font: inherit; font-size: 12px; box-shadow: inset 0 0 0 1px var(--color-border); }
+.dashboard-preferences-note { margin: 0; color: var(--color-text-tertiary); font-size: 12px; }
+.dashboard-preference-move { display: flex; gap: 2px; grid-column: 4; }
 .dashboard-preference-move button { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--color-text-secondary); }
 .dashboard-preference-move button:not(:disabled):hover { color: var(--color-primary); background: var(--color-bg-subtle); border-radius: 8px; }
 .dashboard-preference-move svg { width: 17px; height: 17px; }

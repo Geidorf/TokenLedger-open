@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Coins, FolderSearch, Power, Rocket, Timer } from "lucide-react";
 import type { AppSettings, BusyState } from "../../types";
 import {
@@ -42,6 +43,26 @@ export function parseExtraDirs(text: string): string[] {
   return dirs;
 }
 
+/**
+ * 本平台能否在应用内切换开机自动启动（目前只有 Linux）。以 Rust 端为准；
+ * 浏览器预览、单元测试里命令不存在或返回别的值，一律当作不支持。
+ */
+function useAutostartSupported(): boolean {
+  const [supported, setSupported] = useState(false);
+  useEffect(() => {
+    let active = true;
+    invoke<unknown>("autostart_supported")
+      .then((value) => {
+        if (active) setSupported(value === true);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+  return supported;
+}
+
 function CodexExtraDirsRow(props: ScanStartupSectionProps) {
   const saved = props.appSettings.codex_extra_dirs ?? [];
   const savedText = saved.join("\n");
@@ -77,6 +98,7 @@ function CodexExtraDirsRow(props: ScanStartupSectionProps) {
 
 export function ScanStartupSection(props: ScanStartupSectionProps) {
   const { appSettings, busy } = props;
+  const autostartSupported = useAutostartSupported();
   return (
     <SettingsSection id="scan" title="扫描与启动">
       <SettingsCard title="扫描">
@@ -107,9 +129,23 @@ export function ScanStartupSection(props: ScanStartupSectionProps) {
       </SettingsCard>
       <SettingsCard title="启动">
         <SettingsGroup>
-          <SettingsRow label="开机自动启动" icon={Power}>
-            <span className="settings-value">应用内暂不支持</span>
-          </SettingsRow>
+          {autostartSupported ? (
+            <SettingsToggleRow
+              label="开机自动启动"
+              hint="登录桌面后自动打开 TokenLedger；想让它只留在托盘，再打开下面的「启动时最小化到托盘」。"
+              icon={Power}
+              checked={appSettings.autostart_enabled}
+              disabled={busy.settings}
+              busy={busy.settings}
+              onChange={(checked) =>
+                props.onSettingChange("autostart_enabled", checked)
+              }
+            />
+          ) : (
+            <SettingsRow label="开机自动启动" icon={Power}>
+              <span className="settings-value">应用内暂不支持</span>
+            </SettingsRow>
+          )}
           <SettingsToggleRow
             label="启动时最小化到托盘"
             hint="开启后启动时不显示主窗口，可从菜单栏或托盘打开它。"

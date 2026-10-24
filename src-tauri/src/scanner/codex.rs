@@ -1,5 +1,6 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::bounded_lines;
 use super::types::{CheckpointScanStats, LogRecord};
 use chrono::{DateTime, Utc};
 use rusqlite::Result;
@@ -583,7 +584,7 @@ pub(crate) fn parse_codex_rollout_reader_checked<
     let mut token_without_timestamp = false;
     let mut has_billable_tokens = false;
 
-    for (line_number, line) in reader.lines().enumerate() {
+    for (line_number, line) in bounded_lines(reader).enumerate() {
         check()?;
         let line = line.map_err(|error| {
             format!(

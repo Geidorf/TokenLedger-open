@@ -1,0 +1,56 @@
+{
+  "_note": "按 tokenledger-cli schemaVersion 1 的输出写的样例（docs/cli.md「JSON 字段」）；额度窗口取自 fixtures/quota-provider-v1/complete-v1.json 的形状。",
+  "status": {
+    "schemaVersion": 1, "command": "status",
+    "text": "今日 46.08K · $2.56 | 预算 85.4% | Claude consumer usage 5 hour window 余 14%",
+    "today": { "totalTokens": 46075, "inputTokens": 75, "outputTokens": 46000, "cachedTokens": 4831180, "totalCost": 2.5630048000000003, "totalRequests": 38, "cacheReadTokens": 4690249, "cacheWriteTokens": 140931 },
+    "budget": { "ruleId": "r1", "periodStart": "2026-10-24", "used": 2.5630048000000003, "limit": 3, "percent": 85.4, "level": "warn", "period": "day", "metric": "cost", "scopeKind": "all", "scopeId": "", "warnPercent": 80 },
+    "quota": { "provider": "Claude consumer usage", "window": "5 hour window", "remainingPercent": 14, "resetsAt": "2026-10-24T10:42:00Z" }
+  },
+  "usage": {
+    "schemaVersion": 1, "command": "usage", "range": "today", "timezone": "Etc/UTC", "generatedAt": "2026-10-24T10:00:00Z",
+    "summary": { "totalTokens": 46075, "inputTokens": 75, "outputTokens": 46000, "cachedTokens": 4831180, "totalCost": 2.5630048000000003, "totalRequests": 38, "cacheReadTokens": 4690249, "cacheWriteTokens": 140931 },
+    "breakdown": { "by": "agent", "available": true, "rows": [
+      { "id": "claude", "name": "Claude", "totalTokens": 30000, "inputTokens": 50, "outputTokens": 29950, "cachedTokens": 0, "cost": 2.0, "requests": 20 },
+      { "id": "codex", "name": "Codex", "totalTokens": 9000, "inputTokens": 10, "outputTokens": 8990, "cachedTokens": 0, "cost": 0.5, "requests": 8 },
+      { "id": "gemini", "name": "Gemini", "totalTokens": 3000, "inputTokens": 5, "outputTokens": 2995, "cachedTokens": 0, "cost": 0.03, "requests": 4 },
+      { "id": "qwen", "name": "Qwen Code", "totalTokens": 2000, "inputTokens": 5, "outputTokens": 1995, "cachedTokens": 0, "cost": 0.02, "requests": 3 },
+      { "id": "opencode", "name": "OpenCode", "totalTokens": 1000, "inputTokens": 3, "outputTokens": 997, "cachedTokens": 0, "cost": 0.01, "requests": 1 },
+      { "id": "cursor", "name": "Cursor", "totalTokens": 600, "inputTokens": 1, "outputTokens": 599, "cachedTokens": 0, "cost": 0.003, "requests": 1 },
+      { "id": "custom", "name": "<自定义>", "totalTokens": 475, "inputTokens": 1, "outputTokens": 474, "cachedTokens": 0, "cost": null, "requests": 1 }
+    ] }
+  },
+  "budget": {
+    "schemaVersion": 1, "command": "budget", "generatedAt": "2026-10-24T10:00:00Z",
+    "statuses": [
+      { "ruleId": "r1", "periodStart": "2026-10-24", "used": 2.5630048000000003, "limit": 3.0, "percent": 85.4, "level": "warn", "period": "day", "metric": "cost", "scopeKind": "all", "scopeId": "", "warnPercent": 80 },
+      { "ruleId": "r2", "periodStart": "2026-10-01", "used": 46075.0, "limit": 2000000.0, "percent": 2.3, "level": "ok", "period": "month", "metric": "tokens", "scopeKind": "tool", "scopeId": "claude", "warnPercent": 80 }
+    ]
+  },
+  "gateway": {
+    "schemaVersion": 1, "command": "gateway", "modelAccessEnabled": true, "running": true, "port": 3462, "baseUrl": "http://127.0.0.1:3462/v1",
+    "providerCount": 3, "enabledProviderCount": 2, "routingGroupCount": 1, "configError": null,
+    "recent": [
+      { "ts": "2026-10-24T09:59:00Z", "agent": "codex", "provider": "p1", "model": "group/fast", "upstreamModel": "m1", "group": "fast", "member": "p1/m1", "status": 200, "ok": true, "latencyMs": 812, "inputTokens": 1, "outputTokens": 1, "cacheReadTokens": 0, "cacheWriteTokens": 0 },
+      { "ts": "2026-10-24T09:58:00Z", "agent": "codex", "provider": "p2", "model": "group/fast", "upstreamModel": "m2", "group": "fast", "member": "p2/m2", "status": 429, "ok": false, "latencyMs": 120, "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 },
+      { "ts": "2026-10-24T09:57:00Z", "agent": "codex", "provider": "p1", "model": "group/fast", "upstreamModel": "m1", "group": "fast", "member": "p1/m1", "status": 200, "ok": true, "latencyMs": 640, "inputTokens": 1, "outputTokens": 1, "cacheReadTokens": 0, "cacheWriteTokens": 0 },
+      { "ts": "2026-10-24T09:56:00Z", "agent": "codex", "provider": "p1", "model": "group/fast", "upstreamModel": "m1", "group": "fast", "member": "p1/m1", "status": 200, "ok": true, "latencyMs": 700, "inputTokens": 1, "outputTokens": 1, "cacheReadTokens": 0, "cacheWriteTokens": 0 }
+    ]
+  },
+  "quota": {
+    "schemaVersion": 1, "command": "quota",
+    "providers": [
+      { "schemaVersion": 1, "providerId": "openai-codex-local", "displayName": "Codex local usage", "scope": "consumer-subscription", "mode": "automatic", "capability": "stable", "status": "ok", "windows": [
+        { "providerId": "openai-codex-local", "windowId": "codex:primary", "windowLabel": "5 hour window", "scope": "consumer-subscription", "source": "local-authorized", "status": "ok", "used": 38, "limit": 100, "remaining": 62, "unit": "percent", "windowMinutes": 300, "resetsAt": "2026-10-24T11:35:00Z", "observedAt": "2026-10-24T09:59:00Z", "fetchedAt": "2026-10-24T10:00:00Z", "staleAfterSeconds": 900 },
+        { "providerId": "openai-codex-local", "windowId": "codex:secondary", "windowLabel": "7 day window", "scope": "consumer-subscription", "source": "local-authorized", "status": "stale", "used": 64, "limit": 100, "unit": "percent", "windowMinutes": 10080, "resetsAt": "2026-10-27T08:00:00Z", "observedAt": "2026-10-24T08:00:00Z", "fetchedAt": "2026-10-24T10:00:00Z", "staleAfterSeconds": 900 },
+        { "providerId": "openai-codex-local", "windowId": "codex:credits-balance", "windowLabel": "Credits balance", "scope": "consumer-subscription", "source": "local-authorized", "status": "ok", "remaining": 12.5, "unit": "credits", "observedAt": "2026-10-24T09:59:00Z", "fetchedAt": "2026-10-24T10:00:00Z", "staleAfterSeconds": 900 }
+      ] },
+      { "schemaVersion": 1, "providerId": "anthropic-claude-consumer", "displayName": "Claude consumer usage", "scope": "consumer-subscription", "mode": "automatic", "capability": "stable", "status": "ok", "windows": [
+        { "providerId": "anthropic-claude-consumer", "windowId": "claude:5h", "windowLabel": "5 hour window", "scope": "consumer-subscription", "source": "local-authorized", "status": "ok", "used": 86, "limit": 100, "remaining": 14, "unit": "percent", "windowMinutes": 300, "resetsAt": "2026-10-24T10:42:00Z", "observedAt": "2026-10-24T09:59:00Z", "fetchedAt": "2026-10-24T10:00:00Z", "staleAfterSeconds": 900 }
+      ] },
+      { "schemaVersion": 1, "providerId": "google-antigravity-consumer", "displayName": "Antigravity", "scope": "consumer-subscription", "mode": "automatic", "capability": "stable", "status": "auth-required", "windows": [], "reasonCode": "local_authorization_required" },
+      { "schemaVersion": 1, "providerId": "custom-x", "displayName": "自建额度", "scope": "api-organization", "mode": "automatic", "capability": "stable", "status": "error", "windows": [], "reasonCode": "custom_fetch_failed" },
+      { "schemaVersion": 1, "providerId": "unsupported-x", "displayName": "不支持", "scope": "api-organization", "mode": "unsupported", "capability": "unsupported", "status": "unsupported", "windows": [] }
+    ]
+  }
+}
