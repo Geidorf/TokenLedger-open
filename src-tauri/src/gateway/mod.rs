@@ -34,6 +34,7 @@ pub use codex_config::{
 };
 pub use health::HealthReport;
 pub(crate) use ledger::accounting;
+pub(crate) use ledger::attempt_outcomes_since;
 use ledger::Ledger;
 pub use ledger::{ContextSize, LedgerRecord};
 use routing::Router;
@@ -184,11 +185,20 @@ pub struct ProviderView {
     pub has_key: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetProviderKeyInput {
     pub id: String,
     pub key: String,
+}
+
+impl std::fmt::Debug for SetProviderKeyInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SetProviderKeyInput")
+            .field("id", &self.id)
+            .field("key", &crate::redact::Hidden(&self.key))
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize)]

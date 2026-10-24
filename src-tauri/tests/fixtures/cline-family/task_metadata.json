@@ -1,0 +1,18 @@
+{
+ "files_in_context": [],
+ "model_usage": [
+  {
+   "ts": 1760000000500,
+   "model_id": "anthropic/claude-sonnet-4.6",
+   "model_provider_id": "openrouter",
+   "mode": "act"
+  },
+  {
+   "ts": 1760000004500,
+   "model_id": "gpt-5.4",
+   "model_provider_id": "openai",
+   "mode": "act"
+  }
+ ],
+ "environment_history": []
+}

@@ -15,6 +15,33 @@ pub fn get_home_dir() -> PathBuf {
     }
 }
 
+/// `$XDG_DATA_HOME`, else `~/.local/share`. Relative values are ignored, as
+/// the XDG base-directory spec requires. Tools built on xdg-basedir (opencode,
+/// kilo) use this on every platform; Linux desktop apps use it for app data.
+pub fn xdg_data_home() -> PathBuf {
+    xdg_dir("XDG_DATA_HOME").unwrap_or_else(|| get_home_dir().join(".local/share"))
+}
+
+/// `$XDG_CONFIG_HOME`, else `~/.config`, with the same relative-path rule.
+/// Electron apps keep their `userData` here on Linux.
+pub fn xdg_config_home() -> PathBuf {
+    xdg_dir("XDG_CONFIG_HOME").unwrap_or_else(|| get_home_dir().join(".config"))
+}
+
+fn xdg_dir(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+}
+
+/// The SQLite database of an opencode-style CLI (`opencode`, `kilo`):
+/// `<data home>/<tool>/<tool>.db`.
+pub fn opencode_like_db_path(tool_name: &str) -> PathBuf {
+    xdg_data_home()
+        .join(tool_name)
+        .join(format!("{tool_name}.db"))
+}
+
 /// Normalizes timestamp to "YYYY-MM-DD HH:MM:SS" local time.
 pub fn normalize_timestamp(ts_val: &Value) -> String {
     let now_str = || Local::now().format("%Y-%m-%d %H:%M:%S").to_string();

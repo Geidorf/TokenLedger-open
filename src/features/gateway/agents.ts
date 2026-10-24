@@ -1,6 +1,7 @@
 import type { BrandIconId } from '../../prototypes/prototypeKit';
 import { agentApply, agentInspect, agentPreview, agentRestore, codexApply, codexInspect, codexPreview, codexRestore } from './api';
 import type { AgentApplyResult, AgentInspection, AgentPreview, AgentRestoreResult } from './types';
+import { t } from '../../i18n';
 
 /** One Agent config writer: back up, preview a diff, write atomically, restore. */
 export interface AgentAdapter {
@@ -85,8 +86,8 @@ export const MANUAL_AGENTS: ManualAgent[] = [
     name: 'Cline',
     icon: null,
     monogram: 'CL',
-    reason: 'Cline 把供应商设置存在编辑器扩展的内部存储里，格式未公开，扩展运行时还会覆盖外部写入，所以不自动写入。',
-    where: '在编辑器里打开 Cline → 设置（齿轮）→ API Configuration，按下面逐项填写后保存。',
+    get reason() { return t('agents.cline.reason'); },
+    get where() { return t('agents.cline.where'); },
     fields: [
       { label: 'API Provider', value: { kind: 'text', text: 'OpenAI Compatible' } },
       { label: 'Base URL', value: { kind: 'baseUrl' } },
@@ -99,30 +100,25 @@ export const MANUAL_AGENTS: ManualAgent[] = [
     name: 'Claude Desktop',
     icon: 'claude-color',
     monogram: 'CD',
-    reason: 'Claude Desktop 的第三方推理设置由应用内表单写入，存储格式未公开为可编辑文件，所以不自动写入。',
-    where: '在 Claude Desktop 的第三方推理配置窗口里按下面的步骤填写。',
-    steps: [
-      '菜单栏（Windows 为左上角 ☰ 菜单）选 Help → Troubleshooting → Enable Developer Mode，应用会带 Developer 菜单重启。',
-      '打开 Developer → Configure Third-Party Inference…，在 Connection 里把 Inference provider 选为 Gateway。',
-      '在 Gateway credentials 里填入下面的地址和本地 token，Credential kind 保持 Static API key，Gateway auth scheme 保持 Bearer。',
-      '在 Models 里的模型列表（inferenceModels）手动添加下面选中的模型名：网关模型名不是 Claude 官方名字，自动发现会把它过滤掉。列表第一个是默认模型。',
-      '点 Apply Changes，应用重启后生效。',
-    ],
+    get reason() { return t('agents.claudeDesktop.reason'); },
+    get where() { return t('agents.claudeDesktop.where'); },
+    get steps() {
+      return (['agents.claudeDesktop.step1', 'agents.claudeDesktop.step2', 'agents.claudeDesktop.step3', 'agents.claudeDesktop.step4', 'agents.claudeDesktop.step5'] as const).map((key) => t(key));
+    },
     fields: [
       { label: 'Inference provider', value: { kind: 'text', text: 'Gateway' } },
-      { label: 'Gateway base URL', value: { kind: 'gatewayRoot' }, hint: '填根地址，不带 /v1，Claude Desktop 会自己拼接 /v1/messages。' },
+      { label: 'Gateway base URL', value: { kind: 'gatewayRoot' }, get hint() { return t('agents.claudeDesktop.baseUrlHint'); } },
       { label: 'Gateway API key', value: { kind: 'token' } },
       { label: 'Gateway auth scheme', value: { kind: 'text', text: 'Bearer' } },
-      { label: '模型列表', value: { kind: 'model' }, hint: '选一个模型复制，添加到 Models 的模型列表里；可以添加多个。' },
+      { get label() { return t('agents.claudeDesktop.models'); }, value: { kind: 'model' }, get hint() { return t('agents.claudeDesktop.modelsHint'); } },
     ],
-    notes: [
-      '启用第三方推理后，Claude Desktop 只运行本机会话，不使用 Claude 订阅账号，也不提供云端环境与 Remote Control。',
-      '如果设备上有组织下发的托管配置，它会覆盖本地表单，配置窗口也会变成只读。',
-    ],
+    get notes() {
+      return [t('agents.claudeDesktop.note1'), t('agents.claudeDesktop.note2')];
+    },
   },
 ];
 
 /** Later batches; the full list and reasons live in the T10.269 and T10.291 task logs. */
 export const PENDING_AGENTS: PendingAgent[] = [
-  { id: 'openchamber', name: 'OpenChamber', icon: 'opencode', monogram: 'CH', note: '运行在 OpenCode 之上，接入上方 OpenCode 即生效，无需单独写入' },
+  { id: 'openchamber', name: 'OpenChamber', icon: 'opencode', monogram: 'CH', get note() { return t('agents.openchamber.note'); } },
 ];

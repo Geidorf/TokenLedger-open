@@ -24,12 +24,21 @@ const FULLY_LOCALIZED = [
   'src/components/AppHeader.tsx',
   'src/features/gateway/ModelWorkspace.tsx',
   'src/features/gateway/RequestLogPage.tsx',
+  'src/features/gateway/ProviderHealth.tsx',
+  'src/features/gateway/ProvidersPage.tsx',
+  'src/features/gateway/AgentsPage.tsx',
+  'src/features/gateway/agents.ts',
   'src/components/settings/RoutingPublishCard.tsx',
   'src/components/settings/PeerSharedUsageCard.tsx',
   'src/components/LogsTable.tsx',
   'src/components/RangeControls.tsx',
   'src/components/FilterMultiSelect.tsx',
   'src/utils/detailGranularity.ts',
+  'src/components/settings/BudgetSection.tsx',
+  'src/hooks/useBudget.ts',
+  'src/components/settings/SettingsPrimitives.tsx',
+  'src/components/settings/PeerSyncCard.tsx',
+  'src/components/settings/ProjectDimensionCard.tsx',
 ];
 
 // 英文文案里允许出现中文的键：语言名用它自己的文字写。

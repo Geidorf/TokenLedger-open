@@ -90,16 +90,16 @@ range + timezone + machines[] + tools[] + models[] + search? + tokenMode
   - 带截止日的限时价计入，并登记切换日；没有截止日的限时优惠不计入。
   - 千问缓存命中按隐式缓存（输入 × 20%）计；缓存写入缺省时按输入 × 1.25 兜底。
   - 完整约定与已知偏差见 `MODEL_PRICING.md`「取值约定」与「分档与生效日」。
-- **哪些记录入库时没有金额**：14 个纯估算工具（claude、codex、trae、zcode、gemini、antigravity、grok、kimi、kimidesktop、pi、dsh、deepseek、marvis、minimax；minimax 来源报的 0 视为不可得，见 `commands/price_repricing.rs`）的记录，以及其他工具中来源没给金额的记录，入库时 `cost_usd` 为空。MiniMax Code 产生的记录一律按产生它的应用记为 `minimax`（即使运行的是第三方模型），来源报的金额不采用，按估算重算（`scanner/minimax.rs`、`commands/price_repricing.rs`）。
+- **哪些记录入库时没有金额**：16 个纯估算工具（claude、codex、trae、zcode、gemini、antigravity、grok、kimi、kimidesktop、pi、dsh、deepseek、marvis、minimax、qwen、copilot；minimax 来源报的 0 视为不可得，见 `commands/price_repricing.rs`）的记录，以及其他工具中来源没给金额的记录，入库时 `cost_usd` 为空。MiniMax Code 产生的记录一律按产生它的应用记为 `minimax`（即使运行的是第三方模型），来源报的金额不采用，按估算重算（`scanner/minimax.rs`、`commands/price_repricing.rs`）。
 - **未登录云端**：统计按本机当前价格表（内置表加上用户覆盖与自动发现项）现算，内置表更新后，历史金额随之变化。
 - **登录后**：每次有待同步记录时，同步先把所有 `cost_usd` 为空的行按当时的价格表写入本机，再按（设备、工具、模型、小时）整桶上传。此后本机与云端都保持回填时的金额。
 - **重算**：升级应用、内置价格表变化，或升级后覆盖文件的自动迁移（§2.6），都不会重算已写入金额的记录。能重算的只有两类：
-  1. 保存价格表（含从 models.dev 导入）或「恢复默认」使生效费率确有变化时，把 14 个纯估算工具的全部记录置空、按新价回填并整桶重传。没有自定义价格时，「恢复默认」不改变费率，因而不会重算。
+  1. 保存价格表（含从 models.dev 导入）或「恢复默认」使生效费率确有变化时，把 16 个纯估算工具的全部记录置空、按新价回填并整桶重传。没有自定义价格时，「恢复默认」不改变费率，因而不会重算。
   2. 一次性本机迁移：schema v2、v4、v9、v10、v12 会把相关工具的记录置空，或删除后重扫，再按当时的价格表回填。v9 是 Codex 的分阶段重建：旧行在下一次完整扫描原子替换之前保持有效。
 
   其他工具被回填过的记录与来源金额无法区分，不会重算。
 - **云端金额的含义**：云端 `cost_usd` 是各上传设备在最近一次上传时、按当时价格表得出的估算。同一账号的不同设备、不同时段，可能对应不同版本的价格表。
-- **已同步历史的更正**（用户决定，三步走）：A 在 `MODEL_PRICING.md` 与发布说明写清口径（已完成）。B 一次性本机迁移只重算更正项：14 个纯估算工具中命中更正集合的记录（Sonnet 5、Fable 5.1 缓存读、o3 只处理 2025-06-10 之后的记录、MiniMax-M3 暂按 2026-06-15 起、待 MiniMax 确认）置空并重新上传，来源自带金额的工具不纳入；迁移编号在登记实施任务时由 root 分配。D 带生效日期的价格表与 `cost_source` 列，处理现价调整类型号（GPT-5.6、DeepSeek V4、MiMo V2.5 等）生效日前后的差异。B、D 尚未实现。
+- **已同步历史的更正**（用户决定，三步走）：A 在 `MODEL_PRICING.md` 与发布说明写清口径（已完成）。B 一次性本机迁移只重算更正项：16 个纯估算工具中命中更正集合的记录（Sonnet 5、Fable 5.1 缓存读、o3 只处理 2025-06-10 之后的记录、MiniMax-M3 暂按 2026-06-15 起、待 MiniMax 确认）置空并重新上传，来源自带金额的工具不纳入；迁移编号在登记实施任务时由 root 分配。D 带生效日期的价格表与 `cost_source` 列，处理现价调整类型号（GPT-5.6、DeepSeek V4、MiMo V2.5 等）生效日前后的差异。B、D 尚未实现。
 
 T10.305：本机 schema v14 以 `sync_revision` 对可变账本行的上传确认做条件更新。触发器覆盖扫描修正、费用变更及显式同步重置；普通整桶与网关合并整桶均记录读取时的 `(id, revision)`，仅对应修订仍相同才标为已同步。修订元数据在请求构造时移除，不上传云端、不进入 Stats DTO。旧回执不影响新修订，后续同步重新读取完整小时；用户会话 lease 继续防止切号后写回。该修改不解决工具/模型/时间改变后旧聚合键的删除，也不改变网关历史保留或已上传费用冻结规则，后续分别收口。
 
@@ -306,7 +306,7 @@ T10.151 的聚合、字段与刷新规则由后端与 `useBehaviorAnalysis` 提�
 
 首页模块和额度来源按稳定 ID 存储在本机 `tokenledger:dashboard-display-preferences:v1`。载荷 version 2 的模块为 `kpi`、`quota`、`trend`、`alerts`、`distribution`、`subscription`、`calendar`，另存完整额度列表的展开状态、日历折叠状态与排行档位。v1 的 `insights` 在原位置拆为 `alerts` 与 `calendar`，已隐藏的 `insights` 只隐藏 `calendar`；缺失的已知 ID 插到默认顺序中的位置。同窗口通过外部 store 发布，跨窗口通过 storage 事件同步；存储失败时本次会话仍可使用。顺序和隐藏只改变渲染，Provider 授权、采集与同步保持原有职责。调整显示用可访问弹窗提供开关、上下移动与 Token 口径开关，维持连续列表的字号、间距和行内详情。提醒的忽略与稍后状态另存 `tokenledger:alerts-state:v1`（保留 60 天，上限 200 条），同样只在本机。
 
-载荷 version 2 属信息架构 v2（T10.156），未实现；现行载荷的模块为 `kpi`、`trend`、`quota`、`distribution`、`insights`，调整显示只提供开关和上下移动。
+载荷 version 2 属信息架构 v2（T10.156），未实现。现行概览改为卡片布局（`src/utils/dashboardLayout.ts`）：卡片 ID 为 `metrics`、`quotaHighlights`、`trend`、`quota`、`split`、`anomaly`（用量异常，仅本机口径渲染）、`budget`、`insights`、`context`、`temporal`、`heatmap`、`tools`，每张卡片存顺序、显隐与宽度（`full`/`half`/`third`，按 6 栏网格，容器窄于 980px 时三分之一退为半宽，窄于 720px 全宽）。布局可存多套（最多 6 套，内置「日常」与改版前同序、「省钱」），页头单选组切换，「恢复默认」回到该布局的模板；存本机 `tokenledger:dashboard-layouts:v2`，首次读取时把 v1 的五个模块（`kpi`、`trend`、`quota`、`distribution`、`insights`）按原顺序展开迁入「日常」，隐藏的模块下卡片一并隐藏。概览「编辑布局」里按住卡片标题拖动（只画落点、松手才重排），或聚焦标题按空格拿起、方向键与 Home/End 移动、再按空格放下、Esc 放回，位置经 live region 播报；编辑时卡片内容 `inert`。至少保留一张当前有内容的可见卡片；查看时一张都渲染不出来（例如只留热力图又切到今日）则显示空状态并提供「编辑布局」。调整显示弹窗的「首页卡片」作用于当前布局，提供开关、宽度与上下移动；额度来源的顺序与隐藏仍存 v1 键。
 
 `session_analysis` 是 Rust 独立只读模块，按账本 record ID 在受控本地来源中定位并验证完整 unique key，复用 scanner 用量规范化后按可靠用户事件聚合。读取有总预算、单行／候选／轮次上限与显式取消；日志正文通过白名单反序列化丢弃。接口与统计语义见 `contracts/session-analysis-v1.md`，不改 Stats v2、SQLite schema 或云端投影。明细内打开原生 dialog 侧边抽屉，平台模态阻隔背景交互；每轮默认精简行，展开查看模型、工具和缓存拆分。列表每批显示 50 轮，合计仍来自完整返回的已确认轮次。
 
