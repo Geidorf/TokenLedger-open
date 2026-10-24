@@ -244,6 +244,27 @@ describe('DashboardTab day drill-down (audit P0-1)', () => {
       vi.useRealTimers();
     }
   });
+
+  it('carries the focused account into the day drill when the calendar shows only that account', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HEATMAP_NOW);
+    try {
+      const stats = {
+        ...POPULATED_STATS,
+        heatmap: { [heatmapDay]: 5_000 },
+        providers: { relay: { ...POPULATED_STATS.tools.codex, name: 'relay', heatmap: { [heatmapDay]: 3_000 } } },
+      };
+      const onSelectDate = vi.fn();
+      renderPopulated({ stats, range: 'year', onSelectDate });
+      const split = document.querySelector('section.usage-split') as HTMLElement;
+      fireEvent.click(within(within(split).getByRole('group', { name: '拆分维度' })).getByRole('button', { name: '账号' }));
+      fireEvent.click(within(split).getAllByRole('button', { pressed: false }).find((button) => button.classList.contains('usage-split-pick'))!);
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`${heatmapDay}.*点击查看当日明细`) }));
+      expect(onSelectDate).toHaveBeenCalledWith(heatmapDay, { tools: [], models: [], providers: ['relay'] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('DashboardTab', () => {

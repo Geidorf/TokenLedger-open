@@ -213,6 +213,8 @@ export interface UsageDetailsQuery extends StatsQueryContext {
   scope: DataScope;
   cursor?: string | null;
   limit?: number;
+  /** 契约 §2.7 的账号（供应商 ID），仅本机明细；不按账号时省略。 */
+  providers?: string[];
 }
 
 export interface EntitySelector {
