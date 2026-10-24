@@ -241,7 +241,7 @@ enum ProcessKind {
     Ide,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct ProcessInfo {
     pid: u32,
     kind: ProcessKind,
@@ -250,11 +250,36 @@ struct ProcessInfo {
     extension_csrf_token: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+impl std::fmt::Debug for ProcessInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProcessInfo")
+            .field("pid", &self.pid)
+            .field("kind", &self.kind)
+            .field("csrf_token", &crate::redact::hidden_opt(&self.csrf_token))
+            .field("extension_port", &self.extension_port)
+            .field(
+                "extension_csrf_token",
+                &crate::redact::hidden_opt(&self.extension_csrf_token),
+            )
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
 struct LocalEndpoint {
     scheme: &'static str,
     port: u16,
     csrf_token: Option<String>,
+}
+
+impl std::fmt::Debug for LocalEndpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalEndpoint")
+            .field("scheme", &self.scheme)
+            .field("port", &self.port)
+            .field("csrf_token", &crate::redact::hidden_opt(&self.csrf_token))
+            .finish()
+    }
 }
 
 fn build_local_client() -> reqwest::Result<reqwest::Client> {

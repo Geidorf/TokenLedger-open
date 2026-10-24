@@ -23,6 +23,9 @@ mod gateway_store;
 #[path = "../src/quota/mod.rs"]
 mod quota;
 #[allow(dead_code)]
+#[path = "../src/redact.rs"]
+mod redact;
+#[allow(dead_code)]
 #[path = "../src/settings.rs"]
 mod settings;
 mod gateway {
