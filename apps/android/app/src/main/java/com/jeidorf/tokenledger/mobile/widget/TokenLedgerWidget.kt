@@ -111,7 +111,7 @@ internal fun WidgetBody(
                 val rows = widgetQuotaBarRowsFor(state.quota?.rows.orEmpty(), config.providerId)
                 widgetQuotaBarsLayout(size.width.value, size.height.value, fontScale, rows, config.showRouting)
                     .let { if (!it.sufficient) "；尺寸不足，请放大以显示额度条" else
-                        formatHiddenQuotaWindows(it.hiddenCount)?.let { hidden -> "；$hidden未在卡片上显示" } ?: "" }
+                        formatHiddenQuotaWindows(it.hiddenCount)?.let { hidden -> "；${hidden}未在卡片上显示" } ?: "" }
             }
             else -> ""
         }
