@@ -559,6 +559,14 @@ private fun V2MeBudgetAlertRow(palette: MobileV2Palette) {
         val unsubscribe = store?.observe { lastResult = store.lastResult }
         onDispose { unsubscribe?.invoke() }
     }
+    // 从系统设置开关通知或渠道回来时重新判断能否推送。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(store, lifecycleOwner) {
+        if (store == null) return@LaunchedEffect
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            canPost = BudgetAlertNotifier.canPost(context)
+        }
+    }
     val apply = { on: Boolean ->
         store?.enabled = on
         enabled = on

@@ -25,6 +25,8 @@ import com.jeidorf.tokenledger.mobile.DashboardAuthExpiredException
 import com.jeidorf.tokenledger.mobile.DashboardRepository
 import com.jeidorf.tokenledger.mobile.R
 import com.jeidorf.tokenledger.mobile.SessionRevokedException
+import com.jeidorf.tokenledger.mobile.SessionSnapshot
+import com.jeidorf.tokenledger.mobile.SessionStore
 import com.jeidorf.tokenledger.mobile.SupabaseGateway
 import com.jeidorf.tokenledger.mobile.SupabaseHttpException
 import com.jeidorf.tokenledger.mobile.BUDGET_SNAPSHOTS_READ_FUNCTION
@@ -128,7 +130,11 @@ internal class BudgetAlertWorker(context: Context, params: WorkerParameters) : C
             publishableKey = BuildConfig.TOKENLEDGER_SUPABASE_PUBLISHABLE_KEY
         )
         var account: String? = null
+        val persistence = SessionStore(context)
+        var lease: SessionSnapshot? = null
         val snapshots = try {
+            // 读之前记下登录代次：读完后退出或换账号，迟到的结果不推送、不写记录。
+            lease = persistence.snapshot()
             repository.readWithStoredSession({ account = it }) { session ->
                 BudgetSnapshots.parse(gateway.fetchBudgetSnapshots(session))
             } ?: return Result.success().also { store.lastResult = RESULT_SIGNED_OUT }
@@ -155,15 +161,23 @@ internal class BudgetAlertWorker(context: Context, params: WorkerParameters) : C
             return Result.retry()
         }
         val owner = checkNotNull(account)
+        val expected = lease?.takeIf { it.session?.userId == owner } ?: return Result.success()
         // 定时与立即两个任务可能同时读完：读记录、推送、写回必须一次一个，否则同一条会推两次。
         LEDGER_LOCK.withLock {
             // 读的过程中关掉了开关：什么也不推。
             if (!store.enabled) return Result.success()
             val (ledger, prime) = store.ledgerFor(owner)
             val plan = BudgetAlertPlanner.plan(snapshots, ledger, System.currentTimeMillis(), prime)
-            val posted = BudgetAlertNotifier.post(context, plan.notifications)
-            // 没有通知权限或渠道被关时不记为已推，恢复后下次读取再推。
-            store.save(owner, if (posted || plan.notifications.isEmpty()) plan.ledger else ledger)
+            // 推送与写回在会话撤销锁内复验：期间退出或换账号就整笔丢弃。
+            val current = persistence.writeIfCurrent(expected) {
+                val posted = BudgetAlertNotifier.post(context, plan.notifications)
+                // 没有通知权限或渠道被关时不记为已推，恢复后下次读取再推。
+                store.save(owner, if (posted || plan.notifications.isEmpty()) plan.ledger else ledger)
+            }
+            if (!current) {
+                store.lastResult = RESULT_SIGNED_OUT
+                return Result.success()
+            }
         }
         store.lastResult = if (snapshots.isEmpty()) RESULT_NO_DESKTOP else RESULT_OK
         return Result.success()
