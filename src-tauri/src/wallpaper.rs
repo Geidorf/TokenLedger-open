@@ -4327,9 +4327,10 @@ pub fn set_wallpaper(path: &Path) -> bool {
     }
     std::thread::sleep(std::time::Duration::from_millis(80));
     let path_str = path.to_string_lossy().to_string();
+    // AppleScript string literal: a `"` or `\` in the path must not end it.
     let set_script = format!(
         "tell application \"System Events\" to tell every desktop to set picture to POSIX file \"{}\"",
-        path_str
+        path_str.replace('\\', "\\\\").replace('"', "\\\"")
     );
     match std::process::Command::new("osascript")
         .args(["-e", &set_script])

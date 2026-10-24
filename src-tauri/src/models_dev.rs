@@ -179,12 +179,18 @@ async fn fetch_catalog() -> Result<CatalogCache, String> {
     {
         return Err("接口响应超过允许大小".to_string());
     }
-    let bytes = response
-        .bytes()
+    // Counted while streaming: a chunked reply has no length to check above.
+    let mut response = response;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|error| format!("读取响应失败：{error}"))?;
-    if bytes.len() > MAX_RESPONSE_BYTES {
-        return Err("接口响应超过允许大小".to_string());
+        .map_err(|error| format!("读取响应失败：{error}"))?
+    {
+        if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+            return Err("接口响应超过允许大小".to_string());
+        }
+        bytes.extend_from_slice(&chunk);
     }
     let providers = serde_json::from_slice::<HashMap<String, Provider>>(&bytes)
         .map_err(|error| format!("目录 JSON 无法解析：{error}"))?;

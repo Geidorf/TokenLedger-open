@@ -1248,3 +1248,15 @@ fn real_http_stop_during_credential_wait_never_connects_upstream() {
         std::fs::remove_dir_all(dir).unwrap();
     });
 }
+
+#[test]
+fn upstream_error_text_never_carries_the_presented_key() {
+    let key = "sk-test-0123456789abcdef";
+    let echoed = format!("{{\"error\":\"Incorrect API key provided: {key}\"}}");
+    let redacted = redact_key(&echoed, &format!(" {key} "));
+    assert!(!redacted.contains(key));
+    assert!(redacted.contains("[已隐去 API key]"));
+    // Too short to be a key: left alone so ordinary words are not mangled.
+    assert_eq!(redact_key("error abc", "abc"), "error abc");
+    assert_eq!(redact_key("plain", ""), "plain");
+}
