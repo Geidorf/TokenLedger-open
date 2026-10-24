@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Command-line tool `tokenledger-cli`: today/week/month usage with Agent, model and account breakdowns, quota remaining, budget status, gateway state and recent routes, on-demand scans, and CSV/JSON ledger export. Every command has table output and `--json` for scripts and status bars; numbers come from the same Rust code as the desktop app. See `docs/cli.md`.
 - Local model gateway with a persistent accounting ledger: old logs import idempotently, and both local statistics and cloud aggregates read from that ledger. A failed import preserves newly billed usage instead of dropping it.
 - Antigravity CLI scanning across both of its roots, reading real input, output, and cache-read values. Local schema advanced to v16 to record usage provenance and the "cache write unknown" state; rows estimated by older versions carry an estimate badge.
 - Quota clearing now persists a local stop before dispatching, so an interrupted clear can recover. Compatible with older PostgREST versions; the cloud rejects observations more than five minutes in the future.
 - Deep links into settings now switch pages correctly while the app is running. The usage records page shows the active filter and can clear it in one action.
 - Android widget and dashboard visual refresh, including brand icons, input/output share bars on KPI cards, quota overview progress bars, and reduced visual noise in settings.
+- VS Code status bar extension (`extensions/vscode/`): shows today's estimated cost or the tightest quota window's remaining percentage, with a hover card and details panel for quota bars, today's per-agent split, budgets and gateway health. All figures come from the local `tokenledger-cli`; the extension reads no credentials and makes no network requests. Packaged as a .vsix by a dependency-free script; not published to the marketplace.
 - Settings cards open their target page directly, and an overview line reports a quota read that is still waiting for the first observation.
 - Model price table schema 2: dated price history so a price change only affects records after it takes effect, long-context tiers for GPT-5.6/GPT-6, Gemini Pro, Grok and MiniMax-M3 on per-request tools, and a daily online update from this repository with the bundled table as the offline fallback. Settings and the estimated-cost help show which table is in use, its revision and verification date.
 

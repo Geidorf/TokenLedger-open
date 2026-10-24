@@ -3821,3 +3821,21 @@ mod antigravity_usage_tests {
             .is_empty());
     }
 }
+
+#[test]
+fn scan_lock_excludes_another_holder_until_released() {
+    let dir = std::env::temp_dir().join(format!("tokenledger_scan_lock_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("tokenboard.db");
+    let held = lock_scan_across_processes(&db_path).expect("first holder gets the lock");
+    // 另开一个句柄，相当于另一个进程：持有期间拿不到。
+    let other = fs::OpenOptions::new()
+        .write(true)
+        .open(db_path.with_extension("scan.lock"))
+        .unwrap();
+    assert!(other.try_lock().is_err());
+    drop(held);
+    assert!(other.try_lock().is_ok());
+    let _ = fs::remove_dir_all(&dir);
+}

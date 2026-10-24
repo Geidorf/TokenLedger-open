@@ -3245,10 +3245,11 @@ test('settings switches expose their visible labels to assistive technology', ()
   const source = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'SettingsPrimitives.tsx'));
   const toggle = source.slice(source.indexOf('function SettingsToggleRow'), source.indexOf('function SettingsActionRow'));
-  assert.match(toggle, /const actionLabel = busy \? `\$\{label\}，保存中` : label/);
+  assert.match(toggle, /const actionLabel = busy \? t\('settings\.toggle\.savingAria', \{ label \}\) : label/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'settings\.toggle\.savingAria': '\{label\}，保存中'[\s\S]*'settings\.toggle\.saving': '保存中…'/);
   assert.match(toggle, /role="switch"[\s\S]*aria-label=\{actionLabel\}[\s\S]*aria-describedby=\{hint \? hintId : undefined\}[\s\S]*aria-checked=\{checked\}/);
   assert.match(toggle, /aria-busy=\{busy \|\| undefined\}/);
-  assert.match(toggle, /settings-toggle-feedback[\s\S]*保存中…/);
+  assert.match(toggle, /settings-toggle-feedback[\s\S]*t\('settings\.toggle\.saving'\)/);
 });
 
 test('settings switches share the saved-state busy signal across system and quota sections', () => {
