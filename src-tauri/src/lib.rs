@@ -233,7 +233,7 @@ fn sync_quota_and_notify(ctx: &AppContext, app_handle: &tauri::AppHandle) {
         );
         return;
     }
-    match block_on_async(quota_sync::sync_quota_snapshots_impl(ctx)) {
+    match block_on_async(quota_sync::background_sync_quota_snapshots_impl(ctx)) {
         Ok(status) => {
             let _ = app_handle.emit("quota-sync-updated", status);
         }
