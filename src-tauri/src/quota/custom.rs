@@ -84,7 +84,7 @@ struct BoundApiKey {
     key: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpsertCustomQuotaEndpointInput {
     #[serde(default)]
@@ -95,6 +95,18 @@ pub struct UpsertCustomQuotaEndpointInput {
     pub api_key: Option<String>,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+}
+
+impl std::fmt::Debug for UpsertCustomQuotaEndpointInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpsertCustomQuotaEndpointInput")
+            .field("id", &self.id)
+            .field("display_name", &self.display_name)
+            .field("url", &self.url)
+            .field("api_key", &crate::redact::hidden_opt(&self.api_key))
+            .field("enabled", &self.enabled)
+            .finish()
+    }
 }
 
 fn default_enabled() -> bool {

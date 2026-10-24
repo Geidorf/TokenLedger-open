@@ -264,3 +264,17 @@ fn status_reports_presence_without_reading_other_magpie_files() {
     assert_eq!(found["usageFound"], json!(true));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn a_file_past_the_line_cap_is_refused_not_imported_in_part() {
+    let (_app, root) = test_app();
+    let dir = root.join("huge-usage");
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(SOURCE_FILE);
+    fs::write(&path, "x\n".repeat(MAX_LINES)).unwrap();
+    let (_, counts) = parse_usage(&path).unwrap();
+    assert_eq!(counts.lines, MAX_LINES);
+    fs::write(&path, "x\n".repeat(MAX_LINES + 1)).unwrap();
+    assert!(parse_usage(&path).unwrap_err().contains("行"));
+    let _ = fs::remove_dir_all(root);
+}

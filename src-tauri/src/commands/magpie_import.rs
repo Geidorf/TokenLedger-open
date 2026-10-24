@@ -35,6 +35,9 @@ const META_FILE: &str = "magpie-import-v1.json";
 const SOURCE_FILE: &str = "usage.jsonl";
 /// A line longer than this is not a usage record (bodies are never in it).
 const MAX_LINE_BYTES: usize = 256 * 1024;
+/// Non-empty lines read from one file; past this the file is refused rather
+/// than imported in part, so a runaway file can't exhaust memory.
+pub(crate) const MAX_LINES: usize = 2_000_000;
 const SYNTHETIC_SESSION_PREFIX: &str = "magpie:";
 
 /// magpie's config folder: `$XDG_CONFIG_HOME/magpie` when that is an absolute
@@ -219,6 +222,11 @@ pub(crate) fn parse_usage(path: &Path) -> Result<(Vec<ImportedCall>, ParseCounts
             continue;
         }
         counts.lines += 1;
+        if counts.lines > MAX_LINES {
+            return Err(format!(
+                "用量文件超过 {MAX_LINES} 行，已停止导入；请先清理或归档旧记录。"
+            ));
+        }
         if line.len() > MAX_LINE_BYTES {
             counts.invalid += 1;
             continue;

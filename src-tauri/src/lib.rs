@@ -37,6 +37,7 @@ mod peer_live;
 mod peer_sync;
 mod peer_wire;
 mod quota_sync;
+mod redact;
 mod routing_publish;
 mod scanner;
 mod session_analysis;
