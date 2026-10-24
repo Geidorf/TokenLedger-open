@@ -245,8 +245,9 @@ fn level(
     let low_rate = stats.requests >= MIN_SAMPLES
         && stats.success_rate.is_some_and(|rate| rate < DEGRADED_BELOW);
     if down || low_rate || streak > 0 {
-        if let Some(code) = worst.filter(|code| !is_local(code)) {
-            reasons.push(code);
+        // Codes are most frequent first; name the leading upstream one.
+        if let Some(item) = stats.codes.iter().find(|item| !is_local(item.code)) {
+            reasons.push(item.code);
         }
     }
     if stats.requests == 0 && cooling.is_empty() {
@@ -729,6 +730,32 @@ mod tests {
         );
         assert_eq!(report.providers[1].cooling.len(), 1);
         assert_eq!(report.providers[1].models[0].status, "degraded");
+    }
+
+    #[test]
+    fn upstream_reason_wins_over_more_frequent_local_skips() {
+        let mut records: Vec<LedgerRecord> = (10..14)
+            .map(|m| {
+                row(
+                    m,
+                    "a",
+                    "m1",
+                    401,
+                    0,
+                    Some("供应商「A」还没有设置 API key。"),
+                )
+            })
+            .collect();
+        for m in [3, 2, 1] {
+            records.push(row(m, "a", "m1", 503, 5, Some("上游返回 503：busy")));
+        }
+        let report = summarize(&records, &[], &[], now());
+        let a = &report.providers[0];
+        assert_eq!(a.stats.codes[0].code, "key_missing");
+        assert_eq!(
+            (a.status, a.reasons.clone()),
+            ("down", vec!["upstream_failed"])
+        );
     }
 
     #[test]
