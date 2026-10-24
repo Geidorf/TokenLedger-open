@@ -7,6 +7,7 @@ const STATUS: TrayPanelStatus = {
   gatewayRunning: true,
   gatewayPort: 3421,
   gatewayFailed: false,
+  gatewayNoProvider: false,
   syncPaused: false,
   scanPaused: false,
   scanIntervalSecs: 900,
@@ -22,6 +23,8 @@ describe('PanelCard', () => {
     expect(gatewayState(STATUS)).toEqual({ text: '运行中 · :3421', tone: 'ok' });
     expect(gatewayState({ ...STATUS, gatewayEnabled: false, gatewayRunning: false })).toEqual({ text: '已关闭', tone: 'off' });
     expect(gatewayState({ ...STATUS, gatewayRunning: false, gatewayFailed: true }).text).toBe('未运行，去主窗口查看');
+    expect(gatewayState({ ...STATUS, gatewayRunning: false, gatewayNoProvider: true }).text).toBe('没有可用的供应商，去主窗口添加');
+    expect(gatewayState({ ...STATUS, gatewayRunning: false }).text).toBe('正在启动…');
     expect(gatewayState({ ...STATUS, gatewayRunning: false }).text).toBe('正在启动…');
   });
 

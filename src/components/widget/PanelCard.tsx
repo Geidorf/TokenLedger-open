@@ -28,6 +28,8 @@ export interface TrayPanelStatus {
   gatewayRunning: boolean;
   gatewayPort: number;
   gatewayFailed: boolean;
+  /** 网关开着但没有启用的供应商：不会启动。 */
+  gatewayNoProvider: boolean;
   syncPaused: boolean;
   scanPaused: boolean;
   scanIntervalSecs: number;
@@ -48,7 +50,9 @@ export function gatewayState(status: TrayPanelStatus | null): { text: string; to
   if (!status) return { text: '—', tone: 'unknown' };
   if (!status.gatewayEnabled) return { text: '已关闭', tone: 'off' };
   if (status.gatewayRunning) return { text: `运行中 · :${status.gatewayPort}`, tone: 'ok' };
-  return { text: status.gatewayFailed ? '未运行，去主窗口查看' : '正在启动…', tone: 'warn' };
+  if (status.gatewayFailed) return { text: '未运行，去主窗口查看', tone: 'warn' };
+  if (status.gatewayNoProvider) return { text: '没有可用的供应商，去主窗口添加', tone: 'warn' };
+  return { text: '正在启动…', tone: 'warn' };
 }
 
 function formatAgo(at: number, now: number): string {

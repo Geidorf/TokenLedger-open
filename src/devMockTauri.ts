@@ -1602,6 +1602,7 @@ function mockTrayPanelStatus() {
     gatewayRunning: enabled,
     gatewayPort: 3421,
     gatewayFailed: false,
+    gatewayNoProvider: false,
     syncPaused: Boolean(mockSettings.background_sync_paused),
     scanPaused: Boolean(mockSettings.background_scan_paused),
     scanIntervalSecs: mockSettings.scan_interval_secs,

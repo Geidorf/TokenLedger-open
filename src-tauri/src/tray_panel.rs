@@ -132,18 +132,39 @@ pub struct TrayPanelStatus {
     pub gateway_port: u16,
     /// 网关开着却没在监听（端口被占等）：面板只说「未运行」，原因去主窗口看。
     pub gateway_failed: bool,
+    /// 网关开着但没有启用的供应商：不会启动，也没有错误。面板提示去主窗口添加，而不是一直写「正在启动」。
+    pub gateway_no_provider: bool,
     pub sync_paused: bool,
     pub scan_paused: bool,
     pub scan_interval_secs: u64,
 }
 
+/// 网关「开着却没在跑」时的两种原因：有错误（端口被占等）记为失败；没有错误且没有启用的供应商
+/// 记为未配置。两者都不是时才是真的正在启动。返回 (failed, no_provider)。
+fn gateway_idle_reason(
+    enabled: bool,
+    running: bool,
+    has_error: bool,
+    has_provider: bool,
+) -> (bool, bool) {
+    let idle = enabled && !running;
+    (idle && has_error, idle && !has_error && !has_provider)
+}
+
 fn panel_status(settings: &AppSettings, gateway: &Gateway) -> TrayPanelStatus {
     let status = gateway.status();
+    let (gateway_failed, gateway_no_provider) = gateway_idle_reason(
+        settings.model_access_enabled,
+        status.running,
+        status.error.is_some(),
+        gateway.has_enabled_provider(),
+    );
     TrayPanelStatus {
         gateway_enabled: settings.model_access_enabled,
         gateway_running: status.running,
         gateway_port: status.port,
-        gateway_failed: settings.model_access_enabled && !status.running && status.error.is_some(),
+        gateway_failed,
+        gateway_no_provider,
         sync_paused: settings.background_sync_paused,
         scan_paused: settings.background_scan_paused,
         scan_interval_secs: settings.scan_interval_secs,
@@ -341,6 +362,24 @@ mod tests {
     #[test]
     fn gateway_close_message_points_to_the_main_window() {
         assert!(GATEWAY_CLOSE_IN_MAIN.contains("主窗口"));
+    }
+
+    #[test]
+    fn an_enabled_gateway_without_providers_is_not_reported_as_starting() {
+        assert_eq!(
+            gateway_idle_reason(true, false, false, false),
+            (false, true)
+        );
+        assert_eq!(gateway_idle_reason(true, false, true, false), (true, false));
+        assert_eq!(
+            gateway_idle_reason(true, false, false, true),
+            (false, false)
+        );
+        assert_eq!(gateway_idle_reason(true, true, false, true), (false, false));
+        assert_eq!(
+            gateway_idle_reason(false, false, false, false),
+            (false, false)
+        );
     }
 
     #[test]

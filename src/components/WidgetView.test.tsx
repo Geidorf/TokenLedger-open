@@ -267,7 +267,7 @@ describe('WidgetView', () => {
     settings.widget_popover_range = 'week';
     const at = new Date(Date.now() - 2_000).toISOString();
     let status = {
-      gatewayEnabled: true, gatewayRunning: true, gatewayPort: 3421, gatewayFailed: false,
+      gatewayEnabled: true, gatewayRunning: true, gatewayPort: 3421, gatewayFailed: false, gatewayNoProvider: false,
       syncPaused: false, scanPaused: false, scanIntervalSecs: 900,
     };
     invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
@@ -320,7 +320,7 @@ describe('WidgetView', () => {
       if (command === 'get_settings') return settings;
       if (command === 'get_cached_stats') return buildStats((payload as { range: 'today' }).range, 123_456);
       if (command === 'tray_panel_status') {
-        return { gatewayEnabled: false, gatewayRunning: false, gatewayPort: 3421, gatewayFailed: false, syncPaused: true, scanPaused: false, scanIntervalSecs: 900 };
+        return { gatewayEnabled: false, gatewayRunning: false, gatewayPort: 3421, gatewayFailed: false, gatewayNoProvider: false, syncPaused: true, scanPaused: false, scanIntervalSecs: 900 };
       }
       if (command === 'tray_panel_toggle') throw new Error('denied');
       if (command === 'gateway_routing_feed') return { running: false, decisions: [], requests: [] };
