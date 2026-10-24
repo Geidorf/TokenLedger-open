@@ -105,6 +105,11 @@ pub struct WebhookEndpoint {
     pub url_hint: String,
     #[serde(default)]
     pub has_secret: bool,
+    /// Bumped on every save, so a queued delivery can tell that the
+    /// endpoint (address, platform, switches, cost choice) changed since it
+    /// was planned.
+    #[serde(default)]
+    pub revision: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -549,6 +554,9 @@ pub(crate) fn upsert_endpoint(
         include_cost: input.include_cost,
         url_hint: payload::url_hint(&url),
         has_secret: secret.is_some(),
+        revision: previous
+            .as_ref()
+            .map_or(0, |previous| previous.revision.wrapping_add(1)),
     };
     let credential = StoredCredential { url, secret };
     // Normalization percent-encodes non-ASCII paths, so check the record
@@ -685,23 +693,104 @@ pub(crate) fn forward(
     }
     let app_data_dir = app_data_dir.to_path_buf();
     tauri::async_runtime::spawn(async move {
-        for delivery in planned {
-            let id = delivery.endpoint.id.clone();
-            let result = deliver(keyring_store(), &delivery.endpoint, &delivery.message).await;
-            if let Err(error) = &result {
-                log::warn!("alert webhook {id} failed: {error}");
-            }
-            let dir = app_data_dir.clone();
-            let outcome = DeliveryResult {
-                at: Utc::now(),
-                ok: result.is_ok(),
-                error: result.err(),
-                test: false,
-            };
-            let _ = tauri::async_runtime::spawn_blocking(move || record_result(&dir, &id, outcome))
-                .await;
-        }
+        run_deliveries(
+            &app_data_dir,
+            keyring_store(),
+            planned,
+            |delivery, credential| async move {
+                send_with(&delivery.endpoint, &credential, &delivery.message).await
+            },
+        )
+        .await;
     });
+}
+
+/// Re-reads the settings and the credential together under the settings
+/// lock, so a save cannot land between the two. Returns `None` when the
+/// plan is stale: forwarding was turned off, or the endpoint was edited,
+/// disabled or deleted after the message was planned. A message planned
+/// with cost text is never sent to an address saved later.
+fn current_credential(
+    app_data_dir: &Path,
+    store: &dyn CredentialStore,
+    planned: &WebhookEndpoint,
+) -> Result<Option<StoredCredential>, String> {
+    let _guard = SETTINGS_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let settings = load_settings(app_data_dir);
+    let unchanged = settings.enabled
+        && settings
+            .endpoints
+            .iter()
+            .any(|endpoint| endpoint == planned && endpoint.enabled);
+    if !unchanged {
+        return Ok(None);
+    }
+    store
+        .load(&planned.id)?
+        .map(Some)
+        .ok_or_else(|| "钥匙串里找不到这个 Webhook 的地址，请重新填写。".to_string())
+}
+
+/// Sends planned messages one after another. Each send first checks that
+/// the plan still matches the saved settings; a stale plan is dropped
+/// without a request and without touching the last result.
+pub(crate) async fn run_deliveries<F, Fut>(
+    app_data_dir: &Path,
+    store: &'static dyn CredentialStore,
+    planned: Vec<PlannedDelivery>,
+    send_one: F,
+) where
+    F: Fn(PlannedDelivery, StoredCredential) -> Fut,
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    for delivery in planned {
+        let id = delivery.endpoint.id.clone();
+        let dir = app_data_dir.to_path_buf();
+        let endpoint = delivery.endpoint.clone();
+        let checked = tauri::async_runtime::spawn_blocking(move || {
+            current_credential(&dir, store, &endpoint)
+        })
+        .await
+        .map_err(|_| "读取钥匙串失败。".to_string())
+        .and_then(|checked| checked);
+        let result = match checked {
+            Ok(None) => {
+                log::info!("alert webhook {id} skipped: settings changed after planning");
+                continue;
+            }
+            Ok(Some(credential)) => send_one(delivery, credential).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = &result {
+            log::warn!("alert webhook {id} failed: {error}");
+        }
+        let dir = app_data_dir.to_path_buf();
+        let outcome = DeliveryResult {
+            at: Utc::now(),
+            ok: result.is_ok(),
+            error: result.err(),
+            test: false,
+        };
+        let _ =
+            tauri::async_runtime::spawn_blocking(move || record_result(&dir, &id, outcome)).await;
+    }
+}
+
+async fn send_with(
+    endpoint: &WebhookEndpoint,
+    credential: &StoredCredential,
+    message: &MessageText,
+) -> Result<(), String> {
+    let request = payload::build_request(
+        endpoint.platform,
+        &credential.url,
+        credential.secret.as_deref(),
+        message,
+        Utc::now().timestamp_millis(),
+    )?;
+    send(endpoint.platform, &request).await
 }
 
 async fn deliver(
@@ -714,14 +803,7 @@ async fn deliver(
         .await
         .map_err(|_| "读取钥匙串失败。".to_string())??
         .ok_or_else(|| "钥匙串里找不到这个 Webhook 的地址，请重新填写。".to_string())?;
-    let request = payload::build_request(
-        endpoint.platform,
-        &credential.url,
-        credential.secret.as_deref(),
-        message,
-        Utc::now().timestamp_millis(),
-    )?;
-    send(endpoint.platform, &request).await
+    send_with(endpoint, &credential, message).await
 }
 
 pub(crate) async fn send(

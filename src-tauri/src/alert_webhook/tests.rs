@@ -302,6 +302,7 @@ fn endpoint(id: &str, kinds: &[AlertKind], include_cost: bool) -> WebhookEndpoin
         include_cost,
         url_hint: "example.com".to_string(),
         has_secret: false,
+        revision: 0,
     }
 }
 
@@ -664,4 +665,144 @@ fn redirects_are_not_followed_and_errors_hide_the_address() {
         !error.contains("very-secret") && !error.contains("127.0.0.1"),
         "{error}"
     );
+}
+
+/// Two generic hooks, the second with cost opted in. Returns the dir, the
+/// store and both saved endpoints.
+fn two_hooks(
+    name: &str,
+) -> (
+    PathBuf,
+    &'static MemoryStore,
+    WebhookEndpoint,
+    WebhookEndpoint,
+) {
+    let dir = temp_dir(name);
+    let store: &'static MemoryStore = Box::leak(Box::default());
+    let first = upsert_endpoint(
+        &dir,
+        store,
+        input(
+            WebhookPlatform::Generic,
+            Some("https://first.example.com/hook"),
+        ),
+    )
+    .unwrap();
+    let mut second_input = input(
+        WebhookPlatform::Generic,
+        Some("https://old.example.com/hook"),
+    );
+    second_input.include_cost = true;
+    let second = upsert_endpoint(&dir, store, second_input).unwrap();
+    set_enabled(&dir, true).unwrap();
+    (dir, store, first, second)
+}
+
+fn plan_both(dir: &Path) -> Vec<PlannedDelivery> {
+    let settings = load_settings(dir);
+    let mut sent = HashMap::new();
+    let planned = plan_deliveries(
+        &settings,
+        &mut sent,
+        AlertKind::Budget,
+        "t",
+        "b",
+        Some("$9.00"),
+        Utc::now(),
+    );
+    assert_eq!(planned.len(), 2);
+    assert_eq!(planned[1].message.cost.as_deref(), Some("$9.00"));
+    planned
+}
+
+/// Runs the queue with a fake sender. `during_first` runs while the first
+/// request is in flight, standing in for a settings change made then.
+/// Returns (address, cost) of every request that was started.
+fn run_queue(
+    dir: &Path,
+    store: &'static MemoryStore,
+    planned: Vec<PlannedDelivery>,
+    during_first: impl Fn(),
+) -> Vec<(String, Option<String>)> {
+    let started = Mutex::new(Vec::new());
+    runtime().block_on(run_deliveries(
+        dir,
+        store,
+        planned,
+        |delivery, credential| {
+            let first = started.lock().unwrap().is_empty();
+            started
+                .lock()
+                .unwrap()
+                .push((credential.url.clone(), delivery.message.cost.clone()));
+            if first {
+                during_first();
+            }
+            async { Ok(()) }
+        },
+    ));
+    started.into_inner().unwrap()
+}
+
+#[test]
+fn queued_messages_follow_the_settings_they_were_planned_with() {
+    // Unchanged settings: both go out, the second with its cost line.
+    let (dir, store, _, _) = two_hooks("queue_unchanged");
+    let started = run_queue(&dir, store, plan_both(&dir), || {});
+    assert_eq!(started.len(), 2);
+    assert_eq!(
+        started[1],
+        (
+            "https://old.example.com/hook".to_string(),
+            Some("$9.00".to_string())
+        )
+    );
+
+    // The second hook moves to a new address and drops cost while the first
+    // request is in flight: the old message never reaches the new address.
+    let (dir, store, _, second) = two_hooks("queue_edited");
+    let started = run_queue(&dir, store, plan_both(&dir), || {
+        let mut edit = input(
+            WebhookPlatform::Generic,
+            Some("https://new.example.com/hook"),
+        );
+        edit.id = Some(second.id.clone());
+        edit.include_cost = false;
+        upsert_endpoint(&dir, store, edit).unwrap();
+    });
+    assert_eq!(started.len(), 1, "{started:?}");
+    assert!(started[0].0.starts_with("https://first."));
+    assert!(!load_state(&dir).results.contains_key(&second.id));
+
+    // Same address, only the cost choice withdrawn: still dropped.
+    let (dir, store, _, second) = two_hooks("queue_cost_off");
+    let started = run_queue(&dir, store, plan_both(&dir), || {
+        let mut edit = input(WebhookPlatform::Generic, None);
+        edit.id = Some(second.id.clone());
+        upsert_endpoint(&dir, store, edit).unwrap();
+    });
+    assert_eq!(started.len(), 1, "{started:?}");
+
+    // Master switch off, endpoint disabled, or endpoint deleted: no new send.
+    let (dir, store, _, _) = two_hooks("queue_master_off");
+    let started = run_queue(&dir, store, plan_both(&dir), || {
+        set_enabled(&dir, false).unwrap();
+    });
+    assert_eq!(started.len(), 1, "{started:?}");
+
+    let (dir, store, _, second) = two_hooks("queue_disabled");
+    let started = run_queue(&dir, store, plan_both(&dir), || {
+        let mut edit = input(WebhookPlatform::Generic, None);
+        edit.id = Some(second.id.clone());
+        edit.include_cost = true;
+        edit.enabled = false;
+        upsert_endpoint(&dir, store, edit).unwrap();
+    });
+    assert_eq!(started.len(), 1, "{started:?}");
+
+    let (dir, store, _, second) = two_hooks("queue_deleted");
+    let started = run_queue(&dir, store, plan_both(&dir), || {
+        remove_endpoint(&dir, store, &second.id).unwrap();
+    });
+    assert_eq!(started.len(), 1, "{started:?}");
 }
