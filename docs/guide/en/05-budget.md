@@ -25,6 +25,7 @@ You can have up to 32 budgets. Each one can be paused, edited or deleted. Changi
 - **System notifications**: turn on "Alert when a budget is close or over" at the top. Each budget notifies once for "close" and once for "over" in each period; if usage jumps straight past the limit you only get the "over" alert. At most 4 alerts per hour in total; anything held back is sent at the next check. This switch is off by default.
 - **Tray tooltip**: whether or not notifications are on, the tray icon's tooltip gets a line such as "Budget: 1 over · 2 close to limit".
 - **Settings page**: each budget has a progress bar with the amount used, the limit and the percentage.
+- **Sync to phone (同步到手机)** (separate switch, off by default): once you are signed in to [cloud sync](06-cloud-mobile.md), every budget check uploads a redacted snapshot to your cloud, and the phone shows a local notification when it reads "close" or "over". The snapshot only has the scope name, period, used percentage (rounded) and level. **It never includes amounts or limits.** The text under the switch shows the last sync time. If your cloud does not have this feature deployed yet, it says so; run `supabase db push` and syncing starts on its own. Turning the switch off deletes this computer's snapshot from the cloud, and the cloud also removes snapshots not updated for 3 days.
 
 Notifications only name the scope, the period and the percentage, such as "Monthly cost budget 85% used". They never include amounts or account details, so nothing leaks if one pops up while you are sharing your screen.
 
@@ -33,5 +34,5 @@ Notifications only name the scope, the period and the percentage, such as "Month
 - **Only usage that already happened counts.** There is no "you will go over by month end" forecast.
 - If cost is incomplete because a model has no price yet, or an account budget has no gateway data, the budget shows as **unavailable**. It is not treated as 0 and does not alert.
 - Budgets are checked when a background scan writes new records, on manual refresh and when the day changes. While you have budgets, they are also checked every 5 minutes so gateway-only usage alerts in time.
-- Budget rules are stored on this computer and are not part of cloud sync.
+- Budget rules, amounts and limits stay on this computer. **Sync to phone** uploads only the percentage snapshot described above; the phone cannot see or change budget rules.
 - Alerts for subscription quota windows running out are a separate feature under **Settings › Subscription quota › Quota alerts**; see [chapter 3](03-usage.md#quota).
