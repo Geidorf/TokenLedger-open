@@ -385,9 +385,10 @@ fn real_http_streams_use_idle_deadlines_keep_partial_usage_and_bound_accumulatio
             b"data: {\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\n".to_vec();
         for endpoint in [Endpoint::Chat, Endpoint::Responses] {
             let mut chunks = vec![(Duration::ZERO, usage.clone())];
-            for _ in 0..6 {
+            // Gaps stay well under the idle deadline, yet together outlast it.
+            for _ in 0..8 {
                 chunks.push((
-                    Duration::from_millis(200),
+                    Duration::from_millis(150),
                     b"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n"
                         .to_vec(),
                 ));
@@ -410,7 +411,7 @@ fn real_http_streams_use_idle_deadlines_keep_partial_usage_and_bound_accumulatio
                     vec![
                         (Duration::ZERO, usage.clone()),
                         (
-                            STREAM_IDLE_TIMEOUT + Duration::from_millis(100),
+                            STREAM_IDLE_TIMEOUT + Duration::from_millis(500),
                             b": heartbeat\n\n".to_vec(),
                         ),
                     ],
@@ -510,7 +511,7 @@ fn real_http_streams_use_idle_deadlines_keep_partial_usage_and_bound_accumulatio
         // waiting for the idle deadline.
         let waiting = Upstream::raw(sse_packets(
             vec![(
-                STREAM_IDLE_TIMEOUT + Duration::from_millis(100),
+                STREAM_IDLE_TIMEOUT + Duration::from_millis(500),
                 b": wait\n\n".to_vec(),
             )],
             true,

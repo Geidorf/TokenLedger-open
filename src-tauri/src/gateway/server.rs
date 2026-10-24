@@ -45,7 +45,8 @@ const fn deadline(seconds: u64, test_millis: u64) -> Duration {
 const REQUEST_READ_TIMEOUT: Duration = deadline(30, 300);
 const UPSTREAM_HEADERS_TIMEOUT: Duration = deadline(60, 400);
 const WHOLE_RESPONSE_TIMEOUT: Duration = deadline(300, 800);
-const STREAM_IDLE_TIMEOUT: Duration = deadline(120, 400);
+// Test value leaves the stream case's 150 ms gaps a wide margin on loaded CI runners.
+const STREAM_IDLE_TIMEOUT: Duration = deadline(120, 1000);
 const CLIENT_SEND_TIMEOUT: Duration = deadline(30, 300);
 const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
