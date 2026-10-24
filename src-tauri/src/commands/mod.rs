@@ -546,7 +546,9 @@ pub async fn save_settings(
     // 桌面小组件随设置页开关即时创建/移除（T10.110）。
     crate::widget_window::sync_desktop_widget_from_settings(&app_handle, &settings);
     // 切换 macOS 菜单栏标题开关要立即生效，不等下一次后台扫描周期（R-52）。
-    if previous.tray_text_enabled != settings.tray_text_enabled {
+    if previous.tray_text_enabled != settings.tray_text_enabled
+        || previous.tray_text_metric != settings.tray_text_metric
+    {
         crate::refresh_tray_status(state.inner(), &app_handle);
     }
 
@@ -973,6 +975,12 @@ fn commands_update_wallpaper(app: &AppContext, target: &str) -> Result<Value, St
         "lockscreen": lockscreen,
         "path": path,
     }))
+}
+
+/// This computer's device id, so device pickers can mark which one is here.
+#[tauri::command]
+pub fn get_device_id(state: tauri::State<'_, Arc<AppContext>>) -> String {
+    local_machine_id(state.inner())
 }
 
 #[tauri::command]
@@ -3162,15 +3170,13 @@ fn save_cloud_config_file(app: &AppContext, config: &CloudConfig) -> Result<(), 
     )
 }
 
-/// The machine name `token_logs` rows carry; other uploads only send it hashed.
-pub(crate) fn local_machine_id() -> String {
-    fallback_machine_id()
+/// The device id `token_logs` rows carry; other uploads only send it hashed.
+pub(crate) fn local_machine_id(app: &AppContext) -> String {
+    fallback_machine_id(&db::get_db_path(app))
 }
 
-fn fallback_machine_id() -> String {
-    hostname::get()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown_machine".to_string())
+fn fallback_machine_id(db_path: &Path) -> String {
+    crate::device_identity::for_db_or_unknown(db_path)
 }
 
 fn default_prices() -> Value {
@@ -6899,6 +6905,7 @@ fn read_local_rows_filtered(
 }
 
 pub(crate) mod anomaly_rows;
+mod device_cloud_move;
 mod gateway_cloud;
 mod gateway_overlay;
 pub mod gateway_request_log;
@@ -12389,7 +12396,7 @@ pub fn reclaim_db_space_impl(app: &AppContext) -> Result<Value, String> {
 pub fn reset_local_sync_impl(app: &AppContext) -> Result<Value, String> {
     let db_path = db::get_db_path(app);
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
-    let machine_id = fallback_machine_id();
+    let machine_id = fallback_machine_id(&db_path);
 
     // Query all distinct tools to queue a cloud purge
     let mut stmt = conn
@@ -12419,6 +12426,94 @@ pub fn reset_local_sync_impl(app: &AppContext) -> Result<Value, String> {
     Ok(json!({
         "message": format!("本地同步状态重置成功，并已加入云端清理队列，共标记 {} 条历史日志为未同步", affected)
     }))
+}
+
+/// 刷新扫描后的自动上传。托盘面板「后台同步」关着时不上传（设置页的手动同步不受影响）；
+/// 暂停状态在扫描结束后、真正上传前才读，扫描途中关掉同步同样生效。
+/// 返回是否启动了上传线程。
+fn spawn_post_scan_sync(app: &AppContext) -> bool {
+    if crate::settings::background_sync_paused_now(app) {
+        return false;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        if crate::settings::background_sync_paused_now(&handle) {
+            return;
+        }
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        if let Err(e) = rt.block_on(background_sync_to_supabase_impl(&handle)) {
+            log::debug!("Post-scan cloud sync skipped/failed: {}", e);
+        }
+    });
+    true
+}
+
+#[cfg(test)]
+mod post_scan_sync_tests {
+    use super::*;
+
+    #[test]
+    fn sync_paused_during_a_scan_stops_the_post_scan_upload() {
+        let dir = std::env::temp_dir().join(format!(
+            "tokenledger-post-scan-sync-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        let app = AppContext::for_test(dir.clone());
+        // 扫描开始时同步还开着（旧实现在这里就定下了要不要上传）……
+        assert!(!crate::settings::load_settings(&app).background_sync_paused);
+        // ……扫描途中用户在托盘面板关掉同步，扫描结束后不能再启动上传。
+        crate::settings::update_background_pause(
+            &app,
+            crate::settings::BackgroundPause::Sync,
+            true,
+        )
+        .expect("pause sync");
+        assert!(!spawn_post_scan_sync(&app));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sync_paused_while_queued_behind_another_upload_starts_no_new_upload() {
+        let dir = std::env::temp_dir().join(format!(
+            "tokenledger-queued-sync-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        let app = AppContext::for_test(dir.clone());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            // 前一次上传占着 singleflight，自动上传排队（此时同步还开着）。
+            let held = acquire_cloud_sync_singleflight().await;
+            let queued_app = app.clone();
+            let queued =
+                tokio::spawn(async move { background_sync_to_supabase_impl(&queued_app).await });
+            tokio::task::yield_now().await;
+            // 排队期间用户暂停同步，然后前一次上传结束、释放锁。
+            crate::settings::update_background_pause(
+                &app,
+                crate::settings::BackgroundPause::Sync,
+                true,
+            )
+            .expect("pause sync");
+            drop(held);
+            // 排队的自动上传拿到锁后看到暂停，不新启动上传（也不会去读云端会话）。
+            assert_eq!(queued.await.expect("join"), Ok(None));
+        });
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
@@ -12471,16 +12566,7 @@ pub(crate) fn refresh_scan_with(
                 .collect::<Vec<_>>();
             discovered_price_models.sort();
             if post_scan_cloud_sync {
-                let handle = app.clone();
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .unwrap();
-                    if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
-                        log::debug!("Post-scan cloud sync skipped/failed: {}", e);
-                    }
-                });
+                spawn_post_scan_sync(app);
             }
             let price_message = if discovered_price_models.is_empty() {
                 String::new()
@@ -15422,7 +15508,25 @@ fn mark_uploaded_revisions(
 mod sync_revision_tests;
 
 pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
-    let _sync_flight = acquire_cloud_sync_singleflight().await;
+    let sync_flight = acquire_cloud_sync_singleflight().await;
+    sync_to_supabase_locked(app, sync_flight).await
+}
+
+/// 自动上传（调度器与刷新扫描后）。托盘面板「后台同步」的暂停状态在拿到 singleflight 之后才读：
+/// 排队等前一次上传期间被暂停，就不再新启动这一次；返回 `Ok(None)`。显式手动同步走
+/// [`sync_to_supabase_impl`]，不受暂停影响。
+pub async fn background_sync_to_supabase_impl(app: &AppContext) -> Result<Option<Value>, String> {
+    let sync_flight = acquire_cloud_sync_singleflight().await;
+    if crate::settings::background_sync_paused_now(app) {
+        return Ok(None);
+    }
+    sync_to_supabase_locked(app, sync_flight).await.map(Some)
+}
+
+async fn sync_to_supabase_locked(
+    app: &AppContext,
+    _sync_flight: tokio::sync::MutexGuard<'static, ()>,
+) -> Result<Value, String> {
     let (config, session_lease) = acquire_current_cloud_session(app).await?;
     let session = config
         .session
@@ -15430,8 +15534,13 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
         .ok_or_else(|| "Please sign in to Supabase first.".to_string())?;
     let db_path = db::get_db_path(app);
     db::init_db(&db_path).map_err(|e| e.to_string())?;
-    let fallback_machine = fallback_machine_id();
+    let fallback_machine = fallback_machine_id(&db_path);
     let history_guard = sync_history_guard::HistoryGuard::load(&db_path)?;
+    // Before anything is uploaded under the device id: rows old versions
+    // uploaded under the hostname move to it (once per account).
+    let moved_count =
+        device_cloud_move::move_legacy_cloud_rows(app, &db_path, &config, &session, &session_lease)
+            .await?;
     let has_pending_work = {
         let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
         conn.query_row(
@@ -15459,7 +15568,7 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
             &|_| 0.0,
         )
         .has_work();
-    if !has_pending_work && !gateway_dirty {
+    if !has_pending_work && !gateway_dirty && moved_count == 0 {
         session_lease.ensure_current(app)?;
         return Ok(json!({
             "success": true,
@@ -15728,6 +15837,7 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
 
     if sync_logs.is_empty()
         && purged_count == 0
+        && moved_count == 0
         && gateway_deletes.is_empty()
         && gateway_mark_ids.is_empty()
     {
@@ -15878,7 +15988,7 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
         }
     };
     let summary_refreshed = refresh_warning.is_none();
-    let message = if purged_count > 0 {
+    let mut message = if purged_count > 0 {
         format!(
             "已同步 {} 个云端小时聚合组，并完成 {} 项历史清理。",
             sync_logs.len(),
@@ -15887,12 +15997,18 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
     } else {
         format!("已同步 {} 个云端小时聚合组。", sync_logs.len())
     };
+    if moved_count > 0 {
+        message.push_str(&format!(
+            "本机原先按电脑名上传的 {moved_count} 条云端记录已改用随机设备 ID。"
+        ));
+    }
 
     Ok(json!({
         "success": true,
         "message": message,
         "synced_count": sync_logs.len(),
         "purged_count": purged_count,
+        "moved_count": moved_count,
         "summary_refreshed": summary_refreshed,
         "warning": history_guard.warning(refresh_warning),
         "history_pending": history_guard.pending()

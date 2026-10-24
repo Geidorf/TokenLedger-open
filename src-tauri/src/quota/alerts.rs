@@ -231,6 +231,13 @@ pub(crate) fn run_alerts(
         if let Err(error) = notifier.notify(&alert.title, &alert.body) {
             log::warn!("quota alert notification failed: {error}");
         }
+        crate::alert_webhook::forward(
+            app_data_dir,
+            crate::alert_webhook::AlertKind::Quota,
+            &alert.title,
+            &alert.body,
+            None,
+        );
     }
     planned
 }
@@ -389,7 +396,7 @@ fn scope_key(window: &QuotaWindowSnapshot) -> String {
 /// Same reading as the desktop panel (`readQuotaWindow`): only fresh percent
 /// windows count; remaining is `100 - round(used)`. Stale by status, age or a
 /// passed reset never alerts.
-fn fresh_percent_reading(
+pub(crate) fn fresh_percent_reading(
     window: &QuotaWindowSnapshot,
     now: DateTime<Utc>,
 ) -> Option<(u8, Option<DateTime<Utc>>)> {
@@ -444,7 +451,7 @@ fn notification_text(
     (title, body)
 }
 
-fn source_name(provider: &QuotaProviderEnvelope) -> String {
+pub(crate) fn source_name(provider: &QuotaProviderEnvelope) -> String {
     match provider.provider_id.as_str() {
         super::CODEX_PROVIDER_ID => "Codex".to_string(),
         super::CLAUDE_PROVIDER_ID => "Claude".to_string(),
@@ -453,7 +460,7 @@ fn source_name(provider: &QuotaProviderEnvelope) -> String {
     }
 }
 
-fn window_name(window: &QuotaWindowSnapshot) -> String {
+pub(crate) fn window_name(window: &QuotaWindowSnapshot) -> String {
     match window.window_minutes {
         Some(300) => return "5 小时额度".to_string(),
         Some(1_440) => return "每日额度".to_string(),

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Coins, FolderSearch, Power, Rocket, Timer } from "lucide-react";
+import { Coins, FolderSearch, Gauge, Power, Rocket, Timer } from "lucide-react";
 import type { AppSettings, BusyState } from "../../types";
+import { TRAY_TEXT_METRICS, parseTrayTextMetric } from "../../utils/widgetConfig";
 import {
   SettingsCard,
   SettingsGroup,
@@ -98,6 +99,7 @@ function CodexExtraDirsRow(props: ScanStartupSectionProps) {
 
 export function ScanStartupSection(props: ScanStartupSectionProps) {
   const { appSettings, busy } = props;
+  const metric = parseTrayTextMetric(appSettings.tray_text_metric);
   const autostartSupported = useAutostartSupported();
   return (
     <SettingsSection id="scan" title="扫描与启动">
@@ -161,11 +163,11 @@ export function ScanStartupSection(props: ScanStartupSectionProps) {
       </SettingsCard>
       {/* 两块挂件的开关已迁到独立的「桌面挂件」分区（T10.123）；这里只剩
           菜单栏文字，它是托盘图标本身的呈现，不是挂件窗口。 */}
-      <SettingsCard title="菜单栏">
+      <SettingsCard title="菜单栏与托盘">
         <SettingsGroup>
           <SettingsToggleRow
-            label="菜单栏显示今日预估费用（仅 macOS）"
-            hint="在菜单栏图标旁显示今天的预估费用；Windows 在悬停提示中显示。"
+            label="在菜单栏 / 托盘上显示数字"
+            hint="macOS 写在菜单栏图标旁；Windows 把托盘图标换成带数字的徽章。悬停提示始终显示今日费用与最紧额度。"
             icon={Coins}
             checked={appSettings.tray_text_enabled}
             disabled={busy.settings}
@@ -174,6 +176,31 @@ export function ScanStartupSection(props: ScanStartupSectionProps) {
               props.onSettingChange("tray_text_enabled", checked)
             }
           />
+          <SettingsRow
+            label="显示哪个数字"
+            hint={
+              metric === "quota"
+                ? "所有额度来源里可用比例最低的那条窗口，与额度看板同一口径；读不到额度时显示「—」。"
+                : "今天的预估费用，与看板同一个数。"
+            }
+            icon={Gauge}
+          >
+            <select
+              className="settings-select"
+              aria-label="菜单栏与托盘显示哪个数字"
+              value={metric}
+              disabled={busy.settings || !appSettings.tray_text_enabled}
+              onChange={(event) =>
+                props.onSettingChange("tray_text_metric", event.target.value)
+              }
+            >
+              {TRAY_TEXT_METRICS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </SettingsRow>
         </SettingsGroup>
       </SettingsCard>
     </SettingsSection>

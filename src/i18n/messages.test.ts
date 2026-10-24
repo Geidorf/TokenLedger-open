@@ -38,6 +38,8 @@ const FULLY_LOCALIZED = [
   'src/utils/detailGranularity.ts',
   'src/components/settings/LocalBackupCard.tsx',
   'src/components/settings/DatabaseHealthCard.tsx',
+  'src/components/settings/AlertWebhookCard.tsx',
+  'src/hooks/useAlertWebhooks.ts',
   'src/utils/quotaPace.ts',
   'src/components/SessionAnalysisDrawer.tsx',
   'src/types/sessionAnalysis.ts',

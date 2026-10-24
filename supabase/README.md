@@ -195,6 +195,7 @@
 - **`token_logs` 新增 `cache_write_tokens` 列**：`cached_tokens` 保留「缓存读+写」合计，`cache_write_tokens` 单独记录写入份额，供成本估算按读价（0.1×）/写价（1.25×）分别计价。脚本通过 `add column if not exists` 自动补列，1.2.0 之前的客户端写入时省略该字段即可，向后兼容。
 - **`total_tokens` 口径改为「有效 Token」= 输入 + 输出**：所有物化视图与 RPC 不再把缓存量计入 `total_tokens`，避免缓存量把总量放大几十倍、并让缓存密集的工具在图表里压垮其他工具。缓存通过 `cachedTokens` / `cacheReadTokens` / `cacheWriteTokens` 单独返回。
 - **RPC `summary` 与 `tools` 新增 `cacheReadTokens` / `cacheWriteTokens` 字段**，`history` 行新增 `cacheWriteTokens`。桌面端与 Android 端均向后兼容旧版 RPC（字段缺失时回退为 0，并在客户端以「输入+输出」重算有效 Token）。
+- 设备标识：`machine_id` 是本机随机生成的设备 ID（`tl-` 加 16 位十六进制）。旧版本用主机名；升级后每个账号第一次同步时，客户端用现有的行级权限把该主机名下的行复制到设备 ID（小时聚合的 `unique_key` 同步改名）再删除原行，不需要新迁移。
 - 桌面端首次启动 1.2.0 时会用本机 hostname 对云端 `tool='claude'` 的旧聚合行做一次性清理（修复历史上 Claude 按内容块重复计数的问题），随后按修正口径重新推送，无需手动操作。
 
 ## 当前交付文件

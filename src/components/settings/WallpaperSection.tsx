@@ -12,6 +12,7 @@ import {
   SettingsToggleRow,
 } from './SettingsPrimitives';
 import { t, useLang } from '../../i18n';
+import { deviceOptionLabel, useLocalDeviceId } from '../../hooks/useLocalDeviceId';
 
 export interface WallpaperSectionProps {
   appSettings: AppSettings;
@@ -33,6 +34,7 @@ export interface WallpaperSectionProps {
 
 export function WallpaperSection(props: WallpaperSectionProps) {
   useLang();
+  const localDeviceId = useLocalDeviceId();
   const { appSettings, busy } = props;
   const [activeAction, setActiveAction] = useState<'restore-consent' | 'disable-consent' | 'cleanup' | null>(null);
   const [pendingAction, setPendingAction] = useState<'cleanup' | null>(null);
@@ -212,7 +214,7 @@ export function WallpaperSection(props: WallpaperSectionProps) {
                 <option value="all_cloud">{t('wall.devices.all')}</option>
                 {props.deviceList.map((machine) => (
                   <option key={machine} value={machine}>
-                    {machine}
+                    {deviceOptionLabel(machine, localDeviceId)}
                   </option>
                 ))}
               </select>

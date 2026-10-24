@@ -289,6 +289,9 @@ impl PublishIo for AppIo {
 struct Publisher<I: PublishIo> {
     io: I,
     machine: String,
+    /// The machine old versions derived the device from (the hostname), until
+    /// its snapshot is cleared; phones would list this computer twice.
+    legacy: Option<String>,
     published: Option<Published>,
     backoff: Duration,
     /// The last pass is waiting out a retry delay; budget-check wakeups must
@@ -302,10 +305,41 @@ impl<I: PublishIo> Publisher<I> {
         Self {
             io,
             machine,
+            legacy: None,
             published: None,
             backoff: MIN_BACKOFF,
             hold: false,
             acted_on: false,
+        }
+    }
+
+    fn with_legacy(mut self, legacy: String) -> Self {
+        self.legacy = (legacy != self.machine).then_some(legacy);
+        self
+    }
+
+    /// Deletes the snapshot published under the old device, once per launch.
+    /// A failure is retried by the next pass and does not hold up this one.
+    async fn clear_legacy(&mut self, user: &str, switch_on: bool) {
+        let Some(legacy) = &self.legacy else {
+            return;
+        };
+        let device = device_id(user, legacy);
+        match self
+            .io
+            .rpc(
+                user,
+                "clear_budget_snapshot_v1",
+                json!({ "p_device": device }),
+                switch_on,
+            )
+            .await
+        {
+            Ok(_) | Err(RpcError::NotDeployed) => self.legacy = None,
+            Err(RpcError::Cancelled | RpcError::AccountChanged) => {}
+            Err(RpcError::Failed(error)) => {
+                log::warn!("old budget snapshot clear failed: {error}");
+            }
         }
     }
 
@@ -357,6 +391,7 @@ impl<I: PublishIo> Publisher<I> {
                 return self.back_off();
             }
         };
+        self.clear_legacy(&user, false).await;
         let device = published
             .filter(|previous| previous.user == user)
             .map(|previous| previous.device)
@@ -419,6 +454,7 @@ impl<I: PublishIo> Publisher<I> {
         {
             self.published = None;
         }
+        self.clear_legacy(&user, true).await;
         let device = device_id(&user, &self.machine);
         let statuses = self.io.statuses(&settings).await;
         let snapshot = build_snapshot(&device, &settings, &statuses, Utc::now());
@@ -498,7 +534,9 @@ impl<I: PublishIo> Publisher<I> {
 /// Runs for the life of the process; a pass is a settings read when the switch is off.
 pub fn start(app: Arc<AppContext>) {
     tauri::async_runtime::spawn(async move {
-        let mut publisher = Publisher::new(AppIo { app }, crate::commands::local_machine_id());
+        let machine = crate::commands::local_machine_id(&app);
+        let mut publisher = Publisher::new(AppIo { app }, machine)
+            .with_legacy(crate::device_identity::legacy_machine_id());
         loop {
             let deadline = Instant::now() + publisher.tick().await;
             loop {
@@ -821,6 +859,42 @@ mod tests {
 
         fn publisher(io: FakeIo) -> Publisher<FakeIo> {
             Publisher::new(io, "machine-1".to_string())
+        }
+
+        #[test]
+        fn the_hostname_snapshot_is_cleared_once_before_publishing() {
+            let mut publisher = publisher(FakeIo::new(true)).with_legacy("OLD-PC".to_string());
+            publisher
+                .io
+                .reply(Err(RpcError::Failed("unavailable".to_string())));
+            assert_eq!(run(publisher.tick()), TICK, "publishing goes ahead");
+            publisher.published.as_mut().unwrap().key = "stale".to_string();
+            run(publisher.tick());
+            publisher.published.as_mut().unwrap().key = "stale".to_string();
+            run(publisher.tick());
+            let calls = publisher.io.calls.borrow();
+            let old = device_id("user-1", "OLD-PC");
+            let new = device_id("user-1", "machine-1");
+            let sent: Vec<(&str, &str)> = calls
+                .iter()
+                .map(|call| (call.0.as_str(), call.1.as_str()))
+                .collect();
+            assert_eq!(
+                sent,
+                [
+                    ("clear_budget_snapshot_v1", old.as_str()),
+                    ("publish_budget_snapshot_v1", new.as_str()),
+                    ("clear_budget_snapshot_v1", old.as_str()),
+                    ("publish_budget_snapshot_v1", new.as_str()),
+                    ("publish_budget_snapshot_v1", new.as_str()),
+                ]
+            );
+        }
+
+        #[test]
+        fn the_same_name_has_no_old_snapshot() {
+            let publisher = publisher(FakeIo::new(true)).with_legacy("machine-1".to_string());
+            assert!(publisher.legacy.is_none());
         }
 
         #[test]

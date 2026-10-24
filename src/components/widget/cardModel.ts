@@ -24,7 +24,7 @@ export const TIER_WORDS: Record<QuotaLevel, string> = { ok: '充足', warn: '偏
  * 这里给设置页预览与浏览器走查用。托盘挂件 = 桌面小组件 + 26px 顶栏。
  */
 export const TRAY_BAR_EXTRA = 26;
-const DESKTOP_HEIGHTS: Record<WidgetLayout, number> = { usage: 388, combo: 172, quota: 272, compact: 104, routing: 300 };
+const DESKTOP_HEIGHTS: Record<WidgetLayout, number> = { usage: 388, combo: 172, quota: 272, compact: 104, routing: 300, panel: 560 };
 export const WIDGET_CARD_WIDTH = 364;
 
 export function widgetCardSize(surface: WidgetSurface, layout: WidgetLayout): { width: number; height: number } {

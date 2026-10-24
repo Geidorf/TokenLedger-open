@@ -1,5 +1,6 @@
 import { emit } from '@tauri-apps/api/event';
 import { mockUsageAnomalyCommand } from './devMockUsageAnomaly';
+import { mockAlertWebhookCommand, resetMockAlertWebhooks } from './devMockAlertWebhook';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import packageJson from '../package.json';
 import bundledPrices from '../src-tauri/prices.json';
@@ -1620,6 +1621,20 @@ let mockCloudAuthenticated = true;
 // access off. The first `refresh_scan` puts the sample ledger back, so the
 // onboarding steps can be walked through end to end.
 let mockFreshInstall = false;
+
+function mockTrayPanelStatus() {
+  const enabled = Boolean(mockSettings.model_access_enabled);
+  return {
+    gatewayEnabled: enabled,
+    gatewayRunning: enabled,
+    gatewayPort: 3421,
+    gatewayFailed: false,
+    gatewayNoProvider: false,
+    syncPaused: Boolean(mockSettings.background_sync_paused),
+    scanPaused: Boolean(mockSettings.background_scan_paused),
+    scanIntervalSecs: mockSettings.scan_interval_secs,
+  };
+}
 let mockFreshLedger: StatsData['history'] = [];
 // T10.282：Claude 一键接入默认停在「未接入」，写入后切到已接入并留下备份。
 let mockClaudeStatuslineWired = false;
@@ -2128,6 +2143,7 @@ export function installDevMockTauri() {
   }
   mockCostProfile = emptyMockCostProfile();
   resetMockProjectDimension();
+  resetMockAlertWebhooks();
   attachE2eHarness();
   mockIPC((cmd, args) => {
     const e2e = resolveE2eOverride(cmd, args);
@@ -2137,7 +2153,11 @@ export function installDevMockTauri() {
       : {};
     const anomaly = mockUsageAnomalyCommand(cmd, payload);
     if (anomaly.handled) return anomaly.value;
+    const webhook = mockAlertWebhookCommand(cmd, payload);
+    if (webhook.handled) return webhook.value;
     switch (cmd) {
+      case 'get_device_id':
+        return 'Studio-PC';
       case 'get_cloud_config':
         if (mockFreshInstall && !mockCloudAuthenticated) return { supabase_url: '', supabase_key: '' };
         return { supabase_url: 'https://demo.supabase.co', supabase_key: 'sb_publishable_demo' };
@@ -2162,6 +2182,17 @@ export function installDevMockTauri() {
       case 'gateway_set_model_access':
         mockSettings = { ...mockSettings, model_access_enabled: Boolean(payload.enabled), model_access_version: 1 };
         return mockSettings;
+      case 'tray_panel_toggle': {
+        const enabled = Boolean(payload.enabled);
+        if (payload.target === 'gateway' && !enabled) throw new Error('关闭网关请在主窗口「模型接入」完成');
+        if (payload.target === 'gateway') mockSettings = { ...mockSettings, model_access_enabled: enabled, model_access_version: 1 };
+        else if (payload.target === 'sync') mockSettings = { ...mockSettings, background_sync_paused: !enabled };
+        else if (payload.target === 'scan') mockSettings = { ...mockSettings, background_scan_paused: !enabled };
+        else throw new Error('未知的快捷开关');
+        return mockTrayPanelStatus();
+      }
+      case 'tray_panel_status':
+        return mockTrayPanelStatus();
       case 'get_cost_profile':
         return mockIpcJson(mockCostProfile);
       case 'validate_cost_profile': {

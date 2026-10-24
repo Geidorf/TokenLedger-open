@@ -175,9 +175,9 @@ pub fn save(
 /// This computer's scheduled-backup prefix. Computers sharing one folder
 /// (a synced drive) each keep and prune only their own files: another
 /// computer's backups are the only ones that carry its gateway history.
-pub fn computer_prefix() -> String {
+pub fn computer_prefix(app: &AppContext) -> String {
     use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(crate::commands::local_machine_id().as_bytes());
+    let digest = Sha256::digest(crate::commands::local_machine_id(app).as_bytes());
     let tag: String = digest[..4]
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -237,7 +237,7 @@ pub fn run_now(
     } else {
         backup_dir(&config.dir)?
     };
-    let prefix = computer_prefix();
+    let prefix = computer_prefix(app);
     let outcome = secrets
         .get(PASSPHRASE_ACCOUNT)
         .and_then(|passphrase| passphrase.ok_or_else(|| "还没有设置自动备份的密码。".to_string()))

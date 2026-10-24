@@ -3289,13 +3289,34 @@ pub async fn set_quota_snapshot_sync_enabled(
     }
 }
 
+/// 谁发起的这次额度同步。只有调度器的自动同步要服从托盘面板的「后台同步」暂停；
+/// 设置页的「立即同步」和开启同步后的首传是用户明确要的，照常上传。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuotaSyncTrigger {
+    Explicit,
+    Background,
+}
+
 pub(crate) async fn sync_quota_snapshots_impl(app: &AppContext) -> Result<QuotaSyncStatus, String> {
-    sync_quota_snapshots_impl_with_retry(app, false).await
+    sync_quota_snapshots_impl_with_retry(app, false, QuotaSyncTrigger::Explicit).await
+}
+
+/// 调度器用的自动额度同步：读完云端与本机额度、真正发 upsert 前再读一次暂停状态。
+pub(crate) async fn background_sync_quota_snapshots_impl(
+    app: &AppContext,
+) -> Result<QuotaSyncStatus, String> {
+    sync_quota_snapshots_impl_with_retry(app, false, QuotaSyncTrigger::Background).await
+}
+
+/// 自动同步在内部读取（可能要几秒）结束后的最后一道暂停检查，读磁盘上的最新设置。
+fn background_quota_upload_paused(app: &AppContext, trigger: QuotaSyncTrigger) -> bool {
+    trigger == QuotaSyncTrigger::Background && settings::background_sync_paused_now(app)
 }
 
 async fn sync_quota_snapshots_impl_with_retry(
     app: &AppContext,
     retry_keyring_read: bool,
+    trigger: QuotaSyncTrigger,
 ) -> Result<QuotaSyncStatus, String> {
     if coordinator().sync_is_blocked() || has_local_stop_pending(app) {
         return Ok(get_quota_snapshot_sync_status_impl(app));
@@ -3332,6 +3353,9 @@ async fn sync_quota_snapshots_impl_with_retry(
         }
         let current_settings = settings::load_settings(app);
         if !current_settings.quota_snapshot_sync_enabled {
+            return Err(QuotaRpcError::Superseded);
+        }
+        if background_quota_upload_paused(app, trigger) {
             return Err(QuotaRpcError::Superseded);
         }
         let now = Utc::now();
@@ -3455,7 +3479,12 @@ async fn sync_quota_snapshots_impl_with_retry(
 pub async fn sync_quota_snapshots_now(
     app_state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<QuotaSyncStatus, String> {
-    sync_quota_snapshots_impl_with_retry(app_state.inner().as_ref(), true).await
+    sync_quota_snapshots_impl_with_retry(
+        app_state.inner().as_ref(),
+        true,
+        QuotaSyncTrigger::Explicit,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -4070,6 +4099,48 @@ mod tests {
         }
         drop(workers);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn background_quota_upload_honors_a_pause_set_during_the_internal_read() {
+        let (app, root) = test_app();
+        settings::save_settings_file(&app, &AppSettings::default()).expect("initial settings");
+        assert!(!background_quota_upload_paused(
+            &app,
+            QuotaSyncTrigger::Background
+        ));
+        // 内部读取期间用户在托盘面板关了后台同步：只改磁盘上的暂停字段。
+        let paused = AppSettings {
+            background_sync_paused: true,
+            ..AppSettings::default()
+        };
+        settings::save_settings_file(&app, &paused).expect("paused settings");
+        assert!(background_quota_upload_paused(
+            &app,
+            QuotaSyncTrigger::Background
+        ));
+        assert!(!background_quota_upload_paused(
+            &app,
+            QuotaSyncTrigger::Explicit
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn background_pause_is_rechecked_after_the_reads_and_before_the_upsert() {
+        let source = include_str!("quota_sync.rs");
+        let body_start = source
+            .find("async fn sync_quota_snapshots_impl_with_retry(")
+            .expect("sync body");
+        let body = &source[body_start..];
+        let local_read = body
+            .find("get_local_quota_providers_impl_with_retry_flag")
+            .expect("local provider read");
+        let pause_check = body
+            .find("background_quota_upload_paused(app, trigger)")
+            .expect("pause re-check");
+        let upsert = body.find("upsert_function_name(").expect("upsert call");
+        assert!(local_read < pause_check && pause_check < upsert);
     }
 
     #[test]

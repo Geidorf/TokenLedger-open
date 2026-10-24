@@ -526,10 +526,8 @@ pub(crate) fn persist_scan_batch_with_antigravity(
     let tx = conn.transaction()?;
     let discovered_models = record_discovered_models(&tx, &logs)?;
 
-    // Retrieve machine ID (hostname) to write
-    let machine_id = hostname::get()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown_machine".to_string());
+    // The device id new rows are stamped with
+    let machine_id = crate::device_identity::for_db_or_unknown(db_path);
 
     let mut inserted = if let Some(plan) = codex_rebuild_plan.as_ref() {
         crate::db::prepare_codex_rebuild_swap(&tx, &machine_id, plan)?

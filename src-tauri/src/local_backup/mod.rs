@@ -221,7 +221,7 @@ pub fn collect(app: &AppContext, gateway: &Gateway) -> Result<Bundle, String> {
         schema: SCHEMA,
         created: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
-        machine: crate::commands::local_machine_id(),
+        machine: crate::commands::local_machine_id(app),
         ledger,
         scan_cumulative,
         gateway_requests: accounting::read_all(gateway.dir())?,
@@ -577,20 +577,22 @@ struct Provenance {
     machine: Option<usize>,
     sync_status: Option<usize>,
     cloud_user: Option<usize>,
-    local: String,
+    /// This computer's ids: its device id and the host names its rows
+    /// carried before it had one.
+    local: Vec<String>,
     /// The backup's computer when it is not this one.
     foreign: Option<String>,
 }
 
 impl Provenance {
-    fn new(columns: &[String], bundle_machine: &str) -> Self {
+    fn new(conn: &Connection, columns: &[String], bundle_machine: &str) -> Self {
         let at = |name: &str| columns.iter().position(|column| column == name);
-        let local = crate::commands::local_machine_id();
+        let local = own_machine_ids(conn);
         Self {
             machine: at("machine_id"),
             sync_status: at("sync_status"),
             cloud_user: at("cloud_user_id"),
-            foreign: (!bundle_machine.is_empty() && bundle_machine != local)
+            foreign: (!bundle_machine.is_empty() && !local.iter().any(|id| id == bundle_machine))
                 .then(|| bundle_machine.to_string()),
             local,
         }
@@ -604,7 +606,7 @@ impl Provenance {
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty());
         match own {
-            Some(id) if id != self.local => Some(id.to_string()),
+            Some(id) if !self.local.iter().any(|own| own == id) => Some(id.to_string()),
             Some(_) => None,
             None => self.foreign.clone(),
         }
@@ -687,7 +689,7 @@ fn ledger_counts(
     let key = unique_key_index(&table.columns)?;
     let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
     let shared = shared_cumulative_sources(&conn, cumulative)?;
-    let provenance = Provenance::new(&table.columns, bundle_machine);
+    let provenance = Provenance::new(&conn, &table.columns, bundle_machine);
     let mut stmt = conn
         .prepare(&format!(
             "SELECT 1 FROM {LEDGER_TABLE} WHERE unique_key = ?1"
@@ -775,8 +777,22 @@ fn merged_overrides(
     merged
 }
 
-fn same_machine(bundle: &Bundle) -> bool {
-    !bundle.machine.is_empty() && bundle.machine == crate::commands::local_machine_id()
+/// The ids rows of this computer carry: its device id, then the host names
+/// it migrated from (backups made before the device id name the host).
+fn own_machine_ids(conn: &Connection) -> Vec<String> {
+    let Ok(device) = crate::device_identity::for_connection(conn) else {
+        return Vec::new();
+    };
+    let mut ids = crate::device_identity::legacy_machine_ids(conn, &device).unwrap_or_default();
+    ids.insert(0, device);
+    ids
+}
+
+fn same_machine(db_path: &Path, bundle: &Bundle) -> bool {
+    !bundle.machine.is_empty()
+        && db::get_connection(db_path)
+            .map(|conn| own_machine_ids(&conn).contains(&bundle.machine))
+            .unwrap_or(false)
 }
 
 /// What restoring `bundle` here would do, item by item.
@@ -834,14 +850,14 @@ pub fn preview(
         created: bundle.created.clone(),
         app_version: bundle.app_version.clone(),
         machine: bundle.machine.clone(),
-        same_machine: same_machine(bundle),
+        same_machine: same_machine(&db_path, bundle),
         ledger: ledger_counts(
             &db_path,
             &bundle.ledger,
             &bundle.scan_cumulative,
             &bundle.machine,
         )?,
-        gateway_requests_restorable: same_machine(bundle),
+        gateway_requests_restorable: same_machine(&db_path, bundle),
         gateway_requests: gateway_counts(gateway, &bundle.gateway_requests)?,
         providers,
         providers_without_key,
@@ -1043,7 +1059,7 @@ fn import_ledger(
     shared: &BTreeSet<String>,
     bundle_machine: &str,
 ) -> Result<usize, String> {
-    let provenance = Provenance::new(&table.columns, bundle_machine);
+    let provenance = Provenance::new(tx, &table.columns, bundle_machine);
     if table.rows.is_empty() {
         return Ok(0);
     }
@@ -1333,7 +1349,7 @@ pub fn apply(
             &bundle.machine,
         )?;
     }
-    if sections.gateway_requests && same_machine(bundle) {
+    if sections.gateway_requests && same_machine(&db_path, bundle) {
         // The backup is a snapshot: this computer may have uploaded more for
         // an hour after it was made, so every restored hour stays protected
         // from overwriting cloud history. That is the later of the source's

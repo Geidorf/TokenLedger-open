@@ -11,6 +11,7 @@
     "allow-gateway-routing-feed",
     "allow-gateway-external-feed",
     "allow-get-app-version",
+    "allow-get-device-id",
     "allow-get-claude-statusline-command",
     "allow-get-claude-quota-setup",
     "allow-detect-quota-sources",
@@ -47,6 +48,11 @@
     "allow-get-usage-anomalies",
     "allow-get-usage-anomaly-settings",
     "allow-set-usage-anomaly-settings",
+    "allow-get-alert-webhooks",
+    "allow-set-alert-webhooks-enabled",
+    "allow-save-alert-webhook",
+    "allow-delete-alert-webhook",
+    "allow-test-alert-webhook",
     "allow-get-quota-snapshot-sync-status",
     "allow-set-quota-snapshot-sync-enabled",
     "allow-sync-quota-snapshots-now",
@@ -116,6 +122,8 @@
     "allow-widget-pointer-hover",
     "allow-set-desktop-widget-enabled",
     "allow-focus-main-window",
-    "allow-open-main-settings"
+    "allow-open-main-settings",
+    "allow-tray-panel-status",
+    "allow-tray-panel-toggle"
   ]
 }

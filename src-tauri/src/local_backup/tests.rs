@@ -43,7 +43,7 @@ impl Computer {
                 "INSERT INTO token_logs (tool, model, input_tokens, output_tokens, cached_tokens,
                      cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status)
                  VALUES ('claude', 'claude-sonnet-5', ?1, 10, 0, 0, '2026-10-20 10:00:00', 's1', ?2, 0.5, ?3, 1)",
-                params![input, key, crate::commands::local_machine_id()],
+                params![input, key, crate::commands::local_machine_id(&self.app)],
             )
             .unwrap();
     }
@@ -202,9 +202,11 @@ fn restore_merges_rows_by_unique_key_and_adds_setup() {
         None,
     )
     .unwrap();
-    let bundle = sealed_roundtrip(&old.export());
+    let mut bundle = sealed_roundtrip(&old.export());
 
     let new = Computer::new("new");
+    // The same computer after a reinstall that kept its device id.
+    bundle.machine = crate::commands::local_machine_id(&new.app);
     // The new computer already scanned one of the same calls, differently.
     new.insert("k2", 999);
     accounting::import(new.gateway.dir(), &[request("r2", 60)], None).unwrap();
@@ -462,13 +464,13 @@ fn exports_are_listed_newest_first_and_auto_backups_pruned() {
         fs::write(
             dir.join(format!(
                 "{}20261001-00000{index}.{EXTENSION}",
-                auto::computer_prefix()
+                auto::computer_prefix(&old.app)
             )),
             b"x",
         )
         .unwrap();
     }
-    assert_eq!(auto::prune(&dir, &auto::computer_prefix(), 2), 2);
+    assert_eq!(auto::prune(&dir, &auto::computer_prefix(&old.app), 2), 2);
     let names: Vec<String> = list_files(&dir)
         .unwrap()
         .into_iter()
@@ -502,7 +504,7 @@ fn scheduled_backup_needs_a_passphrase_and_records_its_run() {
     );
 
     let path = auto::run_now(&old.app, &old.gateway, &secrets, FAST).unwrap();
-    assert!(path.contains(&auto::computer_prefix()));
+    assert!(path.contains(&auto::computer_prefix(&old.app)));
     let config = auto::load(&old.app);
     assert_eq!(config.last_file.as_deref(), Some(path.as_str()));
     assert!(config.last_error.is_none());
@@ -756,6 +758,21 @@ fn gateway_requests_restore_only_onto_the_computer_that_made_them() {
     let mut bundle = sealed_roundtrip(&old.export());
 
     let new = Computer::new("new");
+    // Another data folder has another device id.
+    let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
+    assert!(!plan.same_machine);
+    bundle.machine = crate::commands::local_machine_id(&new.app);
+    let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
+    assert!(plan.same_machine && plan.gateway_requests_restorable);
+    // A backup made before the device id names the host this ledger was
+    // migrated from.
+    crate::device_identity::migrate_local(
+        &new.conn(),
+        "old-host-name",
+        &crate::commands::local_machine_id(&new.app),
+    )
+    .unwrap();
+    bundle.machine = "old-host-name".to_string();
     let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
     assert!(plan.same_machine && plan.gateway_requests_restorable);
 
@@ -797,6 +814,7 @@ fn restored_gateway_hours_never_overwrite_cloud_history() {
     bundle.created = "2026-10-22T00:00:00Z".to_string();
 
     let new = Computer::new("new");
+    bundle.machine = crate::commands::local_machine_id(&new.app);
     apply(
         &new.app,
         &new.gateway,
@@ -1001,7 +1019,7 @@ fn a_cumulative_source_scanned_on_both_sides_is_not_counted_twice() {
 fn a_rebuild_never_counts_a_cumulative_source_twice() {
     use crate::scanner::{runner::insert_cumulative_delta, types::LogRecord};
     let pc = Computer::new("pc");
-    let machine = crate::commands::local_machine_id();
+    let machine = crate::commands::local_machine_id(&pc.app);
     let scan = |total: i64| {
         let mut conn = pc.conn();
         let tx = conn.transaction().unwrap();

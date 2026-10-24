@@ -1,0 +1,51 @@
+/* 设置 › 预算提醒 › 推送到群聊与 Webhook。 */
+.alert-webhook-endpoint + .alert-webhook-endpoint { border-top: 1px solid var(--color-border-faint); }
+.alert-webhook-endpoint .settings-row-hint { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.alert-webhook-endpoint[data-enabled="false"] .settings-row-hint { opacity: 0.55; }
+.alert-webhook-endpoint > .settings-hint,
+.alert-webhook-endpoint > .settings-error,
+.alert-webhook-note {
+  margin: 0 16px 10px 50px;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+.alert-webhook-endpoint > .settings-hint { color: var(--color-text-secondary); }
+.alert-webhook-note { color: var(--color-warning); }
+.alert-webhook-form { margin-top: 12px; }
+.alert-webhook-form-title {
+  margin: 0 0 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.alert-webhook-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.alert-webhook-fields > .settings-select,
+.alert-webhook-fields > .settings-input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.alert-webhook-url { width: 100%; font-family: var(--font-mono, ui-monospace, monospace); }
+.alert-webhook-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.alert-webhook-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+.alert-webhook-check input { accent-color: var(--color-primary); }
+.alert-webhook-check:has(input:disabled) { opacity: 0.5; }
