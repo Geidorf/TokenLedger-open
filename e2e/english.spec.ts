@@ -183,7 +183,8 @@ test.describe('英文界面', () => {
 
   test('概览：模型费用分布与模型专属看板是英文', async ({ page }) => {
     await openEnglish(page, 'dashboard');
-    const open = page.getByRole('button', { name: /^Open the .+ dashboard$/ }).first();
+    const open = page.locator('.model-cost-drilldown-btn').first();
+    await expect(open).toHaveAccessibleName(/^Open the .+ dashboard$/);
     await open.scrollIntoViewIfNeeded();
     await open.click();
     const dialog = page.getByRole('dialog');
@@ -195,6 +196,26 @@ test.describe('英文界面', () => {
     await expect(dialog).not.toContainText(/[\u4e00-\u9fff]/);
     await dialog.getByRole('button', { name: 'Close dashboard' }).click();
     await expect(dialog).toBeHidden();
+  });
+
+  test('概览：用量拆分与设置目录是英文', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await openEnglish(page, 'dashboard');
+    await page.locator('main').getByRole('button', { name: 'Year', exact: true }).click();
+    const split = page.locator('section.usage-split');
+    await split.scrollIntoViewIfNeeded();
+    await expect(split).toContainText('Usage split');
+    await split.locator('.usage-split-pick', { hasText: 'codex' }).first().click();
+    await expect(split.getByRole('status')).toContainText('Only Agent codex');
+    await split.getByRole('group', { name: 'Split by' }).getByRole('button', { name: 'Model' }).click();
+    await expect(split.getByRole('group', { name: 'Split metric' }).getByRole('button', { name: 'Cost' })).toBeDisabled();
+    await split.getByRole('button', { name: 'Show all' }).click();
+    await expect(split.getByRole('status')).toHaveCount(0);
+    await expect(split).not.toContainText(/[\u4e00-\u9fff]/);
+
+    await page.goto('/?lang=en#settings-data');
+    await expect(page.getByRole('searchbox', { name: 'Search settings' })).toBeVisible();
+    await expect(page.getByText('Switches and intervals save automatically', { exact: false })).toBeVisible();
   });
 
   test('设置：云端账户与壁纸是英文', async ({ page }) => {

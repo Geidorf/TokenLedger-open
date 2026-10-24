@@ -1,6 +1,7 @@
 import type { StatsData } from '../types';
 import { effectiveTokens } from '../types';
 import { splitModelCacheRead } from './modelDistribution';
+import { localized } from '../i18n';
 
 /**
  * 统一「Split by」（对齐 magpie Usage 页）：同一份 StatsData 按 Agent、模型或设备拆分，
@@ -39,18 +40,25 @@ export interface SplitResult {
   focusIgnored: boolean;
 }
 
-export const SPLIT_DIMENSIONS: { id: SplitDimension; label: string }[] = [
-  { id: 'agent', label: 'Agent' },
-  { id: 'model', label: '模型' },
-  { id: 'device', label: '设备' },
-  { id: 'account', label: '账号' },
-];
+export const SPLIT_DIMENSION_LABELS: Record<SplitDimension, string> = localized({
+  agent: 'split.dim.agent',
+  model: 'split.dim.model',
+  device: 'split.dim.device',
+  account: 'split.dim.account',
+});
 
-export const SPLIT_METRICS: { id: SplitMetric; label: string }[] = [
-  { id: 'tokens', label: 'Token' },
-  { id: 'requests', label: '记录数' },
-  { id: 'cost', label: '费用' },
-];
+export const SPLIT_METRIC_LABELS: Record<SplitMetric, string> = localized({
+  tokens: 'split.metric.tokens',
+  requests: 'split.metric.requests',
+  cost: 'split.metric.cost',
+});
+
+// label 是 getter，跟随界面语言。
+export const SPLIT_DIMENSIONS: { id: SplitDimension; readonly label: string }[] = (['agent', 'model', 'device', 'account'] as const)
+  .map((id) => ({ id, get label() { return SPLIT_DIMENSION_LABELS[id]; } }));
+
+export const SPLIT_METRICS: { id: SplitMetric; readonly label: string }[] = (['tokens', 'requests', 'cost'] as const)
+  .map((id) => ({ id, get label() { return SPLIT_METRIC_LABELS[id]; } }));
 
 const ALL_METRICS: SplitMetric[] = ['tokens', 'requests', 'cost'];
 

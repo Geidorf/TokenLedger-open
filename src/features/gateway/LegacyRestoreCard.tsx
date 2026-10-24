@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import type { RequestConfirmation } from '../../utils/confirmation';
 import { errorText, legacyInspect, legacyRestore } from './api';
 import type { LegacyInspection } from './types';
+import { t, useLang } from '../../i18n';
 
 export function LegacyRestoreCard({ onConfirm, onResolved, allowGatewayChoice = true }: {
   onConfirm: RequestConfirmation;
   onResolved: (chooseGateway: boolean) => void;
   allowGatewayChoice?: boolean;
 }) {
+  useLang();
   const [view, setView] = useState<LegacyInspection | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,7 +18,7 @@ export function LegacyRestoreCard({ onConfirm, onResolved, allowGatewayChoice = 
     setBusy(true);
     try {
       const next = await legacyInspect();
-      if (!next || typeof next.state !== 'string') throw new Error('旧版恢复检查未取得有效结果。');
+      if (!next || typeof next.state !== 'string') throw new Error(t('legacy.invalid'));
       setView(next); setError('');
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
@@ -25,20 +27,20 @@ export function LegacyRestoreCard({ onConfirm, onResolved, allowGatewayChoice = 
   const resolve = async (keep: boolean, choose: boolean) => {
     if (!view?.receiptId || !view.configVersion) return;
     const confirmed = await onConfirm({
-      title: keep ? '保留当前 Codex 配置？' : '恢复旧版 Codex 选择？',
+      title: keep ? t('legacy.keepTitle') : t('legacy.restoreTitle'),
       description: keep
-        ? '配置文件保持当前内容。旧恢复入口会标记为“已保留”，旧元数据和恢复凭据仍保存。'
-        : '只撤销旧版写入的模型供应商选择键，以及当时受管的模型键。其他配置保持当前内容。恢复只影响新会话。',
-      confirmLabel: keep ? '保留当前配置' : '恢复选择',
+        ? t('legacy.keepBody')
+        : t('legacy.restoreBody'),
+      confirmLabel: keep ? t('legacy.keepConfirm') : t('legacy.restoreConfirm'),
     });
     if (!confirmed) return;
     setBusy(true); setError('');
     try {
       const next = await legacyRestore(view.receiptId, view.configVersion, keep);
       setView(next);
-      setResult(keep ? '已保留当前配置，旧入口已封存。' : choose
-        ? '旧版选择已恢复。请在 Codex 行选择网关模型，再预览并确认接入。'
-        : '旧版选择已恢复，旧凭据已封存。');
+      setResult(keep ? t('legacy.keptResult') : choose
+        ? t('legacy.restoredChoose')
+        : t('legacy.restoredSealed'));
       onResolved(choose);
     } catch (e) {
       setError(errorText(e));
@@ -50,22 +52,22 @@ export function LegacyRestoreCard({ onConfirm, onResolved, allowGatewayChoice = 
   const pending = view?.receiptId && !['none', 'restored', 'kept'].includes(view.state);
   if (!pending && !error && !result && (!view || view.profileCount === 0)) return null;
   return (
-    <section className="mw-card mw-editor" aria-label="旧版配置恢复">
-      <h3>旧版配置恢复</h3>
+    <section className="mw-card mw-editor" aria-label={t('legacy.title')}>
+      <h3>{t('legacy.title')}</h3>
       {pending ? (
         <>
-          <p className="mw-caption">发现旧版 Codex 恢复凭据{view.state === 'pending' || view.state === 'indeterminate' ? '（上次操作结果尚未确认）' : ''}。{allowGatewayChoice ? '先处理旧选择，再接入网关。' : '可以直接恢复或保留当前配置，无需开启模型接入。'}</p>
+          <p className="mw-caption">{t('legacy.found', { unconfirmed: view.state === 'pending' || view.state === 'indeterminate' ? t('legacy.unconfirmed') : '', next: allowGatewayChoice ? t('legacy.nextGateway') : t('legacy.nextDirect') })}</p>
           {view.reason && <p className="mw-note is-warning">{view.reason}</p>}
           <div className="mw-form-actions">
-            <button type="button" className="mw-btn is-primary" disabled={busy || !view.canRestore} onClick={() => void resolve(false, false)}>恢复旧选择（推荐）</button>
-            {allowGatewayChoice && <button type="button" className="mw-btn" disabled={busy || !view.canRestore} onClick={() => void resolve(false, true)}>恢复后选择网关模型</button>}
-            <button type="button" className="mw-btn is-ghost" disabled={busy || !view.configVersion} onClick={() => void resolve(true, false)}>保留当前配置</button>
+            <button type="button" className="mw-btn is-primary" disabled={busy || !view.canRestore} onClick={() => void resolve(false, false)}>{t('legacy.restoreRecommended')}</button>
+            {allowGatewayChoice && <button type="button" className="mw-btn" disabled={busy || !view.canRestore} onClick={() => void resolve(false, true)}>{t('legacy.restoreThenChoose')}</button>}
+            <button type="button" className="mw-btn is-ghost" disabled={busy || !view.configVersion} onClick={() => void resolve(true, false)}>{t('legacy.keepConfirm')}</button>
           </div>
         </>
-      ) : view && <p className="mw-caption">{view.profileCount} 条旧版配置元数据已保留。{view.state === 'kept' ? '已选择保留当前配置。' : view.state === 'restored' ? '旧版选择已恢复。' : '没有待恢复的 Codex 选择。'}旧配置不会自动复制密钥或接入网关。</p>}
+      ) : view && <p className="mw-caption">{t('legacy.kept', { n: view.profileCount, state: view.state === 'kept' ? t('legacy.state.kept') : view.state === 'restored' ? t('legacy.state.restored') : t('legacy.state.none') })}</p>}
       {result && <p className="mw-note" role="status">{result}</p>}
       {error && <p className="mw-note is-danger" role="alert">{error}</p>}
-      {(pending || error) && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => void inspect()}>{busy ? '检查中…' : '重新检查'}</button>}
+      {(pending || error) && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => void inspect()}>{busy ? t('legacy.checking') : t('legacy.recheck')}</button>}
     </section>
   );
 }

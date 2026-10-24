@@ -43,6 +43,7 @@ import { SettingsSection } from "./settings/SettingsPrimitives";
 import { ModelAccessCard } from "../features/gateway/ModelAccessCard";
 import type { ModelAccessCardProps } from "../features/gateway/ModelAccessCard";
 import { LegacyRestoreCard } from "../features/gateway/LegacyRestoreCard";
+import { t, useLang } from "../i18n";
 
 type WallpaperInput = Omit<
   WallpaperSectionProps,
@@ -71,6 +72,7 @@ function hashSection(): string {
 }
 
 export function SettingsTab(props: SettingsTabProps) {
+  useLang();
   const [activeSection, setActiveSection] = useState(() =>
     typeof window === "undefined" ? DEFAULT_SECTION : hashSection(),
   );
@@ -161,29 +163,29 @@ export function SettingsTab(props: SettingsTabProps) {
 
   return (
     <div className="settings-page settings-navigation-page">
-      <h1 className="sr-only">设置</h1>
+      <h1 className="sr-only">{t('settingsTab.title')}</h1>
       <div className="settings-directory">
         <div className="settings-directory-search">
           <Search className="h-4 w-4" aria-hidden="true" />
-          <span className="sr-only">搜索设置</span>
+          <span className="sr-only">{t('settingsTab.search')}</span>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            aria-label="搜索设置"
-            placeholder="搜索设置"
+            aria-label={t('settingsTab.search')}
+            placeholder={t('settingsTab.search')}
             type="search"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery("")}
-              aria-label="清除设置搜索"
+              aria-label={t('settingsTab.clearSearch')}
             >
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
-        <nav className="settings-directory-list tl-seg" aria-label="设置分区" ref={directoryIndicatorRef}>
+        <nav className="settings-directory-list tl-seg" aria-label={t('settingsTab.sections')} ref={directoryIndicatorRef}>
           {destinations.map((destination) => {
             const Icon = ICONS[destination.icon];
             const status = settingsNavigationStatus(
@@ -219,15 +221,15 @@ export function SettingsTab(props: SettingsTabProps) {
             /* 搜索只筛这份目录，右侧照旧渲染全部分区；文案要说清这一点，
                否则「没有匹配的设置」会和右边满屏的设置直接打架（T10.128 P1）。 */
             <p className="settings-directory-empty">
-              目录里没有匹配项，右侧仍是全部设置。
+              {t('settingsTab.noMatch')}
               <button type="button" onClick={() => setQuery("")}>
-                清除搜索
+                {t('settingsTab.clear')}
               </button>
             </p>
           )}
         </nav>
         <p className="settings-save-note">
-          开关与间隔自动保存；账户、接口、价格用各自的保存按钮。
+          {t('settingsTab.saveNote')}
         </p>
       </div>
       <div className="settings-main settings-navigation-main">
@@ -274,7 +276,7 @@ export function SettingsTab(props: SettingsTabProps) {
             hidden={activeSection !== "settings-model-access"}
             aria-hidden={activeSection !== "settings-model-access"}
           >
-            <SettingsSection id="model-access" title="模型接入">
+            <SettingsSection id="model-access" title={t('settingsTab.modelAccess')}>
               <ModelAccessCard {...props.modelAccess} />
               {activeSection === "settings-model-access" && <LegacyRestoreCard
                 onConfirm={props.quota.onConfirm}
