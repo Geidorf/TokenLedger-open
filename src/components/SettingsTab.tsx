@@ -159,7 +159,8 @@ export function SettingsTab(props: SettingsTabProps) {
 
   return (
     <div className="settings-page settings-navigation-page">
-      <aside className="settings-directory" aria-label="设置目录">
+      <h1 className="sr-only">设置</h1>
+      <div className="settings-directory">
         <div className="settings-directory-search">
           <Search className="h-4 w-4" aria-hidden="true" />
           <span className="sr-only">搜索设置</span>
@@ -226,7 +227,7 @@ export function SettingsTab(props: SettingsTabProps) {
         <p className="settings-save-note">
           开关与间隔自动保存；账户、接口、价格用各自的保存按钮。
         </p>
-      </aside>
+      </div>
       <div className="settings-main settings-navigation-main">
         <section
           hidden={activeSection !== "settings-scan"}

@@ -229,7 +229,7 @@ function LiveRoutingCard() {
   return (
     <section className="mw-card rs-card" aria-label="实时路由">
       <div className="mw-panel-head rs-card-head">
-        <h3>实时路由</h3>
+        <h2>实时路由</h2>
         <span className={`rs-livedot ${live ? 'is-on' : ''}`} aria-hidden="true" />
         <span className="mw-caption">{live ? '网关怎么分配每个请求，失败时切到哪个成员' : '未连接'}</span>
         <span className="mw-flex" />
@@ -366,10 +366,10 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
           />
         ))}
       </div>
-      <aside className="mw-card mw-decisions" aria-label="最近路由决策">
-        <div className="mw-panel-head"><h3>最近决策</h3><button type="button" className="mw-btn is-ghost" onClick={() => void load()}>刷新</button></div>
+      <section className="mw-card mw-decisions" aria-label="最近路由决策">
+        <div className="mw-panel-head"><h2>最近决策</h2><button type="button" className="mw-btn is-ghost" onClick={() => void load()}>刷新</button></div>
         <DecisionList decisions={decisions} />
-      </aside>
+      </section>
       {editing && (
         <Sheet title={editing.isNew ? '新建路由组' : editing.group.name} subtitle={editing.isNew ? '多个供应商的模型合成一个虚拟模型' : `group/${editing.group.id}`} icon={<GroupIcon size={36} />} onClose={() => setEditing(null)}>
           <GroupEditor

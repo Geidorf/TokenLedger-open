@@ -84,11 +84,11 @@ export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
 
       <div className="mw-card mw-panel">
         <div className="mw-panel-head">
-          <h3>接入<InfoTip label="接入说明">
+          <h2>接入<InfoTip label="接入说明">
             <span>已接入的 Agent 由 TokenLedger 自动写好；其他客户端（脚本、IDE 插件）照着填。</span>
             <span>示例里的 TOKENLEDGER_TOKEN 是占位符，界面上只显示 token 尾号；点「复制 token」或「复制带 token 的完整示例」时才读取完整本地 token，直接写入剪贴板，不在界面显示或保存。</span>
             <span>网关只监听 127.0.0.1，供应商 key 存在系统钥匙串，不会出现在任何客户端配置中。</span>
-          </InfoTip></h3>
+          </InfoTip></h2>
         </div>
         <div className="mw-connect">
           <Seg value={api} options={[{ id: 'responses', label: 'OpenAI Responses' }, { id: 'chat', label: 'OpenAI Chat' }]} onChange={setApi} label="接入协议" size="sm" />
@@ -127,7 +127,7 @@ export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
 
       <div className="mw-card mw-panel">
         <div className="mw-panel-head">
-          <h3>模型目录</h3>
+          <h2>模型目录</h2>
           <div className="mw-panel-tools">
             <label className="mw-search is-inline"><Search className="h-4 w-4" aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索模型" aria-label="搜索模型目录" /></label>
             <CopyButton text={options.map((option) => option.value).join('\n')} label="复制全部模型 ID">复制全部 ID</CopyButton>
@@ -154,7 +154,7 @@ export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
 
       <div className="mw-card mw-panel">
         <div className="mw-panel-head">
-          <h3>最近请求<InfoTip label="请求记录说明">记录保存在本机，最多显示最近 50 条。</InfoTip></h3>
+          <h2>最近请求<InfoTip label="请求记录说明">记录保存在本机，最多显示最近 50 条。</InfoTip></h2>
           <span>有效 Token = 输入 + 输出，缓存读写单列</span>
         </div>
         {data && data.requests.length === 0 ? <p className="mw-caption">还没有经过网关的请求。</p> : (

@@ -265,7 +265,11 @@ button.mw-chip { cursor: pointer; }
 .mw-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
 .mw-row + .mw-row { border-top: 1px solid var(--color-border-faint); }
 .mw-row.is-danger { background: color-mix(in srgb, var(--color-danger-soft-bg) 55%, transparent); }
-.mw-row.is-off > :not(.mw-switch) { opacity: 0.55; }
+/* Off rows fade their icon and switch their text to quieter colours; fading
+   the text itself with opacity took the names and notes below 4.5:1. */
+.mw-row.is-off > :not(.mw-switch) :is(svg, img, .tl-brand-badge), .mw-row.is-off > :is(svg, img, .tl-brand-badge) { opacity: 0.55; }
+.mw-row.is-off .mw-row-title strong { color: var(--color-text-secondary); }
+.mw-row.is-off .mw-chip { color: var(--color-text-tertiary); }
 .mw-row-main { display: flex; min-width: 0; flex: 1; align-items: center; gap: 12px; border-radius: var(--radius-sm); text-align: left; }
 .mw-row-main:focus-visible { outline: 2px solid var(--color-primary-focus); outline-offset: 4px; }
 .mw-row-title { display: grid; min-width: 0; flex: 1; gap: 2px; }
@@ -358,10 +362,10 @@ button.mw-chip { cursor: pointer; }
 .mw-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .mw-panel { display: grid; align-content: start; gap: 12px; padding: 14px 16px; }
 .mw-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
-.mw-panel-head h3 { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-primary); font-size: var(--font-size-sm); font-weight: var(--weight-semibold); }
+.mw-panel-head :is(h2, h3) { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-primary); font-size: var(--font-size-sm); font-weight: var(--weight-semibold); }
 .mw-panel-head > span { color: var(--color-text-faint); font-size: var(--font-size-2xs); }
 .mw-panel-head.is-sub { margin-top: 6px; }
-.mw-panel-head.is-sub h3 { color: var(--color-text-label); font-size: var(--font-size-xs); }
+.mw-panel-head.is-sub :is(h2, h3) { color: var(--color-text-label); font-size: var(--font-size-xs); }
 .mw-panel-tools { display: flex; align-items: center; gap: 8px; }
 
 .mw-heat { display: grid; gap: 8px; }

@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { CalendarDays, Check, ChevronDown, ChevronRight, Copy, Download, Filter, History, LoaderCircle, Monitor, RotateCcw, Search, Undo2, X } from 'lucide-react';
 import type { DayDrillCopy } from '../hooks/useDayDrill';
-import type { CustomDateRange, DataScope, RangeKey, UsageDetailsResponse } from '../types';
+import type { CustomDateRange, DataScope, LogHistoryItem, RangeKey, UsageDetailsResponse } from '../types';
 import { colorForTool, isEstimatedLogItem, toolColorMap } from '../types';
 import { cacheDetailMetrics, resolveCacheBreakdown } from '../utils/cacheDisplay';
 import { detailGranularityLabel, rowGranularityLabel } from '../utils/detailGranularity';
@@ -90,6 +90,229 @@ function formatLatency(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
+/** 每行的回调：父组件里用 ref 取最新值，对象本身一直不变，行组件的 memo 才不会被它打破。 */
+interface LogRowActions {
+  toggleExpanded: (rowKey: string) => void;
+  openEntity: (kind: 'tool' | 'model', name: string, tool?: string) => void;
+  toggleMachine: (machine: string) => void;
+  analyze: (record: SessionAnalysisRecord) => void;
+  copySession: (sessionId: string) => void;
+}
+
+interface LogRowProps {
+  log: LogHistoryItem;
+  rowKey: string;
+  expanded: boolean;
+  toolColor: string;
+  machineSelected: boolean;
+  singleToolFilter: string | null;
+  scope: DataScope;
+  detailsGranularity: UsageDetailsResponse['granularity'];
+  sessionCopyStatus: SessionCopyState['status'] | null;
+  actions: LogRowActions;
+}
+
+export function logRowKey(log: Pick<LogHistoryItem, 'id' | 'sessionId' | 'timestamp'>): string {
+  return `${log.id}-${log.sessionId}-${log.timestamp}`;
+}
+
+/**
+ * 一条明细及其展开行。只接收这一行用到的值，搜索框打字、展开别的行、
+ * 「加载更多」追加新行时，已画好的行不再重新渲染（行数上千时每次按键原本要重算全部行）。
+ */
+const LogRow = memo(function LogRow({
+  log,
+  rowKey,
+  expanded,
+  toolColor,
+  machineSelected,
+  singleToolFilter,
+  scope,
+  detailsGranularity,
+  sessionCopyStatus,
+  actions,
+}: LogRowProps) {
+  const machine = log.machineId || 'localhost';
+  const cacheMetrics = cacheDetailMetrics(log);
+  return (
+    <>
+      <tr className={expanded ? 'log-row-expanded' : ''}>
+        <td className="log-mobile-summary">
+          <div className="log-mobile-summary-topline">
+            <button
+              className="table-entity-link log-mobile-tool capitalize"
+              type="button"
+              onClick={() => actions.openEntity('tool', log.tool)}
+              title={`打开 ${log.tool} 专属看板`}
+            >
+              <span className="entity-dot" style={{ color: toolColor }} />
+              {log.tool}
+            </button>
+            <time className="log-mobile-time font-mono" dateTime={log.timestamp}>{formatTimestamp(log.timestamp)}</time>
+          </div>
+          <button
+            className="table-entity-link table-model-link log-mobile-model"
+            type="button"
+            onClick={() => actions.openEntity('model', log.model, singleToolFilter ?? log.tool)}
+            title={`打开 ${log.model} 专属看板`}
+          >
+            {log.model}
+          </button>
+          <div className="log-mobile-summary-stats" aria-label="记录摘要指标">
+            <span><strong>{formatNum(log.inputTokens + log.outputTokens)}</strong><small>有效 Token</small></span>
+            <span><strong>{formatEstimatedUsd(log.cost, 'record')}</strong><small>费用</small></span>
+            {log.cachedTokens ? <span><strong>{formatNum(log.cachedTokens)}</strong><small>缓存</small></span> : null}
+          </div>
+        </td>
+        <td className="log-desktop-cell log-desktop-context">
+          <button
+            className="table-entity-link capitalize"
+            type="button"
+            onClick={() => actions.openEntity('tool', log.tool)}
+            title={`打开 ${log.tool} 专属看板`}
+          >
+            <BrandIcon name={log.tool} color={toolColor} size={15} />
+            <span className="entity-dot" style={{ color: toolColor }} />
+            {log.tool}
+          </button>
+        </td>
+        <td className="log-desktop-cell log-desktop-context">
+          <button
+            className="table-entity-link table-model-link"
+            type="button"
+            onClick={() => actions.openEntity('model', log.model, singleToolFilter ?? log.tool)}
+            title={`打开 ${log.model} 专属看板`}
+          >
+            {log.model}
+          </button>
+        </td>
+        <td className="log-desktop-cell text-right num">{formatNum(log.inputTokens)}</td>
+        <td className="log-desktop-cell text-right num">{formatNum(log.outputTokens)}</td>
+        <td className="log-desktop-cell text-right num text-tertiary">
+          {log.cachedTokens ? formatNum(log.cachedTokens) : '—'}
+        </td>
+        <td className="log-desktop-cell text-right num">
+          {formatEstimatedUsd(log.cost, 'record')}
+        </td>
+        <td className="log-desktop-cell font-mono text-xs text-faint">{formatTimestamp(log.timestamp)}</td>
+        <td className="log-desktop-cell">
+          <button
+            className="machine-filter-button"
+            type="button"
+            aria-pressed={machineSelected}
+            aria-label={machineSelected ? `从设备筛选中移除 ${machine}` : `按设备筛选 ${machine}`}
+            onClick={() => actions.toggleMachine(machine)}
+            title={machineSelected ? `移除设备筛选：${machine}` : `加入设备筛选：${machine}`}
+          >
+            <span className="machine-filter-surface">
+              <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="machine-filter-label">{machine}</span>
+              {machineSelected && <Check className="machine-filter-check h-3 w-3" aria-hidden="true" />}
+            </span>
+          </button>
+        </td>
+        <td className="log-detail-toggle-cell">
+          <button
+            className="log-detail-toggle"
+            type="button"
+            aria-expanded={expanded}
+            aria-label={expanded ? '收起此记录详情' : '展开此记录详情'}
+            onClick={() => actions.toggleExpanded(rowKey)}
+          >
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="log-detail-row">
+          <td colSpan={10}>
+            <div className="log-detail-grid">
+              <div><span>输入 Tokens</span><strong>{formatNum(log.inputTokens)}</strong></div>
+              <div><span>输出 Tokens</span><strong>{formatNum(log.outputTokens)}</strong></div>
+              {cacheMetrics.map((metric) => (
+                <div key={metric.label}>
+                  <span>{metric.label}</span>
+                  <strong>{formatNum(metric.tokens)}</strong>
+                </div>
+              ))}
+              {(() => {
+                const read = cacheMetrics.find((metric) => metric.label === '缓存读取');
+                const hit = read ? cacheHitRate(log.inputTokens, read.tokens) : null;
+                return hit === null ? null : <div><span>缓存命中率</span><strong>{(hit * 100).toFixed(1)}%</strong></div>;
+              })()}
+              {(() => {
+                const speed = outputTokensPerSecond(log.outputTokens, log.latencyMs);
+                return log.latencyMs ? (
+                  <>
+                    <div><span>耗时</span><strong>{formatLatency(log.latencyMs)}</strong></div>
+                    {speed !== null && <div title="输出 Token ÷ 整次请求耗时（含首字等待）"><span>输出速度</span><strong>{speed.toFixed(1)} tok/s</strong></div>}
+                  </>
+                ) : null;
+              })()}
+              <div><span>记录数</span><strong>{formatNum(log.requests || 1)}</strong></div>
+              <div><span>数据粒度</span><strong>{rowGranularityLabel(log, { granularity: detailsGranularity })}</strong></div>
+              <div><span>来源</span><strong>{recordSourceLabel(log)}</strong></div>
+              {log.provider && <div className="log-detail-wide"><span>供应商</span><code title={log.provider}>{log.provider}</code></div>}
+              <div className="log-detail-wide"><span>模型 ID</span><code title={log.model}>{log.model}</code></div>
+              <div className="log-detail-wide"><span>Session ID</span><code title={log.sessionId || '—'}>{log.sessionId || '—'}</code></div>
+              <div className="log-detail-wide"><span>完整时间</span><code title={log.timestamp}>{log.timestamp}</code></div>
+              <ContextComposition log={log} />
+            </div>
+            <div className="log-detail-actions">
+              {scope === 'local' && log.sessionId && Number.isSafeInteger(log.id) && log.id > 0 && ['claude', 'codex'].includes(log.tool.toLowerCase()) && (
+                <button className="ghost-inline" type="button" onClick={() => actions.analyze({ id: log.id, sessionId: log.sessionId, tool: log.tool })}>分析整个会话</button>
+              )}
+              {scope !== 'local' && log.sessionId && <span className="text-xs text-muted">逐轮分析需在原始日志所在电脑的本地明细中打开。</span>}
+              {isEstimatedLogItem(log) && <span className="estimated-badge">约数 · 来源日志未提供精确用量</span>}
+              {log.sessionId && (
+                (() => {
+                  const isSessionCopying = sessionCopyStatus === 'copying';
+                  const isSessionCopyFailed = sessionCopyStatus === 'failed';
+                  const isSessionCopied = sessionCopyStatus === 'copied';
+                  return <button
+                    className={`ghost-inline log-session-copy-action${isSessionCopyFailed ? ' is-failed' : ''}${isSessionCopied ? ' is-success' : ''}`}
+                    type="button"
+                    aria-label={isSessionCopying
+                      ? '正在复制 Session ID'
+                      : isSessionCopyFailed
+                        ? '复制失败，点击重试 Session ID'
+                        : isSessionCopied
+                          ? '已复制 Session ID'
+                          : '复制 Session ID'}
+                    title={isSessionCopying ? '正在复制 Session ID' : isSessionCopyFailed ? '剪贴板不可用，可选择上方完整 ID 或重试' : log.sessionId}
+                    disabled={isSessionCopying}
+                    aria-busy={isSessionCopying || undefined}
+                    onClick={() => { if (!isSessionCopying) actions.copySession(log.sessionId!); }}
+                  >
+                    {isSessionCopying
+                      ? <LoaderCircle className="h-4 w-4 animate-spin" />
+                      : isSessionCopied
+                        ? <Check className="h-4 w-4" />
+                        : <Copy className="h-4 w-4" />}
+                    {isSessionCopying ? '复制中…' : isSessionCopied ? '已复制' : isSessionCopyFailed ? '复制失败，重试' : '复制 Session ID'}
+                  </button>;
+                })()
+              )}
+              <span className="sr-only" role="status" aria-live="polite">
+                {sessionCopyStatus === 'copying'
+                  ? '正在复制 Session ID'
+                  : sessionCopyStatus === 'copied'
+                    ? '已复制 Session ID'
+                    : sessionCopyStatus === 'failed'
+                      ? '复制 Session ID 失败，可选择上方完整 ID 后手动复制，或点击重试'
+                      : ''}
+              </span>
+              {sessionCopyStatus === 'failed' && (
+                <span className="log-session-copy-hint">剪贴板不可用，可选择上方完整 ID 后手动复制。</span>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+});
+
 export function LogsTable({
   details,
   filters,
@@ -122,6 +345,29 @@ export function LogsTable({
   const debounceTimerRef = useRef<number | null>(null);
 
   useEffect(() => { setAnalysisRecord(null); }, [scope]);
+
+  const latest = useRef({ onOpenEntity, onFilterChange, machines: filters.machines });
+  latest.current = { onOpenEntity, onFilterChange, machines: filters.machines };
+  const rowActions = useMemo<LogRowActions>(() => ({
+    toggleExpanded: (rowKey) => setExpandedKey((current) => (current === rowKey ? null : rowKey)),
+    openEntity: (kind, name, tool) => latest.current.onOpenEntity(kind, name, tool),
+    toggleMachine: (machine) => {
+      const { machines, onFilterChange: change } = latest.current;
+      change('machines', machines.includes(machine) ? machines.filter((item) => item !== machine) : [...machines, machine]);
+    },
+    analyze: setAnalysisRecord,
+    copySession: async (sessionId) => {
+      setSessionCopyState({ id: sessionId, status: 'copying' });
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+        await navigator.clipboard.writeText(sessionId);
+        setSessionCopyState({ id: sessionId, status: 'copied' });
+        window.setTimeout(() => setSessionCopyState(null), 1600);
+      } catch {
+        setSessionCopyState({ id: sessionId, status: 'failed' });
+      }
+    },
+  }), []);
 
   useEffect(() => {
     setSearchDraft(filters.search);
@@ -500,211 +746,28 @@ export function LogsTable({
                     <th scope="col" className="log-desktop-cell text-right">预估费用</th>
                     <th scope="col" className="log-desktop-cell">时间</th>
                     <th scope="col" className="log-desktop-cell">设备</th>
-                    <th scope="col" aria-label="展开详情" />
+                    <th scope="col"><span className="sr-only">展开详情</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {details.items.map((log) => {
-                    const rowKey = `${log.id}-${log.sessionId}-${log.timestamp}`;
-                    const expanded = expandedKey === rowKey;
-                    const machine = log.machineId || 'localhost';
-                    const machineSelected = filters.machines.includes(machine);
-                    const cacheMetrics = cacheDetailMetrics(log);
+                    const rowKey = logRowKey(log);
                     return (
-                    <Fragment key={rowKey}>
-                    <tr className={expanded ? 'log-row-expanded' : ''}>
-                      <td className="log-mobile-summary">
-                        <div className="log-mobile-summary-topline">
-                          <button
-                            className="table-entity-link log-mobile-tool capitalize"
-                            type="button"
-                            onClick={() => onOpenEntity('tool', log.tool)}
-                            title={`打开 ${log.tool} 专属看板`}
-                          >
-                            <span className="entity-dot" style={{ color: toolColors.get(log.tool.toLowerCase()) ?? colorForTool(log.tool, 0, effective) }} />
-                            {log.tool}
-                          </button>
-                          <time className="log-mobile-time font-mono" dateTime={log.timestamp}>{formatTimestamp(log.timestamp)}</time>
-                        </div>
-                        <button
-                          className="table-entity-link table-model-link log-mobile-model"
-                          type="button"
-                          onClick={() => onOpenEntity('model', log.model, filters.tools.length === 1 ? filters.tools[0] : log.tool)}
-                          title={`打开 ${log.model} 专属看板`}
-                        >
-                          {log.model}
-                        </button>
-                        <div className="log-mobile-summary-stats" aria-label="记录摘要指标">
-                          <span><strong>{formatNum(log.inputTokens + log.outputTokens)}</strong><small>有效 Token</small></span>
-                          <span><strong>{formatEstimatedUsd(log.cost, 'record')}</strong><small>费用</small></span>
-                          {log.cachedTokens ? <span><strong>{formatNum(log.cachedTokens)}</strong><small>缓存</small></span> : null}
-                        </div>
-                      </td>
-                      <td className="log-desktop-cell log-desktop-context">
-                        <button
-                          className="table-entity-link capitalize"
-                          type="button"
-                          onClick={() => onOpenEntity('tool', log.tool)}
-                          title={`打开 ${log.tool} 专属看板`}
-                        >
-                          <BrandIcon name={log.tool} color={toolColors.get(log.tool.toLowerCase()) ?? colorForTool(log.tool, 0, effective)} size={15} />
-                          <span className="entity-dot" style={{ color: toolColors.get(log.tool.toLowerCase()) ?? colorForTool(log.tool, 0, effective) }} />
-                          {log.tool}
-                        </button>
-                      </td>
-                      <td className="log-desktop-cell log-desktop-context">
-                        <button
-                          className="table-entity-link table-model-link"
-                          type="button"
-                          onClick={() => onOpenEntity('model', log.model, filters.tools.length === 1 ? filters.tools[0] : log.tool)}
-                          title={`打开 ${log.model} 专属看板`}
-                        >
-                          {log.model}
-                        </button>
-                      </td>
-                      <td className="log-desktop-cell text-right num">{formatNum(log.inputTokens)}</td>
-                      <td className="log-desktop-cell text-right num">{formatNum(log.outputTokens)}</td>
-                      <td className="log-desktop-cell text-right num text-tertiary">
-                        {log.cachedTokens ? formatNum(log.cachedTokens) : '—'}
-                      </td>
-                      <td className="log-desktop-cell text-right num">
-                        {formatEstimatedUsd(log.cost, 'record')}
-                      </td>
-                      <td className="log-desktop-cell font-mono text-xs text-faint">{formatTimestamp(log.timestamp)}</td>
-                      <td className="log-desktop-cell">
-                        <button
-                          className="machine-filter-button"
-                          type="button"
-                          aria-pressed={machineSelected}
-                          aria-label={machineSelected ? `从设备筛选中移除 ${machine}` : `按设备筛选 ${machine}`}
-                          onClick={() => {
-                            onFilterChange(
-                              'machines',
-                              machineSelected
-                                ? filters.machines.filter((item) => item !== machine)
-                                : [...filters.machines, machine],
-                            );
-                          }}
-                          title={machineSelected ? `移除设备筛选：${machine}` : `加入设备筛选：${machine}`}
-                        >
-                          <span className="machine-filter-surface">
-                            <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span className="machine-filter-label">{machine}</span>
-                            {machineSelected && <Check className="machine-filter-check h-3 w-3" aria-hidden="true" />}
-                          </span>
-                        </button>
-                      </td>
-                      <td className="log-detail-toggle-cell">
-                        <button
-                          className="log-detail-toggle"
-                          type="button"
-                          aria-expanded={expanded}
-                          aria-label={expanded ? '收起此记录详情' : '展开此记录详情'}
-                          onClick={() => setExpandedKey(expanded ? null : rowKey)}
-                        >
-                          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        </button>
-                      </td>
-                    </tr>
-                    {expanded && (
-                      <tr className="log-detail-row">
-                        <td colSpan={10}>
-                          <div className="log-detail-grid">
-                            <div><span>输入 Tokens</span><strong>{formatNum(log.inputTokens)}</strong></div>
-                            <div><span>输出 Tokens</span><strong>{formatNum(log.outputTokens)}</strong></div>
-                            {cacheMetrics.map((metric) => (
-                              <div key={metric.label}>
-                                <span>{metric.label}</span>
-                                <strong>{formatNum(metric.tokens)}</strong>
-                              </div>
-                            ))}
-                            {(() => {
-                              const read = cacheMetrics.find((metric) => metric.label === '缓存读取');
-                              const hit = read ? cacheHitRate(log.inputTokens, read.tokens) : null;
-                              return hit === null ? null : <div><span>缓存命中率</span><strong>{(hit * 100).toFixed(1)}%</strong></div>;
-                            })()}
-                            {(() => {
-                              const speed = outputTokensPerSecond(log.outputTokens, log.latencyMs);
-                              return log.latencyMs ? (
-                                <>
-                                  <div><span>耗时</span><strong>{formatLatency(log.latencyMs)}</strong></div>
-                                  {speed !== null && <div title="输出 Token ÷ 整次请求耗时（含首字等待）"><span>输出速度</span><strong>{speed.toFixed(1)} tok/s</strong></div>}
-                                </>
-                              ) : null;
-                            })()}
-                            <div><span>记录数</span><strong>{formatNum(log.requests || 1)}</strong></div>
-                            <div><span>数据粒度</span><strong>{rowGranularityLabel(log, details)}</strong></div>
-                            <div><span>来源</span><strong>{recordSourceLabel(log)}</strong></div>
-                            {log.provider && <div className="log-detail-wide"><span>供应商</span><code title={log.provider}>{log.provider}</code></div>}
-                            <div className="log-detail-wide"><span>模型 ID</span><code title={log.model}>{log.model}</code></div>
-                            <div className="log-detail-wide"><span>Session ID</span><code title={log.sessionId || '—'}>{log.sessionId || '—'}</code></div>
-                            <div className="log-detail-wide"><span>完整时间</span><code title={log.timestamp}>{log.timestamp}</code></div>
-                            <ContextComposition log={log} />
-                          </div>
-                          <div className="log-detail-actions">
-                            {scope === 'local' && log.sessionId && Number.isSafeInteger(log.id) && log.id > 0 && ['claude', 'codex'].includes(log.tool.toLowerCase()) && (
-                              <button className="ghost-inline" type="button" onClick={() => setAnalysisRecord({ id: log.id, sessionId: log.sessionId, tool: log.tool })}>分析整个会话</button>
-                            )}
-                            {scope !== 'local' && log.sessionId && <span className="text-xs text-muted">逐轮分析需在原始日志所在电脑的本地明细中打开。</span>}
-                            {isEstimatedLogItem(log) && <span className="estimated-badge">约数 · 来源日志未提供精确用量</span>}
-                            {log.sessionId && (
-                              (() => {
-                                const isSessionCopying = sessionCopyState?.id === log.sessionId && sessionCopyState.status === 'copying';
-                                const isSessionCopyFailed = sessionCopyState?.id === log.sessionId && sessionCopyState.status === 'failed';
-                                const isSessionCopied = sessionCopyState?.id === log.sessionId && sessionCopyState.status === 'copied';
-                                return <button
-                                  className={`ghost-inline log-session-copy-action${isSessionCopyFailed ? ' is-failed' : ''}${isSessionCopied ? ' is-success' : ''}`}
-                                  type="button"
-                                  aria-label={isSessionCopying
-                                    ? '正在复制 Session ID'
-                                    : isSessionCopyFailed
-                                      ? '复制失败，点击重试 Session ID'
-                                      : isSessionCopied
-                                        ? '已复制 Session ID'
-                                        : '复制 Session ID'}
-                                  title={isSessionCopying ? '正在复制 Session ID' : isSessionCopyFailed ? '剪贴板不可用，可选择上方完整 ID 或重试' : log.sessionId}
-                                  disabled={isSessionCopying}
-                                  aria-busy={isSessionCopying || undefined}
-                                  onClick={async () => {
-                                    if (isSessionCopying) return;
-                                    setSessionCopyState({ id: log.sessionId!, status: 'copying' });
-                                  try {
-                                    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
-                                    await navigator.clipboard.writeText(log.sessionId);
-                                    setSessionCopyState({ id: log.sessionId, status: 'copied' });
-                                    window.setTimeout(() => setSessionCopyState(null), 1600);
-                                  } catch {
-                                    setSessionCopyState({ id: log.sessionId, status: 'failed' });
-                                  }
-                                  }}
-                                >
-                                  {isSessionCopying
-                                    ? <LoaderCircle className="h-4 w-4 animate-spin" />
-                                    : isSessionCopied
-                                      ? <Check className="h-4 w-4" />
-                                      : <Copy className="h-4 w-4" />}
-                                  {isSessionCopying ? '复制中…' : isSessionCopied ? '已复制' : isSessionCopyFailed ? '复制失败，重试' : '复制 Session ID'}
-                                </button>;
-                              })()
-                            )}
-                            <span className="sr-only" role="status" aria-live="polite">
-                              {sessionCopyState?.id === log.sessionId
-                                ? sessionCopyState.status === 'copying'
-                                  ? '正在复制 Session ID'
-                                  : sessionCopyState.status === 'copied'
-                                    ? '已复制 Session ID'
-                                    : '复制 Session ID 失败，可选择上方完整 ID 后手动复制，或点击重试'
-                                : ''}
-                            </span>
-                            {sessionCopyState?.id === log.sessionId && sessionCopyState.status === 'failed' && (
-                              <span className="log-session-copy-hint">剪贴板不可用，可选择上方完整 ID 后手动复制。</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    </Fragment>
-                  )})}
+                      <LogRow
+                        key={rowKey}
+                        log={log}
+                        rowKey={rowKey}
+                        expanded={expandedKey === rowKey}
+                        toolColor={toolColors.get(log.tool.toLowerCase()) ?? colorForTool(log.tool, 0, effective)}
+                        machineSelected={filters.machines.includes(log.machineId || 'localhost')}
+                        singleToolFilter={filters.tools.length === 1 ? filters.tools[0] : null}
+                        scope={scope}
+                        detailsGranularity={details.granularity}
+                        sessionCopyStatus={log.sessionId && sessionCopyState?.id === log.sessionId ? sessionCopyState.status : null}
+                        actions={rowActions}
+                      />
+                    );
+                  })}
                 </tbody>
               </table>
               </div>
