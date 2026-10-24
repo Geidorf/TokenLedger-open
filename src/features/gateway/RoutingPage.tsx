@@ -311,10 +311,13 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  // Cooldowns expire on their own; refresh them while any are shown.
+  // Members start and stop cooling without any page action, so keep polling
+  // (faster while some are shown) and skip ticks while the window is hidden.
   useEffect(() => {
-    if (cooling.length === 0) return undefined;
-    const timer = window.setInterval(() => { routingCooldowns().then(setCooling).catch(() => undefined); }, 10_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      routingCooldowns().then(setCooling).catch(() => undefined);
+    }, cooling.length > 0 ? 10_000 : 30_000);
     return () => window.clearInterval(timer);
   }, [cooling.length]);
   const coolingByMember = useMemo(() => new Map(cooling.map((item) => [item.member, item])), [cooling]);

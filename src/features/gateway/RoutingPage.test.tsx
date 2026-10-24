@@ -72,6 +72,20 @@ describe('RoutingPage', () => {
     expect(within(panel).getByText('openai/gpt-5')).toBeInTheDocument();
   });
 
+  it('打开时没有冷却，之后成员开始冷却也会被轮询发现', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+      expect(await screen.findByText('编码主力')).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: '冷却中的成员' })).not.toBeInTheDocument();
+      vi.mocked(api.routingCooldowns).mockResolvedValue([{ member: 'openai/gpt-5', remainingSecs: 30, failures: 1 }]);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await screen.findByRole('region', { name: '冷却中的成员' })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('新建路由组：添加成员、规则与会话保持后提交', async () => {
     render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
     await screen.findByText('编码主力');
