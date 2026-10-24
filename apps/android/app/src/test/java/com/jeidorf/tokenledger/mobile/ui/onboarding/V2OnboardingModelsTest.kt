@@ -1,5 +1,8 @@
 package com.jeidorf.tokenledger.mobile.ui.onboarding
 
+import com.jeidorf.tokenledger.mobile.DashboardLoadingMode
+import com.jeidorf.tokenledger.mobile.DashboardUiError
+import com.jeidorf.tokenledger.mobile.DashboardUiState
 import com.jeidorf.tokenledger.mobile.StatsData
 import com.jeidorf.tokenledger.mobile.Summary
 import com.jeidorf.tokenledger.mobile.ui.me.V2MeWallpaperState
@@ -108,5 +111,14 @@ class V2OnboardingModelsTest {
         assertEquals(true, v2HasDesktopData(empty, filtered = true))
         assertEquals(true, v2HasDesktopData(empty.copy(machines = listOf("mac-a")), filtered = false))
         assertEquals(true, v2HasDesktopData(empty.copy(summary = Summary(totalRequests = 3)), filtered = false))
+    }
+
+    @Test
+    fun noStatsCountsAsNoDesktopDataOnlyWhenNothingIsPending() {
+        val idle = DashboardUiState(configured = true, loadingMode = DashboardLoadingMode.Idle)
+        assertEquals(false, v2DesktopData(idle, null))
+        // 还在读或读失败时不知道云端有没有数据，引导不能据此自动弹出。
+        assertNull(v2DesktopData(idle.copy(loadingMode = DashboardLoadingMode.InitialLoad), null))
+        assertNull(v2DesktopData(idle.copy(error = DashboardUiError.Network("网络不可用")), null))
     }
 }
