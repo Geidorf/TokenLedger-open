@@ -262,7 +262,8 @@ internal fun LedgerDashboardV2Screen(
 
     val openTrendDay: (String, InsightPane) -> Unit = { bucket, target ->
         if (onOpenTrendBucket(bucket, target.dashboardSection())) {
-            if (!dayReviewOpen) dayReviewOriginPane = InsightPane.Trend
+            // 双栏时趋势可能在右栏（日历、请求的伴随栏），返回要回到左栏原来的子页。
+            if (!dayReviewOpen) dayReviewOriginPane = insightPane
             dayReviewOpen = true
             dayBackCallback.isEnabled = true
             destination = MobileDestination.Usage
