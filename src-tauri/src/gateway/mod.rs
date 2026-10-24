@@ -1754,6 +1754,7 @@ mod tests {
             members: members.iter().map(|m| m.to_string()).collect(),
             manual_member: None,
             rules: Vec::new(),
+            weights: Default::default(),
             session_ttl_secs: 600,
             enabled: true,
         }

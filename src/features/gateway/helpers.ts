@@ -115,13 +115,27 @@ export const STRATEGY_LABEL: Record<RoutingGroup['strategy'], string> = {
   failover: '按顺序',
   rotate: '轮流',
   manual: '固定一个',
+  weighted: '按权重',
 };
 
 export const STRATEGY_HINT: Record<RoutingGroup['strategy'], string> = {
   failover: '总是先用第一个，失败才换下一个',
   rotate: '新会话轮流分给各成员，失败换下一个',
   manual: '只用选定的成员，规则暂停',
+  weighted: '新会话按权重比例分给各成员，失败按权重从高到低换',
 };
+
+export const MAX_WEIGHT = 100;
+
+export function memberWeight(group: Pick<RoutingGroup, 'weights'>, member: string): number {
+  return group.weights?.[member] ?? 1;
+}
+
+/** Each member's share of new sessions under `weighted`, in percent. */
+export function weightShare(group: Pick<RoutingGroup, 'weights' | 'members'>, member: string): number {
+  const total = group.members.reduce((sum, item) => sum + memberWeight(group, item), 0);
+  return total === 0 ? 0 : Math.round((memberWeight(group, member) / total) * 100);
+}
 
 export const DECISION_REASON_LABEL: Record<string, string> = {
   rule: '规则',
@@ -129,6 +143,7 @@ export const DECISION_REASON_LABEL: Record<string, string> = {
   failover: '按顺序',
   rotate: '轮流',
   manual: '固定',
+  weighted: '按权重',
 };
 
 export const ATTEMPT_OUTCOME_LABEL: Record<string, string> = {

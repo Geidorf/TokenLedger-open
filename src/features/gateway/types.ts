@@ -52,7 +52,7 @@ export interface LedgerRecord {
   member?: string | null;
 }
 
-export type RoutingStrategy = 'failover' | 'rotate' | 'manual';
+export type RoutingStrategy = 'failover' | 'rotate' | 'manual' | 'weighted';
 
 export type RuleCondition =
   | { kind: 'hasImage' }
@@ -76,6 +76,8 @@ export interface RoutingGroup {
   members: string[];
   manualMember?: string | null;
   rules: RoutingRule[];
+  /** Member → weight 1–100 for `weighted`; a missing member weighs 1. */
+  weights?: Record<string, number>;
   sessionTtlSecs: number;
   enabled: boolean;
 }
