@@ -53,7 +53,8 @@ internal fun LedgerDashboardPreviewHost(
     tokenDisplayMode: TokenDisplayMode = TokenDisplayMode.Effective,
     forceLandscape: Boolean = false,
     settingsVisible: Boolean = false,
-    mePage: V2MePage = V2MePage.Root
+    mePage: V2MePage = V2MePage.Root,
+    guideVisible: Boolean = false
 ) {
     TokenLedgerTheme(appearance) {
         ProvideLedgerPalette(appearance) {
@@ -94,7 +95,8 @@ internal fun LedgerDashboardPreviewHost(
                     initialDestination = destination,
                     initialInsightPane = insightPane,
                     initialSettingsVisible = settingsVisible,
-                    initialMePage = mePage
+                    initialMePage = mePage,
+                    initialGuideVisible = guideVisible
                 )
             }
         }
@@ -308,6 +310,31 @@ internal fun ledgerNoSeriesSnapshotFixture(): DashboardUiState {
                 previous = comparison.previous.copy(series = emptyList())
             )
         )
+    )
+}
+
+/**
+ * 新账户：已登录，但桌面端还没往云端同步过任何东西。云端照样回一份全零统计（不是 null），
+ * 设备表为空、额度未同步——首次启动引导与各页「还没有收到桌面端的数据」画的就是这一帧。
+ */
+internal fun ledgerFreshAccountSnapshotFixture(): DashboardUiState {
+    val base = ledgerSnapshotFixture()
+    val stats = requireNotNull(base.data)
+    return base.copy(
+        data = stats.copy(
+            summary = Summary(),
+            tools = emptyMap(),
+            models = emptyMap(),
+            trends = emptyList(),
+            heatmap = emptyMap(),
+            history = emptyList(),
+            machines = emptyList(),
+            comparison = null,
+            detailsPage = null,
+            machineDistribution = null,
+            dailyCosts = null
+        ),
+        quota = QuotaUiState.Unsynced()
     )
 }
 

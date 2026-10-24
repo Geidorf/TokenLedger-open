@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Monitor
@@ -86,6 +87,12 @@ import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_ICON_TEXT
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_TOUCH_TARGET
+import com.jeidorf.tokenledger.mobile.ui.onboarding.LocalOpenFirstRunGuide
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2EmptyState
+import com.jeidorf.tokenledger.mobile.ui.onboarding.doneCount
+import com.jeidorf.tokenledger.mobile.ui.onboarding.rememberV2DeviceFacts
+import com.jeidorf.tokenledger.mobile.ui.onboarding.v2OnboardingFacts
+import com.jeidorf.tokenledger.mobile.ui.onboarding.v2OnboardingSteps
 
 /** 「我的」页要往外调的动作。偏好类的回调直接改持久化设置，由上层回写状态。 */
 internal class V2MeActions(
@@ -131,14 +138,13 @@ internal fun LazyListScope.v2MeItems(
                 )
             } else {
                 item(key = "me-standby-empty", contentType = "status") {
-                    V2Card(palette) {
-                        Text("还没有可展示的数据", color = palette.text, style = LedgerType.titleS)
-                        Text(
-                            "桌面端同步后，这里可以预览待机屏，并进入全屏摆件。",
-                            color = palette.muted,
-                            style = LedgerType.meta
-                        )
-                    }
+                    V2EmptyState(
+                        palette = palette,
+                        icon = Icons.Default.Monitor,
+                        title = "还没有可展示的数据",
+                        body = "待机屏显示的是桌面端同步到云端的用量。桌面完成首次云端同步后，" +
+                            "这里可以预览待机屏，并进入全屏摆件。"
+                    )
                 }
             }
         }
@@ -156,6 +162,8 @@ internal fun LazyListScope.v2MeItems(
             }
             item(key = "me-data-label", contentType = "eyebrow") { V2MeEyebrow(palette, "数据") }
             item(key = "me-data", contentType = "group") { V2MeDataCard(palette, state) }
+            item(key = "me-help-label", contentType = "eyebrow") { V2MeEyebrow(palette, "帮助") }
+            item(key = "me-help", contentType = "group") { V2MeHelpCard(palette, state, stats) }
             if (state.session != null) {
                 item(key = "me-sign-out", contentType = "group") {
                     V2MeGroup(palette) {
@@ -440,6 +448,24 @@ private fun V2MeDisplayCard(
                 showWidgetPicker = false
                 V2MeSystemLinks.requestPinWidget(context, kind)
             }
+        )
+    }
+}
+
+/** 「接入步骤」：重新打开首次启动引导，副文字写当前完成了几步。 */
+@Composable
+private fun V2MeHelpCard(palette: MobileV2Palette, state: DashboardUiState, stats: StatsData?) {
+    val openGuide = LocalOpenFirstRunGuide.current
+    val steps = v2OnboardingSteps(v2OnboardingFacts(state, stats, rememberV2DeviceFacts()))
+    V2MeGroup(palette) {
+        V2MeRow(
+            palette,
+            title = "接入步骤",
+            icon = Icons.Default.Checklist,
+            meta = "登录、桌面同步、锁屏壁纸、小组件",
+            value = "${steps.doneCount()}/${steps.size}",
+            chevron = openGuide != null,
+            onClick = openGuide
         )
     }
 }

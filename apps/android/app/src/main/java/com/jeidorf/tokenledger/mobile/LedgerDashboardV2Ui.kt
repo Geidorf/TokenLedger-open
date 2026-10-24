@@ -330,7 +330,8 @@ internal fun LedgerDashboardV2Screen(
     initialDestination: MobileDestination = MobileDestination.Usage,
     initialInsightPane: InsightPane = InsightPane.Overview,
     initialSettingsVisible: Boolean = false,
-    initialMePage: V2MePage = V2MePage.Root
+    initialMePage: V2MePage = V2MePage.Root,
+    initialGuideVisible: Boolean = false
 ) {
     ModularLedgerDashboardV2Screen(
         state = state,
@@ -364,7 +365,8 @@ internal fun LedgerDashboardV2Screen(
         initialDestination = initialDestination,
         initialInsightPane = initialInsightPane,
         initialSettingsVisible = initialSettingsVisible,
-        initialMePage = initialMePage
+        initialMePage = initialMePage,
+        initialGuideVisible = initialGuideVisible
     )
 }
 
