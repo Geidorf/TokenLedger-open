@@ -1,5 +1,6 @@
 use super::antigravity::*;
 use super::claude::*;
+use super::cline::*;
 use super::codex::*;
 use super::copilot::*;
 use super::dsh::*;
@@ -174,6 +175,9 @@ pub(crate) fn model_discovery_key(model: &str) -> Option<String> {
         "pi-unknown",
         "qwen-unknown",
         "copilot-unknown",
+        "cline-unknown",
+        "roo-unknown",
+        "kilocode-unknown",
     ];
     if PLACEHOLDERS.contains(&key.as_str())
         || key == "auto"
@@ -262,6 +266,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         pi_checkpoints,
         qwen_checkpoints,
         copilot_checkpoints,
+        cline_checkpoints,
     ) = {
         let conn = crate::db::get_connection(db_path)?;
         (
@@ -278,6 +283,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
             crate::db::load_scan_checkpoints(&conn, PI_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, QWEN_CODE_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, COPILOT_CLI_CHECKPOINT_SOURCE_KIND)?,
+            crate::db::load_scan_checkpoints(&conn, CLINE_FAMILY_CHECKPOINT_SOURCE_KIND)?,
         )
     };
     let mut pending_cursors = Vec::new();
@@ -410,6 +416,10 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     timed_scan_step!(
         "copilot",
         scan_copilot(&mut logs, &copilot_checkpoints, &mut pending_checkpoints)
+    );
+    timed_scan_step!(
+        "cline",
+        scan_cline_family(&mut logs, &cline_checkpoints, &mut pending_checkpoints)
     );
 
     let mut outcome = timed_scan_step!(
