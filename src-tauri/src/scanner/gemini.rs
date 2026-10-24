@@ -334,7 +334,7 @@ fn gemini_optional_counter(tokens: &Value, name: &str) -> Option<i64> {
     gemini_counter_value(value)
 }
 
-fn gemini_counter_value(value: &Value) -> Option<i64> {
+pub(crate) fn gemini_counter_value(value: &Value) -> Option<i64> {
     let parsed = match value {
         Value::Number(number) => number
             .as_i64()
@@ -350,7 +350,7 @@ fn gemini_counter_value(value: &Value) -> Option<i64> {
 /// broken message would be silently assigned the current time. Formatting is
 /// done here directly so a value accepted by validation can never fall back to
 /// the current wall-clock time during normalization.
-fn gemini_timestamp(value: &Value) -> Option<String> {
+pub(crate) fn gemini_timestamp(value: &Value) -> Option<String> {
     match value {
         Value::Number(number) => number
             .as_f64()

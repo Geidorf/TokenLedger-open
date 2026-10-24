@@ -25,7 +25,7 @@ npm run tauri build      # 桌面安装包
 
 ## 核心功能
 
-- **本地日志扫描**：内置多种 AI 工具解析器，当前主线覆盖 Claude、Codex、OpenCode、Kilo、AntGravity、MiniMax/Marvis、腾讯 Marvis、WorkBuddy、Qclaw、Hermes、ReasoniX、Trae、DeepSeek GUI、DeepSeek 官方 DSH、Zcode、Grok CLI、Gemini CLI、Kimi Code/Desktop、Pi（含 Multica Desktop 托管实例）、Cindy 内置的 Codex 与 Pi 等工具。
+- **本地日志扫描**：内置多种 AI 工具解析器，当前主线覆盖 Claude、Codex、OpenCode、Kilo、AntGravity、MiniMax/Marvis、腾讯 Marvis、WorkBuddy、Qclaw、Hermes、ReasoniX、Trae、DeepSeek GUI、DeepSeek 官方 DSH、Zcode、Grok CLI、Gemini CLI、Kimi Code/Desktop、Pi（含 Multica Desktop 托管实例）、Cindy 内置的 Codex 与 Pi、Qwen Code 等工具。
 - **本地 SQLite 存储**：扫描结果写入应用数据目录下的 `tokenboard.db`，本地查询响应快，也可离线使用。
 - **可解释数据看板**：React 19 + ECharts + Tailwind 4，展示有效 Token、预估费用、缓存、工具/模型分布、年度热力图和逐条记录明细；今日/本周/本月按同一进度自动对比上一周期。
 - **筛选与专属看板**：明细可按工具、模型、设备组合筛选并稳定分页；工具/模型排行可下钻到专属趋势、构成、设备、活跃度和相关明细。
@@ -101,6 +101,7 @@ npm run tauri build      # 桌面安装包
 18. Kimi Code
 19. Kimi Desktop
 20. Pi
+21. Qwen Code
 
 ### 数据源与去重边界
 
@@ -128,6 +129,7 @@ npm run tauri build      # 桌面安装包
 | Kimi Code | `${KIMI_CODE_HOME:-~/.kimi-code}/sessions/wd_*/session_*/agents/*/wire.jsonl`（main 与每个 subagent 各一份 wire，全部扫描）；兼容旧路径 `~/.kimi/sessions` | `type == "usage.record"` 且 `usageScope` 为 `turn`、`session` 或缺失；两种 scope 都是逐请求增量，未知 scope、负数/全零用量与无效时间跳过；未变化文件按 `kimi-wire-jsonl-v2` checkpoint 跳过 | wire 路径中的会话目录名 | 已存在的 turn 行保持 v1 键兼容；session、旧格式及真实键碰撞使用 `kimi_v2_{sourceHash}_{line}_{recordHash}`，不暴露本地路径 |
 | Kimi Desktop | Windows `%APPDATA%/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions`、macOS `~/Library/Application Support/kimi-desktop/.../sessions`、Linux `~/.config/kimi-desktop/.../sessions`（desktop 内嵌 kimi-code runtime，wire 布局、usage 字段与跳过规则同 Kimi Code；会话目录也可能是 `conv-*`/`ctitle-*` 形态） | 同 Kimi Code；未变化文件按独立 `kimidesktop-wire-jsonl-v2` checkpoint 跳过 | wire 路径中的会话目录名（如 `conv-abc123`） | 与 Kimi Code 完全隔离的键空间：turn 行 `kimidesktop_{session}_{agent}_...`，其余 `kimidesktop_v2_{sourceHash}_{line}_{recordHash}`，绝不与 CLI `kimi_*` 别名冲突 |
 | Pi | 默认根 `~/.pi/agent/sessions/--<编码后的 cwd>--/<时间戳>_<uuid>.jsonl`（`PI_CODING_AGENT_DIR` 改 agent 目录，`PI_CODING_AGENT_SESSION_DIR` 或 `--session-dir` 直接替换整个会话根）；另一条根是 Multica Desktop 托管 Pi runtime 的 `~/.multica/pi-sessions/*.jsonl`（每个 run 一个文件；同目录 0 字节的 `<同名>.jsonl.lock` 不扫描）。两条根都要扫，否则 Multica 上的 Pi 用量整体漏采；Cindy 桌面端另有 `<userData>/pi-agent-home/sessions` | v3 JSONL 会话树：`type == "message"` 且 `message.role` 为 `assistant`（模型调用）或 `toolResult`（工具内嵌的 LLM 调用），加上 `compaction` / `branch_summary` 条目上的可选 `usage`；只有四项计数全 0 才跳过，`stopReason` 为 `error`/`aborted` 的行照常计费，缺 `usage`、无效时间或负数计数跳过；树分叉与被放弃的分支同样是已发生的真实请求，按全文件求和而非只走当前 leaf；未变化文件按 `pi-session-jsonl-v1` checkpoint 跳过 | 会话首行 header 的 `id`；Multica 的文件名是本地时间戳，不是会话身份 | `pi_{entryIdSha96}_{timestampSha96}`；entry id 是会话树身份且被 `/fork` 原样复制，故键**不含**会话 id，复制回来的历史前缀与原文件碰撞而不会双计；无 id 的畸形条目回退 `pi_L{行号}_{timestampSha96}`，不暴露本地路径 |
+| Qwen Code | `${QWEN_RUNTIME_DIR 或 QWEN_HOME，缺省 ~/.qwen}/projects/<编码后的 cwd>/chats/**/*.jsonl`（每会话一份 JSONL，三个根去重后都扫描）；只读 `chats` 目录下的 `.jsonl`，不打开设置、账号或 OAuth 文件 | `type == "assistant"` 且带 `usageMetadata` 的逐请求记录；计数器须为非负整数、时间戳可解析，全零跳过；坏 JSONL 中间行跳过、尾行坏或读失败不推进 `qwen-code-chats-jsonl-v1` 检查点 | 记录内 `sessionId`，缺失用文件名 stem | `qwen_{sessionIdSha96}_{uuidSha96}`；续聊或分叉把同一记录（同 `uuid`）带进另一个文件时只记一次，不暴露本地路径 |
 
 ### Token 字段映射
 
@@ -154,6 +156,7 @@ npm run tauri build      # 桌面安装包
 | Kimi Code | `usage.inputOther`（非缓存新鲜输入） | `usage.output` | `usage.inputCacheRead + usage.inputCacheCreation`（其中 `inputCacheCreation` 计入 `cache_write_tokens`） | `model`，缺失为 `kimi-unknown` | 不落库 |
 | Kimi Desktop | 同 Kimi Code（`usage.inputOther`） | 同 Kimi Code（`usage.output`） | 同 Kimi Code（`inputCacheRead + inputCacheCreation`） | 同 Kimi Code（`model`，缺失为 `kimi-unknown`），tool 记 `kimidesktop` | 不落库 |
 | Pi | `message.usage.input`（Pi 官方实现已扣除缓存读写的净输入） | `message.usage.output`；`usage.reasoning` 是其中的推理细分，不另行相加 | `usage.cacheRead + usage.cacheWrite`（其中 `usage.cacheWrite` 计入 `cache_write_tokens`） | 条目自身的 `message.model`（经 `clean_model_name`）；`toolResult`/`compaction`/`branch_summary` 回退会话当前模型（`model_change.modelId` 或最近一条 assistant 的 `model`），再缺失为 `pi-unknown` | 不落库（`usage.cost` 是 Pi 按自己内置价格算的值，实测恒为 0；统一由本地价格表估算，改价时可重算） |
+| Qwen Code | `promptTokenCount - cachedContentTokenCount`（`promptTokenCount` 含缓存读；缓存大于 prompt 的记录整条跳过） | `candidatesTokenCount`；仅当 `totalTokenCount ≥ prompt + candidates + thoughts`（Gemini 原生响应，思考 Token 单列）时再加 `thoughtsTokenCount`，OpenAI/Anthropic 兼容响应的思考 Token 已含在 candidates 里，不重复相加 | `cachedContentTokenCount`；无缓存写字段，`cache_write_tokens = 0` | 记录内 `model`（经 `clean_model_name`），缺失为 `qwen-unknown` | 不落库 |
 
 ### 容易漂移的约束
 
@@ -190,6 +193,7 @@ npm run tauri build      # 桌面安装包
 - ReasoniX 单条会话记录只带一个模型名（会话 meta 的当前模型）。会话中途换模型或换 provider 时，全部 Token 归到最后一个模型；`bcnw/x` 这类中转前缀会被 `clean_model_name` 去掉，因此中转流量按同名官方模型价格估算。要精确到每次请求的模型与消费时刻，需要改读 ReasoniX 的逐请求账本 `<base>/stats/YYYY-MM-DD.jsonl`，当前未接入。
 - Kimi Code 的每条 `usage.record` 都是一笔逐请求增量；`usageScope` 只表示请求来自 turn 流程还是 session 级流程，不是累计标记，因此 `turn`、`session` 和旧版缺失 scope 的行都应计入。v2 检查点会在升级后执行一次重扫：旧 turn 行沿用原键并由 `INSERT OR IGNORE` 跳过，只补回 v1 漏掉的行；同一文件里同毫秒、同用量的真实请求以强化键区分。`time` 接受有效的秒或毫秒时间戳，无效值不再回退为“当前时间”。wire.jsonl 含完整提示词与工具上下文，扫描时先粗筛且只解析 usage 行，正文不写入日志或数据库。默认数据根可由 Kimi 官方支持的 `KIMI_CODE_HOME` 覆盖。
 - Pi 的 `usage.input` 已扣除缓存读写（官方实现为 `prompt_tokens - cacheRead - cacheWrite`），`output` 含 `reasoning` 细分，`totalTokens` 恰好等于 `input + output + cacheRead + cacheWrite`，仅用于自校验；缓存读写分列，不并入有效 Token。会话文件是 append-only 的**树**：除当前 leaf 之外被放弃的分支、以及 `compaction`/`branch_summary` 自身的摘要调用都真实扣费，按全文件求和而不是只走 leaf 路径。正在运行的会话可能在扫描时留下半行 JSON：该行本次跳过，文件一旦变化就从字节零重扫，因此半行补全后既不漏也不重（追加/截断/替换/mtime 变化都会触发重扫）。去重键刻意不含会话 id，因为 `/fork`、`/clone` 会新建一个新会话 id 并把保留路径原样复制进新文件，含会话 id 就会把已计费的这段前缀双记；entry id + 原始毫秒时间戳在复制前后一致，正好抵消。Pi 自身默认根是 `~/.pi/agent/sessions/<编码后的 cwd>/`，可由 `PI_CODING_AGENT_DIR` 与 `PI_CODING_AGENT_SESSION_DIR`（或 `--session-dir`）覆盖；Multica Desktop 给 Pi 传的会话目录是 `~/.multica/pi-sessions`，与 Codex 的 `codex-home` 同类，不扫就会整体漏采。`usage.cost` 不落库，成本统一按本地价格表估算。
+- Qwen Code 把各家响应统一成 Gemini 形状的 `usageMetadata`：OpenAI 兼容响应的 `candidatesTokenCount` 就是完整 completion，`thoughtsTokenCount` 只是其中的推理细分（provider 不报时还是按文本估算的），所以只有总数证明思考 Token 单列时才相加。Anthropic 兼容响应的缓存写入被并进 `promptTokenCount` 且不单独落盘，这部分会算进净输入，`cache_write_tokens` 记 0。转录里的 `ui_telemetry`、`tool_result` 等记录即使带用量字段也不出账，只认 assistant 记录。
 
 ### 项目维度（可选，默认关闭）
 
@@ -211,7 +215,7 @@ npm run tauri build      # 桌面安装包
 | Grok CLI | `summary.json` 的 `info.cwd`，`git_root_dir` 作仓库根，缺 `cwd` 时取仓库根 |
 | Gemini CLI | 会话所在 `tmp/<项目短名>/.project_root`，只取首个非空行，最多 4 KiB；另读会话文件开头的 `sessionId` 以定位会话 |
 | Kimi Code / Kimi Desktop | 依次取 `state.json.workDir`、`session_index.jsonl` 的 `workDir`、`state.json.cwd`、`workspaces.json` 的工作区 `root`（只接受字符串） |
-| Antigravity、腾讯 Marvis、Trae、WorkBuddy Agent 日志、Qclaw Hermes 响应库 | 无，显示为“未归属” |
+| Antigravity、腾讯 Marvis、Trae、WorkBuddy Agent 日志、Qclaw Hermes 响应库、Qwen Code（记录里有 `cwd`，项目索引暂未接入） | 无，显示为“未归属” |
 
 ---
 
