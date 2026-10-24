@@ -11,6 +11,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use super::context_size::ContextSize;
+
 pub(crate) mod accounting;
 
 const LEDGER_FILE: &str = "usage-v1.jsonl";
@@ -174,6 +176,9 @@ pub struct LedgerRecord {
     /// The `provider/model` member that served this attempt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member: Option<String>,
+    /// Prompt composition sizes of the client request; never its content.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<ContextSize>,
 }
 
 pub struct Ledger {
@@ -429,6 +434,7 @@ mod tests {
                     error: None,
                     group: None,
                     member: None,
+                    context: None,
                 })
                 .unwrap();
         }

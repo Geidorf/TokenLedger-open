@@ -331,6 +331,7 @@ pub(super) fn call_to_row(
         cache_write_tokens: call.cache_write,
         machine_id: None,
         latency_ms: call.ms,
+        context: None,
     })
 }
 

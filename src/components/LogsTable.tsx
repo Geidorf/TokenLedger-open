@@ -14,6 +14,7 @@ import { BrandIcon } from './brand/BrandIcon';
 import { recordSourceLabel } from './usage/usageSummary';
 import SessionAnalysisDrawer from './SessionAnalysisDrawer';
 import type { SessionAnalysisRecord } from '../types/sessionAnalysis';
+import { ContextComposition } from './usage/ContextComposition';
 import '../styles/overviewDrill.css';
 
 type SessionCopyState = {
@@ -638,6 +639,7 @@ export function LogsTable({
                             <div className="log-detail-wide"><span>模型 ID</span><code title={log.model}>{log.model}</code></div>
                             <div className="log-detail-wide"><span>Session ID</span><code title={log.sessionId || '—'}>{log.sessionId || '—'}</code></div>
                             <div className="log-detail-wide"><span>完整时间</span><code title={log.timestamp}>{log.timestamp}</code></div>
+                            <ContextComposition log={log} />
                           </div>
                           <div className="log-detail-actions">
                             {scope === 'local' && log.sessionId && Number.isSafeInteger(log.id) && log.id > 0 && ['claude', 'codex'].includes(log.tool.toLowerCase()) && (

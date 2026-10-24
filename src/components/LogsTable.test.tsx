@@ -424,4 +424,28 @@ describe('LogsTable 导出与缓存命中率', () => {
     expect(within(detail).queryByText('耗时')).toBeNull();
     expect(within(detail).queryByText('输出速度')).toBeNull();
   });
+
+  it('shows the estimated context composition only for rows that carry one', () => {
+    const composed: UsageDetailsResponse = {
+      ...details,
+      items: [
+        {
+          ...details.items[0], id: 1, inputTokens: 900, cachedTokens: 100, source: 'gateway',
+          context: { systemBytes: 100, toolsBytes: 600, historyBytes: 300, toolResultsBytes: 0, attachmentsBytes: 0, messages: 4, toolResults: 0, attachments: 0 },
+        },
+        { ...details.items[0], id: 2, sessionId: 'plain' },
+      ] as LogHistoryItem[],
+      totalCount: 2,
+    };
+    render(<LogsTable {...baseProps} details={composed} />);
+    fireEvent.click(screen.getAllByRole('button', { name: '展开此记录详情' })[0]);
+    let detail = document.querySelector('.log-detail-row') as HTMLElement;
+    expect(within(detail).getByRole('img', { name: '系统提示 10%，工具定义 60%，对话历史 30%' })).toBeInTheDocument();
+    expect(within(detail).getByText('工具定义').querySelector('b')?.textContent).toBe('≈600');
+    expect(within(detail).getByText('4 条消息')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '展开此记录详情' })[0]);
+    detail = document.querySelector('.log-detail-row') as HTMLElement;
+    expect(within(detail).queryByText(/Context 构成/)).toBeNull();
+  });
 });

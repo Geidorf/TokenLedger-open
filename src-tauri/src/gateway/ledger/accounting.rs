@@ -9,7 +9,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
-use super::{LedgerRecord, ROTATE_BYTES};
+use super::{ContextSize, LedgerRecord, ROTATE_BYTES};
 
 pub(crate) const FILE: &str = "usage-accounting-v1.sqlite3";
 const LEGACY_FILES: [&str; 2] = ["usage-v1.jsonl.1", "usage-v1.jsonl"];
@@ -113,6 +113,13 @@ fn open(dir: &Path) -> Result<Connection, String> {
              cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL,
              latency_ms INTEGER NOT NULL);
          CREATE INDEX IF NOT EXISTS accounting_rows_ts ON accounting_rows(ended_at_ms,sequence);
+         -- Added without a user_version bump: older builds never read it and keep working.
+         CREATE TABLE IF NOT EXISTS context_rows (
+             accounting_id TEXT PRIMARY KEY,
+             system_bytes INTEGER NOT NULL, tools_bytes INTEGER NOT NULL,
+             history_bytes INTEGER NOT NULL, tool_results_bytes INTEGER NOT NULL,
+             attachments_bytes INTEGER NOT NULL, messages INTEGER NOT NULL,
+             tool_results INTEGER NOT NULL, attachments INTEGER NOT NULL);
          PRAGMA user_version=1;",
     )
     .map_err(|error| format!("初始化网关会计账本失败：{error}"))?;
@@ -201,6 +208,26 @@ fn insert(conn: &Connection, record: &LedgerRecord) -> Result<bool, String> {
             ],
         )
         .map_err(|error| format!("写入网关会计账本失败：{error}"))?;
+    if let (true, Some(context)) = (changed > 0, record.context) {
+        conn.execute(
+            "INSERT OR IGNORE INTO context_rows
+             (accounting_id,system_bytes,tools_bytes,history_bytes,tool_results_bytes,
+              attachments_bytes,messages,tool_results,attachments)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![
+                accounting_id(record),
+                integer(context.system_bytes),
+                integer(context.tools_bytes),
+                integer(context.history_bytes),
+                integer(context.tool_results_bytes),
+                integer(context.attachments_bytes),
+                integer(context.messages),
+                integer(context.tool_results),
+                integer(context.attachments)
+            ],
+        )
+        .map_err(|error| format!("写入网关会计账本失败：{error}"))?;
+    }
     if changed > 0 {
         conn.execute(
             "UPDATE accounting_meta SET revision=revision+1 WHERE singleton=1",
@@ -377,9 +404,12 @@ pub(crate) fn read_page(
         .map_err(|error| error.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT sequence,request_id,logical_request_id,ts,agent,session,provider,model,
-         ok,status,input,output,cache_read,cache_write,latency_ms
-         FROM accounting_rows WHERE sequence>?1 AND sequence<=?2 ORDER BY sequence LIMIT ?3",
+            "SELECT a.sequence,a.request_id,a.logical_request_id,a.ts,a.agent,a.session,a.provider,a.model,
+         a.ok,a.status,a.input,a.output,a.cache_read,a.cache_write,a.latency_ms,
+         c.system_bytes,c.tools_bytes,c.history_bytes,c.tool_results_bytes,c.attachments_bytes,
+         c.messages,c.tool_results,c.attachments
+         FROM accounting_rows a LEFT JOIN context_rows c ON c.accounting_id=a.accounting_id
+         WHERE a.sequence>?1 AND a.sequence<=?2 ORDER BY a.sequence LIMIT ?3",
         )
         .map_err(|error| error.to_string())?;
     let rows = stmt
@@ -411,6 +441,7 @@ pub(crate) fn read_page(
                         error: None,
                         group: None,
                         member: None,
+                        context: context_from_row(row, 15)?,
                     },
                 ))
             },
@@ -418,6 +449,26 @@ pub(crate) fn read_page(
         .map_err(|error| error.to_string())?;
     rows.collect::<rusqlite::Result<_>>()
         .map_err(|error| error.to_string())
+}
+
+/// Columns `first..first+8` of a `context_rows` LEFT JOIN; NULL when the row has none.
+fn context_from_row(row: &rusqlite::Row, first: usize) -> rusqlite::Result<Option<ContextSize>> {
+    let Some(system_bytes) = row.get::<_, Option<i64>>(first)? else {
+        return Ok(None);
+    };
+    let at = |offset: usize| -> rusqlite::Result<u64> {
+        Ok(row.get::<_, i64>(first + offset)?.max(0) as u64)
+    };
+    Ok(Some(ContextSize {
+        system_bytes: system_bytes.max(0) as u64,
+        tools_bytes: at(1)?,
+        history_bytes: at(2)?,
+        tool_results_bytes: at(3)?,
+        attachments_bytes: at(4)?,
+        messages: at(5)?,
+        tool_results: at(6)?,
+        attachments: at(7)?,
+    }))
 }
 
 pub(crate) fn horizon(dir: &Path) -> Result<(Coverage, i64), String> {
@@ -482,6 +533,7 @@ mod tests {
             error: Some("private diagnostic text".into()),
             group: Some("g".into()),
             member: Some("p/m".into()),
+            context: None,
         }
     }
 

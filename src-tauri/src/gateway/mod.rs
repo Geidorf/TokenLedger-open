@@ -7,6 +7,7 @@ mod agent_config;
 mod agents;
 mod anthropic;
 mod codex_config;
+mod context_size;
 mod convert;
 mod gemini;
 mod ledger;
@@ -31,7 +32,7 @@ pub use codex_config::{
 };
 pub(crate) use ledger::accounting;
 use ledger::Ledger;
-pub use ledger::LedgerRecord;
+pub use ledger::{ContextSize, LedgerRecord};
 use routing::Router;
 #[cfg(test)]
 pub(crate) use routing::{MemberTrace, RouteAttempt as RouteDecisionAttempt};
@@ -2139,6 +2140,7 @@ mod tests {
             error: Some("error-secret".into()),
             group: Some("coding".into()),
             member: Some("b/m".into()),
+            context: None,
         };
         let feed = RoutingFeed {
             running: true,

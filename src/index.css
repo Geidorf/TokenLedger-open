@@ -7003,6 +7003,44 @@
     grid-column: span 2;
   }
 
+  .log-detail-grid > .log-detail-context {
+    grid-column: 1 / -1;
+    gap: 6px;
+  }
+
+  .log-context-bar {
+    display: flex;
+    gap: 2px;
+    height: 8px;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-subtle);
+  }
+
+  .log-context-bar > i { min-width: 2px; }
+
+  .log-context-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+  }
+
+  .log-context-legend li { display: inline-flex; align-items: center; gap: 5px; }
+  .log-context-legend li > i { width: 8px; height: 8px; border-radius: 2px; }
+  .log-context-legend b { color: var(--color-text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .log-context-legend small, .log-context-counts { color: var(--color-text-tertiary); font-size: 10px; }
+
+  .log-detail-context .is-systemBytes { background: var(--chart-1); }
+  .log-detail-context .is-toolsBytes { background: var(--chart-2); }
+  .log-detail-context .is-historyBytes { background: var(--chart-3); }
+  .log-detail-context .is-toolResultsBytes { background: var(--chart-4); }
+  .log-detail-context .is-attachmentsBytes { background: var(--chart-5); }
+
   .log-detail-actions {
     display: flex;
     align-items: center;
