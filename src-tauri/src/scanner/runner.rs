@@ -321,7 +321,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         scan_opencode_like(
             &mut logs,
             "opencode",
-            ".local/share/opencode/opencode.db",
+            &opencode_like_db_path("opencode"),
             &scan_cursors,
             &mut pending_cursors,
         )
@@ -331,7 +331,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         scan_opencode_like(
             &mut logs,
             "kilo",
-            ".local/share/kilo/kilo.db",
+            &opencode_like_db_path("kilo"),
             &scan_cursors,
             &mut pending_cursors,
         )
@@ -343,10 +343,8 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     // Framework-backed rows in ~/.mavis mirror requests that the native
     // opencode/kilo scanners already cover. Skip them iff the native DB file
     // exists — a stable rule that cannot flip between scan passes.
-    let opencode_db_exists = get_home_dir()
-        .join(".local/share/opencode/opencode.db")
-        .exists();
-    let kilo_db_exists = get_home_dir().join(".local/share/kilo/kilo.db").exists();
+    let opencode_db_exists = opencode_like_db_path("opencode").exists();
+    let kilo_db_exists = opencode_like_db_path("kilo").exists();
     timed_scan_step!(
         "minimax",
         scan_minimax_marvis_incremental(

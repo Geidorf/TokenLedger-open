@@ -6,9 +6,9 @@ TokenLedger 是一款基于 **Tauri 2 + React + Rust** 的跨平台 AI 工具 To
 
 ## 安装
 
-发行包见 [Releases](https://github.com/Geidorf/TokenLedger-open/releases)。Linux 用户也可以从源码构建，步骤见下方「从源码构建」。
+发行包见 [Releases](https://github.com/Geidorf/TokenLedger-open/releases)。Linux x64 有未签名的 AppImage、deb 与 rpm 预览包（仍不在支持声明内，安装方法见用户手册），也可以从源码构建，步骤见下方「从源码构建」。
 
-安装步骤（含未签名安装包在 Windows 与 macOS 上的放行方法）、各页面说明、云端同步与手机端、隐私说明和常见问题见**用户手册**：[中文](docs/guide/zh/README.md) · [English](docs/guide/en/README.md)。
+安装步骤（含未签名安装包在 Windows 与 macOS 上的放行方法、Linux 的托盘与自启说明）、各页面说明、云端同步与手机端、隐私说明和常见问题见**用户手册**：[中文](docs/guide/zh/README.md) · [English](docs/guide/en/README.md)。
 
 ## 从源码构建
 
@@ -115,8 +115,8 @@ npm run tauri build      # 桌面安装包
 | --- | --- | --- | --- | --- |
 | Claude | Claude Code `~/.claude/projects/**/*.jsonl`；macOS `~/Library/Application Support/{Claude,Claude-3p}/local-agent-mode-sessions/**/*.jsonl`；Windows `%APPDATA%`/`%LOCALAPPDATA%` 同名目录及 `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/{Claude,Claude-3p}/local-agent-mode-sessions/**/*.jsonl`；Linux/XDG 同名 best-effort 目录 | `type == "assistant"` 且 `message.usage` 存在；所有已变化文件跨 CLI/Desktop/Cowork 根目录共用一次去重，未变化文件按 `claude-jsonl-v2` checkpoint 跳过 | 文件名 stem | `claude_{message.id}_{requestId}`；全局取最完整流式快照，后续更完整快照条件更新原行。无 `message.id` 的旧日志回退 `claude_{session_id}_{uuid或line_行号}` |
 | Codex | `~/.codex/sessions/**/rollout-*.jsonl` 与 `~/.codex/archived_sessions/rollout-*.jsonl`；以及 Multica Desktop 的任务级 `~/multica_workspaces_*/<workspace>/<task>/codex-home/{sessions,archived_sessions}/**/rollout-*.jsonl`（见下方 Multica 说明）；Cindy 桌面端的 `<userData>/codex-home` 与按账号分开的 `<userData>/codex-accounts/<owner>/<provider>`（见下方 Cindy 说明）；设置「扫描与启动」里填写的额外目录 | `type == "event_msg"` 且 `payload.type == "token_count"`；优先采用逐请求 `last_token_usage`，缺失时才对累计值求高水位增量；同计数 lane 最近一次或全局紧邻的完整 `total + last` 签名重复置零；fork/subagent 中与父任务截至分叉时刻匹配的有序回放前缀只恢复基线、不出账 | 文件名尾部 UUID，并与首个 `session_meta.payload.id` 交叉校验 | `codex_v2_{root_thread_uuid}_{非零事件序号}`；序号在文件内重复归零后、父回放过滤前分配，活动文件移入归档仍保持幂等 |
-| OpenCode | `~/.local/share/opencode/opencode.db` 的 `message` 表 | `data.tokens` 存在，且三类 Token 不全为 0 | `message.session_id`，缺失为 `unknown_session` | `opencode_{message.id}` |
-| Kilo | `~/.local/share/kilo/kilo.db` 的 `message` 表 | 同 OpenCode | `message.session_id`，缺失为 `unknown_session` | `kilo_{message.id}` |
+| OpenCode | `$XDG_DATA_HOME/opencode/opencode.db`（缺省 `~/.local/share`）的 `message` 表 | `data.tokens` 存在，且三类 Token 不全为 0 | `message.session_id`，缺失为 `unknown_session` | `opencode_{message.id}` |
+| Kilo | `$XDG_DATA_HOME/kilo/kilo.db`（缺省 `~/.local/share`）的 `message` 表 | 同 OpenCode | `message.session_id`，缺失为 `unknown_session` | `kilo_{message.id}` |
 | AntGravity | `~/.gemini/{antigravity,antigravity-cli}/brain/<会话>/.system_generated/logs/transcript.jsonl` | `MODEL/PLANNER_RESPONSE/DONE` 完整顶层用量；旧 App 无用量且无 status 的记录保留估算 | 根下合法会话目录名 | `antigravity_{session_id}_{step_index}` |
 | MiniMaxCode v2 / MiniMax/Marvis 旧库 | 优先扫描 `~/.minimax/v2/sqlite/runtime-state.sqlite` 的 `local_runtime_token_usage`；同时兼容 `~/.minimax/sqlite.db` 的 `token_usage`，不存在时回退 `~/.mavis/sqlite.db`。两个旧路径视为同一别名，每次只扫描一个 | 每行 usage；v2 与旧库通过原生 SQLite 只读事务读取，实时合并 WAL | `session_id`，缺失为 `unknown_session` | 两代都沿用 `mavis_{session_id}_{id}`，迁移时保留相同 session/id 的行不会重复入库 |
 | 腾讯 Marvis | Windows: `%APPDATA%/Tencent/Marvis/User/{user}/database/data.db`，macOS: `~/Library/Application Support/com.tencent.mac.marvis/MarvisData/User/{user}/database/data.db` 的 `llm_token_usage` 表 | 每行 `llm_token_usage`；直接枚举用户库并按整数 `id` 增量读取，不递归遍历完整数据树 | `conversation_id`，缺失为 `unknown_session` | `marvis_tencent_{user_id}_{id}` |
@@ -124,7 +124,7 @@ npm run tauri build      # 桌面安装包
 | WorkBuddy Agent 日志 | 各平台 WorkBuddy `logs/WorkBuddy*.log` | `Agent execution successful with usage: {...}` | 请求 ID | `workbuddy_{请求ID}` |
 | Qclaw JSONL | `~/.qclaw/agents/**/*.jsonl` | `message.usage` 存在 | 文件名 stem | `qclaw_jsonl_{session_id}_{id或行号}` |
 | Qclaw Hermes 响应库 | `~/.qclaw-hermes/response_store.db` 的 `responses` 表 | `data.response.usage` 存在 | `response_id` | `hermes_{response_id}` |
-| Hermes | Windows `%LOCALAPPDATA%/hermes/state.db`，macOS `~/Library/Application Support/hermes/state.db`，Linux `~/.config/hermes/state.db` | `sessions` 表中 `input_tokens` 或 `output_tokens` 大于 0 | `sessions.id` | `hermes_{id}` |
+| Hermes | Windows `%LOCALAPPDATA%/hermes/state.db`，macOS `~/Library/Application Support/hermes/state.db`，Linux `$XDG_CONFIG_HOME/hermes/state.db`（缺省 `~/.config`） | `sessions` 表中 `input_tokens` 或 `output_tokens` 大于 0 | `sessions.id` | `hermes_{id}` |
 | ReasoniX | 经典 `~/.reasonix/sessions/*.meta.json`；新版 `~/.reasonix/projects/*/sessions/*.jsonl.telemetry.json`（Windows 另探测 `%APPDATA%\reasonix`、`%LOCALAPPDATA%\reasonix`）。新版会话配对的 `<id>.jsonl.meta` 提供真实模型与 RFC 3339（UTC）时间；时间戳优先级为 meta `updated_at`（转本地）→ meta `created_at`（转本地）→ 会话 id 内嵌 UTC 时间（转本地）→ 文件 mtime → 扫描时刻 | 三类 Token 不全为 0 | 会话崩溃恢复分叉（`<root>[-<hex12>]…-recovery-<hex>`）折叠回根会话 id，整个家族只出账一次 | `reasonix_{root_session_id}` |
 | Trae | 各平台 `TRAE*/logs/**/*ai-agent*_stdout.log` | 包含 `HistoryEvent` 且 `item_token_usage > 0` | `session_id`，缺失用 `conversation_id` | `trae_{history_id}` |
 | DeepSeek GUI | 默认 `~/.deepseekgui/kun/threads/*/events.jsonl`，可由设置文件 `agents.kun.dataDir` 覆盖 | `kind == "usage"` 且增量后三类 Token 不全为 0；同一 `turnId` 的累计 usage 会转为增量 | `threadId`，缺失用线程目录名 | `deepseekgui_{session_id}_{seq或行号}` |
@@ -133,7 +133,7 @@ npm run tauri build      # 桌面安装包
 | Gemini CLI | 默认 `~/.gemini/tmp/<项目>/chats/**/*.{json,jsonl}`；设置 `GEMINI_CLI_HOME` 时改读 `$GEMINI_CLI_HOME/.gemini/tmp`，覆盖主会话与 `chats/<parentSessionId>/<sessionId>.jsonl` 子代理；与 AntGravity 的 `~/.gemini/antigravity/brain` 路径天然不相交 | 只记录 `type == "gemini"` 且 `tokens` 必填字段完整、计数器非负有限整数、时间戳可解析的 assistant 消息；`promptTokenCount` 扣除 `cachedContentTokenCount` 得净输入，`candidatesTokenCount + thoughtsTokenCount` 得输出；坏 JSONL 中间行可跳过、尾行与整文件读失败不推进 `gemini-cli-chats-v2` 检查点 | 会话头/顶层 `sessionId`，缺失用文件名 stem；旧版无消息 id 时使用消息数组位置 | `gemini_cli_{sessionIdSha96}_{messageIdSha96}`，不暴露本地路径 |
 | Zcode | `~/.zcode/cli/db/db.sqlite` 的 `model_usage` 表（每请求粒度） | 每行 `model_usage`，且三类 Token 不全为 0（`status='error'` 行全 0 被跳过）；`turn_usage`/`tool_usage` 不扫描以免重复计数 | `session_id` | `zcode_{id}` |
 | Kimi Code | `${KIMI_CODE_HOME:-~/.kimi-code}/sessions/wd_*/session_*/agents/*/wire.jsonl`（main 与每个 subagent 各一份 wire，全部扫描）；兼容旧路径 `~/.kimi/sessions` | `type == "usage.record"` 且 `usageScope` 为 `turn`、`session` 或缺失；两种 scope 都是逐请求增量，未知 scope、负数/全零用量与无效时间跳过；未变化文件按 `kimi-wire-jsonl-v2` checkpoint 跳过 | wire 路径中的会话目录名 | 已存在的 turn 行保持 v1 键兼容；session、旧格式及真实键碰撞使用 `kimi_v2_{sourceHash}_{line}_{recordHash}`，不暴露本地路径 |
-| Kimi Desktop | Windows `%APPDATA%/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions`、macOS `~/Library/Application Support/kimi-desktop/.../sessions`、Linux `~/.config/kimi-desktop/.../sessions`（desktop 内嵌 kimi-code runtime，wire 布局、usage 字段与跳过规则同 Kimi Code；会话目录也可能是 `conv-*`/`ctitle-*` 形态） | 同 Kimi Code；未变化文件按独立 `kimidesktop-wire-jsonl-v2` checkpoint 跳过 | wire 路径中的会话目录名（如 `conv-abc123`） | 与 Kimi Code 完全隔离的键空间：turn 行 `kimidesktop_{session}_{agent}_...`，其余 `kimidesktop_v2_{sourceHash}_{line}_{recordHash}`，绝不与 CLI `kimi_*` 别名冲突 |
+| Kimi Desktop | Windows `%APPDATA%/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions`、macOS `~/Library/Application Support/kimi-desktop/.../sessions`、Linux `$XDG_CONFIG_HOME/kimi-desktop/.../sessions`（缺省 `~/.config`）（desktop 内嵌 kimi-code runtime，wire 布局、usage 字段与跳过规则同 Kimi Code；会话目录也可能是 `conv-*`/`ctitle-*` 形态） | 同 Kimi Code；未变化文件按独立 `kimidesktop-wire-jsonl-v2` checkpoint 跳过 | wire 路径中的会话目录名（如 `conv-abc123`） | 与 Kimi Code 完全隔离的键空间：turn 行 `kimidesktop_{session}_{agent}_...`，其余 `kimidesktop_v2_{sourceHash}_{line}_{recordHash}`，绝不与 CLI `kimi_*` 别名冲突 |
 | Pi | 默认根 `~/.pi/agent/sessions/--<编码后的 cwd>--/<时间戳>_<uuid>.jsonl`（`PI_CODING_AGENT_DIR` 改 agent 目录，`PI_CODING_AGENT_SESSION_DIR` 或 `--session-dir` 直接替换整个会话根）；另一条根是 Multica Desktop 托管 Pi runtime 的 `~/.multica/pi-sessions/*.jsonl`（每个 run 一个文件；同目录 0 字节的 `<同名>.jsonl.lock` 不扫描）。两条根都要扫，否则 Multica 上的 Pi 用量整体漏采；Cindy 桌面端另有 `<userData>/pi-agent-home/sessions` | v3 JSONL 会话树：`type == "message"` 且 `message.role` 为 `assistant`（模型调用）或 `toolResult`（工具内嵌的 LLM 调用），加上 `compaction` / `branch_summary` 条目上的可选 `usage`；只有四项计数全 0 才跳过，`stopReason` 为 `error`/`aborted` 的行照常计费，缺 `usage`、无效时间或负数计数跳过；树分叉与被放弃的分支同样是已发生的真实请求，按全文件求和而非只走当前 leaf；未变化文件按 `pi-session-jsonl-v1` checkpoint 跳过 | 会话首行 header 的 `id`；Multica 的文件名是本地时间戳，不是会话身份 | `pi_{entryIdSha96}_{timestampSha96}`；entry id 是会话树身份且被 `/fork` 原样复制，故键**不含**会话 id，复制回来的历史前缀与原文件碰撞而不会双计；无 id 的畸形条目回退 `pi_L{行号}_{timestampSha96}`，不暴露本地路径 |
 | Qwen Code | `${QWEN_RUNTIME_DIR 或 QWEN_HOME，缺省 ~/.qwen}/projects/<编码后的 cwd>/chats/**/*.jsonl`（每会话一份 JSONL，三个根去重后都扫描）；只读 `chats` 目录下的 `.jsonl`，不打开设置、账号或 OAuth 文件 | `type == "assistant"` 且带 `usageMetadata` 的逐请求记录；计数器须为非负整数、时间戳可解析，全零跳过；坏 JSONL 中间行跳过、尾行坏或读失败不推进 `qwen-code-chats-jsonl-v1` 检查点 | 记录内 `sessionId`，缺失用文件名 stem | `qwen_{sessionIdSha96}_{uuidSha96}`；续聊或分叉把同一记录（同 `uuid`）带进另一个文件时只记一次，不暴露本地路径 |
 | GitHub Copilot CLI | `${COPILOT_HOME:-~/.copilot}/session-state/<sessionId>/events.jsonl`；只解析 `session.start` 与 `session.shutdown` 两类事件，不打开配置、登录或插件文件 | 逐请求的 `assistant.usage` 事件不落盘，能读到的只有 `session.shutdown` 的 `data.modelMetrics.<模型>.usage`（每个模型的会话合计）。每个 shutdown 每个模型一行；续聊后同一文件里的下一个 shutdown 若四个计数都不小于上一个，就只记增量，有计数变小则视为新进程重新计数、按原值记；四个计数缺一或非法整条跳过；未变文件按 `copilot-cli-events-jsonl-v1` 检查点跳过 | `session.start` 的 `data.sessionId`，缺失用会话目录名 | `copilot_{sessionIdSha96}_{shutdown事件idSha96}_{模型Sha96}`，重扫幂等，不暴露本地路径 |
@@ -490,7 +490,7 @@ start_tokenledger.bat --show
 | --- | --- |
 | Windows | `%APPDATA%\com.jeidorf.tokenledger` |
 | macOS | `~/Library/Application Support/com.jeidorf.tokenledger` |
-| Linux | `~/.local/share/com.jeidorf.tokenledger` |
+| Linux | `$XDG_DATA_HOME/com.jeidorf.tokenledger`（缺省 `~/.local/share`） |
 
 主要文件：
 

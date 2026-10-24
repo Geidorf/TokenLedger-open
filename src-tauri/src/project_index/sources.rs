@@ -210,9 +210,9 @@ impl SourceRoots {
         Self {
             claude_roots: scanner::claude::discover_claude_log_roots(),
             codex_roots: scanner::codex::discover_codex_log_roots_in(&home),
-            // Same literals as the opencode/kilo calls in `scanner::runner`.
-            opencode_db: home.join(".local/share/opencode/opencode.db"),
-            kilo_db: home.join(".local/share/kilo/kilo.db"),
+            // Same paths as the opencode/kilo calls in `scanner::runner`.
+            opencode_db: scanner::helpers::opencode_like_db_path("opencode"),
+            kilo_db: scanner::helpers::opencode_like_db_path("kilo"),
             minimax_dbs: scanner::minimax::minimax_database_sources(&home)
                 .into_iter()
                 .map(|source| {

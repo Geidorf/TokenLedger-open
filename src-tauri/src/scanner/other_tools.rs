@@ -15,12 +15,11 @@ use walkdir::WalkDir;
 pub(crate) fn scan_opencode_like(
     logs: &mut Vec<LogRecord>,
     tool_name: &str,
-    relative_db_path: &str,
+    db_path: &Path,
     cursors: &SourceCursorMap,
     pending_cursors: &mut Vec<crate::db::ScanSourceCursor>,
 ) -> usize {
     const PARSER_VERSION: i64 = 1;
-    let db_path = get_home_dir().join(relative_db_path);
     if !db_path.exists() {
         log::info!(
             "Opencode-like scan: DB for {} does not exist at {:?}",
@@ -30,7 +29,7 @@ pub(crate) fn scan_opencode_like(
         return 0;
     }
 
-    let fingerprint = match source_fingerprint(&db_path) {
+    let fingerprint = match source_fingerprint(db_path) {
         Ok(fingerprint) => fingerprint,
         Err(error) => {
             log::warn!("Opencode-like scan for {tool_name}: {error}");
@@ -53,7 +52,7 @@ pub(crate) fn scan_opencode_like(
     }
     let mut saw_row = false;
     match Connection::open_with_flags(
-        &db_path,
+        db_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     ) {
         Ok(conn) => {
@@ -326,7 +325,7 @@ pub(crate) fn scan_tencent_marvis(
     } else if cfg!(target_os = "macos") {
         get_home_dir().join("Library/Application Support/com.tencent.mac.marvis/MarvisData/User")
     } else {
-        get_home_dir().join("Library/Application Support/Tencent/Marvis/User")
+        xdg_config_home().join("Tencent/Marvis/User")
     };
 
     if !marvis_user_dir.exists() {
@@ -732,7 +731,7 @@ pub(crate) fn scan_workbuddy_agent_logs(logs: &mut Vec<LogRecord>) -> usize {
             .unwrap_or_else(|| get_home_dir().join("AppData/Roaming"))
             .join("WorkBuddy/logs")
     } else {
-        get_home_dir().join(".local/share/WorkBuddy/logs")
+        xdg_data_home().join("WorkBuddy/logs")
     };
 
     if !path.exists() {
@@ -1024,7 +1023,7 @@ pub(crate) fn hermes_state_db_path(home: &Path) -> PathBuf {
     } else if cfg!(target_os = "macos") {
         home.join("Library/Application Support/hermes/state.db")
     } else {
-        home.join(".config/hermes/state.db")
+        xdg_config_home().join("hermes/state.db")
     }
 }
 
@@ -1125,7 +1124,7 @@ pub(crate) fn scan_trae(
         base_dirs.push(get_home_dir().join("AppData/Roaming"));
         base_dirs.push(get_home_dir().join("AppData/Local"));
     } else {
-        base_dirs.push(get_home_dir().join(".config"));
+        base_dirs.push(xdg_config_home());
     }
 
     let mut trae_paths = Vec::new();
@@ -1419,7 +1418,7 @@ pub(crate) fn deepseekgui_threads_dir() -> PathBuf {
             .unwrap_or_else(|| get_home_dir().join("AppData/Roaming"))
             .join("DeepSeek GUI")
     } else {
-        get_home_dir().join(".config/DeepSeek GUI")
+        xdg_config_home().join("DeepSeek GUI")
     };
 
     let mut data_dir = get_home_dir().join(".deepseekgui/kun");
