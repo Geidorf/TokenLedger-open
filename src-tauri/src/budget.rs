@@ -354,7 +354,7 @@ fn save_state(app_data_dir: &Path, state: &AlertState) {
     }
 }
 
-fn evaluate_report(app: &AppContext, settings: &BudgetSettings) -> BudgetStatusReport {
+pub(crate) fn evaluate_report(app: &AppContext, settings: &BudgetSettings) -> BudgetStatusReport {
     let now = Local::now();
     let fetch = |period: BudgetPeriod| {
         crate::commands::get_stats_impl(app, period.stats_range().to_string())

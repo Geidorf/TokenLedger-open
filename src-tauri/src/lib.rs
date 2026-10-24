@@ -24,6 +24,8 @@ use settings::AppSettings;
 mod app_paths;
 mod budget;
 mod cache;
+mod cli;
+pub use cli::run_cli;
 mod commands;
 mod cost_profile;
 mod db;

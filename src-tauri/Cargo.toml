@@ -7,6 +7,8 @@ license = ""
 repository = ""
 edition = "2021"
 rust-version = "1.92"
+# 除桌面端外还有 src/bin/tokenledger-cli.rs；`cargo run` 与 Tauri 打包默认指桌面端。
+default-run = "tokenledger"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
