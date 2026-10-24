@@ -1,4 +1,5 @@
 import { emit } from '@tauri-apps/api/event';
+import { mockUsageAnomalyCommand } from './devMockUsageAnomaly';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import packageJson from '../package.json';
 import bundledPrices from '../src-tauri/prices.json';
@@ -2107,6 +2108,8 @@ export function installDevMockTauri() {
     const payload = args && typeof args === 'object' && !Array.isArray(args)
       ? args as Record<string, unknown>
       : {};
+    const anomaly = mockUsageAnomalyCommand(cmd, payload);
+    if (anomaly.handled) return anomaly.value;
     switch (cmd) {
       case 'get_cloud_config':
         if (mockFreshInstall && !mockCloudAuthenticated) return { supabase_url: '', supabase_key: '' };
