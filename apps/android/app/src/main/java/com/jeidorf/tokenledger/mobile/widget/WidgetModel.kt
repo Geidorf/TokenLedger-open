@@ -12,7 +12,7 @@ import com.jeidorf.tokenledger.mobile.quotaAvailablePercent
 import kotlin.math.roundToLong
 
 /**
- * 小组件呈现模式。前三项是当前公开 Provider 的固定样式；[MultiBar] 仅用于读取旧实例，
+ * 小组件呈现模式。前四项是当前公开 Provider 的固定样式；[MultiBar] 仅用于读取旧实例，
  * 不再出现在新增/重新配置流程中。
  */
 internal enum class WidgetMode(val storageValue: String, val label: String, val description: String) {
