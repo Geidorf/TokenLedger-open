@@ -41,6 +41,8 @@ mod scanner;
 mod session_analysis;
 mod settings;
 mod stats_query;
+// macOS 把数字写在菜单栏标题位，徽章只在 Windows / Linux 托盘上画；单测在所有平台都跑。
+#[cfg_attr(all(target_os = "macos", not(test)), allow(dead_code))]
 mod tray_badge;
 mod tray_panel;
 mod wallpaper;
