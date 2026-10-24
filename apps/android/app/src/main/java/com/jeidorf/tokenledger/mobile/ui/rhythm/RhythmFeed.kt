@@ -32,7 +32,27 @@ internal data class RhythmFeed(
 internal val LocalRhythmFeedOverride = staticCompositionLocalOf<RhythmFeed?> { null }
 
 /**
- * 只在「会话」子页可见时读；查询（范围、筛选）或账号变了就重读。换查询时先清空旧结果，
+ * 决定何时重读：账号、查询、时区或看板刷新代次（[refreshKey]，每次看板重新取数都会变）任何一个变了就重读，
+ * 所以顶部刷新、下拉刷新、跨日与换时区都会让节律跟着更新，不用靠切页。
+ */
+internal data class CloudFeedRequestKey(
+    val userId: String?,
+    val query: DashboardQuery,
+    val timezone: String,
+    val refreshKey: Any?,
+    val attempt: Int
+)
+
+internal fun cloudFeedRequestKey(
+    userId: String?,
+    query: DashboardQuery,
+    refreshKey: Any?,
+    attempt: Int,
+    timezone: String = ZoneId.systemDefault().id.ifBlank { "UTC" }
+) = CloudFeedRequestKey(userId, query, timezone, refreshKey, attempt)
+
+/**
+ * 只在「会话」子页可见时读；[CloudFeedRequestKey] 变了就重读。换查询时先清空旧结果，
  * 不把上一个范围的节律当成这个范围的。
  */
 @Composable
@@ -40,23 +60,33 @@ internal fun rememberRhythmFeed(
     session: MobileSession?,
     query: DashboardQuery,
     active: Boolean,
+    refreshKey: Any? = null,
     source: ActivityRhythmSource = remember { ActivityRhythmRepository() }
 ): RhythmFeed {
     LocalRhythmFeedOverride.current?.let { return it }
     val userId = session?.userId
     var attempt by remember { mutableIntStateOf(0) }
     var feed by remember(userId, query) { mutableStateOf(RhythmFeed(signedIn = session != null)) }
-    LaunchedEffect(active, userId, query, attempt) {
+    val key = cloudFeedRequestKey(userId, query, refreshKey, attempt)
+    LaunchedEffect(active, key) {
         if (!active || session == null) return@LaunchedEffect
         feed = RhythmFeed(signedIn = true)
-        feed = try {
-            val canonical = DashboardQueryContract.canonical(query, ZoneId.systemDefault().id.ifBlank { "UTC" })
-            RhythmFeed(signedIn = true, rhythm = source.fetch(session, canonical))
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Throwable) {
-            RhythmFeed(signedIn = true, failure = RhythmReadFailure.classify(error))
-        }
+        feed = loadRhythmFeed(session, query, key.timezone, source)
     }
     return feed.copy(retry = { attempt++ })
+}
+
+/** 读一次节律；每次调用都真的去取，不缓存（缓存与否只由上面的请求键决定）。 */
+internal suspend fun loadRhythmFeed(
+    session: MobileSession,
+    query: DashboardQuery,
+    timezone: String,
+    source: ActivityRhythmSource
+): RhythmFeed = try {
+    val canonical = DashboardQueryContract.canonical(query, timezone)
+    RhythmFeed(signedIn = true, rhythm = source.fetch(session, canonical))
+} catch (cancel: CancellationException) {
+    throw cancel
+} catch (error: Throwable) {
+    RhythmFeed(signedIn = true, failure = RhythmReadFailure.classify(error))
 }

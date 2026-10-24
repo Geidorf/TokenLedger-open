@@ -583,7 +583,9 @@ internal fun V2DestinationContent(
     val rhythmFeed = rememberRhythmFeed(
         state.session,
         state.query,
-        active = destination == MobileDestination.Usage && insightPane == InsightPane.Sessions
+        active = destination == MobileDestination.Usage && insightPane == InsightPane.Sessions,
+        // 看板每次重新取数（顶部刷新、下拉刷新、跨日）都会换 generatedAt，节律跟着重读。
+        refreshKey = state.visibleData?.meta?.generatedAt
     )
     val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
     var mePage by rememberSaveable { mutableStateOf(initialMePage) }
