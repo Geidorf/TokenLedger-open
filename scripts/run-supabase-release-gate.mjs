@@ -352,6 +352,10 @@ psql(container, {
   label: 'Live routing snapshot relay, validation, capacity and RLS regression',
 });
 psql(container, {
+  file: 'supabase/tests/budget_snapshot_regression.sql',
+  label: 'Budget status snapshot relay, validation, capacity and RLS regression',
+});
+psql(container, {
   file: 'supabase/tests/cloud_heatmap_metrics_activity_rhythm_regression.sql',
   label: 'Cloud heatmap record counts/costs and activity rhythm RPC, filters and grants regression',
 });
