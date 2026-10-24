@@ -503,12 +503,16 @@ pub(crate) fn plan_alerts(
     if !settings.notify {
         return Vec::new();
     }
-    // Only the current period of each evaluated rule can still fire, so older
-    // periods go first; a month's entries never get evicted by daily churn.
+    // An entry expires once its rule is deleted or its evaluated period has
+    // moved on, so a month's entries never get evicted by daily churn. A
+    // disabled rule is not evaluated and keeps its entries (age-bounded), so
+    // re-enabling it within the same period stays quiet.
     state.fired.retain(|entry| {
-        statuses.iter().any(|status| {
-            status.rule_id == entry.rule_id && status.period_start == entry.period_start
-        })
+        settings.rules.iter().any(|rule| rule.id == entry.rule_id)
+            && statuses
+                .iter()
+                .filter(|status| status.rule_id == entry.rule_id)
+                .all(|status| status.period_start == entry.period_start)
     });
 
     // Over first, then the fullest budgets, so a capped hour reports the
@@ -990,6 +994,28 @@ mod tests {
             monthly_alerts, 1,
             "the monthly budget alerts once per month"
         );
+    }
+
+    #[test]
+    fn disabling_and_re_enabling_within_the_period_stays_quiet() {
+        let budget = rule("a", BudgetPeriod::Month, BudgetMetric::Cost, 10.0);
+        let mut settings = BudgetSettings {
+            notify: true,
+            rules: vec![budget.clone()],
+        };
+        let mut state = AlertState::default();
+        let now = at("2026-10-24T08:00:00Z");
+        let over = statuses_for(std::slice::from_ref(&budget), &[12.0], "2026-10-01");
+        assert_eq!(plan_alerts(&settings, &mut state, &over, now).len(), 1);
+        // Disabled: not evaluated, so no status for it.
+        settings.rules[0].enabled = false;
+        assert!(plan_alerts(&settings, &mut state, &[], now).is_empty());
+        settings.rules[0].enabled = true;
+        assert!(plan_alerts(&settings, &mut state, &over, now + Duration::hours(2)).is_empty());
+        // Deleting the rule drops its entries.
+        settings.rules.clear();
+        plan_alerts(&settings, &mut state, &[], now);
+        assert!(state.fired.is_empty());
     }
 
     fn day_of(value: &str) -> NaiveDate {
