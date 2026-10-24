@@ -608,6 +608,12 @@ internal fun V2DestinationContent(
     val detailsListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_details") { LazyListState() }
     val sessionsListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_sessions") { LazyListState() }
 
+    // 双栏右栏（伴随子页）的滚动位置也提到 AnimatedContent 外面：切页、开当天复盘再回来时不回到顶部。
+    val companionListStates = InsightPane.entries.associateWith { pane ->
+        rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_companion_${pane.name}") { LazyListState() }
+    }
+    fun companionListStateFor(pane: InsightPane): LazyListState = companionListStates.getValue(pane)
+
     fun listStateFor(dest: MobileDestination, pane: InsightPane): LazyListState = when (dest) {
         MobileDestination.Usage -> when (pane) {
             InsightPane.Overview -> overviewListState
@@ -703,13 +709,9 @@ internal fun V2DestinationContent(
                     }
                 }
                 companionPane != null && stats != null -> @Composable { paneModifier: Modifier ->
-                    val companionListState = rememberSaveable(
-                        saver = LazyListState.Saver,
-                        key = "v2_scroll_companion_${companionPane.name}"
-                    ) { LazyListState() }
                     LazyColumn(
                         modifier = paneModifier,
-                        state = companionListState,
+                        state = companionListStateFor(companionPane),
                         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = contentBottomPadding),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
