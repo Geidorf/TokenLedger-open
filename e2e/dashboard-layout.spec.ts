@@ -27,7 +27,8 @@ test.describe('概览卡片布局', () => {
     await expect(page.locator('[data-layout-card="tools"]')).toHaveCount(0);
 
     await reloadSettled(page);
-    expect((await cardOrder(page))[0]).toBe('trend');
+    // 重开后卡片可能晚于页面就绪才渲染，轮询读顺序。
+    await expect.poll(async () => (await cardOrder(page))[0]).toBe('trend');
     await expect(page.locator('[data-layout-card="trend"]')).toHaveAttribute('data-width', 'half');
     await expect(page.locator('[data-layout-card="tools"]')).toHaveCount(0);
   });
