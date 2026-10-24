@@ -639,3 +639,47 @@ fn overview_splits_gateway_rows_by_provider_account() {
     assert_eq!(stats["summary"]["totalRequests"], json!(3));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn account_split_matches_deduplicated_summary_in_a_non_default_time_zone() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let conn = db::get_connection(&db_path).unwrap();
+    // 被 g1 取代的扫描行不得计入任何账号，也不得重复进入汇总。
+    insert_scan(&conn, "dup", "s1", "2026-10-04 10:00:05", 200, 80);
+    insert_scan(&conn, "plain", "other", "2026-10-04 10:30:00", 5, 5);
+    drop(conn);
+    let mut relay = ledger_line("g2", Some("s2"), local_ts(11, 0, 0), 30, 10);
+    relay["provider"] = json!("relay");
+    write_ledger(
+        &app,
+        &[
+            ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80),
+            relay,
+        ],
+    );
+
+    let query: super::super::LocalStatsQuery = serde_json::from_value(json!({
+        "range": "all",
+        "timezone": "Pacific/Kiritimati",
+    }))
+    .unwrap();
+    let stats = super::super::get_local_stats_v2_impl_at(&app, query, local_ts(12, 0, 0)).unwrap();
+    let providers = stats["providers"].as_object().unwrap();
+    let account_total: i64 = providers
+        .values()
+        .map(|p| p["total"].as_i64().unwrap())
+        .sum();
+    let account_requests: i64 = providers
+        .values()
+        .map(|p| p["requests"].as_i64().unwrap())
+        .sum();
+    assert_eq!((account_total, account_requests), (280 + 40, 2));
+    // 汇总 = 各账号 + 没有账号的扫描行（只剩 plain 一条）。
+    assert_eq!(stats["summary"]["totalTokens"], json!(account_total + 10));
+    assert_eq!(
+        stats["summary"]["totalRequests"],
+        json!(account_requests + 1)
+    );
+    let _ = fs::remove_dir_all(root);
+}
