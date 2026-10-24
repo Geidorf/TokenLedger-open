@@ -79,7 +79,6 @@ import com.jeidorf.tokenledger.mobile.QuotaUiState
 import com.jeidorf.tokenledger.mobile.StatsData
 import com.jeidorf.tokenledger.mobile.TokenDisplayMode
 import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
-import com.jeidorf.tokenledger.mobile.ui.ambient.v2WidgetItems
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerSpace
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
@@ -100,7 +99,7 @@ internal class V2MeActions(
  * 「我的」一级页（重构 R5）：账号、同步、展示、偏好四组，行式卡片 + 字距加宽的小节眉题。
  *
  * 手机端只读云端，不做 WebDAV 与密钥管理；这两行照实写明在桌面端，不放假的开关。
- * 待机屏 / 墨水屏是一层子页，沿用原「展示」页的模式条、预览与全屏入口。
+ * 待机屏 / 墨水屏是一层子页（V2MeStandby.kt）：预览舞台、全屏入口、显示模式与屏幕设置。
  */
 internal fun LazyListScope.v2MeItems(
     palette: MobileV2Palette,
@@ -126,8 +125,8 @@ internal fun LazyListScope.v2MeItems(
                 }
             }
             if (stats != null) {
-                v2WidgetItems(
-                    palette, state, stats, appearance, ambientMode, tokenDisplayMode,
+                v2MeStandbyItems(
+                    palette, state, stats, appearance, ambientMode, tokenDisplayMode, actions,
                     onAmbientModeChange, onTokenDisplayModeChange, onOpenLowPowerDisplay
                 )
             } else {
@@ -541,7 +540,7 @@ private fun V2MeDataCard(palette: MobileV2Palette, state: DashboardUiState) {
 }
 
 @Composable
-private fun <T> V2MeChoiceDialog(
+internal fun <T> V2MeChoiceDialog(
     title: String,
     options: List<T>,
     selected: T?,
