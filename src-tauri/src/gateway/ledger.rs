@@ -295,6 +295,43 @@ impl Ledger {
 }
 
 /// "codex_cli_rs/0.48.0 (Mac OS 15.0; arm64)" → "codex".
+/// `(end time, ok)` of every attempt in the diagnostic lines (rotated file
+/// first) that ended at or after `since`. Failed attempts usually carry no
+/// tokens and never reach the accounting database, so these lines are the
+/// only record of them. Unreadable lines are skipped; no other field is kept.
+pub(crate) fn attempt_outcomes_since(
+    dir: &Path,
+    since: chrono::DateTime<chrono::Utc>,
+) -> Result<Vec<(chrono::DateTime<chrono::Utc>, bool)>, String> {
+    #[derive(Deserialize)]
+    struct Outcome {
+        ts: String,
+        ok: bool,
+    }
+    let mut outcomes = Vec::new();
+    let current = dir.join(LEDGER_FILE);
+    for path in [current.with_extension("jsonl.1"), current] {
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        for line in BufReader::new(file).lines().map_while(Result::ok) {
+            let Ok(outcome) = serde_json::from_str::<Outcome>(&line) else {
+                continue;
+            };
+            let Ok(ended) = chrono::DateTime::parse_from_rfc3339(outcome.ts.trim()) else {
+                continue;
+            };
+            let ended = ended.with_timezone(&chrono::Utc);
+            if ended >= since {
+                outcomes.push((ended, outcome.ok));
+            }
+        }
+    }
+    Ok(outcomes)
+}
+
 pub fn agent_from_user_agent(user_agent: &str) -> Option<String> {
     // Gemini CLI in a VS Code-family terminal sends "CloudCodeVSCode/… proxy_client=geminicli".
     if user_agent.contains("proxy_client=geminicli") {
@@ -403,6 +440,52 @@ mod tests {
             vec!["data: {\"a\":1}".to_string(), String::new()]
         );
         assert_eq!(lines.finish().as_deref(), Some("data: [DO"));
+    }
+
+    #[test]
+    fn attempt_outcomes_include_zero_token_failures() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-outcomes-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let since = chrono::DateTime::parse_from_rfc3339("2026-10-05T00:00:01Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert!(attempt_outcomes_since(&dir, since).unwrap().is_empty());
+        let ledger = Ledger::new(&dir);
+        for (index, ok) in [(0u64, true), (1, true), (2, false)] {
+            ledger
+                .append(&LedgerRecord {
+                    ts: format!("2026-10-05T00:00:0{index}Z"),
+                    request_id: format!("r{index}"),
+                    logical_request_id: None,
+                    agent: None,
+                    session: None,
+                    endpoint: "responses".into(),
+                    provider: "openai".into(),
+                    requested_model: "openai/gpt-5.5".into(),
+                    upstream_model: "gpt-5.5".into(),
+                    wire: "responses".into(),
+                    stream: true,
+                    status: if ok { 200 } else { 502 },
+                    ok,
+                    input: if ok { 5 } else { 0 },
+                    output: 0,
+                    cache_read: 0,
+                    cache_write: 0,
+                    latency_ms: 10,
+                    error: (!ok).then(|| "upstream failed".into()),
+                    group: None,
+                    member: None,
+                    context: None,
+                })
+                .unwrap();
+        }
+        fs::write(dir.join("usage-v1.jsonl.1"), "not json\n").unwrap();
+        let outcomes = attempt_outcomes_since(&dir, since).unwrap();
+        assert_eq!(
+            outcomes.iter().map(|o| o.1).collect::<Vec<_>>(),
+            vec![true, false]
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

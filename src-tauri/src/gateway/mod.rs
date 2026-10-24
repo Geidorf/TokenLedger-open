@@ -31,6 +31,7 @@ pub use codex_config::{
     CodexApplyResult, CodexConfig, CodexInspection, CodexPreview, CodexRestoreResult,
 };
 pub(crate) use ledger::accounting;
+pub(crate) use ledger::attempt_outcomes_since;
 use ledger::Ledger;
 pub use ledger::{ContextSize, LedgerRecord};
 use routing::Router;
