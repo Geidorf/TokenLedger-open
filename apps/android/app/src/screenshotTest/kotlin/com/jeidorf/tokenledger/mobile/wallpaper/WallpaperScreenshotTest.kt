@@ -49,6 +49,8 @@ private fun previewFrame(kind: WallpaperPreviewKind): Pair<WallpaperFrame, Long>
     return when (kind) {
         WallpaperPreviewKind.Playing -> {
             model.accept(ok(envelope("2026-10-24T07:00:05Z", "[$FAILOVER_FLOW]")), 0L)
+            // 先在 0 时刻取一帧让流出队开始播放，否则播放起点会落在下面的 now 上。
+            model.frame(0L, reduceMotion = false)
             // 第二段（网关 → 第一个成员）走到一半：光点在失败的那一跳上。
             val now = WallpaperTimeline.SEGMENT_MS + WallpaperTimeline.GAP_MS + WallpaperTimeline.SEGMENT_MS / 2
             model.frame(now, reduceMotion = false) to now
