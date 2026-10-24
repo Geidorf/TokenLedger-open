@@ -18,7 +18,7 @@ In **Settings › Budget alerts (预算提醒)** you can set a cost or token lim
 
 When you pick an agent or model, the box suggests names seen this month. An **account** is the forwarding target recorded by the model gateway (a provider), so only requests through the gateway count toward account budgets. Without gateway records, an account budget shows as unavailable.
 
-You can have up to 32 budgets. Each one can be paused, edited or deleted. Changing the period, scope, measure or limit counts as a new budget and starts counting again.
+You can have up to 32 budgets. Each one can be paused, edited or deleted. Changing the period, scope, measure or limit re-arms its alerts (it can alert for "close" and "over" again this period), but it does not reset usage: usage is always counted over the whole calendar period. So editing a budget that is already over can trigger another alert straight away.
 
 ## How you are alerted
 

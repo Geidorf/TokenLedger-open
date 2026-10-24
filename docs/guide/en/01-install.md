@@ -47,6 +47,7 @@ The app currently shows up as lowercase `tokenledger`. This is known and harmles
 ## Upgrade and uninstall
 
 - **Upgrade**: install the new package over the old one. Your local ledger, settings and keychain secrets are kept.
+- **Before uninstalling**: if any agent is connected to the model gateway, restore it on the Agents page, or choose "Restore original configs and turn off" when turning off **Settings › Model access**. The backups of the original configs live in TokenLedger's data folder; once that folder is deleted they are gone and the agent keeps pointing at a local gateway that no longer exists.
 - **Uninstall**: on Windows use Settings › Apps; on macOS move `tokenledger.app` to the Bin. Uninstalling does not delete the data folder. To remove everything, also delete:
 
 | Platform | Data folder |

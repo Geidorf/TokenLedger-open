@@ -38,7 +38,13 @@ The same page in the dark theme:
 
 ![Requests](../images/usage-requests.png)
 
-One row per call: tool, model, input, output, total cache, estimated cost, time and device.
+Usage details: tool, model, input, output, total cache, estimated cost, time and device. A row is not always one call; the page labels the current granularity:
+
+- **Per request**: local data, one call per row;
+- **Log aggregate**: local data, but some tools log usage per session or period, so one row can cover several requests;
+- **Cloud hourly aggregate**: with **Cloud total** selected, each row is the total for device × tool × model × hour.
+
+Exported CSV rows have the same granularity, so don't read an hour's total as one expensive request.
 
 - **Filters**: combine tools, models and devices, and search by exact text. "Clear filters" resets them.
 - **Details**: click a row to see the full token breakdown. Requests that carry context-composition data also show what the context was made of.

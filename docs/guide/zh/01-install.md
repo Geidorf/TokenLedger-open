@@ -47,6 +47,7 @@ xattr -dr com.apple.quarantine /Applications/tokenledger.app
 ## 升级与卸载
 
 - **升级**：下载新版安装包直接覆盖安装。本机账本、设置与钥匙串里的密钥都会保留。
+- **卸载前**：如果有 Agent 接入了模型网关，先在「Agent」页逐个恢复，或关闭「设置 › 模型接入」时选「恢复原配置并关闭」。原配置的备份存在 TokenLedger 的数据目录里，删掉数据目录后就无法恢复，Agent 会一直指向已经不存在的本机网关。
 - **卸载**：Windows 在「设置 › 应用」里卸载；macOS 把 `tokenledger.app` 移到废纸篓。卸载不会删除数据目录，彻底清除还需要手动删掉：
 
 | 平台 | 数据目录 |

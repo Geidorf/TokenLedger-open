@@ -14,7 +14,7 @@ Set these up in **Settings › Desktop wallpaper (桌面壁纸)**:
 - **Style**: "Static image" draws your usage into a wallpaper image and redraws it at the update interval (minimum 15 seconds). macOS also has "Live desktop", a live card above the system wallpaper and below the desktop icons that lets clicks pass through.
 - **Lock-screen wallpaper** (Windows only): "Update the lock-screen wallpaper automatically" uses the same picture for the lock screen, refreshed at least every 30 seconds. macOS does not allow changing the lock screen.
 - **Usage source**: this computer, or the cloud total (needs [cloud sync](06-cloud-mobile.md)). You can pick which devices count, separately from the dashboard filters.
-- The page shows a preview; click **Apply now** to write it to the desktop.
+- The preview on the page never changes your desktop. Once the main switch is on, however, changes to the style, data source and other settings apply automatically: on macOS as soon as they are saved, on Windows at the next scheduled update. **Apply now** just forces an immediate redraw. To try settings first, adjust them while the main switch is off, then turn it on.
 - **Clean up old wallpapers** only deletes old images TokenLedger generated. It keeps the current image and your original wallpaper setting.
 
 ## Desktop widget (computer)
