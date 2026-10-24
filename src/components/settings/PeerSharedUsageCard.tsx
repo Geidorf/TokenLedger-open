@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Monitor, RefreshCw, Trash2 } from 'lucide-react';
 import { DisclosurePanel, SettingsActionRow, SettingsCard, SettingsGroup } from './SettingsPrimitives';
+import { t, useLang } from '../../i18n';
 
 export interface PeerSharedComputer {
   id: string;
@@ -31,13 +32,13 @@ export interface PeerSharedListing {
 type Busy = 'list' | 'pull' | 'clear';
 
 function errorText(cause: unknown) {
-  return typeof cause === 'string' ? cause : cause instanceof Error ? cause.message : '操作失败，请稍后重试。';
+  return typeof cause === 'string' ? cause : cause instanceof Error ? cause.message : t('peer.error');
 }
 
 function pulledNote(meta: PeerSharedMeta) {
-  if (meta.computers.length === 0) return '没有统计其他电脑的共享用量。';
+  if (meta.computers.length === 0) return t('peer.none');
   const calls = meta.computers.reduce((sum, c) => sum + c.calls, 0);
-  return `已统计 ${meta.computers.length} 台电脑的 ${calls} 次调用（${new Date(meta.pulledAt).toLocaleString()}）。`;
+  return t('peer.pulled', { computers: meta.computers.length, calls, at: new Date(meta.pulledAt).toLocaleString() });
 }
 
 /**
@@ -46,6 +47,7 @@ function pulledNote(meta: PeerSharedMeta) {
  * 这些调用只在本机统计里显示，不上传云端。
  */
 export function PeerSharedUsageCard() {
+  useLang();
   const [listing, setListing] = useState<PeerSharedListing | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Busy | null>(null);
@@ -70,7 +72,7 @@ export function PeerSharedUsageCard() {
     const next = await invoke<PeerSharedListing>('peer_sync_shared_list');
     setListing(next);
     setPicked(new Set(next.computers.filter((c) => c.enabled).map((c) => c.id)));
-    if (next.computers.length === 0) setNote('WebDAV 上还没有其他电脑共享的用量。');
+    if (next.computers.length === 0) setNote(t('peer.emptyRemote'));
     else if (next.last) setNote(pulledNote(next.last));
   });
 
@@ -90,7 +92,7 @@ export function PeerSharedUsageCard() {
       computers: current.computers.map((c) => ({ ...c, enabled: false })),
       last: null,
     });
-    setNote('已停止统计其他电脑的用量，并删除了本机保存的副本。');
+    setNote(t('peer.cleared'));
   });
 
   const toggle = (id: string) => {
@@ -103,51 +105,51 @@ export function PeerSharedUsageCard() {
   };
 
   return (
-    <SettingsCard title="其他电脑的共享用量">
+    <SettingsCard title={t('peer.title')}>
       <SettingsGroup>
         <p className="settings-project-copy">
-          外部网关会把每台电脑的调用加密放在同一个 WebDAV 文件夹里。只勾选没有安装 TokenLedger 的电脑，否则同一次调用会算两遍。
+          {t('peer.intro')}
         </p>
         {error && <p className="settings-project-note" role="alert">{error}</p>}
         {note && <p className="settings-project-note" role="status">{note}</p>}
         <SettingsActionRow busy={busy !== null}>
           <button className="secondary-inline" type="button" onClick={() => void list()} disabled={busy !== null}>
             {busy === 'list' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
-            {busy === 'list' ? '读取中…' : '查看共享用量的电脑'}
+            {busy === 'list' ? t('peer.listing') : t('peer.list')}
           </button>
           {/* 不依赖服务器：离线或改了密码也能停止统计并删除本机副本。 */}
           <button className="secondary-inline" type="button" onClick={() => void clear()} disabled={busy !== null}>
             <Trash2 className="h-4 w-4" />
-            {busy === 'clear' ? '清除中…' : '停止统计并清除'}
+            {busy === 'clear' ? t('peer.clearing') : t('peer.clear')}
           </button>
         </SettingsActionRow>
         {listing && listing.computers.length > 0 && (
-          <div className="settings-peer-preview" aria-label="共享用量的电脑">
+          <div className="settings-peer-preview" aria-label={t('peer.region')}>
             <ul className="settings-peer-list">
               {listing.computers.map((c) => (
                 <li key={c.id}>
                   <label>
                     <input type="checkbox" checked={picked.has(c.id)} onChange={() => toggle(c.id)} />
                     <span className="settings-peer-name">{c.name || c.id}</span>
-                    <span className="settings-peer-meta">{c.days} 天 · 最近 {c.latest}</span>
+                    <span className="settings-peer-meta">{t('peer.meta', { days: c.days, latest: c.latest })}</span>
                   </label>
                 </li>
               ))}
             </ul>
             <SettingsActionRow busy={busy !== null}>
               <button className="primary-inline" type="button" onClick={() => void pull()} disabled={busy !== null}>
-                {busy === 'pull' ? '同步中…' : picked.size > 0 ? `统计选中的 ${picked.size} 台电脑` : '不统计任何电脑'}
+                {busy === 'pull' ? t('peer.pulling') : picked.size > 0 ? t('peer.pullSome', { count: picked.size }) : t('peer.pullNone')}
               </button>
             </SettingsActionRow>
           </div>
         )}
-        <DisclosurePanel title="了解详情：共享用量">
+        <DisclosurePanel title={t('peer.details')}>
           <div className="settings-project-copy">
             <ul>
-              <li>使用上方「外部网关 WebDAV 同步」里保存的地址和同步密码，只读取，不改动服务器上的文件。</li>
-              <li>默认不统计任何电脑；本机自己的那份会自动跳过。外部网关在服务器上保留最近 90 天。</li>
-              <li>这些调用按电脑分开记入本机的统计，不会替换本机扫描到的记录，也不会上传到云端。</li>
-              <li>需要更新时再点一次「统计选中的电脑」。</li>
+              <li>{t('peer.detail1')}</li>
+              <li>{t('peer.detail2')}</li>
+              <li>{t('peer.detail3')}</li>
+              <li>{t('peer.detail4')}</li>
             </ul>
           </div>
         </DisclosurePanel>

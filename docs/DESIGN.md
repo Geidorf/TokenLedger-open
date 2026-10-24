@@ -410,7 +410,7 @@ T10.134 补充核实：当前各桌面平台只持久化 `autostart_enabled`，�
 
 依据 ADR-017 与 U-92/U-93，桌面侧栏在「活动明细」与「设置与云端」之间增加「模型接入」组，四个一级入口按 T10.262 原型 v2 实现，后端为 `src-tauri/src/gateway/` 的仅主窗口命令；锚点 `#agents`、`#providers`、`#gateway`、`#routing` 可直达。四页不显示总览的范围与口径工具条，页头右侧是网关状态胶囊。
 
-- 供应商：从国际、国内、本地或自定义 OpenAI / Anthropic 兼容预设新增，填写名称、ID（保存后不可改）、接口地址、上游协议（Responses、Chat 或 Anthropic Messages）与模型列表；启用开关即时保存。API key 只写入系统钥匙串（`gateway_set_provider_key`，空值即删除），界面只显示「已设置 key / 未设置 key」，没有读取 key 的命令。
+- 供应商：从国际、国内、本地或自定义 OpenAI / Anthropic 兼容预设新增，填写名称、ID（保存后不可改）、接口地址、上游协议（Responses、Chat 或 Anthropic Messages）与模型列表；启用开关即时保存。API key 只写入系统钥匙串（`gateway_set_provider_key`，空值即删除），界面只显示「已设置 key / 未设置 key」，没有读取 key 的命令。每行另有健康徽标与 24 小时趋势条，详情抽屉列出成功率、P50/P95 耗时、限流与错误码分布、各模型对比与最近失败；数据只来自网关自己的请求记录，不额外访问供应商（只读命令 `gateway_provider_health` 仅主窗口可调，见 [供应商健康度](design/provider-health-v1.md)）。路由组成员前显示所属供应商的健康圆点。
 - Anthropic Messages（T10.289）：网关另提供 `/v1/messages`（流式与非流式）与 `/v1/messages/count_tokens`（本地粗估，不发上游），鉴权同时接受 `Authorization: Bearer` 与 `x-api-key`，错误体带顶层 `type: "error"`。上游为 Anthropic 协议时原样直通（只替换 `model`，`cache_control` 等字段保留），以 `x-api-key` 发供应商 key 并转发客户端的 `anthropic-version`/`anthropic-beta`（缺省 `2023-06-01`），接口地址既接受 `…/anthropic` 也接受 `…/v1`；上游为 Chat 时双向转换（system、图片、工具调用/结果、`tool_choice`、停止序列；转换前验证原始语义，不能表达的 thinking、文档与服务端工具要求原生成员，不得静默丢弃；受支持推理内容回写为 thinking 块），流式事件按 `message_start → content_block_* → message_delta → message_stop` 输出，工具调用在结尾整块发出。上游只有 Responses 时拒绝 Messages 请求，Anthropic 上游也拒绝 Responses/Chat 请求；Agent 直接选模型时后端按同一规则拒绝不兼容的供应商。记账：Anthropic 的 `input_tokens` 本就不含缓存，`cache_read_input_tokens`/`cache_creation_input_tokens` 分列为缓存读写，流式合并 `message_start` 与 `message_delta` 的用量。
 - 网关：监听 `127.0.0.1:3462`，启用至少一个供应商后自动启动；显示运行状态、地址、本地 token 尾号、模型目录（`供应商ID/模型` 与 `group/<id>`）与最近 50 条请求。请求表主列为有效 Token（输入 + 输出），缓存读写单列。页面上的接入示例只用 `$TOKENLEDGER_TOKEN` 占位符、密钥栏只显示尾号；「复制 token」与「复制带 token 的完整示例」在用户点击时调用仅主窗口命令 `gateway_reveal_local_token` 取完整本地 token，直接写入剪贴板并提示「已复制」，不显示、不缓存、不写日志（U-98，T10.271）。
 - 路由：路由组卡片显示分配方式（按顺序 / 轮流 / 固定一个 / 按权重）、成员顺序（按权重时显示每个成员的权重与新会话占比）、规则与会话保持时长，失败冷却中的成员带「冷却中 · 约 N 秒」标记（右栏另列冷却中成员，只读命令 `gateway_routing_cooldowns` 仅主窗口可调，有冷却时每 10 秒刷新）；编辑表单可增删和排序成员（成员候选含其他启用的路由组，不含自己）、按权重时填写每个成员的权重、增删规则（带图片、输入超过 N 字符、推理强度、Agent、时段、压缩对话）、选会话保持（关闭至 1 天）。规则按顺序取第一条命中、优先于会话保持，固定一个时规则暂停；移除成员会一并移除指向它的规则。右栏「最近决策」显示原因与逐次尝试（失败已切换、上游拒绝等），详情与原因标签相同时只显示标签。网关页的接入说明、token 与钥匙串安全说明，路由页的「group/…」显示规则与失败切换时机都收进 ⓘ（U-102，T10.278）。
@@ -568,11 +568,12 @@ T10.306h 后台小组件两条缓存写入在网络前捕获请求身份，最�
 
 ### 6.4 Android 桌面小组件 · Ledger Rings
 
-视觉基础为 [Ledger Rings v1](design/android-widget-ledger-rings-v1.png)，SHA-256 `0c1174ba783796a6b4b9fe8e3c0b3701272031d75a825caf5a91263b6869c90e`；多 Provider 版当前渲染事实由 `WidgetDesignScreenshotTest` 的深/浅色 golden（`apps/android/app/src/screenshotTestDebug/reference/.../WidgetDesignScreenshotTestKt/LedgerRings{Dark,Light}Screenshot_*.png`）锁定；golden 每次重录都会变，文档不再抄写其哈希。它延续 Android V2 的编辑式黑底、克制蓝色和数字优先层级，但把桌面小组件收敛为三种用途明确的实例，而不是在一个卡片里用尺寸或顶栏轮播暗中改写内容。
+视觉基础为 [Ledger Rings v1](design/android-widget-ledger-rings-v1.png)，SHA-256 `0c1174ba783796a6b4b9fe8e3c0b3701272031d75a825caf5a91263b6869c90e`；多 Provider 版当前渲染事实由 `WidgetDesignScreenshotTest` 的深/浅色 golden（`apps/android/app/src/screenshotTestDebug/reference/.../WidgetDesignScreenshotTestKt/LedgerRings{Dark,Light}Screenshot_*.png`）锁定；golden 每次重录都会变，文档不再抄写其哈希。它延续 Android V2 的编辑式黑底、克制蓝色和数字优先层级，但把桌面小组件收敛为四种用途明确的实例，而不是在一个卡片里用尺寸或顶栏轮播暗中改写内容。
 
 - 额度圆环：最多三个 Provider 并列；圆环中心只保留可用百分比/绝对值，Provider 与窗口语义位于环外，避免在 40–58dp 圆内堆叠三行文字。2×2 按可用宽度缩为 40dp，4×2 提升到 58dp，单来源可放大到 72dp。圆环按档位着色（充足主色蓝、偏紧琥珀、告急红）；来源 stale 时圆环淡化并写「待刷新」与观测日期（用户决定，T10.173 V-Q2；随 T10.173 的视觉任务（A9 小组件）实施。现行 stale 的圆环改用琥珀色、不按档位着色，文字写「历史」「历史数据」，「待刷新」字样由 A9 新增）；错误态画虚线空槽并写「不可用」（root 决定 R-4，以 T10.173 规范 §4.14 为准，随 A9 实施；现行为完整红环，环心写破折号、环外写“不可用”）。
 - 额度横条：Codex、Claude、Antigravity 以稳定顺序纵排，每行固定为状态点、Provider、窗口/状态、可用值与共宽轨道；4×1 压缩文字和轨道而不删除来源，4×2 保留窗口语义。错误态不绘制伪造的百分比进度。
 - 额度与消耗：4×2 上部把有效 Token 与预估费用放入互不推动的双数值轨道，下部按实际高度呈现一至三个完整 Provider 可用额度横条；大字或窄宽时纵向收束并至少保留一项额度与消耗，确实无法同时承载时明确提示尺寸不足，不把组合卡静默降级成另一组件类型（T10.118d）。
+- 额度条：4×3 为主要形态，每个额度窗口一行，左写「来源 · 窗口」，右写「N 分钟后重置」与「可用 N%」，下方 4dp 细条；截断按受限窗口选择规则，放不下的窗口在卡头写「+N 个窗口」，大字或窄卡时卡头让出用量以保住该文字。配置页「实时路由」开关（默认关）打开后，底部一行写最近一次网关调用；后台刷新时读一次 routing-snapshot-v1，只存按账号绑定的摘要，不存设备名与凭据。
 - 交互：卡片整体点击只打开 TokenLedger。样式、来源、范围与主题通过 Launcher 的添加/重新配置 Activity 修改；卡片内不提供字符图标或循环轮播，避免误触后实例用途变化。全部来源为默认值，也允许某个实例固定单一来源。
 - 主题：`WidgetThemeMode.System/Light/Dark` 按 appWidgetId 持久化。System 在渲染时读取 `uiMode`，Light/Dark 使用固定语义色，不反向修改 `LedgerAppearance`。
 - 数据：`WidgetStateRepository` 只读 owner-bound LKG；Provider 复用 Android 稳定排序 helper。百分比从 `remaining / limit` 映射为 available fraction，费用按构建配置汇率换算为人民币；来源时效取当前 Provider 窗口最大 `observedAt`。
@@ -583,9 +584,9 @@ T10.306h 后台小组件两条缓存写入在网络前捕获请求身份，最�
 
 ### 6.5 小组件 Provider 升级兼容
 
-旧 `TokenLedgerWidgetReceiver` 保留为隐藏的兼容 Provider，继续读取旧实例的 mode；Launcher 新增入口只暴露环形额度、单行消耗和组合卡三个固定 Provider。`WidgetMode.SingleUsage` 承担 4×1 单行消耗，旧存储值 `usage` 映射到该模式；历史 `MultiBar` 仍可渲染但不作为新实例选择。
+旧 `TokenLedgerWidgetReceiver` 保留为隐藏的兼容 Provider，继续读取旧实例的 mode；Launcher 新增入口只暴露环形额度、单行消耗、组合卡和额度条四个固定 Provider。`WidgetMode.SingleUsage` 承担 4×1 单行消耗，旧存储值 `usage` 映射到该模式；历史 `MultiBar` 仍可渲染但不作为新实例选择。
 
-三个固定 Provider 都指向配置 Activity 并通过自身 Component 锁定类型，只允许修改来源、范围和主题；旧隐藏 Provider 才能保留历史类型选择。全局 WorkManager 周期任务按四个 Provider 的实例总数管理，任一 `onDisabled` 都必须重新查询总数，只有总数为零才取消。卡片、登录态、空态与错误态整体点击打开主应用；字符型刷新符号不进入 RemoteViews。
+四个固定 Provider 都指向配置 Activity 并通过自身 Component 锁定类型，只允许修改来源、范围和主题；旧隐藏 Provider 才能保留历史类型选择。全局 WorkManager 周期任务按五个 Provider 的实例总数管理，任一 `onDisabled` 都必须重新查询总数，只有总数为零才取消。卡片、登录态、空态与错误态整体点击打开主应用；字符型刷新符号不进入 RemoteViews。
 
 ### 6.6 Android 周期总结与 PNG 分享（REQ-SHARE-01）
 

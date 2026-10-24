@@ -479,7 +479,7 @@ fn primary_code(reason: &str) -> &'static str {
     }
 }
 
-fn mentions_quota(error: Option<&str>) -> bool {
+pub(super) fn mentions_quota(error: Option<&str>) -> bool {
     error.is_some_and(|text| {
         let text = text.to_ascii_lowercase();
         ["quota", "billing", "credit", "余额", "额度"]
