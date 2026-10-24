@@ -111,12 +111,23 @@ private fun V2RhythmSummaryCard(palette: MobileV2Palette, rhythm: ActivityRhythm
     }
 }
 
+/**
+ * 柱图与热力格画在 Canvas 里，TalkBack 读不到单个格子，所以把每个有用量的小时连同数值写进说明，
+ * 没用量的小时不念，避免一行念 24 遍「0」。
+ */
+internal fun rhythmHourBreakdown(tokensByHour: List<Long>): String {
+    val active = tokensByHour.withIndex().filter { it.value > 0L }
+    if (active.isEmpty()) return "各时段都没有用量"
+    return "有用量的时段：" + active.joinToString("、") { (hour, tokens) -> "$hour 点 ${v2FormatTokens(tokens)}" }
+}
+
 @Composable
 private fun V2RhythmHourCard(palette: MobileV2Palette, rhythm: ActivityRhythm) {
     val hours = rhythm.hourTotals
     val peakHour = hours.indices.maxByOrNull { hours[it].tokens } ?: 0
     val maximum = hours.maxOf { it.tokens }.coerceAtLeast(1L)
-    val description = "24 小时分布，最忙 $peakHour 点到 ${peakHour + 1} 点，${v2FormatTokens(hours[peakHour].tokens)} 有效 Token"
+    val description = "24 小时分布，最忙 $peakHour 点到 ${peakHour + 1} 点，${v2FormatTokens(hours[peakHour].tokens)} 有效 Token；" +
+        rhythmHourBreakdown(hours.map { it.tokens })
     V2Card(palette) {
         Text("一天里的时段", color = palette.text, fontSize = LedgerFont.body, fontWeight = FontWeight.SemiBold)
         Text(
@@ -185,7 +196,8 @@ private fun V2RhythmWeekdayCard(palette: MobileV2Palette, rhythm: ActivityRhythm
                             .weight(1f)
                             .height(14.dp)
                             .semantics {
-                                contentDescription = "周${WEEKDAY_LABELS[day]}，${v2FormatTokens(row.sum())} 有效 Token"
+                                contentDescription = "周${WEEKDAY_LABELS[day]}，合计 ${v2FormatTokens(row.sum())} 有效 Token；" +
+                                    rhythmHourBreakdown(row)
                             }
                     ) {
                         val slot = size.width / 24f
