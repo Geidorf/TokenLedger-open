@@ -279,6 +279,7 @@ class Milestone1Challenger2StressTest {
         val sourcesState = LazyListState(firstVisibleItemIndex = 1, firstVisibleItemScrollOffset = 20)
         val calendarState = LazyListState(firstVisibleItemIndex = 25, firstVisibleItemScrollOffset = 300)
         val detailsState = LazyListState(firstVisibleItemIndex = 50, firstVisibleItemScrollOffset = 500)
+        val sessionsState = LazyListState(firstVisibleItemIndex = 0, firstVisibleItemScrollOffset = 0)
 
         fun resolveState(destination: MobileDestination, pane: InsightPane): LazyListState {
             return when (destination) {
@@ -288,6 +289,7 @@ class Milestone1Challenger2StressTest {
                     InsightPane.Sources -> sourcesState
                     InsightPane.Calendar -> calendarState
                     InsightPane.Details -> detailsState
+                    InsightPane.Sessions -> sessionsState
                 }
                 MobileDestination.Routing -> routingState
                 MobileDestination.Quota -> quotaState
