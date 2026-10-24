@@ -4023,7 +4023,8 @@ test('native startup keeps the shell hidden until the resolved window mode is ap
   assert.match(nativeSource, /CheckMenuItemBuilder::with_id\(\s*"desktop-widget",\s*"桌面小组件（长驻桌面）",?\s*\)/);
   assert.match(nativeSource, /DESKTOP_WIDGET_LABEL \{[\s\S]*?widget_window::on_desktop_widget_closed\(/);
   assert.match(nativeSource, /WindowEvent::Moved\(position\)[\s\S]*?DESKTOP_WIDGET_LABEL[\s\S]*?widget_window::on_desktop_widget_moved\(/);
-  assert.match(nativeSource, /"open-settings",\s*serde_json::json!\(\{ "anchor": "settings-widget" \}\)/);
+  assert.match(nativeSource, /"open-settings",\s*serde_json::json!\(\{ "anchor": anchor \}\)/);
+  assert.match(nativeSource, /fn main_settings_anchor[\s\S]*?_ => "settings-widget",/);
   const widgetWindowSource = readSource(path.join(process.cwd(), 'src-tauri', 'src', 'widget_window.rs'));
   assert.match(widgetWindowSource, /pub const HOVER_HIDE_DELAY_MS: u64 = 450;/);
   assert.match(widgetWindowSource, /window\.set_focusable\(focus\)/, 'hover-shown widget must not steal focus');
