@@ -29,6 +29,12 @@ You can have up to 32 budgets. Each one can be paused, edited or deleted. Changi
 
 Notifications only name the scope, the period and the percentage, such as "Monthly cost budget 85% used". They never include amounts or account details, so nothing leaks if one pops up while you are sharing your screen.
 
+## Period reports and webhook delivery
+
+To send weekly or monthly report reminders to a chat, select a report under **Usage › Reports** and enable its reminder. Then open **Settings › Budget alerts › Send to chat and webhooks**, turn on delivery, add or edit a destination, select **Weekly and monthly reports**, and enable that destination. If both report reminders are off, the delivery settings show that the source is off.
+
+Messages contain only the period and the effective-token percentage change when it can be calculated. They do not include costs, accounts, or paths. Each completed period is sent at most once, and enabling reminders does not send historical reports. The desktop app must remain running. Enabled webhook delivery can continue when system notifications are unavailable or fail.
+
 ## Limits worth knowing
 
 - **Only usage that already happened counts.** There is no "you will go over by month end" forecast.
