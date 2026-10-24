@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
-import { BudgetSection, budgetReading, budgetRuleTitle } from './BudgetSection';
+import { BudgetSection, budgetReading, budgetRuleTitle, phoneSyncHint } from './BudgetSection';
 import { parseBudgetSettings, parseBudgetStatusReport, type BudgetRule } from '../../hooks/useBudget';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -25,11 +25,13 @@ const RULE: BudgetRule = {
   warnPercent: 80,
 };
 
-let stored: { notify: boolean; rules: BudgetRule[] };
+let stored: { notify: boolean; syncToPhone: boolean; rules: BudgetRule[] };
+let phoneSync: unknown;
 let statuses: unknown[];
 
 beforeEach(() => {
-  stored = { notify: false, rules: [RULE] };
+  stored = { notify: false, syncToPhone: false, rules: [RULE] };
+  phoneSync = { state: 'off', lastPublishedAt: null, error: null };
   statuses = [{ ruleId: 'm1', periodStart: '2026-10-01', used: 42.5, limit: 50, percent: 85, level: 'warn' }];
   statsListeners.length = 0;
   vi.mocked(invoke).mockImplementation(async (command, args) => {
@@ -44,6 +46,7 @@ beforeEach(() => {
           generatedAt: '2026-10-24T00:00:00Z',
           statuses,
           choices: { tools: ['claude', 'codex'], models: ['gpt-5'], providers: [], providersAvailable: false },
+          phoneSync,
         };
       default:
         throw new Error(`unexpected ${command}`);
@@ -71,7 +74,8 @@ describe('budget parsing', () => {
     expect(parsed.rules).toEqual([
       { id: 'a', enabled: true, period: 'day', metric: 'tokens', scopeKind: 'all', scopeId: '', limit: 1000, warnPercent: 80 },
     ]);
-    expect(parseBudgetSettings(null)).toEqual({ notify: false, rules: [] });
+    expect(parseBudgetSettings(null)).toEqual({ notify: false, syncToPhone: false, rules: [] });
+    expect(parseBudgetSettings({ syncToPhone: true }).syncToPhone).toBe(true);
   });
 
   it('keeps an unavailable reading as null instead of zero', () => {
@@ -81,6 +85,9 @@ describe('budget parsing', () => {
     });
     expect(report?.statuses).toEqual([{ ruleId: 'a', periodStart: '', used: null, limit: 5, percent: null, level: 'unavailable' }]);
     expect(report?.choices).toEqual({ tools: ['codex'], models: [], providers: [], providersAvailable: false });
+    expect(report?.phoneSync).toEqual({ state: 'off', lastPublishedAt: null, error: null });
+    expect(parseBudgetStatusReport({ statuses: [], phoneSync: { state: 'not-deployed', error: 3 } })?.phoneSync)
+      .toEqual({ state: 'not-deployed', lastPublishedAt: null, error: null });
     expect(parseBudgetStatusReport({})).toBeNull();
   });
 
@@ -91,6 +98,15 @@ describe('budget parsing', () => {
     expect(budgetReading({ ...RULE, scopeKind: 'provider', scopeId: 'relay' }, { ruleId: 'm1', periodStart: '', used: null, limit: 50, percent: null, level: 'unavailable' }))
       .toContain('账号维度需要网关记录');
     expect(budgetReading({ ...RULE, enabled: false }, undefined)).toMatch(/^已停用/);
+  });
+
+  it('phone sync hint says what is uploaded and why it is not syncing', () => {
+    const off = { state: 'off', lastPublishedAt: null, error: null } as const;
+    expect(phoneSyncHint(false, off)).toContain('不上传金额与上限');
+    expect(phoneSyncHint(true, { ...off, state: 'signed-out' })).toContain('云同步');
+    expect(phoneSyncHint(true, { ...off, state: 'not-deployed' })).toContain('尚未部署');
+    expect(phoneSyncHint(true, { ...off, state: 'error', error: 'HTTP 500' })).toContain('HTTP 500');
+    expect(phoneSyncHint(true, { ...off, state: 'ok', lastPublishedAt: '2026-10-24T07:00:00Z' })).toMatch(/^已同步，最近一次 /);
   });
 });
 
@@ -165,12 +181,24 @@ describe('BudgetSection', () => {
     expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '100');
   });
 
+  it('turns phone sync on and shows the sync state', async () => {
+    render(<BudgetSection />);
+    await screen.findByRole('meter');
+    phoneSync = { state: 'ok', lastPublishedAt: '2026-10-24T07:00:00Z', error: null };
+    fireEvent.click(screen.getByRole('switch', { name: '同步到手机' }));
+    await waitFor(() => expect(stored.syncToPhone).toBe(true));
+    expect(await screen.findByText(/^已同步，最近一次/)).toBeInTheDocument();
+  });
+
   it('rereads usage when the window becomes visible again or the day changes', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'], shouldAdvanceTime: true });
     try {
       render(<BudgetSection />);
       await screen.findByRole('meter');
       const statusCalls = () => vi.mocked(invoke).mock.calls.filter(([name]) => name === 'get_budget_status').length;
+      // 首次挂载读一次，设置读回后 revision 变了再读一次；meter 可能在第二次读之前就出现，
+      // 先等这两次初始读取落定，避免慢 runner 上把第二次初始读取误算成可见性触发的重读。
+      await waitFor(() => expect(statusCalls()).toBe(2));
       const before = statusCalls();
       await act(async () => {
         document.dispatchEvent(new Event('visibilitychange'));

@@ -10,6 +10,7 @@ mod codex_config;
 mod context_size;
 mod convert;
 mod gemini;
+mod health;
 mod ledger;
 mod legacy_restore;
 mod policy;
@@ -30,6 +31,7 @@ pub(crate) use codex_config::{atomic_write, line_diff, version};
 pub use codex_config::{
     CodexApplyResult, CodexConfig, CodexInspection, CodexPreview, CodexRestoreResult,
 };
+pub use health::HealthReport;
 pub(crate) use ledger::accounting;
 use ledger::Ledger;
 pub use ledger::{ContextSize, LedgerRecord};
@@ -181,11 +183,20 @@ pub struct ProviderView {
     pub has_key: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetProviderKeyInput {
     pub id: String,
     pub key: String,
+}
+
+impl std::fmt::Debug for SetProviderKeyInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SetProviderKeyInput")
+            .field("id", &self.id)
+            .field("key", &crate::redact::Hidden(&self.key))
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -657,6 +668,22 @@ impl Gateway {
         self.shared.router.cooling()
     }
 
+    /// Passive health of every configured provider over the last day.
+    pub fn provider_health(&self) -> Result<HealthReport, String> {
+        let now = chrono::Utc::now();
+        let records = self
+            .shared
+            .ledger
+            .since(now - chrono::Duration::hours(health::WINDOW_HOURS))?;
+        let known: Vec<String> = self.providers().into_iter().map(|p| p.id).collect();
+        Ok(health::summarize(
+            &records,
+            &known,
+            &self.shared.router.cooling(),
+            now,
+        ))
+    }
+
     pub fn recent_route_decisions(&self, limit: usize) -> Vec<RouteDecision> {
         self.shared.router.recent(limit.clamp(1, 200))
     }
@@ -936,6 +963,21 @@ pub fn gateway_recent_route_decisions(
 ) -> Result<Vec<RouteDecision>, String> {
     ensure_main(&window)?;
     Ok(gateway.recent_route_decisions(limit.unwrap_or(50)))
+}
+
+/// Per-provider success rate, latency and error mix from the gateway's own
+/// ledger; main window only, never contacts an upstream.
+/// Parsing up to two 16 MiB files runs off the main thread.
+#[tauri::command]
+pub async fn gateway_provider_health(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+) -> Result<HealthReport, String> {
+    ensure_main(&window)?;
+    let gateway = Arc::clone(&gateway);
+    tauri::async_runtime::spawn_blocking(move || gateway.provider_health())
+        .await
+        .map_err(|error| format!("读取健康度失败：{error}"))?
 }
 
 /// Group members currently cooling down after failures; main window only.

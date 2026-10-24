@@ -31,6 +31,7 @@ export interface BudgetRule {
 
 export interface BudgetSettings {
   notify: boolean;
+  syncToPhone: boolean;
   rules: BudgetRule[];
 }
 
@@ -50,13 +51,23 @@ export interface BudgetChoices {
   providersAvailable: boolean;
 }
 
+export type PhoneSyncState = 'off' | 'signed-out' | 'ok' | 'not-deployed' | 'error';
+
+export interface PhoneSyncStatus {
+  state: PhoneSyncState;
+  lastPublishedAt: string | null;
+  error: string | null;
+}
+
 export interface BudgetStatusReport {
   generatedAt: string;
   statuses: BudgetStatus[];
   choices: BudgetChoices;
+  phoneSync: PhoneSyncStatus;
 }
 
-export const DEFAULT_BUDGET_SETTINGS: BudgetSettings = { notify: false, rules: [] };
+export const DEFAULT_BUDGET_SETTINGS: BudgetSettings = { notify: false, syncToPhone: false, rules: [] };
+export const OFF_PHONE_SYNC: PhoneSyncStatus = { state: 'off', lastPublishedAt: null, error: null };
 export const EMPTY_BUDGET_CHOICES: BudgetChoices = { tools: [], models: [], providers: [], providersAvailable: false };
 
 export const BUDGET_PERIOD_LABELS: Record<BudgetPeriod, string> = { day: '今日', week: '本周', month: '本月' };
@@ -99,11 +110,11 @@ function parseRule(value: unknown): BudgetRule | null {
 
 export function parseBudgetSettings(value: unknown): BudgetSettings {
   if (!value || typeof value !== 'object') return DEFAULT_BUDGET_SETTINGS;
-  const record = value as { notify?: unknown; rules?: unknown };
+  const record = value as { notify?: unknown; syncToPhone?: unknown; rules?: unknown };
   const rules = Array.isArray(record.rules)
     ? record.rules.map(parseRule).filter((rule): rule is BudgetRule => rule !== null)
     : [];
-  return { notify: record.notify === true, rules };
+  return { notify: record.notify === true, syncToPhone: record.syncToPhone === true, rules };
 }
 
 const stringList = (value: unknown): string[] =>
@@ -111,7 +122,7 @@ const stringList = (value: unknown): string[] =>
 
 export function parseBudgetStatusReport(value: unknown): BudgetStatusReport | null {
   if (!value || typeof value !== 'object') return null;
-  const record = value as { generatedAt?: unknown; statuses?: unknown; choices?: unknown };
+  const record = value as { generatedAt?: unknown; statuses?: unknown; choices?: unknown; phoneSync?: unknown };
   if (!Array.isArray(record.statuses)) return null;
   const statuses = record.statuses.flatMap((item): BudgetStatus[] => {
     if (!item || typeof item !== 'object') return [];
@@ -129,6 +140,7 @@ export function parseBudgetStatusReport(value: unknown): BudgetStatusReport | nu
     }];
   });
   const choices = (record.choices && typeof record.choices === 'object' ? record.choices : {}) as Record<string, unknown>;
+  const phone = (record.phoneSync && typeof record.phoneSync === 'object' ? record.phoneSync : {}) as Record<string, unknown>;
   return {
     generatedAt: typeof record.generatedAt === 'string' ? record.generatedAt : '',
     statuses,
@@ -137,6 +149,11 @@ export function parseBudgetStatusReport(value: unknown): BudgetStatusReport | nu
       models: stringList(choices.models),
       providers: stringList(choices.providers),
       providersAvailable: choices.providersAvailable === true,
+    },
+    phoneSync: {
+      state: oneOf(['off', 'signed-out', 'ok', 'not-deployed', 'error'] as const, phone.state) ?? 'off',
+      lastPublishedAt: typeof phone.lastPublishedAt === 'string' ? phone.lastPublishedAt : null,
+      error: typeof phone.error === 'string' ? phone.error : null,
     },
   };
 }

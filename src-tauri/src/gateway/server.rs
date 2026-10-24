@@ -24,6 +24,9 @@ use super::anthropic;
 use super::context_size::{self, ContextApi, ContextSize};
 use super::convert::{chat_to_response, responses_to_chat, ChatStream, StreamConverter};
 use super::gemini::{self, GeminiPath, GeminiStream};
+use super::health::{
+    CLIENT_GONE, CONNECT_FAILED, GATEWAY_STOPPED, HEADERS_TIMEOUT, UPSTREAM_REPLY,
+};
 use super::ledger::{agent_from_user_agent, sse_data, LedgerRecord, SseLines, Usage};
 use super::policy;
 use super::routing::{
@@ -1097,7 +1100,7 @@ async fn attempt(
             .as_ref()
             .is_some_and(|gate| !gate.load(Ordering::SeqCst))
         {
-            return Err("网关已停止，未连接上游。".into());
+            return Err(format!("网关已停止，{GATEWAY_STOPPED}。"));
         }
         let mut builder = client.post(url);
         if provider.wire == WireApi::Anthropic {
@@ -1122,10 +1125,10 @@ async fn attempt(
             .body(payload.to_string())
             .send()
             .await
-            .map_err(|error| format!("连接上游失败：{}", error.without_url()))
+            .map_err(|error| format!("{CONNECT_FAILED}：{}", error.without_url()))
     })
     .await
-    .unwrap_or_else(|_| Err("等待上游响应头超过 60 秒。".to_string()));
+    .unwrap_or_else(|_| Err(format!("{HEADERS_TIMEOUT}超过 60 秒。")));
     let upstream = match sent {
         Ok(response) => response,
         Err(message) => {
@@ -1143,7 +1146,7 @@ async fn attempt(
     if !status.is_success() {
         let text = redact_key(&read_limited(upstream).await, &presented_key);
         let message = format!(
-            "上游返回 {status}：{}",
+            "{UPSTREAM_REPLY} {status}：{}",
             text.chars().take(200).collect::<String>()
         );
         let usage = serde_json::from_str::<Value>(&text)
@@ -1214,14 +1217,28 @@ async fn read_upstream_body(
 }
 
 /// Some upstreams echo the presented key in their error text, which then
-/// reaches the agent and the request ledger.
+/// reaches the agent and the request ledger. The key itself is replaced
+/// wherever it appears; anything else shaped like a credential (a common
+/// provider key prefix, a bearer token, a JWT) is masked too, since an
+/// upstream may echo a cut or differently spelled key.
 fn redact_key(text: &str, key: &str) -> String {
+    const HIDDEN: &str = "[已隐去 API key]";
+    static SHAPES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(concat!(
+            r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}",
+            r"|\b(?:sk|pk|rk|ak|xai|gsk)[-_][A-Za-z0-9._-]{12,}",
+            r"|\bAIza[0-9A-Za-z_-]{20,}",
+            r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
+        ))
+        .expect("credential shapes compile")
+    });
     let key = key.trim();
-    if key.len() >= 8 {
-        text.replace(key, "[已隐去 API key]")
+    let text = if key.len() >= 8 {
+        text.replace(key, HIDDEN)
     } else {
         text.to_string()
-    }
+    };
+    SHAPES.replace_all(&text, HIDDEN).into_owned()
 }
 
 async fn read_limited(response: reqwest::Response) -> String {
@@ -1346,7 +1363,7 @@ where
     let closed = sender.closed();
     futures_util::pin_mut!(next, closed);
     match futures_util::future::select(next, closed).await {
-        futures_util::future::Either::Right(_) => Err("客户端提前断开。".into()),
+        futures_util::future::Either::Right(_) => Err(format!("{CLIENT_GONE}提前断开。")),
         futures_util::future::Either::Left((Err(_), _)) => {
             Err("上游 SSE 连续 120 秒没有数据。".into())
         }
@@ -1361,8 +1378,8 @@ where
 async fn send_chunk(sender: &mpsc::Sender<Bytes>, bytes: Bytes) -> Result<(), String> {
     match tokio::time::timeout(CLIENT_SEND_TIMEOUT, sender.send(bytes)).await {
         Ok(Ok(())) => Ok(()),
-        Ok(Err(_)) => Err("客户端提前断开。".into()),
-        Err(_) => Err("客户端连续 30 秒未读取响应。".into()),
+        Ok(Err(_)) => Err(format!("{CLIENT_GONE}提前断开。")),
+        Err(_) => Err(format!("{CLIENT_GONE}连续 30 秒未读取响应。")),
     }
 }
 

@@ -81,7 +81,7 @@ pub fn routing_publish_status(
         .clone())
 }
 
-fn hex_prefix(input: &str, chars: usize) -> String {
+pub(crate) fn hex_prefix(input: &str, chars: usize) -> String {
     let digest = Sha256::digest(input.as_bytes());
     let mut out = String::with_capacity(chars);
     for byte in digest.iter() {
@@ -417,7 +417,7 @@ pub fn build_snapshot(
 
 /// Size as the server measures it (`octet_length(jsonb::text)`): the compact form plus
 /// the space jsonb prints after every `:` and every `,` between items.
-fn server_text_len(snapshot: &Value) -> usize {
+pub(crate) fn server_text_len(snapshot: &Value) -> usize {
     fn separators(value: &Value) -> usize {
         match value {
             Value::Array(items) => {
@@ -443,7 +443,7 @@ fn content_key(snapshot: &Value) -> String {
 }
 
 #[derive(Debug, PartialEq)]
-enum RpcError {
+pub(crate) enum RpcError {
     NotDeployed,
     /// The signed-in account is not the one the request was built for.
     AccountChanged,
@@ -477,7 +477,9 @@ fn classify_failure(status: u16, body: &[u8]) -> RpcError {
     let message = parsed
         .get("message")
         .and_then(Value::as_str)
-        .filter(|message| message.starts_with("routing_snapshot_"))
+        .filter(|message| {
+            message.starts_with("routing_snapshot_") || message.starts_with("budget_snapshot_")
+        })
         .map(str::to_string)
         .unwrap_or_else(|| format!("HTTP {status}"));
     RpcError::Failed(message)
@@ -485,7 +487,7 @@ fn classify_failure(status: u16, body: &[u8]) -> RpcError {
 
 /// Device and flow IDs are salted with the user, so a request only goes out under the
 /// account it was built for.
-async fn call_rpc(
+pub(crate) async fn call_rpc(
     app: &AppContext,
     expected_user: &str,
     function: &str,
@@ -531,7 +533,7 @@ async fn call_rpc(
 
 /// The account in the local cloud config, without touching the network. `None` only when
 /// the file cannot be read; signed out reads as an empty user.
-fn stored_user(app: &AppContext) -> Option<String> {
+pub(crate) fn stored_user(app: &AppContext) -> Option<String> {
     let config = crate::commands::load_cloud_config_file(app).ok()?;
     Some(
         config

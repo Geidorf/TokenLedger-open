@@ -59,7 +59,7 @@ pub struct SyncConfigView {
     pub has_passphrase: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveConfigInput {
     pub url: String,
@@ -68,6 +68,17 @@ pub struct SaveConfigInput {
     /// `None` keeps the saved one; `Some("")` removes it.
     pub password: Option<String>,
     pub passphrase: Option<String>,
+}
+
+impl std::fmt::Debug for SaveConfigInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SaveConfigInput")
+            .field("url", &self.url)
+            .field("user", &self.user)
+            .field("password", &crate::redact::hidden_opt(&self.password))
+            .field("passphrase", &crate::redact::hidden_opt(&self.passphrase))
+            .finish()
+    }
 }
 
 fn config_path(app_dir: &Path) -> PathBuf {
@@ -201,14 +212,23 @@ impl PeerBundle {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(default)]
 pub struct PeerKey {
     pub key: String,
     pub off: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+impl std::fmt::Debug for PeerKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerKey")
+            .field("key", &crate::redact::Hidden(&self.key))
+            .field("off", &self.off)
+            .finish()
+    }
+}
+
+#[derive(Default, Deserialize)]
 #[serde(default)]
 pub struct PeerProvider {
     pub id: String,
@@ -224,6 +244,25 @@ pub struct PeerProvider {
     pub base_api: String,
     pub models: Vec<String>,
     pub off: bool,
+}
+
+impl std::fmt::Debug for PeerProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerProvider")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("key", &crate::redact::Hidden(&self.key))
+            .field("keys", &self.keys)
+            .field("chat", &self.chat)
+            .field("responses", &self.responses)
+            .field("anthropic", &self.anthropic)
+            .field("gemini", &self.gemini)
+            .field("decide", &self.decide)
+            .field("base_api", &self.base_api)
+            .field("models", &self.models)
+            .field("off", &self.off)
+            .finish()
+    }
 }
 
 impl PeerProvider {
@@ -287,6 +326,9 @@ pub struct Preview {
     pub app: String,
     pub carries_keys: bool,
     pub providers: Vec<Candidate>,
+    /// SHA-256 of the sealed backup this preview read, hex; importing hands
+    /// it back so a server can't swap the backup between the two reads.
+    pub digest: String,
 }
 
 /// The peer ids are free-form; TokenLedger's are 1–32 of `[a-z0-9-]`.
@@ -397,6 +439,7 @@ pub fn preview(bundle: &PeerBundle, existing: &BTreeSet<String>) -> Preview {
         app: bundle.app.clone(),
         carries_keys: bundle.carries_keys(),
         providers,
+        digest: String::new(),
     }
 }
 
@@ -506,20 +549,43 @@ pub fn shared_source(
     Ok(shared::SharedSource::new(client, passphrase))
 }
 
-/// Reads and opens the server's backup with the saved setup.
-async fn fetch_bundle(app_dir: &Path, secrets: &dyn SecretStore) -> Result<PeerBundle, String> {
+/// SHA-256 of a sealed backup, lowercase hex.
+pub fn backup_digest(sealed: &[u8]) -> String {
+    ring::digest::digest(&ring::digest::SHA256, sealed)
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Whether the backup read for importing is the one the user previewed.
+pub fn check_digest(previewed: &str, fetched: &str) -> Result<(), String> {
+    if previewed.eq_ignore_ascii_case(fetched) {
+        Ok(())
+    } else {
+        Err("服务器上的备份在预览之后变了，请重新读取备份再导入。".to_string())
+    }
+}
+
+/// Reads and opens the server's backup with the saved setup, with the
+/// sealed file's digest.
+async fn fetch_bundle(
+    app_dir: &Path,
+    secrets: &dyn SecretStore,
+) -> Result<(PeerBundle, String), String> {
     let (client, passphrase) = connect(app_dir, secrets)?;
     let sealed = client
         .get_backup()
         .await?
         .ok_or_else(|| "这个 WebDAV 文件夹里还没有外部网关的同步文件。".to_string())?;
+    let digest = backup_digest(&sealed);
     let plain = tauri::async_runtime::spawn_blocking(move || {
         backup::open(&sealed, &passphrase, backup::BACKUP_FORMAT)
     })
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.message().to_string())?;
-    parse_bundle(&plain)
+    Ok((parse_bundle(&plain)?, digest))
 }
 
 pub(crate) fn ensure_main(window: &tauri::WebviewWindow) -> Result<(), String> {
@@ -570,25 +636,31 @@ pub async fn peer_sync_preview(
     gateway: tauri::State<'_, Arc<Gateway>>,
 ) -> Result<Preview, String> {
     ensure_main(&window)?;
-    let bundle = fetch_bundle(app.app_data_dir(), &secrets()).await?;
+    let (bundle, digest) = fetch_bundle(app.app_data_dir(), &secrets()).await?;
     let existing = gateway
         .list_providers()?
         .into_iter()
         .map(|view| view.record.id)
         .collect();
-    Ok(preview(&bundle, &existing))
+    Ok(Preview {
+        digest,
+        ..preview(&bundle, &existing)
+    })
 }
 
-/// Reads the backup again and brings in the picked providers.
+/// Reads the backup again and brings in the picked providers, if it is
+/// still the one previewed (`digest`).
 #[tauri::command]
 pub async fn peer_sync_import_providers(
     window: tauri::WebviewWindow,
     app: tauri::State<'_, Arc<AppContext>>,
     gateway: tauri::State<'_, Arc<Gateway>>,
     peer_ids: Vec<String>,
+    digest: String,
 ) -> Result<ImportResult, String> {
     ensure_main(&window)?;
-    let bundle = fetch_bundle(app.app_data_dir(), &secrets()).await?;
+    let (bundle, fetched) = fetch_bundle(app.app_data_dir(), &secrets()).await?;
+    check_digest(&digest, &fetched)?;
     let picked: BTreeSet<String> = peer_ids.into_iter().collect();
     apply(&gateway, &bundle, &picked)
 }

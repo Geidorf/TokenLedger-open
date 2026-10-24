@@ -12,6 +12,7 @@ vi.mock('./api', async (importOriginal) => {
     listProviders: vi.fn(),
     recentRouteDecisions: vi.fn(),
     routingCooldowns: vi.fn(),
+    providerHealth: vi.fn(),
     upsertRoutingGroup: vi.fn(),
     deleteRoutingGroup: vi.fn(),
   };
@@ -42,6 +43,7 @@ describe('RoutingPage', () => {
       ] },
     ]);
     vi.mocked(api.routingCooldowns).mockResolvedValue([]);
+    vi.mocked(api.providerHealth).mockResolvedValue({ generatedAt: '2026-10-24T00:00:00Z', windowHours: 24, providers: [] });
     vi.mocked(api.upsertRoutingGroup).mockImplementation(async (group) => [group]);
     vi.mocked(api.deleteRoutingGroup).mockResolvedValue([]);
   });
@@ -189,5 +191,16 @@ describe('RoutingPage', () => {
     render(<RoutingPage onNotify={vi.fn()} onConfirm={confirm} />);
     fireEvent.click(await screen.findByRole('button', { name: '删除 编码主力' }));
     await waitFor(() => expect(api.deleteRoutingGroup).toHaveBeenCalledWith('coding'));
+  });
+
+  it('成员前显示所属供应商的健康圆点', async () => {
+    const stats = { requests: 5, ok: 2, successRate: 0.4, p50Ms: 900, p95Ms: 3000, rateLimited: 3, skipped: 0, codes: [{ code: 'rate_limited', count: 3 }], statuses: [], lastOkAt: null, lastFailureAt: null };
+    vi.mocked(api.providerHealth).mockResolvedValue({ generatedAt: '2026-10-24T00:00:00Z', windowHours: 24, providers: [
+      { provider: 'openai', status: 'down', reasons: ['rate_limited'], stats, models: [], buckets: [], recentFailures: [], cooling: [] },
+    ] });
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    const dot = await screen.findByRole('img', { name: '健康度：故障' });
+    expect(dot).toHaveAttribute('title', expect.stringContaining('限流'));
+    expect(screen.getAllByRole('img', { name: /健康度/ })).toHaveLength(1);
   });
 });

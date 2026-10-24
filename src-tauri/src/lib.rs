@@ -23,6 +23,7 @@ use settings::AppSettings;
 
 mod app_paths;
 mod budget;
+mod budget_publish;
 mod cache;
 mod commands;
 mod cost_profile;
@@ -38,6 +39,7 @@ mod peer_sync;
 mod peer_wire;
 mod period_report;
 mod quota_sync;
+mod redact;
 mod routing_publish;
 mod scanner;
 mod session_analysis;
@@ -857,6 +859,7 @@ pub fn run() {
                 settings_state_for_setup.clone(),
                 gateway_for_setup.clone(),
             );
+            budget_publish::start(app_ctx_for_setup.clone());
 
             #[cfg(target_os = "macos")]
             {
@@ -913,6 +916,7 @@ pub fn run() {
             gateway::gateway_delete_routing_group,
             gateway::gateway_recent_route_decisions,
             gateway::gateway_routing_cooldowns,
+            gateway::gateway_provider_health,
             gateway::gateway_routing_feed,
             gateway::gateway_external_feed,
             gateway::gateway_reveal_local_token,

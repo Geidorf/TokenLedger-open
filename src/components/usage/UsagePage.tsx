@@ -4,6 +4,7 @@ import { formatEstimatedUsd, formatTokens } from '../../utils/format';
 import { rangeDisplayName } from '../../utils/rangeDisplay';
 import { usageConclusion } from './usageSummary';
 import './usage-page.css';
+import { t } from '../../i18n';
 
 export type UsageSub = 'overview' | 'requests' | 'sessions' | 'allowances' | 'reports';
 
@@ -14,11 +15,11 @@ export type UsageSub = 'overview' | 'requests' | 'sessions' | 'allowances' | 're
  * 侧栏二级入口共用这份定义。
  */
 export const USAGE_SUB_OPTIONS: { id: UsageSub; label: string }[] = [
-  { id: 'overview', label: '概览' },
-  { id: 'requests', label: '请求' },
-  { id: 'sessions', label: '会话' },
-  { id: 'allowances', label: '额度' },
-  { id: 'reports', label: '报告' },
+  { id: 'overview', get label() { return t('usage.sub.overview'); } },
+  { id: 'requests', get label() { return t('usage.sub.requests'); } },
+  { id: 'sessions', get label() { return t('usage.sub.sessions'); } },
+  { id: 'allowances', get label() { return t('usage.sub.allowances'); } },
+  { id: 'reports', get label() { return t('usage.sub.reports'); } },
 ];
 
 const USAGE_SUB_BY_TAB: Partial<Record<Tab, UsageSub>> = {

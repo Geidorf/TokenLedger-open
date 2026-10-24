@@ -13,6 +13,7 @@ const preview: PeerSyncPreview = {
     { peerId: 'deepseek', id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', wire: 'chat', models: 1, hasKey: true, enabled: true, exists: false, unsupported: null },
     { peerId: 'claude', id: 'claude', name: 'Claude', baseUrl: '', wire: null, models: 0, hasKey: false, enabled: true, exists: false, unsupported: '没有接口地址（多为订阅登录，不在同步范围内）。' },
   ],
+  digest: 'ab'.repeat(32),
 };
 
 describe('PeerSyncCard', () => {
@@ -54,7 +55,10 @@ describe('PeerSyncCard', () => {
     expect(boxes[1]).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '导入选中的 1 个供应商' }));
     expect(await screen.findByText(/已导入 1 个供应商，1 个 API key/)).toBeInTheDocument();
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith('peer_sync_import_providers', { peerIds: ['deepseek'] });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('peer_sync_import_providers', {
+      peerIds: ['deepseek'],
+      digest: 'ab'.repeat(32),
+    });
   });
 
   it('保存设置后清掉旧预览，必须重新读取才能导入', async () => {
