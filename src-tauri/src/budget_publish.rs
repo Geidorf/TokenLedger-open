@@ -249,14 +249,19 @@ impl Publisher {
             set_status(|status| *status = PhoneSyncStatus::default());
             return TICK;
         }
-        // Signed out or unreadable: the row is not this session's to delete
-        // any more; reads hide it after two days and the purge drops it.
         let user = match stored_user(&self.app) {
             Some(user) if !user.is_empty() => user,
-            _ => {
+            // Signed out: the row is not this session's to delete any more;
+            // reads hide it after two days and the purge drops it.
+            Some(_) => {
                 let _ = std::fs::remove_file(&marker);
                 set_status(|status| *status = PhoneSyncStatus::default());
                 return TICK;
+            }
+            // The store could not be read: keep the marker and try again.
+            None => {
+                set_status(|status| *status = PhoneSyncStatus::default());
+                return self.back_off();
             }
         };
         let device = published
