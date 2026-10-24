@@ -572,6 +572,18 @@ pub(super) fn open_stats_connection(db_path: &Path) -> Result<Connection, String
     Ok(conn)
 }
 
+/// 每条网关与导入行的供应商（行 id → 供应商 ID），供按账号拆分。读已缓存的网关行，
+/// 不另开统计连接；被暂缓的行不在合并视图里，多出的 id 不会匹配到任何统计行。
+pub(super) fn row_providers(
+    db_path: &Path,
+    signature: &str,
+) -> Result<HashMap<i64, String>, String> {
+    Ok(gateway_rows_cached(db_path, signature)?
+        .iter()
+        .map(|row| (row.id, row.provider.clone()))
+        .collect())
+}
+
 #[derive(Debug, PartialEq)]
 pub(super) struct GatewayDetail {
     pub source: String,

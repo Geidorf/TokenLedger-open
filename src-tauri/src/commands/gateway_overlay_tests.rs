@@ -601,3 +601,35 @@ fn antigravity_cache_unknown_survives_temp_gateway_union() {
     drop(conn);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn overview_splits_gateway_rows_by_provider_account() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let conn = db::get_connection(&db_path).unwrap();
+    insert_scan(&conn, "a", "s9", "2026-10-04 09:00:00", 7, 3);
+    drop(conn);
+    let mut second = ledger_line("g2", Some("s2"), local_ts(11, 0, 0), 30, 10);
+    second["provider"] = json!("relay");
+    write_ledger(
+        &app,
+        &[
+            ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80),
+            second,
+        ],
+    );
+
+    let query: super::super::LocalStatsQuery = serde_json::from_value(json!({
+        "range": "today",
+        "timezone": iana_time_zone::get_timezone().unwrap(),
+    }))
+    .unwrap();
+    let stats = super::super::get_local_stats_v2_impl_at(&app, query, local_ts(12, 0, 0)).unwrap();
+    let providers = stats["providers"].as_object().unwrap();
+    assert_eq!(providers.len(), 2, "scan rows carry no account");
+    assert_eq!(stats["providers"]["openai"]["total"], json!(280));
+    assert_eq!(stats["providers"]["openai"]["requests"], json!(1));
+    assert_eq!(stats["providers"]["relay"]["total"], json!(40));
+    assert_eq!(stats["summary"]["totalRequests"], json!(3));
+    let _ = fs::remove_dir_all(root);
+}

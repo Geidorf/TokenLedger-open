@@ -36,6 +36,7 @@ mod peer_live;
 mod peer_sync;
 mod peer_wire;
 mod quota_sync;
+mod routing_publish;
 mod scanner;
 mod session_analysis;
 mod settings;
@@ -839,6 +840,11 @@ pub fn run() {
                 app.handle().clone(),
             );
             gateway_for_setup.set_enabled(model_access_at_launch);
+            routing_publish::start(
+                app_ctx_for_setup.clone(),
+                settings_state_for_setup.clone(),
+                gateway_for_setup.clone(),
+            );
 
             #[cfg(target_os = "macos")]
             {
@@ -872,6 +878,7 @@ pub fn run() {
             commands::peer_shared::peer_sync_shared_pull,
             commands::peer_shared::peer_sync_shared_clear,
             peer_live::peer_live_snapshot,
+            routing_publish::routing_publish_status,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,

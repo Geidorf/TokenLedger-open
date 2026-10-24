@@ -20,6 +20,7 @@ import {
   type WidgetSurface,
 } from "../../utils/widgetConfig";
 import { WidgetPreview } from "../widget/WidgetPreview";
+import { RoutingPublishCard } from "./RoutingPublishCard";
 import {
   SettingsCard,
   SettingsGroup,
@@ -263,6 +264,11 @@ export function WidgetSection(props: WidgetSectionProps) {
         <WidgetContentGroup {...props} surface="desktop" surfaceName="桌面小组件" />
         <WidgetPreview surface="desktop" config={widgetConfigFromSettings(appSettings, "desktop")} />
       </SettingsCard>
+      <RoutingPublishCard
+        appSettings={appSettings}
+        busy={props.busy}
+        onSettingChange={props.onSettingChange}
+      />
     </SettingsSection>
   );
 }

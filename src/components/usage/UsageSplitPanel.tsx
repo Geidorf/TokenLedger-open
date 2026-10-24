@@ -4,6 +4,7 @@ import type { StatsData } from '../../types';
 import { useSegmentedIndicator } from '../../hooks/useSegmentedIndicator';
 import { formatEstimatedUsd, formatNum, formatTokens } from '../../utils/format';
 import {
+  accountSplitAvailable,
   SPLIT_DIMENSIONS,
   SPLIT_METRICS,
   splitUsage,
@@ -29,7 +30,12 @@ export interface UsageSplitPanelProps {
   onOpenEntity?: (kind: 'tool' | 'model', id: string) => void;
 }
 
-const DIMENSION_LABEL: Record<SplitDimension, string> = { agent: 'Agent', model: '模型', device: '设备' };
+const DIMENSION_LABEL: Record<SplitDimension, string> = { agent: 'Agent', model: '模型', device: '设备', account: '账号' };
+
+const UNAVAILABLE_TITLE: Partial<Record<SplitDimension, string>> = {
+  device: '设备构成只在云端汇总、未按设备筛选且不止一台设备时可用',
+  account: '账号来自网关供应商：本机有网关记录时可用，云端与纯扫描记录没有账号',
+};
 
 function formatMetric(metric: SplitMetric, value: number | null): string {
   if (value === null) return '不可得';
@@ -60,6 +66,7 @@ export function UsageSplitPanel({
   const dimensionRef = useSegmentedIndicator<HTMLDivElement>();
   const metricRef = useSegmentedIndicator<HTMLDivElement>();
   const result = splitUsage(stats, dimension, metric, focus, showTotalTokens);
+  const accountAvailable = accountSplitAvailable(stats);
   const shownMetric = result.metrics.includes(metric) ? metric : 'tokens';
   const crossFocus = focus && focus.dimension !== dimension ? focus : null;
 
@@ -72,7 +79,7 @@ export function UsageSplitPanel({
         </div>
         <div ref={dimensionRef} className="segmented tl-seg" role="group" aria-label="拆分维度">
           {SPLIT_DIMENSIONS.map(({ id, label }) => {
-            const available = id !== 'device' || deviceAvailable;
+            const available = id === 'device' ? deviceAvailable : id === 'account' ? accountAvailable : true;
             return (
               <button
                 key={id}
@@ -80,7 +87,7 @@ export function UsageSplitPanel({
                 className={dimension === id ? 'active' : ''}
                 aria-pressed={dimension === id}
                 disabled={!available}
-                title={available ? `按${label}拆分` : '设备构成只在云端汇总、未按设备筛选且不止一台设备时可用'}
+                title={available ? `按${label}拆分` : UNAVAILABLE_TITLE[id]}
                 onClick={() => onDimensionChange(id)}
               >
                 {label}
@@ -118,7 +125,10 @@ export function UsageSplitPanel({
         </div>
       )}
       {result.focusIgnored && (
-        <p className="usage-split-note">设备构成不能与 Agent、模型交叉，这里仍显示全部{DIMENSION_LABEL[dimension]}。</p>
+        <p className="usage-split-note">{crossFocus?.dimension === 'account' || dimension === 'account' ? '账号不能与其他维度交叉' : '设备构成不能与 Agent、模型交叉'}，这里仍显示全部{DIMENSION_LABEL[dimension]}。</p>
+      )}
+      {dimension === 'account' && (
+        <p className="usage-split-note">账号即网关供应商，只含经网关转发与导入的记录；扫描到的记录没有账号，不计入。</p>
       )}
       {crossFocus && !result.focusIgnored && (
         <p className="usage-split-note">{focus!.id} 下各{DIMENSION_LABEL[dimension]}的有效 Token；缓存单列，不计入。</p>
@@ -144,7 +154,7 @@ export function UsageSplitPanel({
                   onClick={() => onFocusChange(selected ? null : { dimension, id: row.id })}
                 >
                   <span className="usage-split-name">
-                    {dimension !== 'device' && <BrandIcon name={row.id} size={15} />}
+                    {(dimension === 'agent' || dimension === 'model') && <BrandIcon name={row.id} size={15} />}
                     <span>{row.id}</span>
                   </span>
                   <span className="usage-split-bar" aria-hidden="true">
@@ -155,7 +165,7 @@ export function UsageSplitPanel({
                     {details && <small>{details}</small>}
                   </span>
                 </button>
-                {onOpenEntity && dimension !== 'device' && (
+                {onOpenEntity && (dimension === 'agent' || dimension === 'model') && (
                   <button
                     type="button"
                     className="usage-btn usage-split-open"

@@ -84,7 +84,6 @@ import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.entityKindLabel
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
-import com.jeidorf.tokenledger.mobile.ui.ambient.v2WidgetItems
 import com.jeidorf.tokenledger.mobile.ui.routing.v2RoutingItems
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2DayReviewSummary
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2InsightCalendarCard
@@ -93,8 +92,10 @@ import com.jeidorf.tokenledger.mobile.ui.controls.V2FilterSheet
 import com.jeidorf.tokenledger.mobile.ui.controls.V2FilterSheetContent
 import com.jeidorf.tokenledger.mobile.ui.controls.V2GlobalRangeControl
 import com.jeidorf.tokenledger.mobile.ui.controls.V2InsightStrip
+import com.jeidorf.tokenledger.mobile.ui.details.V2DetailListHeader
 import com.jeidorf.tokenledger.mobile.ui.details.V2DetailRow
 import com.jeidorf.tokenledger.mobile.ui.details.V2DetailSearch
+import com.jeidorf.tokenledger.mobile.ui.details.detailListSummary
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2FullState
@@ -121,6 +122,9 @@ import com.jeidorf.tokenledger.mobile.ui.quota.TODAY_SOURCE_LIMIT
 import com.jeidorf.tokenledger.mobile.ui.quota.V2QuotaSummaryCard
 import com.jeidorf.tokenledger.mobile.ui.quota.v2QuotaItems
 import com.jeidorf.tokenledger.mobile.ui.settings.V2SettingsPage
+import com.jeidorf.tokenledger.mobile.ui.me.V2MeActions
+import com.jeidorf.tokenledger.mobile.ui.me.V2MePage
+import com.jeidorf.tokenledger.mobile.ui.me.v2MeItems
 import com.jeidorf.tokenledger.mobile.ui.sources.V2EntityContent
 import com.jeidorf.tokenledger.mobile.ui.sources.V2PaginationErrorCard
 import com.jeidorf.tokenledger.mobile.ui.sources.V2SourceAnalysis
@@ -162,7 +166,8 @@ internal fun LedgerDashboardV2Screen(
     onReturnFromDay: () -> Unit = {},
     initialDestination: MobileDestination = MobileDestination.Usage,
     initialInsightPane: InsightPane = InsightPane.Overview,
-    initialSettingsVisible: Boolean = false
+    initialSettingsVisible: Boolean = false,
+    initialMePage: V2MePage = V2MePage.Root
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -351,8 +356,9 @@ internal fun LedgerDashboardV2Screen(
                         // 额度页只有刷新与设置（design §4.1「额度页只有刷新与设置」），不像其余
                         // 目的地那样带分享；旧版这里没按 destination 分支，额度页其实也在分享，
                         // 顺手把这处也修了。
+                        // 「我的」是设置与展示入口，没有可分享的统计画面（重构 R5）。
                         onShare = displayedData
-                            ?.takeIf { destination == MobileDestination.Usage || destination == MobileDestination.Me }
+                            ?.takeIf { destination == MobileDestination.Usage }
                             ?.let { { showSharePoster = true } },
                         filtersActive = state.hasActiveFilters,
                         onOpenFilters = { filterSheet = V2FilterSheet.All },
@@ -418,7 +424,14 @@ internal fun LedgerDashboardV2Screen(
                             onOpenDay = openDayReview,
                             onReturnFromDay = returnFromDayReview,
                             onOpenTrendDay = openTrendDay,
-                            onScrolledUnderChange = { destinationScrolledUnder = it }
+                            onScrolledUnderChange = { destinationScrolledUnder = it },
+                            initialMePage = initialMePage,
+                            meActions = V2MeActions(
+                                forceLandscape = forceLandscape,
+                                onAppearanceChange = onAppearanceChange,
+                                onForceLandscapeChange = onForceLandscapeChange,
+                                onSignOut = onSignOut
+                            )
                         )
                     }
                 }
@@ -505,7 +518,9 @@ internal fun V2DestinationContent(
     onOpenDay: (String) -> Unit,
     onReturnFromDay: () -> Unit,
     onOpenTrendDay: (String, InsightPane) -> Unit,
-    onScrolledUnderChange: (Boolean) -> Unit = {}
+    onScrolledUnderChange: (Boolean) -> Unit = {},
+    initialMePage: V2MePage = V2MePage.Root,
+    meActions: V2MeActions = V2MeActions()
 ) {
     var trendMetric by rememberSaveable { mutableStateOf(ReportMetricMode.Tokens) }
     val trendCurrency = LocalDashboardCurrency.current
@@ -517,6 +532,9 @@ internal fun V2DestinationContent(
     val quotaListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_quota") { LazyListState() }
     val widgetListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_widget") { LazyListState() }
     val routingListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_routing") { LazyListState() }
+    val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
+    var mePage by rememberSaveable { mutableStateOf(initialMePage) }
+    BackHandler(enabled = destination == MobileDestination.Me && mePage != V2MePage.Root) { mePage = V2MePage.Root }
 
     val trendListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_trend") { LazyListState() }
     val sourcesListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_sources") { LazyListState() }
@@ -533,7 +551,7 @@ internal fun V2DestinationContent(
         }
         MobileDestination.Routing -> routingListState
         MobileDestination.Quota -> quotaListState
-        MobileDestination.Me -> widgetListState
+        MobileDestination.Me -> if (mePage == V2MePage.Root) widgetListState else meStandbyListState
     }
     val revealMotion = ledgerMotionEnabled(palette.isEInk)
     val revealDensity = LocalDensity.current
@@ -541,8 +559,8 @@ internal fun V2DestinationContent(
     // §4.1 顶栏 scroll-under：当前页（目的地 × 洞察页签）的列表是否已离开顶部，只在翻转时报告；
     // 没有数据、显示的是状态壳时列表不在屏上，一律算在顶部。
     val activeListState = listStateFor(destination, insightPane)
-    // 路由页不依赖用量统计：统计还没到或读取失败时它照常显示自己的内容。
-    val routingIndependent = destination == MobileDestination.Routing
+    // 路由页与「我的」不依赖用量统计：统计还没到或读取失败时它们照常显示自己的内容。
+    val routingIndependent = destination == MobileDestination.Routing || destination == MobileDestination.Me
     val listShown = displayedStats != null || routingIndependent
     val reportScrolledUnder by rememberUpdatedState(onScrolledUnderChange)
     LaunchedEffect(activeListState, listShown) {
@@ -604,9 +622,20 @@ internal fun V2DestinationContent(
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = contentBottomPadding),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                val meItems: () -> Unit = {
+                    v2MeItems(
+                        palette, mePage, { mePage = it }, state, stats, appearance, ambientMode,
+                        tokenDisplayMode, meActions, onAmbientModeChange, onTokenDisplayModeChange,
+                        onOpenLowPowerDisplay, onRefresh
+                    )
+                }
                 if (stats == null) {
-                    // 只有路由页会在没有统计时走到这里；切页过渡里旧页也可能短暂落在这一支。
-                    if (targetDestination == MobileDestination.Routing) v2RoutingItems(palette)
+                    // 只有路由页与「我的」会在没有统计时走到这里；切页过渡里旧页也可能短暂落在这一支。
+                    when (targetDestination) {
+                        MobileDestination.Routing -> v2RoutingItems(palette)
+                        MobileDestination.Me -> meItems()
+                        else -> Unit
+                    }
                     return@LazyColumn
                 }
                 when (targetDestination) {
@@ -649,17 +678,7 @@ internal fun V2DestinationContent(
                         onRefresh = onRefresh,
                         dashboardLoading = state.dashboardLoading
                     )
-                    MobileDestination.Me -> v2WidgetItems(
-                        palette,
-                        state,
-                        stats,
-                        appearance,
-                        ambientMode,
-                        tokenDisplayMode,
-                        onAmbientModeChange,
-                        onTokenDisplayModeChange,
-                        onOpenLowPowerDisplay
-                    )
+                    MobileDestination.Me -> meItems()
                 }
             }
         }
@@ -817,6 +836,12 @@ internal fun LazyListScope.v2InsightsItems(
                 V2DetailSearch(palette, state.query.search, onSearchChange)
             }
             val details = stats.detailsPage?.items ?: stats.history
+            val listSummary = detailListSummary(stats.detailsPage, tokenDisplayMode)
+            if (details.isNotEmpty() && listSummary != null) {
+                item(key = "insights-detail-summary", contentType = "context") {
+                    V2DetailListHeader(palette, listSummary)
+                }
+            }
             if (details.isEmpty()) {
                 item(key = "insights-detail-empty", contentType = "status") {
                     val narrowed = !state.query.search.isNullOrBlank() ||

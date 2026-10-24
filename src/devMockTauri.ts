@@ -2403,6 +2403,8 @@ export function installDevMockTauri() {
       case 'magpie_import_clear':
         mockMagpieImport = null;
         return null;
+      case 'routing_publish_status':
+        return { state: 'ok', lastPublishedAt: new Date(Date.now() - 4000).toISOString(), flows: 3, error: null };
       case 'peer_live_snapshot':
       case 'gateway_external_feed':
         return {

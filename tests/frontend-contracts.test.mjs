@@ -3544,6 +3544,8 @@ test('top bar segments and icon actions preserve a 44px target (GLB-03)', () => 
   assert.match(shell, /\n\.topbar-icon-btn \{\n  width: 44px;/);
   const surfaces = readSource(path.join(process.cwd(), 'src', 'styles', 'surfaces.css'));
   assert.match(surfaces, /\n\.app-header \.theme-toggle \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
+  // Enabled model-page switches keep a readable thumb on the pale dark-theme fill.
+  assert.match(surfaces, /\.app-shell \.mw-switch\.is-on span \{[^}]*background: var\(--color-text-on-primary\);/);
   // The actions column never shrinks under its content, so it cannot overlap the switch.
   assert.match(shell, /\n\.app-topbar \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto minmax\(max-content, 1fr\);/);
   // The visible thumb, track and hover fill are drawn inset, not the hit area.

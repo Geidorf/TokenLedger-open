@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -127,6 +128,19 @@ internal fun LazyListScope.v2QuotaItems(
                 }
             }
             quota.warning?.let { warning -> item(key = "quota-warning", contentType = "status") { V2QuotaStateCard(palette, "快照提醒", warning) } }
+            val paceNow = Instant.ofEpochMilli(quota.evaluatedAtEpochMillis)
+            val anyPaceLine = providers.any { provider ->
+                quotaCapabilityTrustsTimeline(provider.capability) &&
+                    provider.windows.any { quotaPaceRemainingFraction(it.windowMinutes, it.resetsAt, paceNow) != null }
+            }
+            if (anyPaceLine) item(key = "quota-pace-note", contentType = "note") {
+                Text(
+                    QUOTA_PACE_NOTE,
+                    color = palette.muted,
+                    style = LedgerType.meta,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+            }
         }
     }
 }
@@ -192,3 +206,6 @@ internal fun V2QuotaHistoryGroup(
         }
     }
 }
+
+/** 匀速线的读法，放在额度列表末尾一次说清，不在每条窗口里重复。 */
+internal const val QUOTA_PACE_NOTE = "竖线是按时间匀速用完时此刻应剩的位置，条比它短就是用快了。"
