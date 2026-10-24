@@ -865,13 +865,31 @@ fn prune_snapshots(root: &Path) {
     }
 }
 
-fn import_ledger(db_path: &Path, table: &LedgerTable) -> Result<usize, String> {
+/// Restores ledger rows and the cumulative-source state in one write
+/// transaction: a scan between the two would measure its delta against the
+/// old baseline with the restored rows already in, and count them twice.
+fn restore_ledger(
+    db_path: &Path,
+    ledger: &LedgerTable,
+    cumulative: &LedgerTable,
+) -> Result<usize, String> {
+    let mut conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| format!("写入账本失败：{error}"))?;
+    let added = import_ledger(&tx, ledger)?;
+    import_cumulative(&tx, cumulative)?;
+    tx.commit()
+        .map_err(|error| format!("写入账本失败：{error}"))?;
+    Ok(added)
+}
+
+fn import_ledger(tx: &rusqlite::Transaction, table: &LedgerTable) -> Result<usize, String> {
     if table.rows.is_empty() {
         return Ok(0);
     }
     unique_key_index(&table.columns)?;
-    let mut conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
-    let local: BTreeSet<String> = table_columns(&conn, LEDGER_TABLE)
+    let local: BTreeSet<String> = table_columns(tx, LEDGER_TABLE)
         .map_err(|error| error.to_string())?
         .into_iter()
         .collect();
@@ -885,7 +903,6 @@ fn import_ledger(db_path: &Path, table: &LedgerTable) -> Result<usize, String> {
         .collect();
     let names: Vec<String> = picked.iter().map(|(_, name)| name.clone()).collect();
     let placeholders = vec!["?"; names.len()].join(",");
-    let tx = conn.transaction().map_err(|error| error.to_string())?;
     let mut added = 0;
     {
         let mut stmt = tx
@@ -909,8 +926,6 @@ fn import_ledger(db_path: &Path, table: &LedgerTable) -> Result<usize, String> {
             }
         }
     }
-    tx.commit()
-        .map_err(|error| format!("写入账本失败：{error}"))?;
     Ok(added)
 }
 
@@ -920,12 +935,11 @@ fn import_ledger(db_path: &Path, table: &LedgerTable) -> Result<usize, String> {
 /// generation and the restored ledger holds the rows up to the higher one, so
 /// the next scan continues from there instead of counting them again or
 /// reusing a dedupe key.
-fn import_cumulative(db_path: &Path, table: &LedgerTable) -> Result<(), String> {
+fn import_cumulative(tx: &rusqlite::Transaction, table: &LedgerTable) -> Result<(), String> {
     if table.rows.is_empty() || !table.columns.iter().any(|column| column == "unique_key") {
         return Ok(());
     }
-    let mut conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
-    let local: BTreeSet<String> = table_columns(&conn, CUMULATIVE_TABLE)
+    let local: BTreeSet<String> = table_columns(tx, CUMULATIVE_TABLE)
         .map_err(|error| error.to_string())?
         .into_iter()
         .collect();
@@ -981,9 +995,8 @@ fn import_cumulative(db_path: &Path, table: &LedgerTable) -> Result<(), String> 
         quoted(&names),
         vec!["?"; names.len()].join(",")
     );
-    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let mut stmt = tx.prepare(&sql).map_err(|error| error.to_string())?;
     {
-        let mut stmt = tx.prepare(&sql).map_err(|error| error.to_string())?;
         for row in &table.rows {
             let values: Vec<SqlValue> = picked
                 .iter()
@@ -997,8 +1010,7 @@ fn import_cumulative(db_path: &Path, table: &LedgerTable) -> Result<(), String> 
             }
         }
     }
-    tx.commit()
-        .map_err(|error| format!("写入扫描状态失败：{error}"))
+    Ok(())
 }
 
 fn restore_providers(
@@ -1132,8 +1144,7 @@ pub fn apply(
     };
     let db_path = db::get_db_path(app);
     if sections.ledger {
-        result.ledger_added = import_ledger(&db_path, &bundle.ledger)?;
-        import_cumulative(&db_path, &bundle.scan_cumulative)?;
+        result.ledger_added = restore_ledger(&db_path, &bundle.ledger, &bundle.scan_cumulative)?;
     }
     if sections.gateway_requests && same_machine(bundle) {
         let created = bundle.created.clone();
@@ -1364,6 +1375,15 @@ pub async fn local_backup_apply(
     })
     .await?;
     emit_stats_updated(&app_handle);
+    if result.prices_restored {
+        // An open price editor reloads, so its next save does not write the
+        // pre-restore table back.
+        use tauri::Emitter;
+        let _ = app_handle.emit(
+            "prices-updated",
+            serde_json::json!({ "source": "local-backup" }),
+        );
+    }
     if result.settings_restored {
         // Open settings pages reload, so a later edit does not save the
         // pre-restore values back over the restored ones.

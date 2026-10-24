@@ -249,3 +249,43 @@ describe('useSettings 价格表保存与导入（T10.171）', () => {
     expect(result.current.pricesDirty).toBe(false);
   });
 });
+
+describe('useSettings 价格表外部更新', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  it('收到 prices-updated 时，没有未保存修改的价格编辑器重新读取；有修改时保留', async () => {
+    const { listen } = await import('@tauri-apps/api/event');
+    const listenMock = listen as unknown as Mock;
+    const handlers: Record<string, () => void> = {};
+    listenMock.mockImplementation(async (event: string, handler: () => void) => {
+      handlers[event] = handler;
+      return () => {};
+    });
+    let table = backendPrices();
+    invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_prices' ? table : null));
+    const { result } = renderSettings();
+    await act(async () => {
+      await result.current.loadPrices();
+    });
+    await vi.waitFor(() => expect(Object.keys(handlers)).toContain('prices-updated'));
+
+    table = { ...backendPrices(), 'restored-model': { input: 9, output: 9 } };
+    await act(async () => {
+      handlers['prices-updated']();
+    });
+    await vi.waitFor(() => expect(result.current.pricesText).toContain('restored-model'));
+
+    act(() => {
+      result.current.setPricesText('{"edited": {}}');
+      result.current.setPricesDirty(true);
+    });
+    table = backendPrices();
+    await act(async () => {
+      handlers['prices-updated']();
+    });
+    expect(result.current.pricesText).toBe('{"edited": {}}');
+    listenMock.mockImplementation(async () => () => {});
+  });
+});
