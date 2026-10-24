@@ -234,6 +234,19 @@ function valueAxis(theme: ChartThemeTokens, formatter: (value: number) => string
   };
 }
 
+type RefreshAnnouncement =
+  | { kind: 'refreshing' }
+  | { kind: 'failed'; time: string | null }
+  | { kind: 'refreshed'; time: string | null }
+  | null;
+
+function refreshAnnouncementText(note: RefreshAnnouncement): string {
+  if (!note) return '';
+  if (note.kind === 'refreshing') return t('behavior.refreshing');
+  if (note.kind === 'failed') return note.time ? t('behavior.refreshFailedAt', { time: note.time }) : t('behavior.refreshFailedLast');
+  return t('behavior.refreshedAt', { time: note.time ?? t('behavior.justNow') });
+}
+
 export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loading, refreshing = false, updatedAt = null, error, scope, range, customRange, onRangeChange, onRetry, onViewLocal, onSelectDate, onOpenTool, onOpenSession, projectFilter = [], onProjectFilterChange, onOpenProjectSettings, onRebuildProjectIndex, projectBackfill = null, ledgerEmpty = false, onScan, scanBusy = false }: Props) {
   const lang = useLang();
   const { effective } = useTheme(); // Tool-ranking/session-ranking colours below must recompute on theme toggle (T10.178 review P2-1).
@@ -446,7 +459,8 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
   // Only a refresh the user asked for is announced (review F4). Background
   // refreshes after a scan or sync change the visible status text quietly, and
   // a first failure is announced by the alert banner instead.
-  const [refreshAnnouncement, setRefreshAnnouncement] = useState('');
+  // Kept as a state, not a sentence, so a language switch mid-refresh still compares and re-renders correctly.
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState<RefreshAnnouncement>(null);
   const wasBusy = useRef(busy);
   // The hook keeps `error` until a retry settles (T10.164 review N1): whether
   // the banner stayed up from the start of this refresh decides what its end says.
@@ -464,20 +478,22 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
     if (!error) failedBefore.current = false;
     if (started) {
       failedBefore.current = Boolean(error);
-      setRefreshAnnouncement(current => (current === t('behavior.refreshing') ? current : ''));
+      setRefreshAnnouncement(current => (current?.kind === 'refreshing' ? current : null));
     } else if (finished && error) {
       // Cleared only when this refresh ends in failure. A first failure is told
       // by the new banner; a manual retry that fails again leaves the banner
       // unchanged, so role="alert" says nothing and this region has to.
-      setRefreshAnnouncement(current => (current === t('behavior.refreshing') && failedBefore.current && hasResult ? (receivedAt ? t('behavior.refreshFailedAt', { time: receivedAt }) : t('behavior.refreshFailedLast')) : ''));
-    } else if (finished) setRefreshAnnouncement(current => (current === t('behavior.refreshing') ? t('behavior.refreshedAt', { time: receivedAt ?? t('behavior.justNow') }) : current));
+      setRefreshAnnouncement(current => (current?.kind === 'refreshing' && failedBefore.current && hasResult ? { kind: 'failed', time: receivedAt ?? null } : null));
+    } else if (finished) setRefreshAnnouncement(current => (current?.kind === 'refreshing' ? { kind: 'refreshed', time: receivedAt ?? null } : current));
   }, [busy, error, receivedAt, hasResult]);
   const referenceYear = data ? Number(data.meta.end.slice(0, 4)) : undefined;
   const sessionActions = Boolean(data?.sessions.some(session => supportsBehaviorSessionAnalysis(session.tool)));
   const showSessionProject = behaviorShowsSessionProject(data);
   const projectAliases = useMemo(
     () => behaviorProjectAliases(data, hideProjectNames),
-    [data, hideProjectNames],
+    // 代称文案随界面语言变化，lang 只用来触发重算。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, hideProjectNames, lang],
   );
   // Drill-downs decide at press time whether the current range still covers
   // the analysed window (for example after midnight it no longer does).
@@ -520,10 +536,10 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
         {/* Text, not only the spinner, carries the state: reduced motion stops the spin. */}
         {/* 刷新中的文字要看得见（reduced motion 下不转圈）；完成后的「更新于」与顶栏重复，只留给读屏（U-102）。 */}
         <span className="behavior-refresh-status">{refreshing ? t('behavior.refreshing') : !loading && receivedAt ? <time className="sr-only" dateTime={updatedAt ?? undefined}>{t('behavior.updatedAt', { time: receivedAt })}</time> : null}</span>
-        <span className="sr-only" role="status">{refreshAnnouncement}</span>
+        <span className="sr-only" role="status">{refreshAnnouncementText(refreshAnnouncement)}</span>
         {/* aria-disabled keeps keyboard focus on the button while it works; a
             repeated press is ignored and the shown result stays on screen. */}
-        <button className="ghost-inline behavior-refresh-button" type="button" aria-disabled={busy || undefined} onClick={() => { if (!busy) { setRefreshAnnouncement(t('behavior.refreshing')); onRetry(); } }}><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} aria-hidden="true" />{t('behavior.refresh')}</button>
+        <button className="ghost-inline behavior-refresh-button" type="button" aria-disabled={busy || undefined} onClick={() => { if (!busy) { setRefreshAnnouncement({ kind: 'refreshing' }); onRetry(); } }}><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} aria-hidden="true" />{t('behavior.refresh')}</button>
       </div>
     </div>
     {showCustomRange && invalidDraftRange && <p id={rangeErrorId} className="behavior-range-error" role="alert">{t('behavior.rangeError')}</p>}

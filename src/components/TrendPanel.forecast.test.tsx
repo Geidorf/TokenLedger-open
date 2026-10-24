@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLangPreference } from '../i18n';
 import type { ComparisonSeriesPoint, DailyCost, DataScope, RangeKey, StatsData, Summary } from '../types';
 import { describePeriodForecast, forecastFromStats, forecastInputFromStats, type MetricForecast } from '../utils/forecast';
 import {
@@ -378,6 +379,20 @@ describe('TrendPanel 周期末预测接入（T10.159 · T10.153 D2）', () => {
     expect(screen.getByTestId('echart-mock').getAttribute('data-aria-label')).toContain('按已完成 27 天，截至 3月28日');
     fireEvent.click(screen.getByRole('button', { name: '累计走势' }));
     expect(hasForecastSeries()).toBe(false);
+  });
+
+  it('同一份数据下原地切换语言，截短说明、预测标题与截止日跟着换（#109 评审 P2）', () => {
+    renderTrend(clippedMarchStats(), 'month', 0, { initialTrack: 'dual' });
+    expect(screen.getAllByText('截至 3月28日').length).toBeGreaterThan(0);
+    try {
+      act(() => setLangPreference('en'));
+      const line = forecastLineOf('Month-end forecast');
+      expect(line.textContent).toContain('Month-end is aligned with last month by date');
+      expect(line.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+      expect(screen.queryByText('截至 3月28日')).not.toBeInTheDocument();
+    } finally {
+      act(() => setLangPreference('zh'));
+    }
   });
 
   it('平日不写截止日说明', () => {

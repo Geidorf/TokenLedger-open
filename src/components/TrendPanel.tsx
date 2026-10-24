@@ -498,7 +498,12 @@ function TrendPanelComponent(props: TrendPanelProps) {
   // 总览快照必须与本卡的 comparison 是同一份响应，才用它判断预测、截短与逐日费用。
   const overview = overviewStats && comparison && overviewStats.comparison === comparison ? overviewStats : null;
   // 月末同期截短（P2-2）：日均与单位费用只统计到对齐日，与核心指标的同期变化用同一句说明。
-  const clip = useMemo(() => (overview ? comparisonClip(overview, range) : null), [overview, range]);
+  const clip = useMemo(
+    () => (overview ? comparisonClip(overview, range) : null),
+    // 截短说明是已翻译的文案，lang 只用来触发重算。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [overview, range, lang],
+  );
   // 云端 comparison 把未知费用合成了 0（P3-2）：总览按 dailyCosts 逐桶核实，undefined 表示不需要核实
   // （本机逐行费用已按价格表估算；专属看板没有逐日费用来源，与同一弹窗的核心指标费用一致，沿用原值）。
   const cloudCostKnown = useMemo(
@@ -541,7 +546,9 @@ function TrendPanelComponent(props: TrendPanelProps) {
 
   const forecastState = useMemo(() => (
     overview ? trendForecast(overview, range, scope, pendingUploads) : null
-  ), [overview, range, scope, pendingUploads]);
+    // 预测标题与原因是已翻译的文案，lang 只用来触发重算。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [overview, range, scope, pendingUploads, lang]);
   const forecast = forecastState?.forecast ?? null;
 
   const forecastLines = useMemo<ForecastLineModel[]>(() => {
