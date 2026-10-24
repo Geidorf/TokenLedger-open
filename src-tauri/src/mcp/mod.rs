@@ -412,7 +412,7 @@ pub(crate) fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "get_budget",
             "title": "Budget status",
-            "description": "Status of each budget the user set: spent, limit, percent used and level (ok, warn, exceeded).",
+            "description": "Status of each budget the user set: spent, limit, percent used and level (ok, warn, over, unavailable).",
             "inputSchema": no_arguments(),
             "annotations": read_only(false),
         }),
@@ -503,7 +503,7 @@ fn parse_date(text: &str, key: &str) -> Result<chrono::NaiveDate, String> {
 /// 额度的对外视图：只留数字、单位、重置时间与状态。
 /// 去掉账号标签（可能是邮箱）与动作（可能是命令或链接）；最紧的窗口与状态栏摘要同一算法。
 pub(crate) fn quota_view(quota: &Value) -> Value {
-    const WINDOW_KEYS: [&str; 11] = [
+    const WINDOW_KEYS: [&str; 12] = [
         "windowId",
         "windowLabel",
         "status",
@@ -515,6 +515,8 @@ pub(crate) fn quota_view(quota: &Value) -> Value {
         "windowMinutes",
         "resetsAt",
         "observedAt",
+        // 例如 credits_unlimited：无限额度不给数字，只靠它表明。
+        "reasonCode",
     ];
     let providers: Vec<Value> = quota["providers"]
         .as_array()
@@ -592,7 +594,7 @@ pub(crate) fn pace_text(status: &Value, tightest_quota: &Value, threshold: f64) 
     let budget_level = budget["level"].as_str().unwrap_or("ok");
     let budget_percent = budget["percent"].as_f64();
 
-    let level = if quota_left.is_some_and(|left| left <= threshold) || budget_level == "exceeded" {
+    let level = if quota_left.is_some_and(|left| left <= threshold) || budget_level == "over" {
         "conserve"
     } else if quota_left.is_some_and(|left| left <= threshold * 2.0) || budget_level == "warn" {
         "watch"

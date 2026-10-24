@@ -49,6 +49,11 @@ fn fake_quota(_app: &AppContext) -> Value {
                     "scope": "consumer-subscription", "source": "local-authorized"
                 },
                 {
+                    "providerId": "codex", "windowId": "credits", "windowLabel": "Credits",
+                    "status": "ok", "unit": "credits", "reasonCode": "credits_unlimited",
+                    "observedAt": "2026-10-24T05:00:00Z"
+                },
+                {
                     "providerId": "codex", "windowId": "7d", "windowLabel": "7 天",
                     "status": "ok", "unit": "percent", "used": 40.0, "remaining": 60.0,
                     "observedAt": "2026-10-24T05:00:00Z"
@@ -271,6 +276,11 @@ fn quota_drops_account_labels_and_actions() {
         json!(15.0)
     );
     assert_eq!(quota["tightest"]["window"], json!("5 小时"));
+    // 无限额度没有数字，只靠 reasonCode 表明，不能被去掉。
+    assert_eq!(
+        quota["providers"][0]["windows"][1]["reasonCode"],
+        json!("credits_unlimited")
+    );
     assert_eq!(quota["tightest"]["remainingPercent"], json!(15.0));
 }
 
@@ -362,8 +372,10 @@ fn pace_prompt_levels_follow_threshold() {
 
     let watch = pace_text(&json!({}), &json!({ "remainingPercent": 30.0 }), 20.0);
     assert!(watch.contains("Level: watch"));
+    // 用真实的序列化值，别和预算模块的枚举对不上。
+    let over = serde_json::to_value(crate::budget::BudgetLevel::Over).unwrap();
     let budget = pace_text(
-        &json!({ "budget": { "level": "exceeded", "percent": 120.0 } }),
+        &json!({ "budget": { "level": over, "percent": 120.0 } }),
         &Value::Null,
         20.0,
     );

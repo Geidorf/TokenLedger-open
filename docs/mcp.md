@@ -19,8 +19,8 @@
 |---|---|---|---|
 | `get_status` | `includeQuota`（默认 `true`） | 今日合计、最紧的预算、最紧的额度窗口、一行摘要 | `status` |
 | `get_usage` | `range`（`today` 默认、`week`、`month`、`year`、`all`），或 `from` + `to`（`YYYY-MM-DD`）；`by`（`agent`、`model`、`account`）；`agents`、`models`（字符串数组，筛选） | 合计与拆分 | `usage` |
-| `get_quota` | 无 | 每个来源的额度窗口（已用、上限、剩余、剩余百分比、重置时间、状态）与最紧的窗口 `tightest` | `quota`（去掉账号标签与操作按钮） |
-| `get_budget` | 无 | 每条预算的已用、上限、百分比与级别（`ok`、`warn`、`exceeded`） | `budget` |
+| `get_quota` | 无 | 每个来源的额度窗口（已用、上限、剩余、剩余百分比、重置时间、状态，无限额度以 `reasonCode: credits_unlimited` 表明）与最紧的窗口 `tightest` | `quota`（去掉账号标签与操作按钮） |
+| `get_budget` | 无 | 每条预算的已用、上限、百分比与级别（`ok`、`warn`、`over` 已超、`unavailable` 读不到） | `budget` |
 | `get_gateway` | `limit`（1–50，默认 10） | 网关是否在运行、供应商与路由组数量、最近 N 条路由结果 | `gateway` |
 | `get_anomalies` | 无 | 用量异常：Token/费用突增、缓存命中骤降、Agent/模型放量、昂贵会话、网关错误率突增，以及每类检查是否有足够历史（规则见 [usage-anomaly-v1](design/usage-anomaly-v1.md)） | 桌面「用量异常」面板 |
 
