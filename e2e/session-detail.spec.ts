@@ -48,6 +48,18 @@ test.describe('会话详情', () => {
     await expect(page.getByRole('textbox', { name: /搜索/ }).first()).toHaveValue(sessionId);
   });
 
+  test('概览的「会话异常昂贵」卡片打开该会话的详情', async ({ page }) => {
+    await openPage(page, 'dashboard');
+    const panel = page.locator('.usage-anomaly-panel');
+    await panel.scrollIntoViewIfNeeded();
+    await panel.getByRole('button', { name: /会话异常昂贵.*查看会话详情/ }).click();
+    await expect(page).toHaveURL(/#session\/codex\/mock-session-7f3a$/);
+    const detail = page.getByTestId('session-detail');
+    await expect(detail.locator('.session-detail-id')).toHaveText('mock-session-7f3a');
+    // 预览账本里没有这个会话：如实说明，而不是空白页。
+    await expect(detail.getByText('找不到这个会话')).toBeVisible();
+  });
+
   test('英文界面', async ({ page }) => {
     await openPage(page, 'session/claude/preview-session-refactor', '?lang=en');
     const detail = page.getByTestId('session-detail');
