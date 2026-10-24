@@ -76,7 +76,8 @@ pub fn tightest_quota(
 ) -> Option<TightestQuota> {
     let mut best: Option<(u8, Option<DateTime<Utc>>, String, TightestQuota)> = None;
     for provider in providers {
-        if provider.status != QuotaStatus::Ok {
+        // 与 `collectQuotaHighlights` 一致：部分窗口过期时整条来源标 Stale，但新鲜窗口仍要算，逐窗口交给 fresh_percent_reading 过滤。
+        if !matches!(provider.status, QuotaStatus::Ok | QuotaStatus::Stale) {
             continue;
         }
         let company = provider.provider_id.starts_with(COMPANY_PROVIDER_PREFIX);
@@ -341,6 +342,26 @@ mod tests {
             provider("anthropic-claude-consumer", vec![passed]),
         ];
         assert_eq!(tightest_quota(&providers, now()), None);
+    }
+
+    #[test]
+    fn fresh_windows_in_a_partly_stale_provider_still_count() {
+        let mut passed = window("openai-codex-local", "primary", 10.0, -5);
+        passed.status = QuotaWindowStatus::Stale;
+        let weekly = window("openai-codex-local", "secondary", 97.0, 600);
+        let mut codex = provider("openai-codex-local", vec![passed, weekly]);
+        codex.status = QuotaStatus::Stale;
+        let providers = vec![
+            codex,
+            provider(
+                "anthropic-claude-consumer",
+                vec![window("anthropic-claude-consumer", "five-hour", 40.0, 60)],
+            ),
+        ];
+        assert_eq!(
+            tightest_quota(&providers, now()).map(|item| item.remaining),
+            Some(3)
+        );
     }
 
     #[test]
