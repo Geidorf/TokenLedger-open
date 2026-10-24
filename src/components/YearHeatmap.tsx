@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { CustomDateRange, RangeKey } from '../types';
 import { formatTokens } from '../utils/format';
 import { rhythmLevel, type InsightTimeContext } from '../utils/insightRules';
+import { getLang, t, type MessageKey } from '../i18n';
 
 /**
  * 查询实际覆盖的本地日期闭区间（YYYY-MM-DD）。区间外且没有记录的日期没有被查询，不能画成 0（GLB-01）。
@@ -40,9 +41,10 @@ export interface YearHeatmapProps {
   formatValue?: (value: number) => string;
 }
 
-const formatTokenValue = (value: number) => `${formatTokens(value)} Tokens`;
+const formatTokenValue = (value: number) => t('heatmap.tokensUnit', { value: formatTokens(value) });
 
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const WEEKDAY_KEYS: MessageKey[] = ['heatmap.wd.0', 'heatmap.wd.1', 'heatmap.wd.2', 'heatmap.wd.3', 'heatmap.wd.4', 'heatmap.wd.5', 'heatmap.wd.6'];
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 function isoDay(date: Date): string {
@@ -131,18 +133,18 @@ export function resolveHeatmapWindow(
 export function heatmapCoverageNote(year: number, coverage: HeatmapCoverage | null | undefined, today: string): string {
   if (!coverage) return '';
   if (coverage.end === null) {
-    return '无法确认这份数据查询到哪一天，没有记录的日期都按未查询显示，不代表没有用量。';
+    return t('heatmap.cov.unknownEnd');
   }
   const yearStart = `${year}-01-01`;
   const yearEnd = earliest(`${year}-12-31`, today);
   const notes: string[] = [];
   if (yearEnd >= yearStart && ((coverage.start !== null && coverage.start > yearStart) || coverage.end < yearEnd)) {
-    notes.push(`只查询了 ${coverage.start ?? '最早记录'} 至 ${coverage.end}，其余日期未查询，不代表没有用量`);
+    notes.push(t('heatmap.cov.partial', { start: coverage.start ?? t('heatmap.cov.earliest'), end: coverage.end }));
   }
   if (coverage.start !== null && coverage.start < yearStart) {
-    notes.push(`${coverage.start.slice(0, 4)} 年的部分不在本日历中`);
+    notes.push(t('heatmap.cov.outside', { year: coverage.start.slice(0, 4) }));
   }
-  return notes.length > 0 ? `${notes.join('；')}。` : '';
+  return notes.length > 0 ? `${notes.join(t('heatmap.cov.join'))}${t('heatmap.cov.end')}` : '';
 }
 
 export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, today, formatValue }: YearHeatmapProps) {
@@ -161,10 +163,14 @@ export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, t
   // 与分时段节奏格同一把尺（T10.111 `rhythmLevel`）：按本年已知日期的峰值相对分 5 档，单色相由浅到深。
   const maxTokens = peak ? peak[1] : 0;
   const coverageNote = heatmapCoverageNote(year, coverage, todayKey);
-  const summary = formatValue
-    ? `${year} 年活跃日历：${observedDays.length} 个有消耗的日期，总计 ${formatValue(totalTokens)}${peak ? `，峰值 ${peak[0]} 为 ${formatValue(peak[1])}` : ''}。${coverageNote}`
-    : `${year} 年活跃日历：${observedDays.length} 个有消耗的日期，总计 ${formatTokens(totalTokens)} Token${peak ? `，峰值 ${peak[0]} 为 ${formatTokens(peak[1])}` : ''}。${coverageNote}`;
   const cellValue = formatValue ?? formatTokenValue;
+  const summary = t('heatmap.summary', {
+    year,
+    days: observedDays.length,
+    total: cellValue(totalTokens),
+    peak: peak ? t('heatmap.summaryPeak', { date: peak[0], value: cellValue(peak[1]) }) : '',
+    note: coverageNote,
+  }).trimEnd();
   const hasInteractiveDays = observedDays.length > 0 && typeof onSelectDate === 'function';
 
   return (
@@ -193,9 +199,9 @@ export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, t
           const isClickable = known && tokens > 0 && typeof onSelectDate === 'function';
 
           // 未来与未查询的日期没有数据，读屏与悬停提示都不能说成 0 Token。
-          const valueLabel = isFuture ? '尚未到来' : known ? cellValue(tokens) : '未查询';
-          const title = `${date}: ${valueLabel}${isClickable ? ' (点击查看当日明细)' : ''}`;
-          const ariaLabel = isClickable ? `${date}: ${valueLabel}，点击查看当日明细` : `${date}: ${valueLabel}`;
+          const valueLabel = isFuture ? t('heatmap.future') : known ? cellValue(tokens) : t('heatmap.notQueried');
+          const title = `${date}: ${valueLabel}${isClickable ? t('heatmap.clickTitle') : ''}`;
+          const ariaLabel = isClickable ? t('heatmap.clickAria', { date, value: valueLabel }) : `${date}: ${valueLabel}`;
           const stateClass = isFuture ? ' heat-future' : !known ? ' heat-unknown' : level === 0 ? ' heat-0' : '';
           const cellClass = `heatmap-cell${stateClass}${isClickable ? ' cursor-pointer hover:ring-1 hover:ring-primary' : ''}`;
           const dataLevel = level > 0 ? level : undefined;
@@ -235,10 +241,10 @@ export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, t
 
         return (
           <div key={month} className="heatmap-month">
-            <div className="heatmap-month-title">{month}月</div>
+            <div className="heatmap-month-title">{t('heatmap.month', { month: getLang() === 'en' ? EN_MONTHS[monthIdx] : month })}</div>
             <div className="heatmap-weekdays">
-              {WEEKDAYS.map((day) => (
-                <span key={day}>{day}</span>
+              {WEEKDAY_KEYS.map((key) => (
+                <span key={key}>{t(key)}</span>
               ))}
             </div>
             <div className="heatmap-days">{cells}</div>

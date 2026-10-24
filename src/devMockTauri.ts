@@ -1567,6 +1567,7 @@ interface MockBudgetRule {
   warnPercent: number;
 }
 let mockBudgetSettings: { notify: boolean; syncToPhone: boolean; rules: MockBudgetRule[] } = { notify: false, syncToPhone: false, rules: [] };
+let mockPeriodReportSettings = { weekly: true, monthly: false };
 
 /** 与 `budget.rs` 同一读法：从同一份本机统计取今日 / 本周 / 本月的合计或分组行。 */
 function mockBudgetStatus() {
@@ -2194,6 +2195,13 @@ export function installDevMockTauri() {
       }
       case 'get_budget_status':
         return mockBudgetStatus();
+      case 'get_period_report_settings':
+        return mockPeriodReportSettings;
+      case 'set_period_report_settings': {
+        const next = (payload.settings ?? {}) as { weekly?: unknown; monthly?: unknown };
+        mockPeriodReportSettings = { weekly: next.weekly === true, monthly: next.monthly === true };
+        return mockPeriodReportSettings;
+      }
       case 'get_quota_alert_settings':
         return mockQuotaAlertSettings;
       case 'set_quota_alert_settings': {

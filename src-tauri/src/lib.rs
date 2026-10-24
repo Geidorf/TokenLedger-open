@@ -42,6 +42,7 @@ mod macos_wallpaper_window;
 mod peer_live;
 mod peer_sync;
 mod peer_wire;
+mod period_report;
 mod quota_sync;
 mod redact;
 mod routing_publish;
@@ -370,6 +371,7 @@ fn start_background_scheduler(
                 {
                     refresh_tray_status(&ctx, &app_handle);
                 }
+                period_report::check_due(&ctx, &app_handle);
                 next_quota_sync = now + Duration::from_secs(5 * 60);
             }
 
@@ -863,6 +865,7 @@ pub fn run() {
                 app.handle().clone(),
             );
             gateway_for_setup.set_enabled(model_access_at_launch);
+            gateway_for_setup.spawn_probe_loop();
             routing_publish::start(
                 app_ctx_for_setup.clone(),
                 settings_state_for_setup.clone(),
@@ -927,6 +930,8 @@ pub fn run() {
             gateway::gateway_recent_route_decisions,
             gateway::gateway_routing_cooldowns,
             gateway::gateway_provider_health,
+            gateway::gateway_set_health_probe,
+            gateway::gateway_probe_providers,
             commands::gateway_request_log::gateway_request_log,
             commands::gateway_request_log::gateway_request_log_export,
             gateway::gateway_routing_feed,
@@ -963,6 +968,8 @@ pub fn run() {
             budget::get_budget_settings,
             budget::set_budget_settings,
             budget::get_budget_status,
+            period_report::get_period_report_settings,
+            period_report::set_period_report_settings,
             usage_anomaly::get_usage_anomalies,
             usage_anomaly::get_usage_anomaly_settings,
             usage_anomaly::set_usage_anomaly_settings,

@@ -9,6 +9,7 @@ import {
 } from '../../utils/projectDimension';
 import { BEHAVIOR_UNATTRIBUTED_FILTER_KEY } from '../../utils/contracts/behaviorProjects';
 import { InfoTip } from '../InfoTip';
+import { t, useLang } from '../../i18n';
 
 type Collecting = Extract<BehaviorAnalysisResponse['meta']['projectDimension'], { state: 'indexing' | 'ready' | 'failed' }>;
 
@@ -24,7 +25,7 @@ function formatShare(share: number | null | undefined): string {
 }
 
 function formatCost(cost: number | null | undefined): string {
-  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) return '不可得';
+  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) return t('projectPanel.unavailable');
   if (cost === 0) return '≈$0.00';
   if (cost < 0.01) return '<$0.01';
   return formatUsdApprox(cost);
@@ -52,11 +53,14 @@ export function BehaviorProjectPanel({
   onHideNamesChange,
 }: BehaviorProjectPanelProps) {
   const titleId = useId();
+  const lang = useLang();
   const [query, setQuery] = useState('');
   const dimension = data.meta.projectDimension;
+  // 代称「项目 1」随界面语言变化，`lang` 进依赖以便切换后重建。
   const aliases = useMemo(
     () => projectAliasMap(data.projects, data.sessions, hideNames),
-    [data.projects, data.sessions, hideNames],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.projects, data.sessions, hideNames, lang],
   );
 
   if (!dimension) return null;
@@ -66,14 +70,12 @@ export function BehaviorProjectPanel({
     return (
       <section className="panel behavior-project-entry" aria-labelledby={titleId}>
         {/* U-102：卡面只留一句，其余收进 ⓘ。 */}
-        <p id={titleId}>{consent ? '按项目统计需要重新确认。' : '按项目查看用量，默认关闭。'}</p>
-        <InfoTip label="项目维度说明">
-          {consent
-            ? '读取范围有更新；确认前不再显示项目。'
-            : '开启后只在这台电脑保存文件夹名，不上传。'}
+        <p id={titleId}>{t(consent ? 'projectPanel.consentTitle' : 'projectPanel.offTitle')}</p>
+        <InfoTip label={t('projectPanel.infoLabel')}>
+          {t(consent ? 'projectPanel.consentInfo' : 'projectPanel.offInfo')}
         </InfoTip>
         <button className="secondary-inline" type="button" onClick={onOpenSettings}>
-          {consent ? '去设置重新确认' : '了解并开启'}
+          {t(consent ? 'projectPanel.reconfirm' : 'projectPanel.enable')}
         </button>
       </section>
     );
@@ -86,12 +88,12 @@ export function BehaviorProjectPanel({
     if (!needle) return true;
     return projectDisplayName(project, aliases, hideNames).toLocaleLowerCase().includes(needle);
   });
-  const showUnattributed = !needle || '未归属'.includes(query.trim());
+  const showUnattributed = !needle || t('projectPanel.unattributed').toLocaleLowerCase().includes(needle);
   const allUnattributed = dimension.state === 'ready' && projects.length === 0 && (unattributed?.tokens ?? 0) > 0;
   const indexingCopy = dimension.state === 'indexing'
     ? (backfill && backfill.total > 0
-      ? `正在建立项目索引：已处理 ${backfill.done} / ${backfill.total} 个会话，数字会继续变化`
-      : `正在建立项目索引：范围内已有索引 ${dimension.indexedSessions} 个会话，尚有 ${dimension.pendingSessions} 个，数字会继续变化`)
+      ? t('projectPanel.indexingDone', { done: backfill.done, total: backfill.total })
+      : t('projectPanel.indexingRange', { indexed: dimension.indexedSessions, pending: dimension.pendingSessions }))
     : null;
 
   const select = (key: string) => {
@@ -102,16 +104,16 @@ export function BehaviorProjectPanel({
   return (
     <section className="panel behavior-project-panel" aria-labelledby={titleId}>
       <div className="behavior-rank-head">
-        <h2 id={titleId}>项目 <small>（{projects.length} 个{data.projectsTruncated ? `，另有 ${data.projectsRemainder?.projectCount ?? 0} 个并入其他` : ''}）</small></h2>
+        <h2 id={titleId}>{t('projectPanel.title')} <small>{data.projectsTruncated ? t('projectPanel.countMore', { count: projects.length, more: data.projectsRemainder?.projectCount ?? 0 }) : t('projectPanel.count', { count: projects.length })}</small></h2>
         <p className="behavior-rank-caption">
-          按文件夹名归并，项目名只存本机。
-          <InfoTip label="项目归并说明">一次会话只算入启动时所在的项目。项目名只在这台电脑上，不上传。</InfoTip>
+          {t('projectPanel.caption')}
+          <InfoTip label={t('projectPanel.mergeInfoLabel')}>{t('projectPanel.mergeInfo')}</InfoTip>
         </p>
       </div>
       <div className="behavior-project-tools">
         <label>
-          搜索项目
-          <input aria-label="搜索项目" value={query} onChange={(event) => setQuery(event.target.value)} />
+          {t('projectPanel.search')}
+          <input aria-label={t('projectPanel.search')} value={query} onChange={(event) => setQuery(event.target.value)} />
         </label>
         <button
           className="ghost-inline"
@@ -120,24 +122,24 @@ export function BehaviorProjectPanel({
           aria-checked={hideNames}
           onClick={() => onHideNamesChange(!hideNames)}
         >
-          隐藏项目名
+          {t('projectPanel.hideNames')}
         </button>
         {projectFilter.length > 0 && (
-          <button className="ghost-inline" type="button" onClick={() => onProjectFilterChange?.([])}>清除项目筛选</button>
+          <button className="ghost-inline" type="button" onClick={() => onProjectFilterChange?.([])}>{t('projectPanel.clearFilter')}</button>
         )}
       </div>
       {indexingCopy && <p className="behavior-rank-note" role="status">{indexingCopy}</p>}
       {dimension.state === 'failed' && (
         <p className="behavior-rank-note is-attention" role="alert">
           {projectFailureCopy(dimension.lastFailure)}
-          {onRebuild && <button className="secondary-inline" type="button" onClick={onRebuild}>重试建立索引</button>}
+          {onRebuild && <button className="secondary-inline" type="button" onClick={onRebuild}>{t('projectPanel.retry')}</button>}
         </p>
       )}
       {allUnattributed && (
-        <p className="behavior-rank-note">当前范围内的用量来自不记录工作目录的工具（如 Antigravity、Trae、腾讯 Marvis）。</p>
+        <p className="behavior-rank-note">{t('projectPanel.allUnattributed')}</p>
       )}
       {data.summary.requests === 0 ? (
-        <p className="behavior-rank-empty">该区间没有本机账本记录。</p>
+        <p className="behavior-rank-empty">{t('projectPanel.empty')}</p>
       ) : (
         <ol className="behavior-rank-list" role="list" aria-labelledby={titleId}>
           {visible.map((project, index) => (
@@ -153,9 +155,9 @@ export function BehaviorProjectPanel({
           {data.projectsRemainder && data.projectsRemainder.projectCount > 0 && !needle && (
             <li className="behavior-rank-row">
               <div className="behavior-rank-main">
-                <span className="behavior-rank-name">其他 {data.projectsRemainder.projectCount} 个项目</span>
-                <strong className="behavior-rank-value">{formatTokens(data.projectsRemainder.tokens)}<span className="sr-only"> 有效 Token</span></strong>
-                <span className="behavior-rank-meta">{formatShare(data.projectsRemainder.share)} · {formatNum(data.projectsRemainder.sessionCount)} 会话</span>
+                <span className="behavior-rank-name">{t('projectPanel.other', { count: data.projectsRemainder.projectCount })}</span>
+                <strong className="behavior-rank-value">{formatTokens(data.projectsRemainder.tokens)}<span className="sr-only">{t('projectPanel.tokensSr')}</span></strong>
+                <span className="behavior-rank-meta">{formatShare(data.projectsRemainder.share)} · {t('projectPanel.sessions', { count: formatNum(data.projectsRemainder.sessionCount) })}</span>
               </div>
             </li>
           )}
@@ -167,10 +169,10 @@ export function BehaviorProjectPanel({
                 aria-pressed={projectFilter.includes(BEHAVIOR_UNATTRIBUTED_FILTER_KEY)}
                 onClick={() => select(BEHAVIOR_UNATTRIBUTED_FILTER_KEY)}
               >
-                <span className="behavior-rank-name">未归属</span>
-                <strong className="behavior-rank-value">{formatTokens(unattributed.tokens)}<span className="sr-only"> 有效 Token</span></strong>
+                <span className="behavior-rank-name">{t('projectPanel.unattributed')}</span>
+                <strong className="behavior-rank-value">{formatTokens(unattributed.tokens)}<span className="sr-only">{t('projectPanel.tokensSr')}</span></strong>
                 <span className="behavior-rank-meta">
-                  {formatShare(unattributed.share)} · {unattributed.reasons.map((row) => `${unattributedReasonLabel(row.reason)} ${formatTokens(row.tokens)}`).join('，')}
+                  {formatShare(unattributed.share)} · {unattributed.reasons.map((row) => `${unattributedReasonLabel(row.reason)} ${formatTokens(row.tokens)}`).join(t('projectPanel.reasonJoin'))}
                 </span>
               </button>
             </li>
@@ -201,9 +203,9 @@ function ProjectRow({
     <li className={`behavior-rank-row${project.kind === 'named' ? '' : ' is-fixed-group'}`}>
       <button type="button" className="behavior-rank-main" aria-pressed={pressed} onClick={onSelect}>
         <span className="behavior-rank-name">{name}</span>
-        <strong className="behavior-rank-value">{formatTokens(project.tokens)}<span className="sr-only"> 有效 Token</span></strong>
+        <strong className="behavior-rank-value">{formatTokens(project.tokens)}<span className="sr-only">{t('projectPanel.tokensSr')}</span></strong>
         <span className="behavior-rank-meta">
-          {share} · {formatNum(project.sessionCount)} 会话{tool ? ` · ${tool}` : ''} · 预估费用 {formatCost(project.cost)}
+          {share} · {t('projectPanel.sessions', { count: formatNum(project.sessionCount) })}{tool ? ` · ${tool}` : ''} · {t('projectPanel.cost', { cost: formatCost(project.cost) })}
         </span>
         <span className="behavior-project-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.round((project.share ?? 0) * 100))}%` }} /></span>
       </button>
@@ -228,14 +230,14 @@ export function SessionProjectChip({
     const name = projectDisplayName(project, aliases, hidden);
     return (
       <button type="button" className="behavior-project-chip" onClick={() => onSelect?.(project.key)}>
-        <span className="sr-only">项目 </span>{name}
+        <span className="sr-only">{t('projectPanel.projectSr')}</span>{name}
       </button>
     );
   }
   const why = unattributedReasonLabel(reason);
   return (
-    <button type="button" className="behavior-project-chip" aria-label={`未归属，${why}`} onClick={() => onSelect?.(BEHAVIOR_UNATTRIBUTED_FILTER_KEY)}>
-      —<span className="sr-only">，{why}</span>
+    <button type="button" className="behavior-project-chip" aria-label={t('projectPanel.chipAria', { why })} onClick={() => onSelect?.(BEHAVIOR_UNATTRIBUTED_FILTER_KEY)}>
+      —<span className="sr-only">{t('projectPanel.chipSr', { why })}</span>
     </button>
   );
 }

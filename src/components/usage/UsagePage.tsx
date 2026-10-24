@@ -6,7 +6,7 @@ import { usageConclusion } from './usageSummary';
 import './usage-page.css';
 import { t } from '../../i18n';
 
-export type UsageSub = 'overview' | 'requests' | 'sessions' | 'allowances';
+export type UsageSub = 'overview' | 'requests' | 'sessions' | 'allowances' | 'reports';
 
 /**
  * 用量子页对齐 magpie Usage 页（概览 / 请求 / 会话），额度单列一页：
@@ -19,6 +19,7 @@ export const USAGE_SUB_OPTIONS: { id: UsageSub; label: string }[] = [
   { id: 'requests', get label() { return t('usage.sub.requests'); } },
   { id: 'sessions', get label() { return t('usage.sub.sessions'); } },
   { id: 'allowances', get label() { return t('usage.sub.allowances'); } },
+  { id: 'reports', get label() { return t('usage.sub.reports'); } },
 ];
 
 const USAGE_SUB_BY_TAB: Partial<Record<Tab, UsageSub>> = {
@@ -26,6 +27,7 @@ const USAGE_SUB_BY_TAB: Partial<Record<Tab, UsageSub>> = {
   logs: 'requests',
   behavior: 'sessions',
   allowances: 'allowances',
+  reports: 'reports',
 };
 
 /** 用量 Tab → 子页；非用量页返回 null。 */
@@ -68,6 +70,7 @@ export interface UsagePageProps {
   requests: ReactNode;
   sessions: ReactNode;
   allowances: ReactNode;
+  reports?: ReactNode;
 }
 
 /**
@@ -75,7 +78,7 @@ export interface UsagePageProps {
  * 子页只由侧栏二级入口切换（U-101），页内没有子标签；内容区以子页名称作可访问名称，
  * 顶栏面包屑的子页部分对读屏隐藏，两处不重复朗读。
  */
-export function UsagePage({ sub, stats, range, customRange, toolbar, overview, requests, sessions, allowances }: UsagePageProps) {
+export function UsagePage({ sub, stats, range, customRange, toolbar, overview, requests, sessions, allowances, reports }: UsagePageProps) {
   const label = USAGE_SUB_OPTIONS.find((option) => option.id === sub)!.label;
   return (
     <div className="usage-page">
@@ -94,6 +97,7 @@ export function UsagePage({ sub, stats, range, customRange, toolbar, overview, r
         {sub === 'requests' && requests}
         {sub === 'sessions' && sessions}
         {sub === 'allowances' && allowances}
+        {sub === 'reports' && reports}
       </section>
     </div>
   );

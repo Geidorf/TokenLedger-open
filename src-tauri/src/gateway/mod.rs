@@ -14,6 +14,7 @@ mod health;
 mod ledger;
 mod legacy_restore;
 mod policy;
+mod probe;
 pub mod request_log;
 mod routing;
 mod server;
@@ -37,6 +38,8 @@ pub(crate) use ledger::accounting;
 pub(crate) use ledger::attempt_outcomes_since;
 use ledger::Ledger;
 pub use ledger::{ContextSize, LedgerRecord};
+pub use probe::ProbeSettings;
+use probe::Prober;
 use routing::Router;
 pub use routing::{CoolingMember, RouteDecision, RoutingGroup};
 #[cfg(test)]
@@ -51,6 +54,8 @@ pub use store::{
 
 pub const DEFAULT_PORT: u16 = 3462;
 const MAX_KEY_LENGTH: usize = 4096;
+/// Providers probed at the same time in one round.
+const PROBE_CONCURRENCY: usize = 4;
 
 pub struct Shared {
     providers: RwLock<Vec<ProviderRecord>>,
@@ -82,6 +87,7 @@ pub struct Gateway {
     enabled: AtomicBool,
     /// Taken and aborted under the `state` lock.
     listener: Mutex<Option<ListenerRun>>,
+    prober: Prober,
 }
 
 #[derive(Debug, Serialize)]
@@ -241,6 +247,7 @@ impl Gateway {
             load_error,
             enabled: AtomicBool::new(true),
             listener: Mutex::new(None),
+            prober: Prober::new(dir),
         }
     }
 
@@ -417,16 +424,30 @@ impl Gateway {
     }
 
     pub fn upsert_provider(&self, record: ProviderRecord) -> Result<Vec<ProviderView>, String> {
-        {
+        let id = record.id.clone();
+        let moved = {
             let mut providers = self
                 .shared
                 .providers
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let moved = providers
+                .iter()
+                .find(|old| old.id == id)
+                .is_some_and(|old| {
+                    old.base_url != record.base_url
+                        || old.wire != record.wire
+                        || old.auth_mode != record.auth_mode
+                });
             let mut next = providers.clone();
             store::upsert(&mut next, record)?;
             self.store.save(&next)?;
             *providers = next;
+            moved
+        };
+        if moved {
+            // Probe results were for the old endpoint.
+            self.prober.invalidate(&id);
         }
         self.start_if_needed();
         self.list_providers()
@@ -442,17 +463,24 @@ impl Gateway {
         }
         let key = input.key.trim();
         let account = provider_account(&input.id);
-        if key.is_empty() {
-            return self.shared.secrets.delete(&account);
-        }
-        if key.len() > MAX_KEY_LENGTH
-            || key
-                .chars()
-                .any(|character| character.is_whitespace() || character.is_control())
+        if !key.is_empty()
+            && (key.len() > MAX_KEY_LENGTH
+                || key
+                    .chars()
+                    .any(|character| character.is_whitespace() || character.is_control()))
         {
             return Err("API key 格式无效。".to_string());
         }
-        self.shared.secrets.set(&account, key)
+        // Probe results were for the old key: drop them before the change and
+        // again after it, so a round that read the old key in between is lost.
+        self.prober.invalidate(&input.id);
+        let changed = if key.is_empty() {
+            self.shared.secrets.delete(&account)
+        } else {
+            self.shared.secrets.set(&account, key)
+        };
+        self.prober.invalidate(&input.id);
+        changed
     }
 
     pub fn delete_provider(&self, id: &str) -> Result<Vec<ProviderView>, String> {
@@ -474,6 +502,7 @@ impl Gateway {
             *providers = next;
         }
         self.shared.secrets.delete(&provider_account(id))?;
+        self.prober.invalidate(id);
         self.list_providers()
     }
 
@@ -700,8 +729,92 @@ impl Gateway {
             &records,
             &known,
             &self.shared.router.cooling(),
+            &self.prober.results(),
+            self.prober.settings(),
             now,
         ))
+    }
+
+    pub fn set_health_probe(&self, settings: ProbeSettings) -> Result<ProbeSettings, String> {
+        self.prober.set(settings)
+    }
+
+    /// Probes every enabled provider once, a few at a time.
+    pub async fn probe_providers(&self) {
+        let _round = self.prober.round().await;
+        let generation = self.prober.generation();
+        self.probe_round(generation).await;
+    }
+
+    /// A timed round: it may wait behind a clicked one, so after taking the
+    /// round lock it runs only if probing is still on, model access is still
+    /// on and nothing was turned off or changed while it waited.
+    async fn probe_scheduled(&self) {
+        let due_at = self.prober.generation();
+        let _round = self.prober.round().await;
+        if !self.enabled.load(Ordering::SeqCst)
+            || !self.prober.settings().enabled
+            || self.prober.generation() != due_at
+        {
+            return;
+        }
+        self.probe_round(due_at).await;
+    }
+
+    /// Callers hold the round lock.
+    async fn probe_round(&self, generation: u64) {
+        use futures_util::StreamExt;
+        let providers: Vec<ProviderRecord> =
+            self.providers().into_iter().filter(|p| p.enabled).collect();
+        let ids: Vec<String> = providers.iter().map(|p| p.id.clone()).collect();
+        self.prober.retain(&ids);
+        // A few at a time, so one slow provider (20 s timeout) does not hold up the rest.
+        let results: Vec<(String, Option<probe::ProbeResult>)> =
+            futures_util::stream::iter(providers)
+                .map(|provider| self.probe_one(provider))
+                .buffer_unordered(PROBE_CONCURRENCY)
+                .collect()
+                .await;
+        for (id, result) in results {
+            match result {
+                Some(result) => self.prober.record(generation, &id, result),
+                // Not probed this round: an older result would be stale.
+                None => self.prober.forget(generation, &id),
+            }
+        }
+    }
+
+    async fn probe_one(&self, provider: ProviderRecord) -> (String, Option<probe::ProbeResult>) {
+        let key = if provider.auth_mode == AuthMode::None {
+            None
+        } else {
+            let account = provider_account(&provider.id);
+            match server::read_key_bounded(self.shared.secrets.clone(), account).await {
+                Ok(Some(key)) => Some(key),
+                // No key: the passive report already says so; never probe keyless.
+                _ => return (provider.id, None),
+            }
+        };
+        let Ok(url) = probe::models_url(&provider) else {
+            return (provider.id, None);
+        };
+        let client = server::upstream_client(&url);
+        let result = probe::probe(&provider, key.as_deref(), client, url.clone()).await;
+        (provider.id, Some(result))
+    }
+
+    /// Timed probes while model access is on; checks once a minute whether
+    /// a round is due. Does nothing while the probe is off (the default).
+    pub fn spawn_probe_loop(self: &Arc<Self>) {
+        let gateway = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                if gateway.enabled.load(Ordering::SeqCst) && gateway.prober.due() {
+                    gateway.probe_scheduled().await;
+                }
+            }
+        });
     }
 
     pub fn recent_route_decisions(&self, limit: usize) -> Vec<RouteDecision> {
@@ -1000,6 +1113,36 @@ pub async fn gateway_provider_health(
         .map_err(|error| format!("读取健康度失败：{error}"))?
 }
 
+/// Turns the optional active probe on or off and sets its interval.
+#[tauri::command]
+pub fn gateway_set_health_probe(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+    enabled: bool,
+    interval_mins: u32,
+) -> Result<ProbeSettings, String> {
+    ensure_main(&window)?;
+    gateway.set_health_probe(ProbeSettings {
+        enabled,
+        interval_mins,
+    })
+}
+
+/// 「立即探活」: one `GET …/models` per enabled provider with its stored
+/// key, then the refreshed report. Only on an explicit click.
+#[tauri::command]
+pub async fn gateway_probe_providers(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+) -> Result<HealthReport, String> {
+    ensure_main(&window)?;
+    let gateway = Arc::clone(&gateway);
+    gateway.probe_providers().await;
+    tauri::async_runtime::spawn_blocking(move || gateway.provider_health())
+        .await
+        .map_err(|error| format!("读取健康度失败：{error}"))?
+}
+
 /// Group members currently cooling down after failures; main window only.
 #[tauri::command]
 pub fn gateway_routing_cooldowns(
@@ -1078,6 +1221,14 @@ mod tests {
                                 *seen.api_key.lock().unwrap() = header("x-api-key");
                                 *seen.anthropic_version.lock().unwrap() =
                                     header("anthropic-version");
+                                if path == "/v1/models" {
+                                    // Active health probe: an empty model list.
+                                    return Ok::<_, Infallible>(hyper::Response::new(Full::new(
+                                        Bytes::from(
+                                            json!({"object": "list", "data": []}).to_string(),
+                                        ),
+                                    )));
+                                }
                                 let body = request.into_body().collect().await.unwrap().to_bytes();
                                 let body: Value = serde_json::from_slice(&body).unwrap();
                                 let stream = body["stream"] == true;
@@ -1213,6 +1364,105 @@ mod tests {
             token,
             dir,
         }
+    }
+
+    #[test]
+    fn probe_lists_models_with_the_stored_key_and_skips_keyless() {
+        let harness = harness("probe-models");
+        let gateway = &harness.gateway;
+        gateway
+            .upsert_provider(provider("nokey", 1, WireApi::Chat))
+            .unwrap();
+        tauri::async_runtime::block_on(gateway.probe_providers());
+        // Providers are probed concurrently, so either key may be the last seen.
+        let auth = harness.seen.auth.lock().unwrap().clone();
+        assert!(
+            matches!(auth.as_deref(), Some("Bearer sk-chat" | "Bearer sk-resp")),
+            "the probe sends the provider's own key"
+        );
+        let report = gateway.provider_health().unwrap();
+        assert!(!report.probe.enabled, "probing is off unless turned on");
+        let by_id = |id: &str| report.providers.iter().find(|p| p.provider == id).unwrap();
+        for id in ["resp", "chat"] {
+            let probes = &by_id(id).probes;
+            assert_eq!(
+                (probes.len(), probes[0].ok, probes[0].status),
+                (1, true, Some(200))
+            );
+            assert_eq!(by_id(id).status, "healthy");
+        }
+        assert!(by_id("nokey").probes.is_empty());
+        // Editing only the name keeps the probe; moving the endpoint drops it.
+        let mut resp = gateway
+            .providers()
+            .into_iter()
+            .find(|p| p.id == "resp")
+            .unwrap();
+        resp.name = "Renamed".into();
+        gateway.upsert_provider(resp.clone()).unwrap();
+        let probes_of = |id: &str| {
+            gateway
+                .provider_health()
+                .unwrap()
+                .providers
+                .into_iter()
+                .find(|p| p.provider == id)
+                .unwrap()
+                .probes
+        };
+        assert_eq!(probes_of("resp").len(), 1);
+        resp.base_url = "http://127.0.0.1:9/v1".into();
+        gateway.upsert_provider(resp).unwrap();
+        assert!(probes_of("resp").is_empty());
+        // Removing a key forgets that provider's earlier probe.
+        gateway
+            .set_provider_key(SetProviderKeyInput {
+                id: "chat".into(),
+                key: String::new(),
+            })
+            .unwrap();
+        let report = gateway.provider_health().unwrap();
+        assert!(report
+            .providers
+            .iter()
+            .find(|p| p.provider == "chat")
+            .unwrap()
+            .probes
+            .is_empty());
+        // Probes never reach the usage ledger.
+        assert!(gateway.recent_requests(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_timed_round_queued_behind_a_click_stops_once_probing_is_off() {
+        let harness = harness("probe-queued");
+        let gateway = &harness.gateway;
+        gateway
+            .set_health_probe(ProbeSettings {
+                enabled: true,
+                interval_mins: 15,
+            })
+            .unwrap();
+        tauri::async_runtime::block_on(async {
+            let held = gateway.prober.round().await;
+            let release = async move {
+                tokio::task::yield_now().await;
+                gateway
+                    .set_health_probe(ProbeSettings {
+                        enabled: false,
+                        interval_mins: 15,
+                    })
+                    .unwrap();
+                drop(held);
+            };
+            futures_util::join!(gateway.probe_scheduled(), release);
+        });
+        assert_eq!(
+            harness.seen.auth.lock().unwrap().as_deref(),
+            None,
+            "no request after probing was turned off"
+        );
+        assert!(gateway.prober.results().is_empty());
     }
 
     async fn post(harness: &Harness, path: &str, body: Value, token: &str) -> (u16, String) {

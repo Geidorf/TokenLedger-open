@@ -215,7 +215,8 @@ describe('预测与额度速度不进入同步、海报、简报、导出、壁�
       const reach = reachableFrom(SOURCES, entry);
       expect(reach.unresolved).toEqual([]);
       expect(reach.dynamic).toEqual([]);
-      const touching = [...reach.parents.keys()].filter((file) => (
+      // 文案表只在本机存界面语言代码（zh / en），不经手预测或速度数据。
+      const touching = [...reach.parents.keys()].filter((file) => file !== '/src/i18n/index.ts' && (
         /@tauri-apps|\binvoke\s*\(|localStorage|sessionStorage|indexedDB|\bfetch\s*\(|XMLHttpRequest|WebSocket/
           .test(SOURCES[file])
       ));

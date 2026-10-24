@@ -167,9 +167,10 @@ describe('旧费用叫法守卫本身', () => {
     ]) {
       expect(SOURCES[file], file).toBeDefined();
     }
-    expect(visibleTexts('/src/components/TrendPanel.tsx', SOURCES['/src/components/TrendPanel.tsx']))
+    // 趋势卡的文案已迁到文案表，新叫法在 zh.ts 里读。
+    expect(visibleTexts('/src/i18n/zh.ts', SOURCES['/src/i18n/zh.ts']))
       .toContain('费用视角 · USD');
-    expect(visibleTexts('/src/utils/costCopy.ts', SOURCES['/src/utils/costCopy.ts'])).toContain('预估费用');
+    expect(visibleTexts('/src/i18n/zh.ts', SOURCES['/src/i18n/zh.ts'])).toContain('预估费用');
   });
 });
 

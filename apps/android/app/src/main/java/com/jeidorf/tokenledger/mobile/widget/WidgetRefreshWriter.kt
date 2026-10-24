@@ -65,7 +65,10 @@ internal object WidgetRefreshWriter {
             repository = DashboardRepository(appContext),
             quotaCache = QuotaCache(appContext),
             cache = DashboardCache(appContext),
-            ranges = WidgetConfigStore.activeRanges(appContext).ifEmpty { setOf(RangeKey.Today) },
+            ranges = com.jeidorf.tokenledger.mobile.tile.widgetRefreshRanges(
+                WidgetConfigStore.activeRanges(appContext),
+                tileAdded = com.jeidorf.tokenledger.mobile.tile.QuickTileStore.isAdded(appContext)
+            ),
             quotaIdentity = nextQuotaWriteIdentity(appContext, lease.generation),
             timezoneId = TimeZone.getDefault().id.ifBlank { "UTC" }
         )
@@ -75,34 +78,54 @@ internal object WidgetRefreshWriter {
                 lease = lease,
                 persistence = SessionStore(appContext),
                 source = RoutingRepository(),
-                save = { summary -> WidgetRoutingStore.save(appContext, summary) }
+                save = { summary -> WidgetRoutingStore.save(appContext, summary) },
+                saveLive = { snapshot -> RoutingLiveStore.save(appContext, snapshot) }
             )
+            // 桌面在线时接上实时路由小组件的近实时读取链（已有排队的不动）。
+            lease.session?.userId?.let { userId ->
+                if (RoutingLiveWidgets.installed(appContext)) {
+                    routingLiveNextDelayMs(RoutingLiveStore.load(appContext, userId), System.currentTimeMillis())?.let { delay ->
+                        runCatching { RoutingLiveScheduler.kick(appContext, delay) }
+                    }
+                }
+            }
         }
         return transient
     }
 
     /**
-     * 读一次实时路由快照，摘要写进 [WidgetRoutingStore]。写入与额度缓存一样在会话撤销锁内复验，
-     * 退出或换账号后迟到的结果不落盘。网络或格式问题保留上一份摘要（它会按年龄如实变旧）。
+     * 读一次实时路由快照，摘要写进 [WidgetRoutingStore]，实时路由小组件的一帧写进 [RoutingLiveStore]
+     * （同一次读取，[saveLive] 为 null 时不写）。写入与额度缓存一样在会话撤销锁内复验，
+     * 退出或换账号后迟到的结果不落盘。网络或格式问题保留上一份（它会按年龄如实变旧）。
      */
     internal suspend fun refreshRouting(
         lease: SessionSnapshot,
         persistence: SessionPersistence,
         source: RoutingSnapshotSource,
         save: (WidgetRoutingSummary) -> Unit,
+        saveLive: ((RoutingLiveSnapshot) -> Unit)? = null,
         nowMillis: () -> Long = System::currentTimeMillis
     ) {
         val session = lease.session ?: return
         val guard = SessionWriteGuard(persistence, lease)
-        val summary = try {
-            widgetRoutingSummary(session.userId, source.fetch(session), nowMillis())
+        val (summary, live) = try {
+            val result = source.fetch(session)
+            val now = nowMillis()
+            widgetRoutingSummary(session.userId, result, now) to routingLiveSnapshot(session.userId, result, now)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
-            widgetRoutingFailureSummary(session.userId, RoutingReadFailure.classify(error), nowMillis())
-        } ?: return
+            val failure = RoutingReadFailure.classify(error)
+            val now = nowMillis()
+            widgetRoutingFailureSummary(session.userId, failure, now) to
+                routingLiveFailureSnapshot(session.userId, failure, now)
+        }
+        if (summary == null && (live == null || saveLive == null)) return
         try {
-            guard.commit { save(summary) }
+            guard.commit {
+                summary?.let(save)
+                if (live != null) saveLive?.invoke(live)
+            }
         } catch (_: SessionRevokedException) {
             // 会话已变更：丢弃迟到的结果。
         }
@@ -201,3 +224,4 @@ internal object WidgetRefreshWriter {
         else -> false
     }
 }
+

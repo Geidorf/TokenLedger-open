@@ -42,6 +42,8 @@
     "allow-get-budget-settings",
     "allow-set-budget-settings",
     "allow-get-budget-status",
+    "allow-get-period-report-settings",
+    "allow-set-period-report-settings",
     "allow-get-usage-anomalies",
     "allow-get-usage-anomaly-settings",
     "allow-set-usage-anomaly-settings",

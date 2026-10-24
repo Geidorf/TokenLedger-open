@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { providerHealth } from './api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { errorText, probeProviders, providerHealth, setHealthProbe } from './api';
 import { traceReasonLabel } from './helpers';
-import type { HealthBucket, HealthReport, HealthStats, HealthStatus, ProviderHealth } from './types';
+import type { HealthBucket, HealthReport, HealthStats, HealthStatus, ProbeResult, ProbeSettings, ProviderHealth } from './types';
 import './providerHealth.css';
 import { getLang, localized, t, useLang } from '../../i18n';
 
@@ -9,8 +9,8 @@ export const HEALTH_LABEL = localized<HealthStatus>({ healthy: 'health.status.he
 const HEALTH_TONE: Record<HealthStatus, string> = { healthy: 'is-success', degraded: 'is-warning', down: 'is-danger', idle: '' };
 const POLL_MS = 30_000;
 
-/** Health of every provider, refreshed every 30 s while the window is visible. */
-export function useProviderHealth(): Map<string, ProviderHealth> {
+/** The health report, refreshed every 30 s while the window is visible. */
+export function useHealthReport(): [HealthReport | null, (next: HealthReport) => void] {
   const [report, setReport] = useState<HealthReport | null>(null);
   useEffect(() => {
     let alive = true;
@@ -22,7 +22,72 @@ export function useProviderHealth(): Map<string, ProviderHealth> {
     }, POLL_MS);
     return () => { alive = false; window.clearInterval(timer); };
   }, []);
-  return useMemo(() => new Map((report?.providers ?? []).map((item) => [item.provider, item])), [report]);
+  return [report, setReport];
+}
+
+export function healthByProvider(report: HealthReport | null): Map<string, ProviderHealth> {
+  return new Map((report?.providers ?? []).map((item) => [item.provider, item]));
+}
+
+/** Health of every provider, refreshed every 30 s while the window is visible. */
+export function useProviderHealth(): Map<string, ProviderHealth> {
+  const [report] = useHealthReport();
+  return useMemo(() => healthByProvider(report), [report]);
+}
+
+export const PROBE_INTERVALS = [5, 15, 30, 60, 120];
+
+/** Optional active probe: off by default; a click probes once even while off. */
+export function ProbeBar({ settings, onReport, onNotify }: { settings: ProbeSettings | undefined; onReport: (next: HealthReport) => void; onNotify: (type: 'success' | 'error', text: string) => void }) {
+  useLang();
+  const [busy, setBusy] = useState(false);
+  const [local, setLocal] = useState<ProbeSettings | null>(null);
+  const current = local ?? settings ?? { enabled: false, intervalMins: 15 };
+  const save = useCallback(async (next: ProbeSettings) => {
+    setBusy(true);
+    try {
+      setLocal(await setHealthProbe(next));
+      onReport(await providerHealth());
+    } catch (error) {
+      onNotify('error', t('health.probe.saveFailed', { error: errorText(error) }));
+    } finally {
+      setBusy(false);
+    }
+  }, [onNotify, onReport]);
+  const probeNow = async () => {
+    setBusy(true);
+    try {
+      onReport(await probeProviders());
+      onNotify('success', t('health.probe.done'));
+    } catch (error) {
+      onNotify('error', t('health.probe.failed', { error: errorText(error) }));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mw-probe-bar" role="group" aria-label={t('health.probe.group')}>
+      <button type="button" role="switch" aria-checked={current.enabled} aria-label={t('health.probe.title')} disabled={busy} className={`mw-switch ${current.enabled ? 'is-on' : ''}`} onClick={() => void save({ ...current, enabled: !current.enabled })}><span /></button>
+      <span className="mw-probe-text">
+        <strong>{t('health.probe.title')}</strong>
+        <small>{t('health.probe.hint')}</small>
+      </span>
+      <label className="mw-probe-interval">
+        <span>{t('health.probe.interval')}</span>
+        <select className="mw-select" value={current.intervalMins} disabled={busy || !current.enabled} onChange={(event) => void save({ ...current, intervalMins: Number(event.target.value) })}>
+          {PROBE_INTERVALS.map((mins) => <option key={mins} value={mins}>{t('health.probe.mins', { n: mins })}</option>)}
+        </select>
+      </label>
+      <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => void probeNow()}>{t('health.probe.now')}</button>
+    </div>
+  );
+}
+
+function probeLine(probe: ProbeResult): string {
+  const at = clock(probe.ts);
+  if (probe.ok) return t('health.probe.lineOk', { at, latency: formatMs(probe.latencyMs) });
+  const reason = traceReasonLabel(probe.code);
+  return probe.status ? t('health.probe.lineFailedHttp', { at, reason, status: probe.status }) : t('health.probe.lineFailed', { at, reason });
 }
 
 export function formatMs(ms: number | null): string {
@@ -41,7 +106,7 @@ export function healthSummary(health: ProviderHealth): string {
   const { stats } = health;
   const reasons = health.reasons.map(traceReasonLabel).join(t('health.joiner'));
   if (health.status === 'idle') return t('health.summary.idle');
-  if (stats.requests === 0) return reasons || t('health.summary.noUpstream');
+  if (stats.requests === 0) return reasons || (health.probes?.[0]?.ok ? t('health.summary.probeOk') : t('health.summary.noUpstream'));
   const base = t('health.summary.base', { requests: stats.requests, rate: formatRate(stats.successRate), p95: formatMs(stats.p95Ms) });
   return reasons ? `${base} · ${reasons}` : base;
 }
@@ -108,7 +173,8 @@ export function HealthDetail({ health, name }: { health: ProviderHealth | undefi
         <span className="mw-flex" />
         <HealthSpark buckets={health.buckets} label={name} />
       </div>
-      <p className="mw-health-note">{t('health.note', { summary: healthSummary(health) })}</p>
+      <p className="mw-health-note">{t(health.probes?.length ? 'health.noteWithProbe' : 'health.note', { summary: healthSummary(health) })}</p>
+      {health.probes?.[0] && <p className={`mw-health-note ${health.probes[0].ok ? '' : 'is-warning'}`}>{probeLine(health.probes[0])}</p>}
       {health.status !== 'idle' && <StatGrid stats={stats} />}
       {stats.codes.length > 0 && (
         <div className="mw-health-codes" aria-label={t('health.codesAria')}>
