@@ -8,8 +8,8 @@
 //! originals deleted (fenced by id and `updated_at`, so a row written or
 //! updated under the hostname meanwhile waits for the next sync instead of
 //! being lost). A failure in between
-//! leaves both; the retry copies again (an upsert of the same keys) and then
-//! deletes. Once moved, a sync costs one empty read per old id.
+//! leaves both; the retry copies again and then deletes. An aggregate already
+//! under the device id is never overwritten by an old copy. Once moved, a sync costs one empty read per old id.
 
 use std::path::Path;
 
@@ -45,6 +45,19 @@ pub(super) fn newest_update(rows: &[Value]) -> Option<DateTime<FixedOffset>> {
         .filter_map(|row| row.get("updated_at")?.as_str())
         .filter_map(|value| DateTime::parse_from_rfc3339(value).ok())
         .max()
+}
+
+/// How a copy is written. An hourly aggregate gets a new key; when one
+/// already exists under it (uploaded by this computer since the switch, from
+/// its own ledger) that one is kept and the old copy is dropped with the
+/// rest. A row whose key has no machine in it is the same row, so it is
+/// renamed in place.
+pub(super) fn copy_preference(key_changed: bool) -> &'static str {
+    if key_changed {
+        "resolution=ignore-duplicates,return=minimal"
+    } else {
+        "resolution=merge-duplicates,return=minimal"
+    }
 }
 
 /// Returns how many cloud rows were moved for the signed-in account.
@@ -159,22 +172,35 @@ async fn move_one(
         if copies.len() != rows.len() {
             return Err("云端数据格式无法识别，设备 ID 迁移已停止，请稍后重试。".to_string());
         }
-        session_lease.ensure_current(app)?;
-        let res = client
-            .post(format!("{url}?on_conflict=user_id,unique_key"))
-            .header("apikey", &config.supabase_key)
-            .header("Authorization", format!("Bearer {}", session.access_token))
-            .header("Content-Type", "application/json")
-            .header("Prefer", "resolution=merge-duplicates,return=minimal")
-            .json(&copies)
-            .send()
-            .await
-            .map_err(|e| format!("Cloud sync failed: {e}"))?;
-        session_lease.ensure_current(app)?;
-        if !res.status().is_success() {
-            let status = res.status();
-            let body = res.text().await.unwrap_or_default();
-            return Err(supabase_api_error(status, body));
+        let (renamed, kept): (Vec<_>, Vec<_>) = rows
+            .iter()
+            .zip(copies)
+            .partition(|(row, copy)| row.get("unique_key") != copy.get("unique_key"));
+        for (batch, prefer) in [
+            (renamed, copy_preference(true)),
+            (kept, copy_preference(false)),
+        ] {
+            if batch.is_empty() {
+                continue;
+            }
+            let batch: Vec<Value> = batch.into_iter().map(|(_, copy)| copy).collect();
+            session_lease.ensure_current(app)?;
+            let res = client
+                .post(format!("{url}?on_conflict=user_id,unique_key"))
+                .header("apikey", &config.supabase_key)
+                .header("Authorization", format!("Bearer {}", session.access_token))
+                .header("Content-Type", "application/json")
+                .header("Prefer", prefer)
+                .json(&batch)
+                .send()
+                .await
+                .map_err(|e| format!("Cloud sync failed: {e}"))?;
+            session_lease.ensure_current(app)?;
+            if !res.status().is_success() {
+                let status = res.status();
+                let body = res.text().await.unwrap_or_default();
+                return Err(supabase_api_error(status, body));
+            }
         }
         moved += rows.len();
         if rows.len() < PAGE_SIZE {
@@ -232,6 +258,18 @@ mod tests {
                 "unique_key": "agg_tl-0123456789abcdef_codex_m_2026-10-01 10:00:00",
                 "machine_id": "tl-0123456789abcdef", "requests": 3, "gateway_requests": null
             })
+        );
+    }
+
+    #[test]
+    fn renamed_aggregates_never_overwrite_rows_already_under_the_device_id() {
+        assert_eq!(
+            copy_preference(true),
+            "resolution=ignore-duplicates,return=minimal"
+        );
+        assert_eq!(
+            copy_preference(false),
+            "resolution=merge-duplicates,return=minimal"
         );
     }
 
