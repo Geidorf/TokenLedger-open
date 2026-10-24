@@ -4,7 +4,7 @@
 
 ## 迁移清单
 
-`supabase/migrations/` 共 24 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
+`supabase/migrations/` 共 25 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
 
 | 迁移 | 内容 |
 |---|---|
@@ -32,6 +32,27 @@
 | `20261007045426_quota_active_capacity` | 墓碑重发时仍限 8 个活跃 Provider |
 | `20261010170540_quota_recovery_metadata_and_write_guards` | 额度清空恢复元数据与写入防护 |
 | `20261024010000_routing_snapshot_sync` | 实时路由快照中转（Android 动态壁纸） |
+| `20261024030000_cloud_heatmap_metrics_and_activity_rhythm` | 云端热力图逐日记录数与费用、活动节律 RPC |
+
+## 2026-10-24 云端热力图逐日记录数与费用、活动节律（activity-rhythm-cloud-v1）
+
+迁移 `migrations/20261024030000_cloud_heatmap_metrics_and_activity_rhythm.sql`，契约 `docs/contracts/dashboard-stats-v2.md` §2.6 与 `docs/contracts/activity-rhythm-cloud-v1.md`：
+- `get_dashboard_stats_v2(uuid, jsonb)` 只在 `return v_response;` 前多调一次私有辅助函数 `private.tokenledger_heatmap_metrics_v1`（客户端无执行权限），在顶层与每个 `tools[*]`、`models[*]` 的 `heatmap` 旁合并 `heatmapRequests`（当天 `requests` 之和）与 `heatmapCost`（当天 `cost_usd` 之和，6 位小数），日期键与该对象 `heatmap` 一致。任一天记录数小于 1 时省略 `heatmapRequests`；任一天有空、非法或 0 费用（与 `dailyCosts` 同一判断）时省略 `heatmapCost`。旧字段、签名与授权不变。
+- 新 RPC（仅 `authenticated`）：`get_activity_rhythm_v1(jsonb)`，所有者为 `auth.uid()`，查询校验与 Stats v2 相同，返回 `summary`、`tools`、`dayHours`、`modelHours`、`modelDays`；云端只有小时聚合，不含会话与请求大小，`all` 限最近 731 天。
+- 回归：`tests/cloud_heatmap_metrics_activity_rhythm_regression.sql`（已接入 `supabase:verify:release`），`release_readiness_regression.sql` 登记新签名。
+- 部署：`supabase db push`。旧客户端忽略新增字段、不调用新 RPC，不受影响。
+- 回滚：`drop function public.get_activity_rhythm_v1(jsonb);`；看板先去掉合并调用再删辅助函数：
+
+  ```sql
+  do $$
+  declare v text := pg_catalog.pg_get_functiondef('public.get_dashboard_stats_v2(uuid,jsonb)'::regprocedure);
+  begin
+    v := pg_catalog.replace(v, E'  v_response := private.tokenledger_heatmap_metrics_v1(p_user, v_query, v_response);\n\n', '');
+    if pg_catalog.strpos(v, 'tokenledger_heatmap_metrics_v1') > 0 then raise exception 'rollback seam changed'; end if;
+    execute v;
+  end $$;
+  drop function private.tokenledger_heatmap_metrics_v1(uuid, jsonb, jsonb);
+  ```
 
 ## 2026-10-24 实时路由快照中转（routing-snapshot-v1）
 
