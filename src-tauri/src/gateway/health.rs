@@ -906,4 +906,30 @@ mod tests {
         assert_eq!((k.status, k.reasons.clone()), ("down", vec!["key_missing"]));
         assert_eq!((k.stats.requests, k.stats.success_rate), (0, None));
     }
+
+    #[test]
+    fn hour_edges_land_in_one_bucket_and_the_window_start_is_open() {
+        // 60 min ago opens the newest bucket; 61 min falls in the one before;
+        // exactly 24 h ago is outside the window, 24 h minus a minute is in.
+        let records = vec![
+            ok(0, "h", 100),
+            ok(60, "h", 100),
+            ok(61, "h", 100),
+            ok(24 * 60 - 1, "h", 100),
+            ok(24 * 60, "h", 100),
+        ];
+        let report = summarize(
+            &records,
+            &[],
+            &[],
+            &HashMap::new(),
+            ProbeSettings::default(),
+            now(),
+        );
+        let h = &report.providers[0];
+        assert_eq!(h.stats.requests, 4);
+        let counts: Vec<u64> = h.buckets.iter().map(|b| b.requests).collect();
+        assert_eq!((counts[0], counts[22], counts[23]), (1, 1, 2));
+        assert_eq!(counts.iter().sum::<u64>(), 4);
+    }
 }
