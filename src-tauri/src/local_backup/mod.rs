@@ -51,7 +51,7 @@ const SCHEMA: u32 = 1;
 /// PBKDF2 rounds for files this build seals.
 pub const ITERATIONS: u32 = 600_000;
 const MAX_SEALED_BYTES: u64 = 1024 * 1024 * 1024;
-const MAX_PLAIN_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const MAX_PLAIN_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MIN_PASSPHRASE_CHARS: usize = 8;
 const MAX_PASSPHRASE_BYTES: usize = 1024;
 const SNAPSHOT_DIR: &str = "backups";

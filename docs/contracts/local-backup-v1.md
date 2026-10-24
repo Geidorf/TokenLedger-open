@@ -8,7 +8,7 @@
 
 - 扩展名 `.tlbackup`。手动导出命名 `TokenLedger-<本地时间 YYYYMMDD-HHMMSS>.tlbackup`，自动备份命名 `TokenLedger-auto-<同上>.tlbackup`；重名时追加 `-2`、`-3`。
 - 写入先写同目录临时文件再改名；Unix 上权限 0600。
-- 单个文件读取上限 1 GiB，解压后明文上限 4 GiB，超出即拒绝。
+- 单个文件读取上限 1 GiB，解压后明文上限 1 GiB（流式解压时就截断，不先整个解开），超出即拒绝。
 
 ## 2. 加密
 
