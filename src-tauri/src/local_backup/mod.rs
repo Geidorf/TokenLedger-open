@@ -562,7 +562,7 @@ fn shared_cumulative_sources(
     let mut stmt = conn
         .prepare(&format!(
             "SELECT 1 FROM {LEDGER_TABLE}
-              WHERE unique_key = ?1 OR substr(unique_key, 1, length(?1) + 1) = ?1 || '#'
+              WHERE unique_key = ?1 OR (unique_key >= ?1 || '#' AND unique_key < ?1 || '$')
               LIMIT 1"
         ))
         .map_err(|error| error.to_string())?;
