@@ -17,6 +17,7 @@ mod policy;
 mod probe;
 pub mod request_log;
 mod routing;
+mod routing_health;
 mod server;
 mod store;
 
@@ -44,6 +45,7 @@ use routing::Router;
 pub use routing::{CoolingMember, RouteDecision, RoutingGroup};
 #[cfg(test)]
 pub(crate) use routing::{MemberTrace, RouteAttempt as RouteDecisionAttempt};
+use routing_health::RoutingHealth;
 #[cfg(test)]
 pub use store::MemorySecrets;
 use store::{ensure_local_token, provider_account, ProviderStore};
@@ -62,6 +64,8 @@ pub struct Shared {
     secrets: Arc<dyn SecretStore>,
     ledger: Ledger,
     router: Router,
+    routing_health: RoutingHealth,
+    prober: Arc<Prober>,
 }
 
 enum RunState {
@@ -87,7 +91,7 @@ pub struct Gateway {
     enabled: AtomicBool,
     /// Taken and aborted under the `state` lock.
     listener: Mutex<Option<ListenerRun>>,
-    prober: Prober,
+    prober: Arc<Prober>,
 }
 
 #[derive(Debug, Serialize)]
@@ -233,12 +237,15 @@ impl Gateway {
         };
         let router = Router::new(dir);
         let load_error = load_error.or_else(|| router.load_error.clone());
+        let prober = Arc::new(Prober::new(dir));
         Self {
             shared: Arc::new(Shared {
                 providers: RwLock::new(providers),
                 secrets,
                 ledger: Ledger::new(dir),
                 router,
+                routing_health: RoutingHealth::default(),
+                prober: prober.clone(),
             }),
             dir: dir.to_path_buf(),
             store,
@@ -247,7 +254,7 @@ impl Gateway {
             load_error,
             enabled: AtomicBool::new(true),
             listener: Mutex::new(None),
-            prober: Prober::new(dir),
+            prober,
         }
     }
 
@@ -454,6 +461,7 @@ impl Gateway {
             // Probe results were for the old endpoint.
             self.prober.invalidate(&id);
         }
+        self.shared.routing_health.invalidate_provider(&id);
         self.start_if_needed();
         self.list_providers()
     }
@@ -479,12 +487,14 @@ impl Gateway {
         // Probe results were for the old key: drop them before the change and
         // again after it, so a round that read the old key in between is lost.
         self.prober.invalidate(&input.id);
+        self.shared.routing_health.invalidate_provider(&input.id);
         let changed = if key.is_empty() {
             self.shared.secrets.delete(&account)
         } else {
             self.shared.secrets.set(&account, key)
         };
         self.prober.invalidate(&input.id);
+        self.shared.routing_health.invalidate_provider(&input.id);
         changed
     }
 
@@ -506,6 +516,7 @@ impl Gateway {
             self.store.save(&next)?;
             *providers = next;
         }
+        self.shared.routing_health.invalidate_provider(id);
         self.shared.secrets.delete(&provider_account(id))?;
         self.prober.invalidate(id);
         self.list_providers()
@@ -1296,6 +1307,60 @@ mod tests {
             auth_mode: store::AuthMode::Key,
             models: vec!["m1".into()],
             enabled: true,
+        }
+    }
+
+    #[test]
+    fn provider_changes_discard_inflight_health_observations() {
+        for change in 0..3 {
+            let dir = temp_dir(&format!("health-config-{change}"));
+            let gateway = Gateway::new(&dir, Arc::new(MemorySecrets::default()), 0);
+            gateway.set_enabled(false);
+            gateway
+                .upsert_provider(provider("p", 1, WireApi::Chat))
+                .unwrap();
+            let now = chrono::Utc::now();
+            let record: LedgerRecord = serde_json::from_value(json!({
+                "ts": now.to_rfc3339(), "requestId": "health-fixture",
+                "endpoint": "chat", "provider": "p", "requestedModel": "p/m1",
+                "upstreamModel": "m1", "wire": "chat", "stream": false,
+                "status": 503, "ok": false, "input": 0, "output": 0,
+                "cacheRead": 0, "cacheWrite": 0, "latencyMs": 1,
+                "error": "上游返回 503"
+            }))
+            .unwrap();
+            let health = &gateway.shared.routing_health;
+            for _ in 0..3 {
+                health.observe(health.begin(), &record, now);
+            }
+            assert!(health
+                .snapshot(&Default::default(), now)
+                .is_unhealthy("p/m1"));
+            let pending = [health.begin(), health.begin(), health.begin()];
+            match change {
+                0 => gateway
+                    .set_provider_key(SetProviderKeyInput {
+                        id: "p".into(),
+                        key: "fixture-key-next".into(),
+                    })
+                    .unwrap(),
+                1 => {
+                    gateway
+                        .upsert_provider(provider("p", 2, WireApi::Chat))
+                        .unwrap();
+                }
+                _ => {
+                    gateway.delete_provider("p").unwrap();
+                }
+            }
+            for ticket in pending {
+                health.observe(ticket, &record, now);
+            }
+            assert!(!health
+                .snapshot(&Default::default(), now)
+                .is_unhealthy("p/m1"));
+            drop(gateway);
+            std::fs::remove_dir_all(dir).unwrap();
         }
     }
 
