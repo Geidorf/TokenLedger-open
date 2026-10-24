@@ -2,6 +2,7 @@ pub mod antigravity;
 pub mod checkpoints;
 pub mod cindy;
 pub mod claude;
+pub mod cline;
 pub mod codex;
 pub mod copilot;
 pub mod dsh;
