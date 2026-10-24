@@ -386,6 +386,71 @@ pub(crate) fn append(dir: &Path, record: &LedgerRecord) -> Result<bool, String> 
     Ok(diagnostics_allowed)
 }
 
+/// Every counted row, oldest first, for a local backup (`local-backup-v1`).
+/// No accounting file yet means no rows.
+pub(crate) fn read_all(dir: &Path) -> Result<Vec<LedgerRecord>, String> {
+    if !dir.join(FILE).exists() {
+        return Ok(Vec::new());
+    }
+    let mut records = Vec::new();
+    let mut after = 0;
+    loop {
+        let page = read_page(dir, after, i64::MAX)?;
+        let Some((last, _)) = page.last() else {
+            break;
+        };
+        after = *last;
+        records.extend(page.into_iter().map(|(_, record)| record));
+    }
+    Ok(records)
+}
+
+/// How many of `records` this computer's accounting already holds, by the
+/// same identity that dedupes live appends.
+pub(crate) fn count_known(dir: &Path, records: &[LedgerRecord]) -> Result<usize, String> {
+    let path = dir.join(FILE);
+    if !path.exists() {
+        return Ok(0);
+    }
+    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| error.to_string())?;
+    conn.busy_timeout(Duration::from_secs(5))
+        .map_err(|error| error.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT 1 FROM accounting_rows WHERE accounting_id=?1")
+        .map_err(|error| error.to_string())?;
+    let mut known = 0;
+    for record in records {
+        if stmt
+            .exists(params![accounting_id(record)])
+            .map_err(|error| error.to_string())?
+        {
+            known += 1;
+        }
+    }
+    Ok(known)
+}
+
+/// Adds restored rows in one transaction; rows already held are left alone.
+/// Returns how many were new.
+pub(crate) fn import(dir: &Path, records: &[LedgerRecord]) -> Result<usize, String> {
+    let mut conn = open(dir)?;
+    attempt_import(&mut conn, dir)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let mut added = 0;
+    for record in records {
+        // A row this build would not have counted is skipped, not fatal.
+        if validate_record(record).is_ok() && insert(&tx, record)? {
+            added += 1;
+        }
+    }
+    tx.commit()
+        .map_err(|error| format!("提交网关记账失败：{error}"))?;
+    Ok(added)
+}
+
 /// Bounded keyset page; identities and provenance contain no diagnostic error or request body.
 /// Upper sequence allows consumers to pin a stable append-only read horizon.
 pub(crate) fn read_page(

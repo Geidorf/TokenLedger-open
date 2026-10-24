@@ -11,6 +11,8 @@ const FULLY_LOCALIZED = [
   'src/components/settings/LanguageCard.tsx',
   'src/features/onboarding/FirstRunGuide.tsx',
   'src/features/onboarding/onboardingState.ts',
+  'src/components/settings/LocalBackupCard.tsx',
+  'src/components/settings/DatabaseHealthCard.tsx',
 ];
 
 // 英文文案里允许出现中文的键：语言名用它自己的文字写。

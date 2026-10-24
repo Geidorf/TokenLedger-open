@@ -776,6 +776,74 @@ pub(crate) fn save_general_settings_preserving_quota_sync(
     })
 }
 
+/// The settings a local backup would leave on this computer (contract
+/// `local-backup-v1` §4). What belongs to this computer rather than to the
+/// user's setup stays as it is here: OS registrations and authorizations
+/// (autostart, system wallpaper writes and their consent, local quota
+/// readers, the gateway listener, cloud quota sync) and the widget's screen
+/// position. Custom quota endpoints come back without the "key configured"
+/// mark, because their keys live in each computer's keychain only.
+pub(crate) fn restored_settings(current: &AppSettings, incoming: AppSettings) -> AppSettings {
+    let mut next = incoming.sanitized();
+    macro_rules! keep_local {
+        ($($field:ident),* $(,)?) => {
+            $(next.$field = current.$field.clone();)*
+        };
+    }
+    keep_local!(
+        scan_policy_version,
+        wallpaper_desktop_enabled,
+        wallpaper_lockscreen_enabled,
+        wallpaper_consent_version,
+        autostart_enabled,
+        desktop_widget_position,
+        model_access_enabled,
+        model_access_version,
+        cost_profile_revision,
+    );
+    // Every quota source switch (`quota_*_enabled`) is an authorization given
+    // on this computer, as is cloud quota sync: all stay as they are here.
+    next = keep_local_quota_switches(current, next);
+    for endpoint in &mut next.quota_custom_endpoints {
+        let local = current
+            .quota_custom_endpoints
+            .iter()
+            .find(|local| local.id == endpoint.id && local.url == endpoint.url);
+        endpoint.api_key_configured = local.and_then(|local| local.api_key_configured);
+    }
+    next.sanitized()
+}
+
+fn keep_local_quota_switches(current: &AppSettings, next: AppSettings) -> AppSettings {
+    let (Ok(serde_json::Value::Object(local)), Ok(serde_json::Value::Object(mut merged))) =
+        (serde_json::to_value(current), serde_json::to_value(&next))
+    else {
+        return next;
+    };
+    for (key, value) in local {
+        if key.starts_with("quota_") && key.ends_with("_enabled") {
+            merged.insert(key, value);
+        }
+    }
+    serde_json::from_value(serde_json::Value::Object(merged)).unwrap_or(next)
+}
+
+/// Writes [`restored_settings`] under the settings lock. The subscription
+/// profile revision moves on, so a settings page opened before the restore
+/// cannot save its stale copy over it.
+pub(crate) fn restore_backup_settings(
+    app: &AppContext,
+    incoming: AppSettings,
+) -> Result<AppSettings, String> {
+    with_settings_write_lock(app, || {
+        let current = load_settings_result_unlocked(app)?;
+        let mut next = restored_settings(&current, incoming);
+        next.cost_profile_revision = current.cost_profile_revision.saturating_add(1);
+        save_settings_file_unlocked(app, &next)?;
+        Ok(next)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

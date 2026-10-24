@@ -28,6 +28,7 @@ mod commands;
 mod cost_profile;
 mod db;
 mod gateway;
+mod local_backup;
 mod models_dev;
 mod project_index;
 mod quota;
@@ -301,6 +302,7 @@ fn start_background_scheduler(
         #[cfg(target_os = "windows")]
         let mut next_lockscreen = now + Duration::from_secs(initial.lockscreen_interval_secs);
         let mut current_day = chrono::Local::now().date_naive();
+        let mut next_local_backup = now + Duration::from_secs(10 * 60);
 
         loop {
             let now = Instant::now();
@@ -359,6 +361,13 @@ fn start_background_scheduler(
                     refresh_tray_status(&ctx, &app_handle);
                 }
                 next_quota_sync = now + Duration::from_secs(5 * 60);
+            }
+
+            if now >= next_local_backup {
+                // Scheduled local backups (local-backup-v1 §5); off by default.
+                let gateway = app_handle.state::<Arc<gateway::Gateway>>();
+                local_backup::auto::run_if_due(&ctx, &gateway, &gateway::KeyringSecrets);
+                next_local_backup = now + Duration::from_secs(10 * 60);
             }
 
             if now >= next_desktop {
@@ -553,7 +562,16 @@ fn open_main_settings(
 pub fn run() {
     let app_ctx = Arc::new(AppContext::new());
     let db_path = db::get_db_path(&app_ctx);
-    if let Err(e) = db::init_db(&db_path) {
+    let init = db::init_db(&db_path).or_else(|error| {
+        // A ledger too damaged to open is rebuilt from the rows that still
+        // read (local-backup-v1 §6); anything else stays fatal.
+        if local_backup::health::recover_after_init_failure(&app_ctx, &db_path, &error) {
+            db::init_db(&db_path)
+        } else {
+            Err(error)
+        }
+    });
+    if let Err(e) = init {
         report_fatal(&format!(
             "数据库初始化失败: {e}\n路径: {db_path}\n\n请确认该文件未被其他程序（如旧版 server.js）占用。",
             db_path = db_path.display()
@@ -667,6 +685,13 @@ pub fn run() {
             _ => {}
         })
         .setup(move |app| {
+            // Only the primary instance gets here, before the scheduler or any
+            // window opens the ledger: a rebuild the user scheduled from the
+            // settings page swaps the database file now.
+            {
+                let ctx = app.state::<Arc<AppContext>>();
+                local_backup::health::run_pending(&ctx, &db::get_db_path(&ctx));
+            }
             // macOS: back the transparent window (see tauri.macos.conf.json,
             // which sets transparent + Overlay titlebar) with a native
             // NSVisualEffect material so the chrome reads as frosted glass.
@@ -887,6 +912,16 @@ pub fn run() {
             commands::peer_shared::peer_sync_shared_list,
             commands::peer_shared::peer_sync_shared_pull,
             commands::peer_shared::peer_sync_shared_clear,
+            local_backup::local_backup_status,
+            local_backup::local_backup_export,
+            local_backup::local_backup_list,
+            local_backup::local_backup_preview,
+            local_backup::local_backup_apply,
+            local_backup::local_backup_save_auto,
+            local_backup::local_backup_run_auto_now,
+            local_backup::local_backup_db_check,
+            local_backup::local_backup_db_repair,
+            local_backup::local_backup_quit,
             peer_live::peer_live_snapshot,
             routing_publish::routing_publish_status,
             gateway::gateway_legacy_inspect,

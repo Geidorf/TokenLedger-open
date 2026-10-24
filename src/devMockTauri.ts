@@ -39,6 +39,13 @@ import { mockWallpaperPreview } from './devMockWallpaperPreview';
 import { attachE2eHarness, resolveE2eOverride } from './devMockE2e';
 import { COST_PROFILE_DEFAULT_CNY_PER_USD, checkCostProfileInput, isCostProfileCleared } from './utils/contracts/costProfile';
 
+const MOCK_BACKUP_DIR = '~/Documents/TokenLedger Backups';
+let mockBackupAuto = {
+  enabled: false, dir: MOCK_BACKUP_DIR, intervalHours: 24, keep: 7,
+  lastRunAt: null as string | null, lastFile: null as string | null, lastError: null as string | null,
+  hasPassphrase: false, nextDue: null as string | null,
+};
+
 // Fixed local wall-clock time keeps visual review, range boundaries and screenshots deterministic.
 const mockNow = new Date(2026, 6, 15, 14, 30, 0, 0);
 const mockTimestamp = mockNow.toISOString();
@@ -2528,6 +2535,63 @@ export function installDevMockTauri() {
         };
       }
       case 'peer_sync_shared_clear':
+        return null;
+      case 'local_backup_status':
+        return { defaultDir: MOCK_BACKUP_DIR, auto: mockBackupAuto, repair: null };
+      case 'local_backup_export': {
+        const name = `TokenLedger-${new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-')}.tlbackup`;
+        return { path: `${MOCK_BACKUP_DIR}/${name}`, bytes: 2_310_144, ledgerRows: 48_210, gatewayRequests: 1_904, providers: 3, routingGroups: 2 };
+      }
+      case 'local_backup_list':
+        return [
+          { path: `${MOCK_BACKUP_DIR}/TokenLedger-auto-20261023-090000.tlbackup`, name: 'TokenLedger-auto-20261023-090000.tlbackup', bytes: 2_301_952, modified: '2026-10-23T09:00:00+08:00' },
+          { path: `${MOCK_BACKUP_DIR}/TokenLedger-20261020-213012.tlbackup`, name: 'TokenLedger-20261020-213012.tlbackup', bytes: 2_105_344, modified: '2026-10-20T21:30:12+08:00' },
+        ];
+      case 'local_backup_preview':
+        return {
+          digest: 'mock-digest', created: '2026-10-23T01:00:00Z', appVersion: '2.0.0', machine: 'old-laptop', sameMachine: false,
+          ledger: { total: 48_210, new: 46_977, known: 1_233, first: '2025-11-02 09:14:00', last: '2026-10-23 08:59:41' },
+          gatewayRequests: { total: 1_904, new: 1_904, known: 0, first: '2026-09-01T02:00:00Z', last: '2026-10-23T00:58:00Z' },
+          providers: [
+            { id: 'deepseek', name: 'DeepSeek', status: 'new' },
+            { id: 'openrouter', name: 'OpenRouter', status: 'differs' },
+            { id: 'ollama', name: 'Ollama', status: 'same' },
+          ],
+          providersWithoutKey: ['deepseek', 'openrouter'],
+          routingGroups: [{ id: 'coding', name: 'coding', status: 'new' }, { id: 'cheap', name: 'cheap', status: 'new' }],
+          budgets: [{ id: 'daily-cost', name: 'daily-cost', status: 'new' }],
+          settings: 'differs', prices: 'same', quotaAlerts: 'differs',
+        };
+      case 'local_backup_apply':
+        return {
+          snapshot: '<app data>/backups/pre-restore-20261024-123000-000', ledgerAdded: 46_977, gatewayAdded: 1_904,
+          providersAdded: 1, providersReplaced: 0, providersNeedKey: ['deepseek'], groupsAdded: 2, groupsReplaced: 0, groupsSkipped: [],
+          budgetsAdded: 1, budgetsReplaced: 0, settingsRestored: true, pricesRestored: false, quotaAlertsRestored: true, restartSuggested: true,
+        };
+      case 'local_backup_save_auto': {
+        const input = (payload.input ?? {}) as Record<string, unknown>;
+        mockBackupAuto = {
+          ...mockBackupAuto,
+          enabled: Boolean(input.enabled), dir: String(input.dir ?? MOCK_BACKUP_DIR),
+          intervalHours: Number(input.intervalHours ?? 24), keep: Number(input.keep ?? 7),
+          hasPassphrase: mockBackupAuto.hasPassphrase || Boolean(input.passphrase),
+          nextDue: input.enabled ? new Date(Date.now() + 86_400_000).toISOString() : null,
+        };
+        return mockBackupAuto;
+      }
+      case 'local_backup_run_auto_now':
+        mockBackupAuto = { ...mockBackupAuto, lastRunAt: new Date().toISOString(), lastError: null, lastFile: `${MOCK_BACKUP_DIR}/TokenLedger-auto-now.tlbackup` };
+        return mockBackupAuto;
+      case 'local_backup_db_check':
+        return {
+          checkedAt: new Date().toISOString(), ok: true,
+          ledger: { exists: true, ok: true, problems: [], bytes: 41_943_040, walBytes: 1_048_576 }, ledgerRows: 48_210,
+          gateway: { exists: true, ok: true, problems: [], bytes: 2_097_152, walBytes: 0 },
+          repairPending: false, lastRepair: null,
+        };
+      case 'local_backup_db_repair':
+        return null;
+      case 'local_backup_quit':
         return null;
       default: {
         const gatewayResult = handleGatewayMock(cmd, payload);

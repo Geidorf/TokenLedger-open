@@ -198,6 +198,12 @@ pub(crate) fn init_test_db(db_path: &PathBuf) -> Result<()> {
     init_db_with_legacy_migration(db_path, false)
 }
 
+/// A new database with the current schema and no legacy import, for the
+/// repair path that copies a damaged database's rows into it.
+pub(crate) fn init_fresh_db(db_path: &PathBuf) -> Result<()> {
+    init_db_with_legacy_migration(db_path, false)
+}
+
 fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Result<()> {
     let conn = get_connection(db_path)?;
 
