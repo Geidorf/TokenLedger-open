@@ -109,6 +109,46 @@ fn unchanged_hour_is_not_resent_and_changes_are() {
 }
 
 #[test]
+fn moving_to_the_device_id_does_not_re_upload_unchanged_hours() {
+    let mut synced = scan(2, "gpt-5.5", 10, 5);
+    synced.pending = false;
+    let hours = one_hour(vec![synced.clone(), gateway(-7, 200, 80)]);
+    let first = plan(&hours, &CloudState::default(), "user-a", "mac", &cost);
+    let moved =
+        move_state(&first.next_state, "user-a", "mac", "tl-0123456789abcdef").expect("moved state");
+    let renamed = |mut row: HourRow| {
+        row.machine_id = "tl-0123456789abcdef".into();
+        row
+    };
+    let hours = one_hour(vec![renamed(synced.clone()), renamed(gateway(-7, 200, 80))]);
+    let after = plan(&hours, &moved, "user-a", "tl-0123456789abcdef", &|_| 99.0);
+    assert!(
+        !after.has_work(),
+        "only the keys changed, so prices are not reapplied"
+    );
+    let state = &after.next_state.hours[HOUR];
+    assert_eq!(
+        state.key_machine, None,
+        "the hour now hashes under the device id"
+    );
+    let again = plan(
+        &hours,
+        &after.next_state,
+        "user-a",
+        "tl-0123456789abcdef",
+        &cost,
+    );
+    assert!(!again.has_work());
+
+    let grown = one_hour(vec![
+        renamed(synced),
+        renamed(gateway(-7, 200, 80)),
+        renamed(gateway(-8, 1, 1)),
+    ]);
+    assert!(plan(&grown, &moved, "user-a", "tl-0123456789abcdef", &cost).has_work());
+}
+
+#[test]
 fn state_of_another_user_or_machine_is_ignored() {
     let hours = one_hour(vec![gateway(-7, 200, 80)]);
     let first = plan(&hours, &CloudState::default(), "user-a", "mac", &cost);
@@ -415,7 +455,7 @@ fn antigravity_unknown_cache_write_survives_hourly_merge_and_fingerprint() {
     let before = aggregate_hour(HOUR, &[unknown.clone()], &|_| 0.5);
     unknown.cache_write_known = Some(true);
     let after = aggregate_hour(HOUR, &[unknown], &|_| 0.5);
-    assert_ne!(fingerprint(&before), fingerprint(&after));
+    assert_ne!(fingerprint(&before, "m"), fingerprint(&after, "m"));
     assert_eq!(after[0].payload("user")["cache_write_tokens"], 0);
     known.cache_write_known = None;
     assert_eq!(

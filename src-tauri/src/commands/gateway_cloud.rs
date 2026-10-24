@@ -139,12 +139,14 @@ pub(super) fn aggregate_hour(
 
 /// Token and request shape of an hour. Cost is left out so a price table
 /// change does not re-upload hours whose usage did not change.
-fn fingerprint(aggregates: &[Aggregate]) -> String {
+/// `key_machine` is the machine the keys are hashed under: an hour recorded
+/// before the device id took over keeps matching its unchanged aggregates.
+fn fingerprint(aggregates: &[Aggregate], key_machine: &str) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for agg in aggregates {
         let line = format!(
             "{}|{}|{}|{}|{}|{}|{}|{}\n",
-            agg.unique_key(),
+            unique_key(key_machine, &agg.tool, &agg.model, &agg.hour),
             agg.input_tokens,
             agg.output_tokens,
             agg.cached_tokens,
@@ -166,6 +168,10 @@ fn fingerprint(aggregates: &[Aggregate]) -> String {
 pub(super) struct HourState {
     pub fingerprint: String,
     pub keys: Vec<String>,
+    /// Set on hours moved off the hostname: the machine `fingerprint` was
+    /// computed with. The move renames the keys only, so it is not a change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_machine: Option<String>,
 }
 
 /// What was last uploaded for each gateway-touched hour of one user/machine.
@@ -221,15 +227,19 @@ pub(super) fn plan(
     };
     for (hour, rows) in hours {
         let aggregates = aggregate_hour(hour, rows, cost_of);
-        let fingerprint = fingerprint(&aggregates);
+        let fingerprint_of = |key_machine: &str| fingerprint(&aggregates, key_machine);
         let keys: Vec<String> = aggregates.iter().map(Aggregate::unique_key).collect();
         let last = previous.and_then(|hours| hours.get(hour));
+        let unchanged = last.is_some_and(|state| {
+            state.fingerprint == fingerprint_of(state.key_machine.as_deref().unwrap_or(machine_id))
+        });
+        let fingerprint = fingerprint_of(machine_id);
         let pending: Vec<(i64, i64)> = rows
             .iter()
             .filter(|row| row.pending && !row.gateway)
             .map(|row| (row.id, row.sync_revision))
             .collect();
-        if !pending.is_empty() || last.map(|state| &state.fingerprint) != Some(&fingerprint) {
+        if !pending.is_empty() || !unchanged {
             let mut stale: BTreeSet<String> = last
                 .map(|state| state.keys.iter().cloned().collect())
                 .unwrap_or_default();
@@ -247,9 +257,14 @@ pub(super) fn plan(
         }
         plan.hours.insert(hour.clone());
         if rows.iter().any(|row| row.gateway || row.superseded) {
-            plan.next_state
-                .hours
-                .insert(hour.clone(), HourState { fingerprint, keys });
+            plan.next_state.hours.insert(
+                hour.clone(),
+                HourState {
+                    fingerprint,
+                    keys,
+                    key_machine: None,
+                },
+            );
         } else {
             // Back to scan-only and uploaded as such above: the scan-only
             // aggregation owns the hour again.
@@ -468,6 +483,28 @@ pub(super) fn save_state(db_path: &Path, state: &CloudState) -> Result<(), Strin
         let _ = fs::remove_file(import_state_path(db_path));
     }
     Ok(())
+}
+
+/// After the cloud rows of `user_id` moved from `legacy` to `device_id`, the
+/// state follows them, so keys the merge stops producing are still deleted.
+pub(super) fn move_state(
+    state: &CloudState,
+    user_id: &str,
+    legacy: &str,
+    device_id: &str,
+) -> Option<CloudState> {
+    if state.user_id != user_id || state.machine_id != legacy {
+        return None;
+    }
+    let mut moved = state.clone();
+    moved.machine_id = device_id.to_string();
+    for hour in moved.hours.values_mut() {
+        hour.key_machine.get_or_insert_with(|| legacy.to_string());
+        for key in &mut hour.keys {
+            *key = crate::device_identity::moved_unique_key(key, legacy, device_id);
+        }
+    }
+    Some(moved)
 }
 
 #[cfg(test)]

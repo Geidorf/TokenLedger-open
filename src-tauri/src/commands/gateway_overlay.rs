@@ -523,7 +523,8 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
         &scan_candidates(conn, gateway)?,
         DEDUPE_WINDOW_SECS,
     );
-    let machine_id = super::fallback_machine_id();
+    let machine_id = crate::device_identity::for_connection(conn)
+        .unwrap_or_else(|_| crate::device_identity::UNKNOWN_MACHINE.to_string());
     conn.execute_batch(
         "CREATE TEMP TABLE gw_rows (
              id INTEGER PRIMARY KEY, tool TEXT NOT NULL, model TEXT NOT NULL,

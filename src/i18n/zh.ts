@@ -716,6 +716,7 @@ export const zh = {
   'tokenMode.total': '概览含缓存',
   'cloudDevice.aria': '云端设备筛选',
   'cloudDevice.all': '全部设备',
+  'cloudDevice.thisDevice': '本机（{id}）',
   'shareCard.title': '生成并分享数据战报图片',
   'shareCard.label': '战报',
   'multiselect.all': '全部{label}',

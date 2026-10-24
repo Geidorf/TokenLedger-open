@@ -977,6 +977,12 @@ fn commands_update_wallpaper(app: &AppContext, target: &str) -> Result<Value, St
     }))
 }
 
+/// This computer's device id, so device pickers can mark which one is here.
+#[tauri::command]
+pub fn get_device_id(state: tauri::State<'_, Arc<AppContext>>) -> String {
+    local_machine_id(state.inner())
+}
+
 #[tauri::command]
 pub fn get_cloud_config(state: tauri::State<'_, Arc<AppContext>>) -> Result<Value, String> {
     get_cloud_config_impl(state.inner())
@@ -3164,15 +3170,13 @@ fn save_cloud_config_file(app: &AppContext, config: &CloudConfig) -> Result<(), 
     )
 }
 
-/// The machine name `token_logs` rows carry; other uploads only send it hashed.
-pub(crate) fn local_machine_id() -> String {
-    fallback_machine_id()
+/// The device id `token_logs` rows carry; other uploads only send it hashed.
+pub(crate) fn local_machine_id(app: &AppContext) -> String {
+    fallback_machine_id(&db::get_db_path(app))
 }
 
-fn fallback_machine_id() -> String {
-    hostname::get()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown_machine".to_string())
+fn fallback_machine_id(db_path: &Path) -> String {
+    crate::device_identity::for_db_or_unknown(db_path)
 }
 
 fn default_prices() -> Value {
@@ -6901,6 +6905,7 @@ fn read_local_rows_filtered(
 }
 
 pub(crate) mod anomaly_rows;
+mod device_cloud_move;
 mod gateway_cloud;
 mod gateway_overlay;
 pub mod gateway_request_log;
@@ -12345,7 +12350,7 @@ pub fn reclaim_db_space_impl(app: &AppContext) -> Result<Value, String> {
 pub fn reset_local_sync_impl(app: &AppContext) -> Result<Value, String> {
     let db_path = db::get_db_path(app);
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
-    let machine_id = fallback_machine_id();
+    let machine_id = fallback_machine_id(&db_path);
 
     // Query all distinct tools to queue a cloud purge
     let mut stmt = conn
@@ -15483,8 +15488,13 @@ async fn sync_to_supabase_locked(
         .ok_or_else(|| "Please sign in to Supabase first.".to_string())?;
     let db_path = db::get_db_path(app);
     db::init_db(&db_path).map_err(|e| e.to_string())?;
-    let fallback_machine = fallback_machine_id();
+    let fallback_machine = fallback_machine_id(&db_path);
     let history_guard = sync_history_guard::HistoryGuard::load(&db_path)?;
+    // Before anything is uploaded under the device id: rows old versions
+    // uploaded under the hostname move to it (once per account).
+    let moved_count =
+        device_cloud_move::move_legacy_cloud_rows(app, &db_path, &config, &session, &session_lease)
+            .await?;
     let has_pending_work = {
         let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
         conn.query_row(
@@ -15512,7 +15522,7 @@ async fn sync_to_supabase_locked(
             &|_| 0.0,
         )
         .has_work();
-    if !has_pending_work && !gateway_dirty {
+    if !has_pending_work && !gateway_dirty && moved_count == 0 {
         session_lease.ensure_current(app)?;
         return Ok(json!({
             "success": true,
@@ -15781,6 +15791,7 @@ async fn sync_to_supabase_locked(
 
     if sync_logs.is_empty()
         && purged_count == 0
+        && moved_count == 0
         && gateway_deletes.is_empty()
         && gateway_mark_ids.is_empty()
     {
@@ -15931,7 +15942,7 @@ async fn sync_to_supabase_locked(
         }
     };
     let summary_refreshed = refresh_warning.is_none();
-    let message = if purged_count > 0 {
+    let mut message = if purged_count > 0 {
         format!(
             "已同步 {} 个云端小时聚合组，并完成 {} 项历史清理。",
             sync_logs.len(),
@@ -15940,12 +15951,18 @@ async fn sync_to_supabase_locked(
     } else {
         format!("已同步 {} 个云端小时聚合组。", sync_logs.len())
     };
+    if moved_count > 0 {
+        message.push_str(&format!(
+            "本机原先按电脑名上传的 {moved_count} 条云端记录已改用随机设备 ID。"
+        ));
+    }
 
     Ok(json!({
         "success": true,
         "message": message,
         "synced_count": sync_logs.len(),
         "purged_count": purged_count,
+        "moved_count": moved_count,
         "summary_refreshed": summary_refreshed,
         "warning": history_guard.warning(refresh_warning),
         "history_pending": history_guard.pending()

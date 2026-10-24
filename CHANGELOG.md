@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Cloud sync tells computers apart by a random device ID (`tl-` plus 16 hex digits, kept in `device-id` in the app data folder) instead of the computer's host name. On the first sync of each account, rows uploaded under the host name are moved to the device ID unchanged, so history is kept and nothing is counted twice. Device pickers mark this computer as "This device"; the wallpaper device filter and subscription device scopes follow the move.
 - Linux secrets (cloud sign-in, provider API keys) are now kept in the Secret Service instead of only the kernel session keyring, so they survive logout and reboot.
 - Linux scan paths honour `XDG_DATA_HOME` and `XDG_CONFIG_HOME` (OpenCode, Kilo, Hermes, Kimi Desktop, Trae, DeepSeek GUI, WorkBuddy), and the Marvis path on Linux no longer points at a macOS-style folder.
 

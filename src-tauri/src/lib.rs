@@ -33,6 +33,7 @@ pub use cli::run_cli;
 mod commands;
 mod cost_profile;
 mod db;
+mod device_identity;
 mod gateway;
 mod models_dev;
 mod project_index;
@@ -648,6 +649,12 @@ pub fn run() {
         settings::migrate_model_access_once(&app_ctx, settings::load_settings(&app_ctx), || {
             gateway_state.was_in_use()
         });
+    let settings = settings::move_device_filters(
+        &app_ctx,
+        settings,
+        &device_identity::legacy_machine_id(),
+        &commands::local_machine_id(&app_ctx),
+    );
     let model_access_at_launch = settings.model_access_enabled;
     let settings_state = Arc::new(Mutex::new(settings.clone()));
     let tray_state = Arc::new(TrayWindowState::new());
@@ -993,6 +1000,7 @@ pub fn run() {
             gateway::gateway_external_feed,
             gateway::gateway_reveal_local_token,
             commands::get_app_version,
+            commands::get_device_id,
             commands::get_claude_statusline_command,
             commands::preview_claude_statusline_setup,
             commands::apply_claude_statusline_setup,

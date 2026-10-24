@@ -768,6 +768,55 @@ pub(crate) enum BackgroundPause {
     Sync,
 }
 
+/// 设备标识从主机名换成随机设备 ID 后（`crate::device_identity`），按机器筛选的设置跟着改：
+/// 壁纸的设备筛选，以及订阅设置里的设备范围（改了就把 revision 加一）。没有用到旧名时不写。
+pub(crate) fn move_device_filters(
+    app: &AppContext,
+    loaded: AppSettings,
+    legacy: &str,
+    device_id: &str,
+) -> AppSettings {
+    let mentions = |settings: &AppSettings| {
+        settings.wallpaper_device_filter == legacy
+            || settings
+                .cost_subscription_plans
+                .iter()
+                .any(|plan| plan.machines.iter().any(|machine| machine == legacy))
+    };
+    if legacy == device_id || !mentions(&loaded) {
+        return loaded;
+    }
+    let result = with_settings_write_lock(app, || {
+        let mut current = load_settings_result_unlocked(app)?;
+        if !mentions(&current) {
+            return Ok(current);
+        }
+        if current.wallpaper_device_filter == legacy {
+            current.wallpaper_device_filter = device_id.to_string();
+        }
+        let mut plans_changed = false;
+        for plan in &mut current.cost_subscription_plans {
+            for machine in &mut plan.machines {
+                if machine == legacy {
+                    *machine = device_id.to_string();
+                    plans_changed = true;
+                }
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            plan.machines.retain(|machine| seen.insert(machine.clone()));
+        }
+        if plans_changed {
+            current.cost_profile_revision += 1;
+        }
+        save_settings_file_unlocked(app, &current)?;
+        Ok(current)
+    });
+    result.unwrap_or_else(|error| {
+        log::warn!("failed to move device filters to the device id: {error}");
+        loaded
+    })
+}
+
 /// Remembers where the user dragged the desktop widget (physical pixels).
 pub(crate) fn update_desktop_widget_position(
     app: &AppContext,
@@ -922,6 +971,46 @@ mod tests {
                 .as_nanos()
         ));
         AppContext::for_test(directory)
+    }
+
+    #[test]
+    fn device_filters_follow_the_device_id_once() {
+        let app = test_app_context("device-filters");
+        fs::create_dir_all(app.app_data_dir()).expect("create app dir");
+        let plan = |machines: serde_json::Value| {
+            serde_json::json!({
+                "id": "sub-0123456789abcdef", "name": "Max", "provider": "anthropic",
+                "fee": 200, "currency": "USD", "cycle": "monthly", "anchorDay": 15,
+                "startDate": "2026-03-15", "endDate": null, "tools": ["claude"],
+                "modelPrefixes": [], "machines": machines
+            })
+        };
+        let device = "tl-0123456789abcdef";
+        let mut seed = serde_json::to_value(AppSettings::default()).expect("default settings");
+        seed["wallpaper_device_filter"] = "OLD-PC".into();
+        seed["cost_subscription_plans"] =
+            serde_json::json!([plan(serde_json::json!(["OLD-PC", "peer-pc", device]))]);
+        seed["cost_profile_revision"] = 3.into();
+        fs::write(app.app_data_dir().join(SETTINGS_FILE), seed.to_string()).expect("seed settings");
+        let loaded = load_settings(&app);
+        assert_eq!(
+            loaded.cost_subscription_plans.len(),
+            1,
+            "seed plan must parse"
+        );
+
+        let moved = move_device_filters(&app, loaded, "OLD-PC", device);
+        assert_eq!(moved.wallpaper_device_filter, device);
+        assert_eq!(
+            moved.cost_subscription_plans[0].machines,
+            vec![device, "peer-pc"]
+        );
+        assert_eq!(moved.cost_profile_revision, 4);
+        assert_eq!(load_settings(&app).wallpaper_device_filter, device);
+
+        let again = move_device_filters(&app, moved.clone(), "OLD-PC", device);
+        assert_eq!(again.cost_profile_revision, 4, "nothing left to move");
+        let _ = fs::remove_dir_all(app.app_data_dir());
     }
 
     fn wait_for_path(path: &Path, timeout: Duration) {

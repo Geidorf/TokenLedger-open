@@ -1,6 +1,7 @@
 import { Calendar, Share2 } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { deviceOptionLabel, useLocalDeviceId } from '../hooks/useLocalDeviceId';
 import { useSegmentedIndicator } from '../hooks/useSegmentedIndicator';
 import type { CustomDateRange, RangeKey } from '../types';
 import { customRangeSpanDays, isoCalendarDayValue, MAX_CUSTOM_RANGE_DAYS } from '../utils/frontendContracts';
@@ -331,6 +332,7 @@ interface CloudDeviceSelectProps {
 /** 云端汇总下的设备筛选；本机视图没有这一项。 */
 export function CloudDeviceSelect({ deviceFilter, deviceList, onDeviceFilterChange }: CloudDeviceSelectProps) {
   useLang();
+  const localDeviceId = useLocalDeviceId();
   return (
     <select
       className="control-select"
@@ -341,7 +343,7 @@ export function CloudDeviceSelect({ deviceFilter, deviceList, onDeviceFilterChan
       <option value="all_cloud">{t('cloudDevice.all')}</option>
       {deviceList.map((machine) => (
         <option key={machine} value={machine}>
-          {machine}
+          {deviceOptionLabel(machine, localDeviceId)}
         </option>
       ))}
     </select>

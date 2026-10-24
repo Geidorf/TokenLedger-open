@@ -641,6 +641,9 @@ struct Next {
 
 struct Publisher {
     machine: String,
+    /// The machine old versions derived the device from (the hostname), until
+    /// its snapshot is cleared; the wallpaper would show two routing feeds.
+    legacy: Option<String>,
     published: Option<Published>,
     // A device row still to delete after the switch went off; kept until the clear lands.
     pending_clear: Option<Published>,
@@ -658,11 +661,46 @@ impl Publisher {
     fn new(machine: String, io: &impl PublishIo) -> Self {
         Self {
             machine,
+            legacy: None,
             published: None,
             pending_clear: None,
             recover: io.marker_exists(),
             was_enabled: false,
             backoff: TICK,
+        }
+    }
+
+    fn with_legacy(mut self, legacy: String) -> Self {
+        self.legacy = (legacy != self.machine).then_some(legacy);
+        self
+    }
+
+    /// Deletes the snapshot published under the old device, once per launch.
+    /// A failure is retried by the next pass and does not hold up this one.
+    async fn clear_legacy(
+        &mut self,
+        io: &impl PublishIo,
+        user: &str,
+        still_wanted: &(dyn Fn() -> bool + Send + Sync),
+    ) {
+        let Some(legacy) = &self.legacy else {
+            return;
+        };
+        let device = device_id(user, legacy);
+        match io
+            .rpc(
+                user,
+                "clear_routing_snapshot_v1",
+                json!({ "p_device": device }),
+                still_wanted,
+            )
+            .await
+        {
+            Ok(_) | Err(RpcError::NotDeployed) => self.legacy = None,
+            Err(RpcError::Cancelled | RpcError::AccountChanged) => {}
+            Err(RpcError::Failed(error)) => {
+                log::warn!("old routing snapshot clear failed: {error}");
+            }
         }
     }
 
@@ -719,6 +757,13 @@ impl Publisher {
             if io.stored_user().is_some_and(|user| user != previous.user) {
                 self.pending_clear = None;
             }
+        }
+        if let Some(user) = self
+            .pending_clear
+            .as_ref()
+            .map(|previous| previous.user.clone())
+        {
+            self.clear_legacy(io, &user, &|| !io.enabled()).await;
         }
         if let Some(previous) = &self.pending_clear {
             let switched_back_on = || !io.enabled();
@@ -798,6 +843,7 @@ impl Publisher {
         {
             self.published = None;
         }
+        self.clear_legacy(io, &user, &|| io.enabled()).await;
         let device = device_id(&user, &self.machine);
         let snapshot = io.snapshot(&device).await;
         let key = content_key(&snapshot);
@@ -896,7 +942,8 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             settings,
             gateway,
         };
-        let publisher = Publisher::new(crate::commands::local_machine_id(), &io);
+        let publisher = Publisher::new(crate::commands::local_machine_id(&io.app), &io)
+            .with_legacy(crate::device_identity::legacy_machine_id());
         publisher.run(io).await;
     });
 }
@@ -1335,6 +1382,20 @@ mod tests {
 
     const PUBLISH: &str = "publish_routing_snapshot_v1";
     const CLEAR: &str = "clear_routing_snapshot_v1";
+
+    #[test]
+    fn the_hostname_snapshot_is_cleared_once_before_publishing() {
+        let io = FakeIo::default();
+        FakeIo::set(&io.on, true);
+        let mut publisher =
+            Publisher::new("machine".to_string(), &io).with_legacy("OLD-PC".to_string());
+        block_on(async {
+            publisher.tick(&io).await;
+            publisher.published.as_mut().unwrap().key = "stale".to_string();
+            publisher.tick(&io).await;
+        });
+        assert_eq!(io.sent(), [CLEAR, PUBLISH, PUBLISH]);
+    }
 
     #[test]
     fn switching_off_while_reading_the_feed_sends_no_publish_and_clears_next() {
