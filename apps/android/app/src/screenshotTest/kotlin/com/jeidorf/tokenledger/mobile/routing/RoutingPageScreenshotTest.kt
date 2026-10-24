@@ -51,3 +51,14 @@ fun RoutingOfflineLightScreenshot() = RoutingPage(LedgerAppearance.Light, Routin
 @Preview(name = "Routing not deployed", device = "spec:width=390dp,height=844dp,dpi=160", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, backgroundColor = 0xFF08090C)
 @Composable
 fun RoutingNotDeployedScreenshot() = RoutingPage(LedgerAppearance.Dark, RoutingPreviewKind.NotDeployed)
+
+// 大字号（系统字体 200%）：舞台里 Agent 块、网关块、成员行的文字不能被固定高度裁掉。
+@PreviewTest
+@Preview(name = "Routing live 390 font200", device = "spec:width=390dp,height=1400dp,dpi=160", fontScale = 2.0f, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, backgroundColor = 0xFF08090C)
+@Composable
+fun RoutingLiveFontScale200Screenshot() = RoutingPage(LedgerAppearance.Dark, RoutingPreviewKind.Live)
+
+@PreviewTest
+@Preview(name = "Routing live 320 font200 light", device = "spec:width=320dp,height=1400dp,dpi=160", fontScale = 2.0f, uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, backgroundColor = 0xFFF4F5F7)
+@Composable
+fun RoutingLiveNarrowFontScale200Screenshot() = RoutingPage(LedgerAppearance.Light, RoutingPreviewKind.Live)
