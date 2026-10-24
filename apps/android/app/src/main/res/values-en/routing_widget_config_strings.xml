@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_widget_config_title">Configure live routing widget</string>
+    <string name="routing_widget_config_subtitle">Changes apply only to this widget, not other widgets or the app appearance.</string>
+    <string name="routing_widget_config_theme_section">Widget theme</string>
+    <string name="routing_widget_config_theme_system">Follow system</string>
+    <string name="routing_widget_config_theme_system_description">Switch automatically with the device light or dark mode</string>
+    <string name="routing_widget_config_theme_light">Light</string>
+    <string name="routing_widget_config_theme_light_description">Always use the bright light card</string>
+    <string name="routing_widget_config_theme_dark">Dark</string>
+    <string name="routing_widget_config_theme_dark_description">Always use the low-glare dark card</string>
+    <string name="routing_widget_config_cancel">Cancel</string>
+    <string name="routing_widget_config_save">Save</string>
+</resources>
