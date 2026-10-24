@@ -16,12 +16,12 @@ internal fun nextWidgetRange(current: WidgetRange): WidgetRange {
     return order[(index + 1) % order.size]
 }
 
-/** 当前小组件选择器只公开三种互不重叠的产品形态。 */
+/** 当前小组件选择器公开四种互不重叠的产品形态。 */
 internal fun publicWidgetModes(): List<WidgetMode> =
-    listOf(WidgetMode.MultiRing, WidgetMode.SingleUsage, WidgetMode.BarUsage)
+    listOf(WidgetMode.MultiRing, WidgetMode.SingleUsage, WidgetMode.BarUsage, WidgetMode.QuotaBars)
 
 /**
- * 旧通用 Provider 允许保留已存的 [WidgetMode.MultiBar]；其余配置只展示公开三态，
+ * 旧通用 Provider 允许保留已存的 [WidgetMode.MultiBar]；其余配置只展示公开样式，
  * 防止用户把新版固定 Provider 重新配置成另一张卡。
  */
 internal fun configurableWidgetModes(current: WidgetMode): List<WidgetMode> =
@@ -32,6 +32,7 @@ internal fun providerLockedWidgetMode(providerClassName: String?): WidgetMode? =
     providerClassName?.endsWith(".TokenLedgerRingWidgetReceiver") == true -> WidgetMode.MultiRing
     providerClassName?.endsWith(".TokenLedgerBarWidgetReceiver") == true -> WidgetMode.SingleUsage
     providerClassName?.endsWith(".TokenLedgerComboWidgetReceiver") == true -> WidgetMode.BarUsage
+    providerClassName?.endsWith(".TokenLedgerQuotaWidgetReceiver") == true -> WidgetMode.QuotaBars
     else -> null
 }
 
@@ -158,9 +159,10 @@ internal fun widgetAvailabilityBand(availableFraction: Float): WidgetThresholdBa
 internal fun resolveWidgetState(
     hasSession: Boolean,
     quota: WidgetQuota?,
-    usage: WidgetUsage?
+    usage: WidgetUsage?,
+    routing: WidgetRoutingSummary? = null
 ): WidgetState = when {
     !hasSession -> WidgetState.NeedLogin
     quota == null && usage == null -> WidgetState.NoData
-    else -> WidgetState.Ready(quota = quota, usage = usage)
+    else -> WidgetState.Ready(quota = quota, usage = usage, routing = routing)
 }

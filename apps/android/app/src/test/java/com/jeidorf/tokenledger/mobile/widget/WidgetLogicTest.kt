@@ -37,7 +37,7 @@ class WidgetLogicTest {
     @Test
     fun publicProvidersHaveFixedModesWhileLegacyProviderRetainsCompatibilityChoices() {
         assertEquals(
-            listOf(WidgetMode.MultiRing, WidgetMode.SingleUsage, WidgetMode.BarUsage),
+            listOf(WidgetMode.MultiRing, WidgetMode.SingleUsage, WidgetMode.BarUsage, WidgetMode.QuotaBars),
             publicWidgetModes()
         )
         assertEquals(
@@ -54,7 +54,9 @@ class WidgetLogicTest {
         )
         assertEquals(null, providerLockedWidgetMode("com.jeidorf.tokenledger.mobile.widget.TokenLedgerWidgetReceiver"))
         assertEquals(
-            listOf(WidgetMode.MultiRing, WidgetMode.SingleUsage, WidgetMode.BarUsage, WidgetMode.MultiBar),
+            listOf(
+                WidgetMode.MultiRing, WidgetMode.SingleUsage, WidgetMode.BarUsage, WidgetMode.QuotaBars, WidgetMode.MultiBar
+            ),
             configurableWidgetModes(WidgetMode.MultiBar)
         )
         assertEquals(publicWidgetModes(), configurableWidgetModes(WidgetMode.SingleUsage))

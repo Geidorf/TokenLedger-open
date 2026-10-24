@@ -79,10 +79,17 @@ internal fun widgetQuotaStatusSymbol(provider: WidgetQuotaProvider): String = wh
     QuotaProviderStatus.Unsupported -> "—"
 }
 
-internal fun widgetLayoutDescription(state: WidgetState, config: WidgetConfig, masked: Boolean): String = when (state) {
+internal fun widgetLayoutDescription(
+    state: WidgetState,
+    config: WidgetConfig,
+    masked: Boolean,
+    nowEpochMs: Long = System.currentTimeMillis()
+): String = when (state) {
     WidgetState.NeedLogin -> "TokenLedger，需要登录"
     WidgetState.NoData -> "TokenLedger，暂无数据"
-    is WidgetState.Ready -> buildList {
+    is WidgetState.Ready -> if (config.mode == WidgetMode.QuotaBars) {
+        widgetQuotaBarsDescription(state, config, masked, nowEpochMs)
+    } else buildList {
         if (config.mode != WidgetMode.SingleUsage) {
             val providers = widgetLayoutProviders(state.quota?.providers.orEmpty(), config.providerId)
             if (providers.isEmpty()) add("额度未同步")
@@ -93,3 +100,21 @@ internal fun widgetLayoutDescription(state: WidgetState, config: WidgetConfig, m
         }
     }.joinToString("；")
 }
+
+/** 额度条整卡读屏：用量一句、每个窗口一句、路由一句；放不下的窗口另由卡片追加「另有 +N 个窗口」。 */
+internal fun widgetQuotaBarsDescription(
+    state: WidgetState.Ready,
+    config: WidgetConfig,
+    masked: Boolean,
+    nowEpochMs: Long
+): String = buildList {
+    add(state.usage?.let { widgetUsageDescription(it, masked) } ?: "用量未同步")
+    val all = state.quota?.rows.orEmpty()
+    val rows = widgetQuotaBarRowsFor(all, config.providerId)
+    when {
+        rows.isEmpty() && all.isNotEmpty() -> add("所选来源暂时读不到")
+        rows.isEmpty() -> add("额度未同步")
+        else -> rows.sortedWith(compareBy({ it.groupOrder }, { it.rank })).forEach { add(widgetQuotaBarAccessibility(it)) }
+    }
+    if (config.showRouting) add(widgetRoutingLine(state.routing, nowEpochMs).text)
+}.joinToString("；")

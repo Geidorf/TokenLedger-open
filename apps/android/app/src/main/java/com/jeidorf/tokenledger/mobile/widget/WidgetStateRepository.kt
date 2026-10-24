@@ -45,7 +45,7 @@ import kotlinx.coroutines.withContext
 internal class WidgetStateRepository(context: Context) {
     private val appContext = context.applicationContext
 
-    suspend fun load(range: RangeKey): WidgetState {
+    suspend fun load(range: RangeKey, includeRouting: Boolean = false): WidgetState {
         val session = withContext(Dispatchers.IO) {
             runCatching { SessionStore(appContext).load() }.getOrNull()
         } ?: return WidgetState.NeedLogin
@@ -54,8 +54,11 @@ internal class WidgetStateRepository(context: Context) {
         val now = Instant.ofEpochMilli(nowMillis)
         val quota = loadQuota(session, now, nowMillis)
         val usage = loadUsage(session, range, nowMillis)
+        val routing = if (includeRouting) {
+            withContext(Dispatchers.IO) { WidgetRoutingStore.load(appContext, session.userId) }
+        } else null
         // 裁决逻辑下沉到纯函数 resolveWidgetState（WidgetCycling.kt），此处 session 非空即视作已登录。
-        return resolveWidgetState(hasSession = true, quota = quota, usage = usage)
+        return resolveWidgetState(hasSession = true, quota = quota, usage = usage, routing = routing)
     }
 
     private suspend fun loadQuota(
@@ -74,7 +77,7 @@ internal class WidgetStateRepository(context: Context) {
             val providers = snapshot.providers
                 .orderedQuotaProvidersForDisplay()
                 .map { mapProvider(it, now, nowMillis) }
-            WidgetQuota(providers = providers)
+            WidgetQuota(providers = providers, rows = widgetQuotaBarRows(snapshot.providers, now, nowMillis))
         }.getOrNull()
     }
 

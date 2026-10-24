@@ -11,6 +11,7 @@ import androidx.glance.appwidget.GlanceAppWidgetReceiver
  *  - 环形额度卡 (2×2)：[TokenLedgerRingWidgetReceiver]
  *  - 条形额度卡 (4×1)：[TokenLedgerBarWidgetReceiver]
  *  - 综合看板卡 (4×2)：[TokenLedgerComboWidgetReceiver]
+ *  - 额度条 (4×3)：[TokenLedgerQuotaWidgetReceiver]
  */
 internal open class BaseTokenLedgerWidgetReceiver(
     private val mode: WidgetMode,
@@ -65,3 +66,6 @@ internal class TokenLedgerBarWidgetReceiver :
 
 internal class TokenLedgerComboWidgetReceiver :
     BaseTokenLedgerWidgetReceiver(WidgetMode.BarUsage, fixedMode = true)
+
+internal class TokenLedgerQuotaWidgetReceiver :
+    BaseTokenLedgerWidgetReceiver(WidgetMode.QuotaBars, fixedMode = true)

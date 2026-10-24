@@ -73,7 +73,10 @@ internal class TokenLedgerWidget(
                 if (fixedMode) stored.copy(mode = defaultMode) else stored
             }
         }
-        val state = WidgetStateRepository(context).load(config.range.rangeKey)
+        val state = WidgetStateRepository(context).load(
+            range = config.range.rangeKey,
+            includeRouting = config.mode == WidgetMode.QuotaBars && config.showRouting
+        )
         provideContent { WidgetBody(state, config) }
     }
 
@@ -104,6 +107,12 @@ internal fun WidgetBody(
             WidgetMode.BarUsage -> widgetComboLayout(size.width.value, size.height.value, fontScale, count)
                 .let { if (!it.sufficient) "；尺寸不足，请放大以同时显示消耗与额度" else
                     if (count > it.visibleCount) "；+${count - it.visibleCount} 来源" else "" }
+            WidgetMode.QuotaBars -> {
+                val rows = widgetQuotaBarRowsFor(state.quota?.rows.orEmpty(), config.providerId)
+                widgetQuotaBarsLayout(size.width.value, size.height.value, fontScale, rows, config.showRouting)
+                    .let { if (!it.sufficient) "；尺寸不足，请放大以显示额度条" else
+                        formatHiddenQuotaWindows(it.hiddenCount)?.let { hidden -> "；${hidden}未在卡片上显示" } ?: "" }
+            }
             else -> ""
         }
     } else ""
@@ -146,6 +155,13 @@ internal fun WidgetBody(
                         WidgetMode.BarUsage -> BarUsageComboCard(
                             providers = state.displayedProviders(config),
                             usage = state.usage,
+                            size = size,
+                            fontScale = fontScale,
+                            costMasked = costMasked
+                        )
+                        WidgetMode.QuotaBars -> QuotaBarsCard(
+                            state = state,
+                            config = config,
                             size = size,
                             fontScale = fontScale,
                             costMasked = costMasked
@@ -523,6 +539,126 @@ private fun ComboQuotaRow(provider: WidgetQuotaProvider, heightDp: Float, hidden
         Spacer(GlanceModifier.height(2.dp))
         Image(ImageProvider(bitmap), contentDescription = null,
             modifier = GlanceModifier.fillMaxWidth().height(4.dp), contentScale = ContentScale.FillBounds)
+    }
+}
+
+/**
+ * 额度条（[WidgetMode.QuotaBars]）：卡头左边写「订阅额度」（钉住来源时写来源名），右边写当前范围的
+ * 有效 Token 与预估费用；下面一个额度窗口一行，「来源 · 窗口」在左，重置倒计时与可用百分比在右，
+ * 一条细进度条按可用长度画。开了路由行时，底部再写最近一条网关调用。
+ */
+@Composable
+private fun QuotaBarsCard(
+    state: WidgetState.Ready,
+    config: WidgetConfig,
+    size: DpSize,
+    fontScale: Float,
+    costMasked: Boolean
+) {
+    val colors = LocalWidgetColors.current
+    val allRows = state.quota?.rows.orEmpty()
+    val rows = widgetQuotaBarRowsFor(allRows, config.providerId)
+    val pinned = config.providerId != null
+    val plan = widgetQuotaBarsLayout(size.width.value, size.height.value, fontScale, rows, config.showRouting)
+    if (!plan.sufficient) {
+        CenterMessage("尺寸不足", "请放大以显示额度条")
+        return
+    }
+    val usage = state.usage
+    Column(GlanceModifier.fillMaxSize()) {
+        Row(
+            GlanceModifier.fillMaxWidth().height(WidgetQuotaBarsMetrics.HEADER_DP.dp * fontScale.coerceAtLeast(1f)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val title = rows.firstOrNull()?.providerName?.takeIf { pinned }?.let(::widgetShortProviderName) ?: "订阅额度"
+            WidgetText(
+                formatHiddenQuotaWindows(plan.hiddenCount)?.let { "$title · $it" } ?: title,
+                colors.muted, 11.sp, FontWeight.Medium, modifier = GlanceModifier.defaultWeight()
+            )
+            if (plan.showUsage) {
+                WidgetText(
+                    usage?.let { "${it.range.label} ${formatCompactTokens(it.effectiveTokens)} · ${formatCny(it.costCny, costMasked)}" }
+                        ?: "用量未同步",
+                    colors.text, 11.sp, FontWeight.Bold, align = TextAlign.End
+                )
+            }
+        }
+        when {
+            rows.isEmpty() && allRows.isNotEmpty() ->
+                WidgetText("— 所选来源暂时读不到，可在重新配置里换源", colors.amber, 11.sp, maxLines = 2)
+            rows.isEmpty() -> WidgetText("— 额度未同步，打开应用同步一次", colors.text, 11.sp, FontWeight.Bold, maxLines = 2)
+            else -> plan.visible.forEach { row -> QuotaBarRow(row, plan, pinned) }
+        }
+        if (plan.showRouting) {
+            Spacer(GlanceModifier.defaultWeight())
+            RoutingFooterLine(widgetRoutingLine(state.routing, System.currentTimeMillis()), fontScale)
+        }
+    }
+}
+
+@Composable
+private fun QuotaBarRow(row: WidgetQuotaBarRow, plan: WidgetQuotaBarsLayout, pinned: Boolean) {
+    val colors = LocalWidgetColors.current
+    val fraction = row.availableFraction
+    val accentArgb = when (row.status) {
+        QuotaProviderStatus.Ok -> fraction?.let { widgetProgressArgb(colors, it) } ?: colors.faintArgb()
+        QuotaProviderStatus.Stale, QuotaProviderStatus.AuthRequired -> colors.amberArgb
+        QuotaProviderStatus.Error -> colors.dangerArgb
+        QuotaProviderStatus.Unsupported -> colors.faintArgb()
+    }
+    val valueColor = when (row.status) {
+        QuotaProviderStatus.Ok -> colors.text
+        QuotaProviderStatus.Stale, QuotaProviderStatus.AuthRequired -> colors.amber
+        QuotaProviderStatus.Error -> colors.danger
+        QuotaProviderStatus.Unsupported -> colors.faint
+    }
+    // 错误、需授权与不支持只画空轨道：不伪造进度，状态由右侧文字说明。
+    val bitmap = remember(fraction, row.status, colors.night) {
+        createBarBitmap(fraction ?: 0f, colors.trackArgb, accentArgb)
+    }
+    Column(
+        GlanceModifier.fillMaxWidth().height(plan.rowHeightDp.dp)
+            .semantics { contentDescription = widgetQuotaBarAccessibility(row) },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            WidgetText(
+                widgetQuotaBarTitle(row, pinned),
+                if (row.roleSubstitute) colors.amber else colors.text,
+                12.sp, FontWeight.Medium, modifier = GlanceModifier.defaultWeight()
+            )
+            if (plan.showReset && row.resetText != null) {
+                WidgetText(row.resetText, colors.muted, 11.sp, align = TextAlign.End)
+                Spacer(GlanceModifier.width(8.dp))
+            }
+            WidgetText(widgetQuotaBarValueText(row), valueColor, 12.sp, FontWeight.Bold, align = TextAlign.End)
+        }
+        Spacer(GlanceModifier.height(4.dp))
+        Image(
+            ImageProvider(bitmap), contentDescription = null,
+            modifier = GlanceModifier.fillMaxWidth().height(4.dp), contentScale = ContentScale.FillBounds
+        )
+    }
+}
+
+@Composable
+private fun RoutingFooterLine(line: WidgetRoutingLine, fontScale: Float) {
+    val colors = LocalWidgetColors.current
+    val dot = when (line.tone) {
+        WidgetRoutingTone.Ok -> colors.blue
+        WidgetRoutingTone.Failed -> colors.danger
+        WidgetRoutingTone.Warning -> colors.amber
+        WidgetRoutingTone.Neutral -> colors.faint
+    }
+    Row(
+        GlanceModifier.fillMaxWidth().height(WidgetQuotaBarsMetrics.ROUTING_DP.dp * fontScale.coerceAtLeast(1f))
+            .semantics { contentDescription = line.text },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(GlanceModifier.size(6.dp).cornerRadius(4.dp).background(dot)) {}
+        Spacer(GlanceModifier.width(6.dp))
+        WidgetText(line.text, if (line.tone == WidgetRoutingTone.Warning) colors.amber else colors.muted, 10.sp,
+            modifier = GlanceModifier.defaultWeight())
     }
 }
 
