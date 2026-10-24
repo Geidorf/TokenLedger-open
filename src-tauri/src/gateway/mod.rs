@@ -33,9 +33,9 @@ pub(crate) use ledger::accounting;
 use ledger::Ledger;
 pub use ledger::LedgerRecord;
 use routing::Router;
+pub use routing::{CoolingMember, RouteDecision, RoutingGroup};
 #[cfg(test)]
 pub(crate) use routing::{MemberTrace, RouteAttempt as RouteDecisionAttempt};
-pub use routing::{CoolingMember, RouteDecision, RoutingGroup};
 #[cfg(test)]
 pub use store::MemorySecrets;
 use store::{ensure_local_token, provider_account, ProviderStore};
