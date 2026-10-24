@@ -913,26 +913,49 @@ fn a_cumulative_source_scanned_on_both_sides_is_not_counted_twice() {
 }
 
 #[test]
-fn a_lost_cumulative_row_comes_back_on_the_next_scan_after_a_rebuild() {
+fn a_rebuild_never_counts_a_cumulative_source_twice() {
+    use crate::scanner::{runner::insert_cumulative_delta, types::LogRecord};
     let pc = Computer::new("pc");
-    // The delta row of a source at 200 was lost; only the base row of 100 read.
-    pc.insert("src", 100);
-    put_state(&pc, "src", 200, 0);
-    // After a reset the generation and baseline stay as they are.
-    pc.insert("reset", 100);
-    put_state(&pc, "reset", 30, 1);
-    health::lower_cumulative_baselines(&pc.conn()).unwrap();
-    let state = |key: &str| -> (i64, i64) {
-        pc.conn()
-            .query_row(
-                "SELECT input_tokens, generation FROM scan_cumulative_state WHERE unique_key = ?1",
-                [key],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap()
+    let machine = crate::commands::local_machine_id();
+    let scan = |total: i64| {
+        let mut conn = pc.conn();
+        let tx = conn.transaction().unwrap();
+        let log = LogRecord {
+            tool: "codex".to_string(),
+            model: "gpt-5".to_string(),
+            input_tokens: total,
+            output_tokens: 0,
+            cached_tokens: 0,
+            cache_write_tokens: 0,
+            timestamp: "2026-10-20 10:00:00".to_string(),
+            session_id: "s1".to_string(),
+            unique_key: "src".to_string(),
+            cost_usd: None,
+            cumulative: true,
+        };
+        insert_cumulative_delta(&tx, &log, &machine).unwrap();
+        tx.commit().unwrap();
     };
-    assert_eq!(state("src"), (100, 0));
-    assert_eq!(state("reset"), (30, 1));
+    for total in [100, 200, 300] {
+        scan(total);
+    }
+    assert_eq!(family_input(&pc, "src"), 300);
+    // A rebuild that lost the middle increment keeps the baseline: the lost
+    // key depended on the totals at that time, and refilling it under any
+    // other key would count it twice wherever it had been uploaded.
+    pc.conn()
+        .execute(
+            "DELETE FROM token_logs WHERE unique_key = 'src#t200_0_0'",
+            [],
+        )
+        .unwrap();
+    scan(300);
+    scan(300);
+    assert_eq!(family_input(&pc, "src"), 200);
+    // Later growth is counted once, from the kept baseline.
+    scan(350);
+    scan(350);
+    assert_eq!(family_input(&pc, "src"), 250);
 }
 
 #[test]

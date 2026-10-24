@@ -341,42 +341,6 @@ fn salvage_table(
     }
 }
 
-/// After rows were lost, a cumulative source whose baseline is above what its
-/// recovered rows add up to would never record the lost part again: the
-/// next scan sees no growth. Before any reset (generation 0) the rows sum to
-/// the baseline, so the baseline drops to that sum and the rescan adds back
-/// what is missing. After a reset the rows span several generations and the
-/// baseline is kept, with its generation, so dedupe keys are never reused.
-pub(crate) fn lower_cumulative_baselines(fresh: &Connection) -> rusqlite::Result<()> {
-    fresh.execute(
-        "UPDATE scan_cumulative_state AS state SET
-             input_tokens = sums.input, output_tokens = sums.output,
-             cached_tokens = sums.cached, cache_write_tokens = sums.write,
-             cost_usd = sums.cost
-         FROM (
-             SELECT state.unique_key AS source,
-                    COALESCE(SUM(logs.input_tokens), 0) AS input,
-                    COALESCE(SUM(logs.output_tokens), 0) AS output,
-                    COALESCE(SUM(logs.cached_tokens), 0) AS cached,
-                    COALESCE(SUM(logs.cache_write_tokens), 0) AS write,
-                    SUM(logs.cost_usd) AS cost
-               FROM scan_cumulative_state AS state
-               LEFT JOIN token_logs AS logs
-                 ON logs.unique_key = state.unique_key
-                 OR substr(logs.unique_key, 1, length(state.unique_key) + 1)
-                    = state.unique_key || '#'
-              WHERE state.generation = 0
-              GROUP BY state.unique_key
-         ) AS sums
-         WHERE state.unique_key = sums.source
-           AND sums.input + sums.output + sums.cached + sums.write
-             < state.input_tokens + state.output_tokens + state.cached_tokens
-               + state.cache_write_tokens",
-        [],
-    )?;
-    Ok(())
-}
-
 /// Builds a new ledger database from the rows of `damaged` that still read.
 pub fn salvage(damaged: &Path, target: &Path) -> Result<SalvageReport, String> {
     for path in [target.to_path_buf(), wal_path(target), shm_path(target)] {
@@ -392,9 +356,6 @@ pub fn salvage(damaged: &Path, target: &Path) -> Result<SalvageReport, String> {
             .map_err(|error| error.to_string())?;
         for table in SALVAGED_TABLES {
             salvage_table(&source, &fresh, table, &mut report);
-        }
-        if report.rows_unreadable > 0 {
-            lower_cumulative_baselines(&fresh).map_err(|error| error.to_string())?;
         }
         fresh
             .execute_batch("COMMIT")
