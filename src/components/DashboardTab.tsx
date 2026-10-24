@@ -4,7 +4,7 @@ import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
 import { UsageSplitPanel } from './usage/UsageSplitPanel';
-import { splitHeatmap, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
+import { splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
 import { LoadingSkeleton, MetricsSkeleton } from './LoadingSkeleton';
 import { MetricsGrid } from './MetricsGrid';
 import { ModelCostDistributionPanel } from './ModelCostDistributionPanel';
@@ -616,7 +616,7 @@ export function DashboardTab({
       : splitFocus.dimension === 'model' ? Boolean(stats.models?.[splitFocus.id])
         : showDeviceDistribution && (stats.machineDistribution || []).some((machine) => machine.value === splitFocus.id)
   ) ? splitFocus : null;
-  const focusedHeatmap = activeSplitFocus ? splitHeatmap(stats, activeSplitFocus) : null;
+  const heatmapView = splitHeatmapView(stats, activeSplitFocus, splitMetric);
   const cloudRecovery = scope === 'cloud'
     ? cloudSyncRecoveryCopy({ authenticated: cloudAuthenticated, capabilityVerified: cloudCapabilityVerified })
     : null;
@@ -894,9 +894,10 @@ export function DashboardTab({
           <TemporalInsightsSection trends={stats.trends} context={insightTimeContext} comparison={stats.comparison ?? null} onSelectDate={onSelectDate} dateDrillUnavailable={dateDrillUnavailable} />
           {/* Cloud scope cannot open a single day: calendar cells stay static
               (the reason text there is still open, see T10.158 log). */}
-          {showHeatmap && <HeatmapSection heatmap={focusedHeatmap ?? stats.heatmap} subject={focusedHeatmap && activeSplitFocus ? activeSplitFocus.id : undefined}
-            subjectUnavailable={activeSplitFocus && !focusedHeatmap ? activeSplitFocus.id : undefined}
-            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (focusedHeatmap && activeSplitFocus
+          {showHeatmap && <HeatmapSection heatmap={heatmapView.heatmap} subject={heatmapView.focused && activeSplitFocus ? activeSplitFocus.id : undefined}
+            subjectUnavailable={activeSplitFocus && !heatmapView.focused ? activeSplitFocus.id : undefined}
+            metric={heatmapView.metric} metricFallback={heatmapView.metricFallback}
+            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (heatmapView.focused && activeSplitFocus
               ? onSelectDate(date, { tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [], models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [] })
               : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} />}
           <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />

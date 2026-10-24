@@ -69,6 +69,9 @@ export interface ToolStat {
   requests: number;
   models?: Record<string, number>;
   heatmap?: Record<string, number>;
+  /** Local stats only (contract §2.6): per-day record count and estimated cost, same date keys as `heatmap`. */
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
 }
 
 /**
@@ -125,6 +128,8 @@ export interface ModelStat {
   cost?: number;
   tool?: string;
   heatmap?: Record<string, number>;
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
   displayTotal?: number;
 }
 
@@ -301,6 +306,9 @@ export interface EntityDashboard {
     machines: CompositionItem[];
   };
   heatmap: Record<string, number>;
+  /** Local stats only (contract §2.6): per-day record count and estimated cost; absent on cloud. */
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
   peak?: {
     bucket?: string;
     tokens?: number;
