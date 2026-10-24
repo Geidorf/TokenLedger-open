@@ -198,7 +198,8 @@ internal fun V2RoutingStage(
     var playing by remember { mutableStateOf<Pair<RoutingFlow, Float>?>(null) }
     val queue = remember { ArrayDeque<RoutingFlow>() }
     val currentNow by rememberUpdatedState(nowServerMs)
-    val flowIds = scene.flows.joinToString(",") { it.id }
+    // 键里带上阶段：同一个在途请求变成已结束时也要重新判断要不要播放。
+    val flowIds = scene.flows.joinToString(",") { "${it.id}:${it.phase}" }
     LaunchedEffect(flowIds, scene.playable) {
         val fresh = tracker.takeNew(scene, currentNow)
         if (motion) queue.addAll(fresh)

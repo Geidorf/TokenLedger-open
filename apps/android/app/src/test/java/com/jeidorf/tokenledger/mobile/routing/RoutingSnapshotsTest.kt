@@ -160,4 +160,23 @@ class RoutingSnapshotsTest {
         )
         assertEquals("claude 的请求正发往 anthropic/sonnet，排队等空位", RoutingSnapshots.describe(flow))
     }
+
+    @Test
+    fun `an in-flight request plays once it finishes under the same id`() {
+        fun flow(phase: RoutingFlowPhase) = RoutingFlow(
+            id = "same",
+            source = RoutingSourceId.External,
+            agent = "claude",
+            via = "sonnet",
+            phase = phase,
+            atServerMs = 1_000L,
+            hops = listOf(RoutingHop("anthropic/sonnet", if (phase == RoutingFlowPhase.Inflight) RoutingHopOutcome.Pending else RoutingHopOutcome.Ok))
+        )
+        val tracker = RoutingPlaybackTracker()
+        val live = RoutingLiveness.Live(0L)
+        val inflight = RoutingSnapshots.sceneFromFlows(listOf(flow(RoutingFlowPhase.Inflight))).copy(liveness = live)
+        assertTrue(tracker.takeNew(inflight, 2_000L).isEmpty())
+        val done = RoutingSnapshots.sceneFromFlows(listOf(flow(RoutingFlowPhase.Done))).copy(liveness = live)
+        assertEquals(listOf("same"), tracker.takeNew(done, 2_000L).map { it.id })
+    }
 }
