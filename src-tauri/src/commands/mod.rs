@@ -12041,15 +12041,64 @@ pub fn reset_local_sync_impl(app: &AppContext) -> Result<Value, String> {
     }))
 }
 
+/// 刷新扫描后的自动上传。托盘面板「后台同步」关着时不上传（设置页的手动同步不受影响）；
+/// 暂停状态在扫描结束后、真正上传前才读，扫描途中关掉同步同样生效。
+/// 返回是否启动了上传线程。
+fn spawn_post_scan_sync(app: &AppContext) -> bool {
+    if crate::settings::background_sync_paused_now(app) {
+        return false;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        if crate::settings::background_sync_paused_now(&handle) {
+            return;
+        }
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
+            log::debug!("Post-scan cloud sync skipped/failed: {}", e);
+        }
+    });
+    true
+}
+
+#[cfg(test)]
+mod post_scan_sync_tests {
+    use super::*;
+
+    #[test]
+    fn sync_paused_during_a_scan_stops_the_post_scan_upload() {
+        let dir = std::env::temp_dir().join(format!(
+            "tokenledger-post-scan-sync-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        let app = AppContext::for_test(dir.clone());
+        // 扫描开始时同步还开着（旧实现在这里就定下了要不要上传）……
+        assert!(!crate::settings::load_settings(&app).background_sync_paused);
+        // ……扫描途中用户在托盘面板关掉同步，扫描结束后不能再启动上传。
+        crate::settings::update_background_pause(
+            &app,
+            crate::settings::BackgroundPause::Sync,
+            true,
+        )
+        .expect("pause sync");
+        assert!(!spawn_post_scan_sync(&app));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
 pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
     let db_path = db::get_db_path(app);
     db::init_db(&db_path).map_err(|e| e.to_string())?;
     let prices_before = auto_discovered_price_keys(app);
 
-    let settings = crate::settings::load_settings(app);
-    let scan_options = scanner::ScanOptions::from_settings(&settings);
-    // 托盘面板「后台同步」关着时，刷新扫描后也不自动上传；设置页的手动同步不受影响。
-    let post_scan_sync = !settings.background_sync_paused;
+    let scan_options = scanner::ScanOptions::from_settings(&crate::settings::load_settings(app));
     match scanner::run_scan_singleflight(&db_path, &scan_options) {
         Ok(scan) => {
             let outcome = scan.outcome;
@@ -12084,18 +12133,7 @@ pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
                 .cloned()
                 .collect::<Vec<_>>();
             discovered_price_models.sort();
-            if post_scan_sync {
-                let handle = app.clone();
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .unwrap();
-                    if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
-                        log::debug!("Post-scan cloud sync skipped/failed: {}", e);
-                    }
-                });
-            }
+            spawn_post_scan_sync(app);
             let price_message = if discovered_price_models.is_empty() {
                 String::new()
             } else {

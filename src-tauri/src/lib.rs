@@ -155,11 +155,10 @@ fn scan_sync_and_notify(
     }
 
     // 托盘面板「后台同步」关掉时只停这条自动同步；设置页与手动同步不受影响。
-    let sync_paused = app_handle
-        .try_state::<Arc<Mutex<AppSettings>>>()
-        .and_then(|state| state.lock().ok().map(|guard| guard.background_sync_paused))
-        .unwrap_or(false);
-    if (persisted_changes || allow_idle_sync_retry) && !sync_paused {
+    // 扫描结束后才读最新状态：扫描途中关掉同步也不会再上传。
+    if (persisted_changes || allow_idle_sync_retry)
+        && !crate::settings::background_sync_paused_now(ctx)
+    {
         match block_on_async(commands::sync_to_supabase_impl(ctx)) {
             Ok(result) => {
                 stats_changed |= sync_result_has_stats_changes(&result);
@@ -382,7 +381,8 @@ fn start_background_scheduler(
                         tauri::async_runtime::block_on(quota::get_local_quota_providers_impl(&ctx));
                     refresh_tray_status(&ctx, &app_handle);
                 }
-                if !cfg.background_sync_paused {
+                // 额度读取可能要几秒，同步前重新读暂停状态，不用这一轮开始时的 cfg。
+                if !crate::settings::background_sync_paused_now(&ctx) {
                     sync_quota_and_notify(&ctx, &app_handle);
                 }
                 // Gateway requests land in the ledger without a scan, so

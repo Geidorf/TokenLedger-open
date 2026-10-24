@@ -756,6 +756,12 @@ pub(crate) fn update_background_pause(
     })
 }
 
+/// 自动同步真正启动前的最后一道检查：每次都从磁盘读最新的「后台同步」暂停状态，
+/// 不用扫描或额度读取开始前拿到的旧设置——用户可能在长扫描途中关掉同步。
+pub(crate) fn background_sync_paused_now(app: &AppContext) -> bool {
+    load_settings(app).background_sync_paused
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BackgroundPause {
     Scan,
@@ -1272,6 +1278,7 @@ mod tests {
         assert!(saved.background_scan_paused && !saved.background_sync_paused);
         let saved = update_background_pause(&app, BackgroundPause::Sync, true).expect("pause sync");
         assert!(saved.background_scan_paused && saved.background_sync_paused);
+        assert!(background_sync_paused_now(&app));
 
         // 通用保存带着陈旧的「未暂停」也不能把暂停改回去；托盘数字的取值则照常合并。
         let previous = AppSettings::default();
