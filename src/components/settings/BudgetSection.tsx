@@ -32,7 +32,7 @@ import {
   SettingsToggleRow,
 } from './SettingsPrimitives';
 import '../../styles/budget.css';
-import { localized, t, useLang } from '../../i18n';
+import { getLang, localized, t, useLang } from '../../i18n';
 
 interface Draft {
   id: string | null;
@@ -62,21 +62,21 @@ export function budgetScopeName(rule: Pick<BudgetRule, 'scopeKind' | 'scopeId'>)
 
 /** 「同步到手机」开关下面的说明：开着时说清现在有没有送到云端。 */
 export function phoneSyncHint(enabled: boolean, status: PhoneSyncStatus): string {
-  const base = '手机端读到接近或超出时推本地通知。只上传范围名、周期和已用百分比，不上传金额与上限。';
+  const base = t('budget.phone.base');
   if (!enabled) return base;
   switch (status.state) {
     case 'ok':
       return status.lastPublishedAt
-        ? `已同步，最近一次 ${new Date(status.lastPublishedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}。`
-        : '已同步。';
+        ? t('budget.phone.okAt', { time: new Date(status.lastPublishedAt).toLocaleTimeString(getLang() === 'en' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' }) })
+        : t('budget.phone.ok');
     case 'signed-out':
-      return '需要先在「云同步」登录，手机用同一账号登录后才能收到。';
+      return t('budget.phone.signedOut');
     case 'not-deployed':
-      return '云端尚未部署预算同步，部署后自动开始。';
+      return t('budget.phone.notDeployed');
     case 'error':
-      return `同步失败：${status.error ?? '未知原因'}，稍后自动重试。`;
+      return t('budget.phone.error', { error: status.error ?? t('budget.phone.errorUnknown') });
     default:
-      return '正在准备同步…';
+      return t('budget.phone.pending');
   }
 }
 
@@ -204,7 +204,7 @@ export function BudgetSection() {
             onChange={(notify) => void save({ ...settings, notify })}
           />
           <SettingsToggleRow
-            label="同步到手机"
+            label={t('budget.phone.label')}
             hint={phoneSyncHint(settings.syncToPhone, report?.phoneSync ?? OFF_PHONE_SYNC)}
             icon={Smartphone}
             checked={settings.syncToPhone}
