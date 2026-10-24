@@ -461,13 +461,13 @@ fn exports_are_listed_newest_first_and_auto_backups_pruned() {
         fs::write(
             dir.join(format!(
                 "{}20261001-00000{index}.{EXTENSION}",
-                auto::AUTO_PREFIX
+                auto::computer_prefix()
             )),
             b"x",
         )
         .unwrap();
     }
-    assert_eq!(auto::prune(&dir, 2), 2);
+    assert_eq!(auto::prune(&dir, &auto::computer_prefix(), 2), 2);
     let names: Vec<String> = list_files(&dir)
         .unwrap()
         .into_iter()
@@ -501,7 +501,7 @@ fn scheduled_backup_needs_a_passphrase_and_records_its_run() {
     );
 
     let path = auto::run_now(&old.app, &old.gateway, &secrets, FAST).unwrap();
-    assert!(path.contains(auto::AUTO_PREFIX));
+    assert!(path.contains(&auto::computer_prefix()));
     let config = auto::load(&old.app);
     assert_eq!(config.last_file.as_deref(), Some(path.as_str()));
     assert!(config.last_error.is_none());
@@ -940,18 +940,55 @@ fn pruning_keeps_the_newest_backup_written_in_the_same_second() {
     let pc = Computer::new("pc");
     let dir = pc.root.join("auto-same-second");
     fs::create_dir_all(&dir).unwrap();
+    let prefix = "TokenLedger-auto-0000aaaa-";
+    for stamp in [
+        "20261024-010000",
+        "20261024-010000-2",
+        "20261024-010000-10",
+        "20261023-235959",
+    ] {
+        fs::write(dir.join(format!("{prefix}{stamp}.tlbackup")), b"x").unwrap();
+    }
+    assert_eq!(auto::prune(&dir, prefix, 1), 3);
+    assert!(dir
+        .join(format!("{prefix}20261024-010000-10.tlbackup"))
+        .exists());
+}
+
+#[test]
+fn pruning_leaves_other_computers_backups_in_a_shared_folder() {
+    let pc = Computer::new("pc");
+    let dir = pc.root.join("auto-shared");
+    fs::create_dir_all(&dir).unwrap();
+    let mine = "TokenLedger-auto-0000aaaa-";
+    let theirs = "TokenLedger-auto-0000bbbb-";
     for name in [
-        "TokenLedger-auto-20261024-010000.tlbackup",
-        "TokenLedger-auto-20261024-010000-2.tlbackup",
-        "TokenLedger-auto-20261024-010000-10.tlbackup",
-        "TokenLedger-auto-20261023-235959.tlbackup",
+        format!("{mine}20261024-010000.tlbackup"),
+        format!("{mine}20261024-020000.tlbackup"),
+        format!("{theirs}20261023-010000.tlbackup"),
     ] {
         fs::write(dir.join(name), b"x").unwrap();
     }
-    assert_eq!(auto::prune(&dir, 1), 3);
+    assert_eq!(auto::prune(&dir, mine, 1), 1);
+    assert!(dir.join(format!("{mine}20261024-020000.tlbackup")).exists());
     assert!(dir
-        .join("TokenLedger-auto-20261024-010000-10.tlbackup")
+        .join(format!("{theirs}20261023-010000.tlbackup"))
         .exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn export_never_writes_through_a_planted_temporary_path() {
+    let pc = Computer::new("pc");
+    let dir = pc.root.join("planted");
+    fs::create_dir_all(&dir).unwrap();
+    let victim = pc.root.join("victim.txt");
+    fs::write(&victim, b"keep me").unwrap();
+    let target = dir.join("out.tlbackup");
+    std::os::unix::fs::symlink(&victim, dir.join("out.tlbackup.tmp")).unwrap();
+    write_private(&target, b"sealed").unwrap();
+    assert_eq!(fs::read(&victim).unwrap(), b"keep me");
+    assert_eq!(fs::read(&target).unwrap(), b"sealed");
 }
 
 #[test]

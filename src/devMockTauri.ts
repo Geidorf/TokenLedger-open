@@ -2548,7 +2548,7 @@ export function installDevMockTauri() {
       }
       case 'local_backup_list':
         return [
-          { path: `${MOCK_BACKUP_DIR}/TokenLedger-auto-20261023-090000.tlbackup`, name: 'TokenLedger-auto-20261023-090000.tlbackup', bytes: 2_301_952, modified: '2026-10-23T09:00:00+08:00' },
+          { path: `${MOCK_BACKUP_DIR}/TokenLedger-auto-3fa1c2d4-20261023-090000.tlbackup`, name: 'TokenLedger-auto-3fa1c2d4-20261023-090000.tlbackup', bytes: 2_301_952, modified: '2026-10-23T09:00:00+08:00' },
           { path: `${MOCK_BACKUP_DIR}/TokenLedger-20261020-213012.tlbackup`, name: 'TokenLedger-20261020-213012.tlbackup', bytes: 2_105_344, modified: '2026-10-20T21:30:12+08:00' },
         ];
       case 'local_backup_preview':
@@ -2584,7 +2584,7 @@ export function installDevMockTauri() {
         return mockBackupAuto;
       }
       case 'local_backup_run_auto_now':
-        mockBackupAuto = { ...mockBackupAuto, lastRunAt: new Date().toISOString(), lastError: null, lastFile: `${MOCK_BACKUP_DIR}/TokenLedger-auto-now.tlbackup` };
+        mockBackupAuto = { ...mockBackupAuto, lastRunAt: new Date().toISOString(), lastError: null, lastFile: `${MOCK_BACKUP_DIR}/TokenLedger-auto-3fa1c2d4-now.tlbackup` };
         return mockBackupAuto;
       case 'local_backup_db_check':
         return {

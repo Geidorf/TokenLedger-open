@@ -172,9 +172,22 @@ pub fn save(
     view(app, secrets)
 }
 
-fn prune_order(name: &str) -> (String, u32) {
+/// This computer's scheduled-backup prefix. Computers sharing one folder
+/// (a synced drive) each keep and prune only their own files: another
+/// computer's backups are the only ones that carry its gateway history.
+pub fn computer_prefix() -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(crate::commands::local_machine_id().as_bytes());
+    let tag: String = digest[..4]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("{AUTO_PREFIX}{tag}-")
+}
+
+fn prune_order(prefix: &str, name: &str) -> (String, u32) {
     let stem = name
-        .trim_start_matches(AUTO_PREFIX)
+        .trim_start_matches(prefix)
         .trim_end_matches(&format!(".{EXTENSION}"));
     // `YYYYMMDD-HHMMSS` is 15 characters.
     let (stamp, rest) = stem.split_at(stem.len().min(15));
@@ -185,8 +198,8 @@ fn prune_order(name: &str) -> (String, u32) {
     (stamp.to_string(), suffix)
 }
 
-/// Removes the oldest scheduled backups beyond `keep`.
-pub fn prune(dir: &Path, keep: usize) -> usize {
+/// Removes the oldest scheduled backups under `prefix` beyond `keep`.
+pub fn prune(dir: &Path, prefix: &str, keep: usize) -> usize {
     let Ok(entries) = fs::read_dir(dir) else {
         return 0;
     };
@@ -194,11 +207,15 @@ pub fn prune(dir: &Path, keep: usize) -> usize {
         .flatten()
         .filter(|entry| entry.path().is_file())
         .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .filter(|name| name.starts_with(AUTO_PREFIX) && name.ends_with(&format!(".{EXTENSION}")))
+        .filter(|name| {
+            name.strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+                && name.ends_with(&format!(".{EXTENSION}"))
+        })
         .collect();
     // Time stamp first, then the `-2`, `-3` suffix of a file written in the
     // same second; plain name order would put `-2` before the original.
-    names.sort_by_key(|name| prune_order(name));
+    names.sort_by_key(|name| prune_order(prefix, name));
     let excess = names.len().saturating_sub(keep);
     names
         .into_iter()
@@ -220,17 +237,18 @@ pub fn run_now(
     } else {
         backup_dir(&config.dir)?
     };
+    let prefix = computer_prefix();
     let outcome = secrets
         .get(PASSPHRASE_ACCOUNT)
         .and_then(|passphrase| passphrase.ok_or_else(|| "还没有设置自动备份的密码。".to_string()))
-        .and_then(|passphrase| export_to(app, gateway, &dir, AUTO_PREFIX, &passphrase, iterations));
+        .and_then(|passphrase| export_to(app, gateway, &dir, &prefix, &passphrase, iterations));
     // Settings saved while the export ran win; only the outcome is recorded.
     let _guard = config_lock();
     let mut config = load(app);
     config.last_run_at = Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
     let result = match outcome {
         Ok(export) => {
-            prune(&dir, config.keep as usize);
+            prune(&dir, &prefix, config.keep as usize);
             config.last_error = None;
             config.last_file = Some(export.path.clone());
             Ok(export.path)

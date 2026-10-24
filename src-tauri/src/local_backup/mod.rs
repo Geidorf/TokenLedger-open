@@ -333,24 +333,50 @@ pub(crate) fn read_sealed(path: &Path) -> Result<Vec<u8>, String> {
     fs::read(path).map_err(|error| format!("读取备份文件失败：{error}"))
 }
 
-/// Writes `bytes` next to `path` and renames it into place, owner-only.
+static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Writes `bytes` next to `path` and renames it into place, owner-only. The
+/// temporary file is new and uniquely named: in a folder others can write
+/// to, a path planted beforehand (say a symlink) is never opened.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
-    let tmp = path.with_extension(format!("{EXTENSION}.tmp"));
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut opened = None;
+    for _ in 0..64 {
+        let tmp = dir.join(format!(
+            ".{name}.tmp.{}.{}",
+            std::process::id(),
+            TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&tmp) {
+            Ok(file) => {
+                opened = Some((tmp, file));
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("写入备份文件失败：{error}")),
+        }
     }
-    let result = options
-        .open(&tmp)
-        .and_then(|mut file| {
-            file.write_all(bytes)?;
-            file.sync_all()
-        })
-        .and_then(|_| fs::rename(&tmp, path));
+    let (tmp, mut file) =
+        opened.ok_or_else(|| "写入备份文件失败：临时文件名都被占用。".to_string())?;
+    let result = file
+        .write_all(bytes)
+        .and_then(|_| file.sync_all())
+        .and_then(|_| {
+            drop(file);
+            fs::rename(&tmp, path)
+        });
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
     }
