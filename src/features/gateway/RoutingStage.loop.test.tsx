@@ -11,7 +11,21 @@ const inflightScene = () => buildRoutingScene({
 });
 
 function mockReducedMotion(reduce: boolean) {
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: reduce && query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }));
+  const listeners = new Set<() => void>();
+  const state = { matches: reduce };
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() { return state.matches && query.includes('reduce'); },
+    media: query,
+    addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+  }));
+  return {
+    set(next: boolean) {
+      state.matches = next;
+      for (const listener of listeners) listener();
+    },
+    listeners,
+  };
 }
 
 describe('RoutingStage 循环效果时钟', () => {
@@ -59,6 +73,21 @@ describe('RoutingStage 循环效果时钟', () => {
     const { container } = render(<RoutingStage scene={inflightScene()} />);
     expect(vi.getTimerCount()).toBe(0);
     expect(container.querySelector<SVGPathElement>('.rs-wire.is-live')!.style.getPropertyValue('--rs-dash')).toBe('');
+  });
+
+  it('挂载期间打开「减少动态效果」立即停下并回到静止画面，关掉后恢复', () => {
+    const preference = mockReducedMotion(false);
+    const { container, unmount } = render(<RoutingStage scene={inflightScene()} />);
+    const wire = container.querySelector<SVGPathElement>('.rs-wire.is-live')!;
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(wire.style.getPropertyValue('--rs-dash')).not.toBe('');
+    act(() => preference.set(true));
+    expect(vi.getTimerCount()).toBe(0);
+    expect(wire.style.getPropertyValue('--rs-dash')).toBe('');
+    act(() => preference.set(false));
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(preference.listeners.size).toBe(0);
   });
 
   it('没有在途或进行中的请求时不启动时钟', () => {

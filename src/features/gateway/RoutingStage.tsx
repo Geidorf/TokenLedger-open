@@ -67,7 +67,6 @@ function useLoopClock(ref: { current: SVGSVGElement | null }, active: boolean) {
   useEffect(() => {
     const node = ref.current;
     if (!active || !node) return undefined;
-    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
     const started = Date.now();
     const tick = () => {
       if (document.visibilityState === 'hidden') return;
@@ -78,9 +77,30 @@ function useLoopClock(ref: { current: SVGSVGElement | null }, active: boolean) {
         }
       }
     };
-    tick();
-    const timer = window.setInterval(tick, 1000 / LOOP_FPS);
-    return () => window.clearInterval(timer);
+    let timer: number | undefined;
+    const stop = () => {
+      if (timer === undefined) return;
+      window.clearInterval(timer);
+      timer = undefined;
+      // Back to the static look the CSS fallbacks describe.
+      for (const name of Object.keys(LOOP_TARGETS) as LoopProperty[]) {
+        for (const element of node.querySelectorAll<SVGElement>(LOOP_TARGETS[name])) element.style.removeProperty(name);
+      }
+    };
+    const start = () => {
+      if (timer !== undefined) return;
+      tick();
+      timer = window.setInterval(tick, 1000 / LOOP_FPS);
+    };
+    // Reduced motion is followed live, as the CSS media query it replaces was.
+    const reduced = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const follow = () => (reduced?.matches ? stop() : start());
+    follow();
+    reduced?.addEventListener?.('change', follow);
+    return () => {
+      reduced?.removeEventListener?.('change', follow);
+      stop();
+    };
   }, [ref, active]);
 }
 
