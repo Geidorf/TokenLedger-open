@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Cloud, FolderSearch, LayoutGrid, RefreshCw, Settings, SlidersHorizontal, Sparkles, TriangleAlert } from 'lucide-react';
 import { requestOpenOnboarding } from '../features/onboarding/onboardingState';
 import { CacheFlowPanel } from './CacheFlowPanel';
+import { UsageAnomalyPanel } from './UsageAnomalyPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
 import { AverageContextPanel } from './usage/AverageContextPanel';
@@ -391,7 +392,7 @@ export function DashboardTab({
   const [editingLayout, setEditingLayout] = useState(false);
   // 当前能渲染的卡片：额度详情在额度子页时不在概览里；用量异常尚未接入。
   const availableCards = useMemo(
-    () => new Set<DashboardCardId>(DASHBOARD_CARD_IDS.filter(id => id !== 'anomaly' && !(id === 'quota' && onOpenAllowances))),
+    () => new Set<DashboardCardId>(DASHBOARD_CARD_IDS.filter(id => !(id === 'quota' && onOpenAllowances))),
     [onOpenAllowances],
   );
   const dashboardLayouts = useDashboardLayouts(availableCards);
@@ -909,7 +910,8 @@ export function DashboardTab({
         onEdit={() => setEditingLayout(true)}
         emptyNote={(id) => id === 'heatmap'
           ? '当前范围不显示热力图：选「今年」「全部」或超过 31 天的自定义范围时出现。'
-          : id === 'context' ? '只统计经本机网关、记下请求构成的请求；当前范围还没有。' : '当前范围没有可显示的内容。'}
+          : id === 'context' ? '只统计经本机网关、记下请求构成的请求；当前范围还没有。'
+            : id === 'anomaly' ? '用量异常只看本机账本，切到「本机」口径时出现。' : '当前范围没有可显示的内容。'}
         renderCard={(id) => {
           switch (id) {
             case 'metrics':
@@ -944,6 +946,9 @@ export function DashboardTab({
                   if (kind === 'tool') { const tool = stats.tools[entityId]; if (tool) onToolClick?.(tool); }
                   else { const model = allModelsList.find((item) => item.name === entityId); if (model) onModelClick?.(model); }
                 }} />;
+            case 'anomaly':
+              // 异常只读本机账本，云端口径没有对应数据。
+              return scope === 'local' ? <UsageAnomalyPanel onSelectDate={dateDrillUnavailable ? undefined : onSelectDate} /> : null;
             case 'budget':
               return <Suspense fallback={null}><BudgetOverviewCard scope={scope} onOpenSettings={onOpenBudgetSettings} /></Suspense>;
             case 'insights':
