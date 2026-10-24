@@ -152,3 +152,60 @@ test('激活后状态栏显示今日费用，悬停与详情都有内容；关�
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('查额度的命令给足探测时间，其余 20 秒', () => {
+  const extension = loadExtension(createVscodeStub({}));
+  assert.equal(extension.timeoutFor(['quota', '--json']), 60_000);
+  assert.equal(extension.timeoutFor(['status', '--json']), 60_000);
+  assert.equal(extension.timeoutFor(['status', '--no-quota', '--json']), 20_000);
+  assert.equal(extension.timeoutFor(['budget', '--json']), 20_000);
+});
+
+test('这一轮命令全失败时，不因沿用的额度列表而丢掉上一轮的数字', { skip }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenledger-vscode-'));
+  const settings = { cliPath: makeFakeCli(dir) };
+  const stub = createVscodeStub(settings);
+  const controller = loadExtension(stub).activate({ subscriptions: [] });
+  try {
+    await controller.refreshing;
+    const before = controller.state.updatedAt;
+    assert.ok(before);
+    // 假命令行改成每条都报错（version 仍然通过，路径不变）。
+    process.env.FAKE_CLI_FAIL = '1';
+    await controller.refresh();
+    assert.equal(controller.state.updatedAt, before, '保留上一轮的更新时间与数字');
+    assert.match(controller.state.lastError, /故意失败/);
+    assert.equal(controller.cliPath, null, '下一轮重新找命令行');
+    assert.equal(stub.created.items[0].text, '$(graph) ≈$2.56');
+  } finally {
+    delete process.env.FAKE_CLI_FAIL;
+    controller.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('刷新途中设置变了：旧结果作废，结束后按新设置再刷一次', { skip }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenledger-vscode-'));
+  const log = path.join(dir, 'calls.log');
+  const settings = { cliPath: makeFakeCli(dir), 'quota.enabled': true };
+  const stub = createVscodeStub(settings);
+  const controller = loadExtension(stub).activate({ subscriptions: [] });
+  try {
+    await controller.refreshing;
+    process.env.FAKE_CLI_LOG = log;
+    const running = controller.refresh();
+    settings['quota.enabled'] = false;
+    stub.listeners.config[0]({ affectsConfiguration: () => true });
+    await running;
+    while (controller.refreshing) await controller.refreshing;
+    const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    const statusCalls = calls.filter((args) => args[0] === 'status');
+    assert.deepEqual(statusCalls.at(-1), ['status', '--no-quota', '--json'], '最后一轮按新设置跑');
+    assert.equal(controller.state.snapshot.quota, undefined, '不沿用旧设置下的额度');
+    assert.match(stub.created.items[0].tooltip.value, /已在设置里关闭额度读取/);
+  } finally {
+    delete process.env.FAKE_CLI_LOG;
+    controller.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

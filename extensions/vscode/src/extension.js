@@ -12,6 +12,15 @@ const MIN_INTERVAL_SECONDS = 15;
 // 额度要逐个查已授权的来源，比读账本慢；额度列表最多每 5 分钟取一次，手动刷新时总会取。
 const QUOTA_LIST_MIN_MS = 5 * 60_000;
 
+// 查额度的命令要等各来源的有界探测走完（桌面端的增强来源最长约 44 秒），给 60 秒；其余 20 秒。
+const QUOTA_TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 20_000;
+
+function timeoutFor(args) {
+  const queriesQuota = args[0] === 'quota' || (args[0] === 'status' && !args.includes('--no-quota'));
+  return queriesQuota ? QUOTA_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
+}
+
 function readConfig() {
   const config = vscode.workspace.getConfiguration('tokenledger');
   return {
@@ -33,6 +42,9 @@ class Controller {
     this.timer = null;
     this.quotaFetchedAt = 0;
     this.panel = null;
+    // 设置每变一次加一；刷新途中设置变了，这一轮的结果作废并在结束后按新设置再刷一次。
+    this.configGeneration = 0;
+    this.rerun = false;
 
     this.item = vscode.window.createStatusBarItem('tokenledger.status', vscode.StatusBarAlignment.Right, 100);
     this.item.name = 'TokenLedger';
@@ -51,34 +63,49 @@ class Controller {
 
   async ensureCli() {
     if (this.cliPath) return this.cliPath;
-    this.cliPath = await locateCli(cliCandidates(this.config.cliPath), { env: this.env() });
-    return this.cliPath;
+    const generation = this.configGeneration;
+    const found = await locateCli(cliCandidates(this.config.cliPath), { env: this.env() });
+    // 找的途中设置变了：不记下按旧设置找到的路径。
+    if (generation === this.configGeneration) this.cliPath = found;
+    return found;
   }
 
   refresh({ force = false } = {}) {
-    if (this.refreshing) return this.refreshing;
-    this.refreshing = this.doRefresh(force).finally(() => {
+    if (this.refreshing) {
+      if (force) this.rerun = true;
+      return this.refreshing;
+    }
+    this.refreshing = this.doRefresh(force).then(() => {
       this.refreshing = null;
+      if (this.rerun) {
+        this.rerun = false;
+        return this.refresh({ force: true });
+      }
+      return undefined;
     });
     return this.refreshing;
   }
 
   async doRefresh(force) {
+    const generation = this.configGeneration;
     try {
       const cli = await this.ensureCli();
       const now = Date.now();
       const includeQuotaList = this.config.quotaEnabled
         && (force || !this.state.snapshot || !this.state.snapshot.quota || now - this.quotaFetchedAt >= QUOTA_LIST_MIN_MS);
       const env = this.env();
-      const snapshot = await fetchSnapshot((args) => runJson(cli, args, { env }), {
+      const snapshot = await fetchSnapshot((args) => runJson(cli, args, { env, timeoutMs: timeoutFor(args) }), {
         quota: this.config.quotaEnabled,
         includeQuotaList,
       });
+      if (generation !== this.configGeneration) return;
+      // 先看这一轮实际跑的命令是否全失败，再补上沿用的额度列表。
+      const failures = Object.values(snapshot).filter((section) => section && section.error);
+      const allFailed = failures.length === Object.keys(snapshot).length;
       if (includeQuotaList) this.quotaFetchedAt = now;
       else if (this.config.quotaEnabled && this.state.snapshot) snapshot.quota = this.state.snapshot.quota;
 
-      const failures = Object.values(snapshot).filter((section) => section && section.error);
-      if (failures.length === Object.keys(snapshot).length && this.state.snapshot) {
+      if (allFailed && this.state.snapshot) {
         // 全部失败：保留上一轮的数字，只标出失败原因。
         this.state = { ...this.state, lastError: failures[0].error, notFound: false };
         // 可能是命令行被卸载或换了位置，下一轮重新找。
@@ -92,6 +119,7 @@ class Controller {
         };
       }
     } catch (error) {
+      if (generation !== this.configGeneration) return;
       this.cliPath = null;
       if (error instanceof CliNotFoundError) {
         this.state = { snapshot: null, updatedAt: null, lastError: null, notFound: true };
@@ -160,6 +188,7 @@ class Controller {
   onConfigChanged() {
     const previous = this.config;
     this.config = readConfig();
+    this.configGeneration += 1;
     if (previous.cliPath !== this.config.cliPath || previous.dataDirectory !== this.config.dataDirectory) {
       this.cliPath = null;
     }
@@ -201,4 +230,4 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate };
+module.exports = { activate, deactivate, timeoutFor };
