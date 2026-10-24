@@ -197,7 +197,7 @@ private fun V2RhythmWeekdayCard(palette: MobileV2Palette, rhythm: ActivityRhythm
                             .height(14.dp)
                             .semantics {
                                 contentDescription = "周${WEEKDAY_LABELS[day]}，合计 ${v2FormatTokens(row.sum())} 有效 Token；" +
-                                    rhythmHourBreakdown(row)
+                                    rhythmHourBreakdown(row.toList())
                             }
                     ) {
                         val slot = size.width / 24f
