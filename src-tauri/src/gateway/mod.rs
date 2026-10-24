@@ -52,6 +52,8 @@ pub use store::{
 
 pub const DEFAULT_PORT: u16 = 3462;
 const MAX_KEY_LENGTH: usize = 4096;
+/// Providers probed at the same time in one round.
+const PROBE_CONCURRENCY: usize = 4;
 
 pub struct Shared {
     providers: RwLock<Vec<ProviderRecord>>,
@@ -688,29 +690,39 @@ impl Gateway {
 
     /// Probes every enabled provider once, one after another.
     pub async fn probe_providers(&self) {
+        use futures_util::StreamExt;
         let providers: Vec<ProviderRecord> =
             self.providers().into_iter().filter(|p| p.enabled).collect();
         let ids: Vec<String> = providers.iter().map(|p| p.id.clone()).collect();
         self.prober.retain(&ids);
-        for provider in providers {
-            let key = if provider.auth_mode == AuthMode::None {
-                None
-            } else {
-                let secrets = self.shared.secrets.clone();
-                let account = provider_account(&provider.id);
-                match tauri::async_runtime::spawn_blocking(move || secrets.get(&account)).await {
-                    Ok(Ok(Some(key))) => Some(key),
-                    // No key: the passive report already says so; never probe keyless.
-                    _ => continue,
-                }
-            };
-            let Ok(url) = probe::models_url(&provider) else {
-                continue;
-            };
-            let client = server::upstream_client(&url);
-            let result = probe::probe(&provider, key.as_deref(), client, url.clone()).await;
-            self.prober.record(&provider.id, result);
+        // A few at a time, so one slow provider (20 s timeout) does not hold up the rest.
+        let results: Vec<(String, probe::ProbeResult)> = futures_util::stream::iter(providers)
+            .map(|provider| self.probe_one(provider))
+            .buffer_unordered(PROBE_CONCURRENCY)
+            .filter_map(std::future::ready)
+            .collect()
+            .await;
+        for (id, result) in results {
+            self.prober.record(&id, result);
         }
+    }
+
+    async fn probe_one(&self, provider: ProviderRecord) -> Option<(String, probe::ProbeResult)> {
+        let key = if provider.auth_mode == AuthMode::None {
+            None
+        } else {
+            let secrets = self.shared.secrets.clone();
+            let account = provider_account(&provider.id);
+            match tauri::async_runtime::spawn_blocking(move || secrets.get(&account)).await {
+                Ok(Ok(Some(key))) => Some(key),
+                // No key: the passive report already says so; never probe keyless.
+                _ => return None,
+            }
+        };
+        let url = probe::models_url(&provider).ok()?;
+        let client = server::upstream_client(&url);
+        let result = probe::probe(&provider, key.as_deref(), client, url.clone()).await;
+        Some((provider.id, result))
     }
 
     /// Timed probes while model access is on; checks once a minute whether
