@@ -101,6 +101,19 @@ test.describe('英文界面', () => {
     await expect(page.getByRole('button', { name: 'Settings & cloud' }).first()).toBeVisible();
   });
 
+  test('请求明细：筛选、汇总与表头是英文', async ({ page }) => {
+    await openEnglish(page, 'records');
+    await expect(page.getByRole('region', { name: 'Usage detail filters' })).toContainText('Filters');
+    await expect(page.getByRole('group', { name: 'Time range' })).toContainText('Custom');
+    await expect(page.getByRole('button', { name: 'Tool: All Tools' })).toBeVisible();
+    await expect(page.getByLabel('Search tools, models, devices or sessions')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Estimated cost' })).toBeAttached();
+    await expect(page.getByRole('button', { name: 'Expand this record' }).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Expand this record' }).first().click();
+    await expect(page.getByText('Full timestamp')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('设置：手机动态壁纸与其他电脑的共享用量卡片是英文', async ({ page }) => {
     await openEnglish(page, 'settings-data');
     await expect(page.getByText('Shared usage from other computers')).toBeVisible();

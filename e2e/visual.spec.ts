@@ -13,6 +13,7 @@ const SHOTS = [
   { name: 'onboarding-en-1280', hash: 'dashboard', width: 1280, query: '?fresh=1&lang=en' },
   { name: 'routing-en-1280', hash: 'routing', width: 1280, query: '?lang=en' },
   { name: 'gateway-en-1280', hash: 'gateway', width: 1280, query: '?lang=en' },
+  { name: 'records-en-1280', hash: 'records', width: 1280, query: '?lang=en' },
 ] as const satisfies readonly { name: string; hash: string; width: number; query?: string }[];
 
 test.describe('视觉基线', () => {
