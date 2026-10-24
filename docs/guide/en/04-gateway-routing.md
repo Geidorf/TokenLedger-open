@@ -27,6 +27,21 @@ A provider is where models come from: OpenAI, DeepSeek, OpenRouter, or any OpenA
 - Models appear in the Agent and routing-group pickers as `provider/model`, for example `deepseek/deepseek-chat`.
 - Disable a provider you are not using; it keeps its settings but no longer receives traffic.
 
+### Health
+
+Each enabled provider row has a 24-hour trend bar (bar height is request volume, the red top is the failure share) and a status badge. Hover over it for the last 24 hours' request count, success rate, P95 latency and reasons:
+
+| Status | When |
+| --- | --- |
+| Down | The last 3 requests in a row failed, or a member that failed 3 times in a row is still cooling down |
+| Degraded | The last request failed, a member is cooling down, or at least 5 requests with a success rate below 90% |
+| Healthy | Has requests and is neither of the above |
+| No traffic | No gateway requests in the last 24 hours |
+
+Open a provider and the **Health** section at the bottom of the details shows success rate, P50 / P95 latency, rate-limit count, error reasons and status codes, members cooling down, a per-model comparison and the last 5 failures (key fragments in error text are masked).
+
+Health only counts requests the gateway itself recorded. It **never sends extra requests to providers** to measure them, and it is not uploaded. It is display only: it does not remove a provider from routing groups. Requests the gateway stopped locally without sending (for example, no key yet) are counted separately and do not affect the success rate. The page refreshes every 30 seconds and pauses while the window is hidden.
+
 ## Agents
 
 ![Agents](../images/agents.png)
@@ -80,6 +95,7 @@ You can also:
 - **Nest** groups: a routing group can be a member of another. Cycles are rejected.
 - **Cool down** failing members: after a failure (for example, rate limiting) a member is skipped for 30 seconds, longer after repeated failures, up to 5 minutes, and comes back after that or once it answers again. Cards mark members that are cooling down.
 - Use the switch on a group's card to pause the whole group.
+- The dot before each member is its provider's [health](#health). Nested-group members have no dot.
 
 ### Recent decisions
 

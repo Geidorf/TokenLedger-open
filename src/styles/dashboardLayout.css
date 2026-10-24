@@ -1,0 +1,122 @@
+/* 概览卡片布局：6 栏网格，全宽 6 / 半宽 3 / 三分之一 2；窄窗口下逐级退回全宽。 */
+.dashboard-layout { container-type: inline-size; min-width: 0; }
+.dashboard-layout-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-6); align-items: start; }
+.dashboard-layout-card { grid-column: span 6; min-width: 0; display: grid; gap: var(--space-6); container: layout-card / inline-size; }
+.dashboard-layout-card[data-width='half'] { grid-column: span 3; }
+.dashboard-layout-card[data-width='third'] { grid-column: span 2; }
+.dashboard-layout-card-body { display: grid; gap: var(--space-6); min-width: 0; }
+/* 卡片组件自己判断没内容时什么都不渲染（如时段规律、额度要点），查看时不留空格子；data-empty 由网格脚本标记。 */
+.dashboard-layout:not([data-editing]) .dashboard-layout-card[data-empty] { display: none; }
+@container (max-width: 980px) {
+  .dashboard-layout-card[data-width='third'] { grid-column: span 3; }
+}
+@container (max-width: 720px) {
+  .dashboard-layout-card[data-width] { grid-column: span 6; }
+}
+
+/* 卡片内容原本按视口分栏；放进半宽或三分之一时按卡片自身宽度收栏。 */
+@container layout-card (max-width: 700px) {
+  .dashboard-layout-card .quota-highlights-items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container layout-card (max-width: 460px) {
+  .dashboard-layout-card .quota-highlights-items { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 切换布局与「自定义」放在页头右侧。 */
+.dashboard-layout-switcher button[aria-checked='true'] { color: var(--color-text-primary); }
+.dashboard-layout-switcher button[aria-checked='true']::before { background: var(--seg-bg); box-shadow: var(--seg-shadow); }
+.dashboard-layout-switcher button:hover:not([aria-checked='true'])::before { background: var(--color-bg-hover-soft); }
+
+/* 编辑模式 */
+.dashboard-layout-toolbar {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px var(--space-4);
+  padding: var(--space-3) var(--space-4); border: 1px solid var(--color-primary-soft-border); border-radius: var(--radius-lg, 12px);
+  background: var(--color-primary-soft-bg);
+}
+.dashboard-layout-toolbar-title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.dashboard-layout-toolbar-title > svg { width: 16px; height: 16px; color: var(--color-primary); flex: none; }
+.dashboard-layout-toolbar-title > label { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
+.dashboard-layout-name {
+  width: 14em; max-width: 100%; min-height: 32px; padding: 0 10px; border: 0; border-radius: 7px;
+  background: var(--color-bg-input); color: var(--color-text-primary); font: inherit; font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+.dashboard-layout-name:focus-visible { outline: 2px solid var(--color-primary-focus); outline-offset: 1px; }
+.dashboard-layout-toolbar-hint { grid-column: 1; margin: 0; font-size: 12px; color: var(--color-text-tertiary); }
+.dashboard-layout-toolbar-actions { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.dashboard-layout-toolbar-actions svg { width: 15px; height: 15px; }
+.dashboard-layout-confirm { display: inline-flex; gap: var(--space-2); }
+@media (max-width: 760px) {
+  .dashboard-layout-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-layout-toolbar-actions { grid-column: 1; grid-row: auto; justify-content: flex-start; }
+}
+
+.dashboard-layout[data-editing] .dashboard-layout-card {
+  gap: var(--space-2); padding: var(--space-2); border: 1px dashed var(--color-border-strong, var(--color-border)); border-radius: 14px;
+  transition: border-color var(--motion-hover) var(--ease-out-quart), box-shadow var(--motion-hover) var(--ease-out-quart), opacity var(--motion-hover) var(--ease-out-quart);
+}
+.dashboard-layout[data-editing] .dashboard-layout-card:hover { border-color: var(--color-primary-soft-border); }
+.dashboard-layout[data-editing] .dashboard-layout-card[data-grabbed],
+.dashboard-layout[data-editing] .dashboard-layout-card[data-dragging] {
+  border-style: solid; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-glow), var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.18));
+}
+.dashboard-layout[data-editing] .dashboard-layout-card[data-dragging] { opacity: 0.55; }
+.dashboard-layout[data-editing] .dashboard-layout-card[data-hidden] { opacity: 0.72; }
+/* 拖动落点：目标卡片朝落点一侧画一条强调色竖线或横线。 */
+.dashboard-layout[data-editing] .dashboard-layout-card { position: relative; }
+.dashboard-layout-card[data-drop]::after {
+  content: ""; position: absolute; z-index: 2; border-radius: 999px; background: var(--color-primary); pointer-events: none;
+}
+.dashboard-layout-card[data-drop-axis='y'][data-drop='before']::after { left: 8px; right: 8px; top: -14px; height: 4px; }
+.dashboard-layout-card[data-drop-axis='y'][data-drop='after']::after { left: 8px; right: 8px; bottom: -14px; height: 4px; }
+.dashboard-layout-card[data-drop-axis='x'][data-drop='before']::after { top: 8px; bottom: 8px; left: -14px; width: 4px; }
+.dashboard-layout-card[data-drop-axis='x'][data-drop='after']::after { top: 8px; bottom: 8px; right: -14px; width: 4px; }
+.dashboard-layout[data-editing] .dashboard-layout-card-body { pointer-events: none; user-select: none; }
+
+.dashboard-layout-card-bar { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.dashboard-layout-handle {
+  flex: 1 1 auto; min-width: 0; min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px 0 6px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--color-text-primary); font: inherit; font-weight: 600;
+  cursor: grab; touch-action: none; text-align: left;
+}
+.dashboard-layout-handle > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-layout-handle > svg { width: 16px; height: 16px; color: var(--color-text-tertiary); flex: none; }
+.dashboard-layout-handle:hover { background: var(--color-bg-hover-soft); }
+.dashboard-layout-handle:active, .dashboard-layout-card[data-dragging] .dashboard-layout-handle { cursor: grabbing; }
+.dashboard-layout-handle[aria-pressed='true'] { background: var(--color-primary-soft-bg); color: var(--color-primary); }
+.dashboard-layout-handle[aria-pressed='true'] > svg { color: var(--color-primary); }
+.dashboard-layout-handle:focus-visible,
+.dashboard-layout-visibility:focus-visible { outline: 2px solid var(--color-primary-focus); outline-offset: 1px; }
+.segmented.dashboard-layout-width { min-height: 36px; flex: none; }
+.segmented.dashboard-layout-width button { min-height: 36px; min-width: 36px; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.dashboard-layout-visibility {
+  flex: none; min-height: 36px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--color-text-secondary); font: inherit; font-size: 13px;
+}
+.dashboard-layout-visibility > svg { width: 15px; height: 15px; }
+.dashboard-layout-visibility:hover:not(:disabled) { background: var(--color-bg-hover-soft); color: var(--color-text-primary); }
+.dashboard-layout-visibility:disabled { opacity: 0.5; cursor: not-allowed; }
+.dashboard-layout-note { margin: 0; padding: var(--space-3) var(--space-3) var(--space-2); color: var(--color-text-tertiary); font-size: 13px; }
+
+/* 预算卡片 */
+.budget-overview-card .panel-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.budget-overview-scope { margin-left: 4px; padding: 1px 6px; border-radius: 999px; background: var(--color-bg-subtle); color: var(--color-text-tertiary); font-size: 11px; font-weight: 500; }
+.budget-overview-empty, .budget-overview-error { margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: 13px; }
+.budget-overview-error { color: var(--color-danger-text); }
+.budget-overview-list { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+.budget-overview-rule { display: grid; gap: 4px; }
+.budget-overview-rule-head { display: flex; justify-content: space-between; gap: var(--space-2); font-size: 13px; }
+.budget-overview-rule-title { min-width: 0; overflow-wrap: anywhere; }
+.budget-overview-level { flex: none; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
+.budget-overview-rule[data-level='warn'] .budget-overview-level { color: var(--color-warning); }
+.budget-overview-rule[data-level='over'] .budget-overview-level { color: var(--color-danger-text); }
+.budget-overview-reading { color: var(--color-text-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.budget-overview-meter { height: 4px; border-radius: 999px; background: var(--color-bg-hover-strong); overflow: hidden; }
+.budget-overview-meter > span { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); transition: width var(--motion-gentle) var(--ease-out-expo); }
+.budget-overview-rule[data-level='warn'] .budget-overview-meter > span { background: var(--color-warning); }
+.budget-overview-rule[data-level='over'] .budget-overview-meter > span { background: var(--color-danger); }
+.budget-overview-rule[data-level='unavailable'] .budget-overview-meter > span { background: var(--color-text-tertiary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-layout[data-editing] .dashboard-layout-card, .budget-overview-meter > span { transition: none; }
+}

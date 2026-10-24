@@ -84,6 +84,7 @@ fn main() {
         "restore_claude_statusline_setup",
         "get_settings",
         "save_settings",
+        "autostart_supported",
         "get_cost_profile",
         "validate_cost_profile",
         "save_cost_profile",

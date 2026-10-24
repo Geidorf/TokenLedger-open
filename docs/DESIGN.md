@@ -306,7 +306,7 @@ T10.151 的聚合、字段与刷新规则由后端与 `useBehaviorAnalysis` 提�
 
 首页模块和额度来源按稳定 ID 存储在本机 `tokenledger:dashboard-display-preferences:v1`。载荷 version 2 的模块为 `kpi`、`quota`、`trend`、`alerts`、`distribution`、`subscription`、`calendar`，另存完整额度列表的展开状态、日历折叠状态与排行档位。v1 的 `insights` 在原位置拆为 `alerts` 与 `calendar`，已隐藏的 `insights` 只隐藏 `calendar`；缺失的已知 ID 插到默认顺序中的位置。同窗口通过外部 store 发布，跨窗口通过 storage 事件同步；存储失败时本次会话仍可使用。顺序和隐藏只改变渲染，Provider 授权、采集与同步保持原有职责。调整显示用可访问弹窗提供开关、上下移动与 Token 口径开关，维持连续列表的字号、间距和行内详情。提醒的忽略与稍后状态另存 `tokenledger:alerts-state:v1`（保留 60 天，上限 200 条），同样只在本机。
 
-载荷 version 2 属信息架构 v2（T10.156），未实现；现行载荷的模块为 `kpi`、`trend`、`quota`、`distribution`、`insights`，调整显示只提供开关和上下移动。
+载荷 version 2 属信息架构 v2（T10.156），未实现。现行概览改为卡片布局（`src/utils/dashboardLayout.ts`）：卡片 ID 为 `metrics`、`quotaHighlights`、`trend`、`quota`、`split`、`anomaly`（用量异常，仅本机口径渲染）、`budget`、`insights`、`context`、`temporal`、`heatmap`、`tools`，每张卡片存顺序、显隐与宽度（`full`/`half`/`third`，按 6 栏网格，容器窄于 980px 时三分之一退为半宽，窄于 720px 全宽）。布局可存多套（最多 6 套，内置「日常」与改版前同序、「省钱」），页头单选组切换，「恢复默认」回到该布局的模板；存本机 `tokenledger:dashboard-layouts:v2`，首次读取时把 v1 的五个模块（`kpi`、`trend`、`quota`、`distribution`、`insights`）按原顺序展开迁入「日常」，隐藏的模块下卡片一并隐藏。概览「编辑布局」里按住卡片标题拖动（只画落点、松手才重排），或聚焦标题按空格拿起、方向键与 Home/End 移动、再按空格放下、Esc 放回，位置经 live region 播报；编辑时卡片内容 `inert`。至少保留一张当前有内容的可见卡片；查看时一张都渲染不出来（例如只留热力图又切到今日）则显示空状态并提供「编辑布局」。调整显示弹窗的「首页卡片」作用于当前布局，提供开关、宽度与上下移动；额度来源的顺序与隐藏仍存 v1 键。
 
 `session_analysis` 是 Rust 独立只读模块，按账本 record ID 在受控本地来源中定位并验证完整 unique key，复用 scanner 用量规范化后按可靠用户事件聚合。读取有总预算、单行／候选／轮次上限与显式取消；日志正文通过白名单反序列化丢弃。接口与统计语义见 `contracts/session-analysis-v1.md`，不改 Stats v2、SQLite schema 或云端投影。明细内打开原生 dialog 侧边抽屉，平台模态阻隔背景交互；每轮默认精简行，展开查看模型、工具和缓存拆分。列表每批显示 50 轮，合计仍来自完整返回的已确认轮次。
 
