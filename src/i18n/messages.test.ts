@@ -23,6 +23,7 @@ const FULLY_LOCALIZED = [
   'src/components/Sidebar.tsx',
   'src/components/AppHeader.tsx',
   'src/features/gateway/ModelWorkspace.tsx',
+  'src/features/gateway/RequestLogPage.tsx',
   'src/features/gateway/ProviderHealth.tsx',
   'src/features/gateway/ProvidersPage.tsx',
   'src/features/gateway/AgentsPage.tsx',

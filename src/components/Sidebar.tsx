@@ -85,7 +85,7 @@ const USAGE_NAV_ITEM: NavItem = { id: 'dashboard', get label() { return t('shell
 const MODEL_NAV_ITEMS: NavItem[] = [
   { id: 'agents', get label() { return t('shell.nav.agents'); }, matches: (tab) => tab === 'agents' },
   { id: 'providers', get label() { return t('shell.nav.providers'); }, matches: (tab) => tab === 'providers' },
-  { id: 'gateway', get label() { return t('shell.nav.gateway'); }, matches: (tab) => tab === 'gateway' },
+  { id: 'gateway', get label() { return t('shell.nav.gateway'); }, matches: (tab) => tab === 'gateway' || tab === 'gatewaylog' },
   { id: 'routing', get label() { return t('shell.nav.routing'); }, matches: (tab) => tab === 'routing' },
 ];
 

@@ -500,6 +500,7 @@ mod tests {
             group: None,
             member: None,
             context: None,
+            first_token_ms: None,
         }
     }
 
