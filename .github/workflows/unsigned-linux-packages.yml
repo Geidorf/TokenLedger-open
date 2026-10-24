@@ -148,16 +148,17 @@ jobs:
           DEB="$(ls release-stage/linux/*.deb)"
           RPM="$(ls release-stage/linux/*.rpm)"
           dpkg-deb --info "$DEB"
-          DEB_FILES="$(dpkg-deb --contents "$DEB")"
+          # Tauri 打出的 deb 里条目没有 ./ 前缀；统一成绝对路径再逐行比对。
+          DEB_FILES="$(dpkg-deb --contents "$DEB" | awk '{print $NF}' | sed -e 's#^\./#/#' -e 's#^\([^/]\)#/\1#')"
           RPM_FILES="$(rpm -qlp "$RPM")"
-          for path in /usr/bin/tokenledger /usr/share/applications/tokenledger.desktop; do
-            grep -q " \.$path\$" <<<"$DEB_FILES" || { echo "deb is missing $path" >&2; exit 1; }
-            grep -qx "$path" <<<"$RPM_FILES" || { echo "rpm is missing $path" >&2; exit 1; }
-          done
+          EXPECTED=(/usr/bin/tokenledger /usr/share/applications/tokenledger.desktop)
           if [ -f src-tauri/target/release/tokenledger-cli ]; then
-            grep -q " \./usr/bin/tokenledger-cli\$" <<<"$DEB_FILES" || { echo "deb is missing tokenledger-cli" >&2; exit 1; }
-            grep -qx /usr/bin/tokenledger-cli <<<"$RPM_FILES" || { echo "rpm is missing tokenledger-cli" >&2; exit 1; }
+            EXPECTED+=(/usr/bin/tokenledger-cli)
           fi
+          for path in "${EXPECTED[@]}"; do
+            grep -qxF "$path" <<<"$DEB_FILES" || { echo "deb is missing $path" >&2; exit 1; }
+            grep -qxF "$path" <<<"$RPM_FILES" || { echo "rpm is missing $path" >&2; exit 1; }
+          done
           # deb 必须声明 WebKitGTK 与托盘库依赖，否则别的机器装上也起不来。
           DEPENDS="$(dpkg-deb --field "$DEB" Depends)"
           echo "Depends: $DEPENDS"
@@ -165,7 +166,7 @@ jobs:
           grep -q 'libgtk-3' <<<"$DEPENDS"
           rpm -qp --requires "$RPM"
           mkdir -p desktop-check
-          dpkg-deb --fsys-tarfile "$DEB" | tar -x -C desktop-check ./usr/share/applications
+          dpkg-deb -x "$DEB" desktop-check
           desktop-file-validate desktop-check/usr/share/applications/*.desktop
 
       - name: Install the deb and smoke-test it under Xvfb
