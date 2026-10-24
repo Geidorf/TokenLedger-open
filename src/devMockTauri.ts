@@ -2080,6 +2080,7 @@ export function installDevMockTauri() {
         return mockSettings;
       case 'tray_panel_toggle': {
         const enabled = Boolean(payload.enabled);
+        if (payload.target === 'gateway' && !enabled) throw new Error('关闭网关请在主窗口「模型接入」完成');
         if (payload.target === 'gateway') mockSettings = { ...mockSettings, model_access_enabled: enabled, model_access_version: 1 };
         else if (payload.target === 'sync') mockSettings = { ...mockSettings, background_sync_paused: !enabled };
         else if (payload.target === 'scan') mockSettings = { ...mockSettings, background_scan_paused: !enabled };

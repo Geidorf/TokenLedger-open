@@ -548,18 +548,25 @@ fn focus_main_window(
 fn open_main_settings(
     app_handle: tauri::AppHandle,
     tray_state: tauri::State<'_, Arc<TrayWindowState>>,
+    anchor: Option<String>,
 ) -> Result<(), String> {
+    let anchor = main_settings_anchor(anchor.as_deref());
     let tray_state = tray_state.inner().clone();
     let handle = app_handle.clone();
     app_handle
         .run_on_main_thread(move || {
             show_main_window_from_tray(&handle, &tray_state);
-            let _ = handle.emit(
-                "open-settings",
-                serde_json::json!({ "anchor": "settings-widget" }),
-            );
+            let _ = handle.emit("open-settings", serde_json::json!({ "anchor": anchor }));
         })
         .map_err(|error| error.to_string())
+}
+
+/// 挂件能跳到的设置分区是闭合集合：默认「桌面挂件」，托盘面板关网关时跳「模型接入」。
+fn main_settings_anchor(requested: Option<&str>) -> &'static str {
+    match requested {
+        Some("settings-model-access") => "settings-model-access",
+        _ => "settings-widget",
+    }
 }
 
 pub fn run() {
@@ -1025,6 +1032,19 @@ pub fn run() {
 #[cfg(test)]
 mod scheduler_tests {
     use super::*;
+
+    #[test]
+    fn widgets_can_only_open_the_two_allowed_settings_sections() {
+        assert_eq!(main_settings_anchor(None), "settings-widget");
+        assert_eq!(
+            main_settings_anchor(Some("settings-model-access")),
+            "settings-model-access"
+        );
+        assert_eq!(
+            main_settings_anchor(Some("settings-cloud")),
+            "settings-widget"
+        );
+    }
 
     #[test]
     fn lockscreen_only_settings_schedule_work_on_windows_only() {

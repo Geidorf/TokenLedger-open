@@ -40,6 +40,8 @@ export interface PanelControls {
   pending: PanelToggleTarget | null;
   error: string;
   onToggle: (target: PanelToggleTarget, enabled: boolean) => void;
+  /** 网关开着时点它：去主窗口「模型接入」关（那里会先检查仍指向网关的 Agent）。 */
+  onCloseGateway: () => void;
 }
 
 export function gatewayState(status: TrayPanelStatus | null): { text: string; tone: 'ok' | 'off' | 'warn' | 'unknown' } {
@@ -86,7 +88,7 @@ function QuotaBar({ item, now }: { item: CardQuotaItem; now: number }) {
 
 /** 按钮上写短名，读屏与悬停提示用全名。 */
 const TOGGLES: ReadonlyArray<{ id: PanelToggleTarget; label: string; name: string; icon: LucideIcon; hint: string }> = [
-  { id: 'gateway', label: '网关', name: '网关', icon: Power, hint: '模型接入总开关：本地网关与路由随它启停' },
+  { id: 'gateway', label: '网关', name: '网关', icon: Power, hint: '模型接入总开关：在这里可以打开；关闭要到主窗口，先检查仍指向网关的 Agent' },
   { id: 'sync', label: '同步', name: '后台同步', icon: CloudUpload, hint: '后台同步：扫描后自动同步到云端（手动同步不受影响）' },
   { id: 'scan', label: '扫描', name: '后台扫描', icon: ScanLine, hint: '后台扫描：定时扫描本机日志（顶栏刷新按钮照常可用）' },
 ];
@@ -127,7 +129,7 @@ function Toggles({ controls, staticPreview }: { controls: PanelControls | null; 
             data-pending={pending ? 'true' : undefined}
             disabled={controls.pending !== null}
             title={toggle.hint}
-            onClick={() => controls.onToggle(toggle.id, !on)}
+            onClick={() => (toggle.id === 'gateway' && on ? controls.onCloseGateway() : controls.onToggle(toggle.id, !on))}
           >
             {body}
           </button>

@@ -305,6 +305,11 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
     void invoke('open_main_settings').catch(() => undefined);
   };
 
+  // 托盘面板关网关：去主窗口「模型接入」，那里会先检查仍指向网关的 Agent 并提供恢复。
+  const openModelAccess = () => {
+    void invoke('open_main_settings', { anchor: 'settings-model-access' }).catch(() => undefined);
+  };
+
   const removeFromDesktop = () => {
     void invoke('set_desktop_widget_enabled', { enabled: false }).catch(() => undefined);
   };
@@ -362,7 +367,13 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
           now={now}
           scene={routing.scene}
           loaded={routing.loaded}
-          controls={{ status: panelStatus, pending: panelPending, error: panelError, onToggle: (target, enabled) => void togglePanel(target, enabled) }}
+          controls={{
+            status: panelStatus,
+            pending: panelPending,
+            error: panelError,
+            onToggle: (target, enabled) => void togglePanel(target, enabled),
+            onCloseGateway: openModelAccess,
+          }}
           noticeActions={mode === 'popover' ? { openSettings, openMain } : null}
           toolbar={mode === 'desktop' ? <DesktopToolbar shown={hovered} at="top" actions={actions} busy={busy} /> : null}
         />

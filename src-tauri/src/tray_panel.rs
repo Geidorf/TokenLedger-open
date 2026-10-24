@@ -2,7 +2,7 @@
 //!
 //! - 最紧额度：每次本机额度读完（`quota::get_local_quota_providers_impl_*` 的末尾）记一份，
 //!   托盘刷新时按当前时间重新挑，过期或已过重置时间的窗口不算（与额度提醒同一套读数）。
-//! - 托盘面板：网关（模型接入总开关）、后台同步、后台扫描三个开关。挂件窗口只拿到这两条命令，
+//! - 托盘面板：网关（模型接入总开关，面板里只能打开；关闭要去主窗口检查 Agent）、后台同步、后台扫描三个开关。挂件窗口只拿到这两条命令，
 //!   拿不到通用 `save_settings`，也读不到任何密钥、地址或账号。
 
 use std::sync::{Arc, Mutex, OnceLock};
@@ -20,6 +20,8 @@ use crate::settings::{self, AppSettings, BackgroundPause};
 /// 公司额度来源只看「今日」「本月」两条，与看板和挂件同一组（Key 日额度不在桌面展示）。
 const COMPANY_PROVIDER_PREFIX: &str = "company-openapi-";
 const COMPANY_WINDOWS: [&str; 2] = ["user-daily", "user-monthly"];
+/// 面板不直接关网关：关之前要在主窗口检查仍指向网关的 Agent。
+pub const GATEWAY_CLOSE_IN_MAIN: &str = "关闭网关请在主窗口「模型接入」完成";
 
 fn quota_cache() -> &'static Mutex<Vec<QuotaProviderEnvelope>> {
     static CACHE: OnceLock<Mutex<Vec<QuotaProviderEnvelope>>> = OnceLock::new();
@@ -201,6 +203,9 @@ pub fn tray_panel_toggle(
 ) -> Result<TrayPanelStatus, String> {
     let target = PanelToggle::parse(&target)?;
     let saved = match target {
+        // 关网关要先检查哪些 Agent 还指向网关并提供恢复（主窗口「模型接入」卡片），面板只负责打开；
+        // 这里拒绝关闭，避免绕过那一步让 Agent 的请求无声失败。
+        PanelToggle::Gateway if !enabled => return Err(GATEWAY_CLOSE_IN_MAIN.to_string()),
         PanelToggle::Gateway => {
             let saved = settings::update_model_access_enabled(&app, enabled)?;
             gateway.set_enabled(saved.model_access_enabled);
@@ -331,6 +336,11 @@ mod tests {
             tightest_quota(&providers, now()).map(|item| item.remaining),
             Some(70)
         );
+    }
+
+    #[test]
+    fn gateway_close_message_points_to_the_main_window() {
+        assert!(GATEWAY_CLOSE_IN_MAIN.contains("主窗口"));
     }
 
     #[test]

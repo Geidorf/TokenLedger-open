@@ -12025,7 +12025,10 @@ pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
     db::init_db(&db_path).map_err(|e| e.to_string())?;
     let prices_before = auto_discovered_price_keys(app);
 
-    let scan_options = scanner::ScanOptions::from_settings(&crate::settings::load_settings(app));
+    let settings = crate::settings::load_settings(app);
+    let scan_options = scanner::ScanOptions::from_settings(&settings);
+    // 托盘面板「后台同步」关着时，刷新扫描后也不自动上传；设置页的手动同步不受影响。
+    let post_scan_sync = !settings.background_sync_paused;
     match scanner::run_scan_singleflight(&db_path, &scan_options) {
         Ok(scan) => {
             let outcome = scan.outcome;
@@ -12060,16 +12063,18 @@ pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
                 .cloned()
                 .collect::<Vec<_>>();
             discovered_price_models.sort();
-            let handle = app.clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
-                if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
-                    log::debug!("Post-scan cloud sync skipped/failed: {}", e);
-                }
-            });
+            if post_scan_sync {
+                let handle = app.clone();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
+                        log::debug!("Post-scan cloud sync skipped/failed: {}", e);
+                    }
+                });
+            }
             let price_message = if discovered_price_models.is_empty() {
                 String::new()
             } else {

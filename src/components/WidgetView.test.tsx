@@ -307,6 +307,10 @@ describe('WidgetView', () => {
     fireEvent.click(scan);
     await waitFor(() => expect(screen.getByRole('switch', { name: /后台扫描/ })).toHaveAttribute('aria-checked', 'false'));
     expect(invokeMock).toHaveBeenCalledWith('tray_panel_toggle', { target: 'scan', enabled: false });
+    // 网关开着时点它不直接关：去主窗口「模型接入」，那里先检查仍指向网关的 Agent。
+    fireEvent.click(screen.getByRole('switch', { name: '网关' }));
+    expect(invokeMock).toHaveBeenCalledWith('open_main_settings', { anchor: 'settings-model-access' });
+    expect(invokeMock).not.toHaveBeenCalledWith('tray_panel_toggle', expect.objectContaining({ target: 'gateway' }));
     expect(invokeMock.mock.calls.some(([command]) => command === 'save_settings' || command === 'gateway_set_model_access')).toBe(false);
   });
 
