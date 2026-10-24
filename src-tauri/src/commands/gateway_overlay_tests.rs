@@ -683,3 +683,57 @@ fn account_split_matches_deduplicated_summary_in_a_non_default_time_zone() {
     );
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn overview_sums_context_composition_of_gateway_rows_in_the_window() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let conn = db::get_connection(&db_path).unwrap();
+    insert_scan(&conn, "a", "s9", "2026-10-04 09:00:00", 7, 3);
+    drop(conn);
+    let context = |system: u64, tools: u64| {
+        json!({
+            "systemBytes": system, "toolsBytes": tools, "historyBytes": 300, "toolResultsBytes": 60,
+            "attachmentsBytes": 0, "messages": 3, "toolResults": 1, "attachments": 0
+        })
+    };
+    let mut first = ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80);
+    first["context"] = context(100, 900);
+    let mut second = ledger_line("g2", Some("s2"), local_ts(11, 0, 0), 50, 20);
+    second["context"] = context(20, 100);
+    // 没有构成的网关行不计入请求数与输入合计。
+    let plain = ledger_line("g3", Some("s3"), local_ts(11, 30, 0), 30, 10);
+    write_ledger(&app, &[first, second, plain]);
+
+    let query: super::super::LocalStatsQuery = serde_json::from_value(json!({
+        "range": "today",
+        "timezone": iana_time_zone::get_timezone().unwrap(),
+    }))
+    .unwrap();
+    let stats = super::super::get_local_stats_v2_impl_at(&app, query, local_ts(12, 0, 0)).unwrap();
+    let composition = &stats["contextComposition"];
+    assert_eq!(composition["requests"], json!(2));
+    assert_eq!(composition["promptTokens"], json!(250));
+    assert_eq!(composition["systemBytes"], json!(120));
+    assert_eq!(composition["toolsBytes"], json!(1000));
+    assert_eq!(composition["historyBytes"], json!(600));
+    assert_eq!(composition["messages"], json!(6));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn overview_omits_context_composition_without_measured_rows() {
+    let (app, root) = test_app();
+    write_ledger(
+        &app,
+        &[ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80)],
+    );
+    let query: super::super::LocalStatsQuery = serde_json::from_value(json!({
+        "range": "today",
+        "timezone": iana_time_zone::get_timezone().unwrap(),
+    }))
+    .unwrap();
+    let stats = super::super::get_local_stats_v2_impl_at(&app, query, local_ts(12, 0, 0)).unwrap();
+    assert!(stats.get("contextComposition").is_none());
+    let _ = fs::remove_dir_all(root);
+}

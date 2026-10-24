@@ -206,6 +206,8 @@ export function handleGatewayMock(cmd: string, payload: Record<string, unknown>)
       return groups;
     case 'gateway_recent_route_decisions':
       return decisions;
+    case 'gateway_routing_cooldowns':
+      return [];
     case 'gateway_routing_feed': {
       const running = providers.some((provider) => provider.enabled);
       if (!running) return { running, decisions: [], requests: [] };

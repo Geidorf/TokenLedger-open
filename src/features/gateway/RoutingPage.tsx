@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { GroupIcon } from '../../prototypes/prototypeKit';
 import type { ToastType } from '../../types';
 import type { RequestConfirmation } from '../../utils/confirmation';
-import { deleteRoutingGroup, errorText, listProviders, listRoutingGroups, recentRouteDecisions, upsertRoutingGroup } from './api';
+import { deleteRoutingGroup, errorText, listProviders, listRoutingGroups, recentRouteDecisions, routingCooldowns, upsertRoutingGroup } from './api';
 import {
   ATTEMPT_OUTCOME_LABEL,
   DECISION_REASON_LABEL,
@@ -21,7 +21,7 @@ import {
   ttlLabel,
   weightShare,
 } from './helpers';
-import type { ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
+import type { CoolingMember, ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
 import { Sheet } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 import { RoutingStage, RoutingStageEmpty } from './RoutingStage';
@@ -183,7 +183,12 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
   );
 }
 
-function GroupCard({ group, busy, onEdit, onToggle, onDelete }: { group: RoutingGroup; busy: boolean; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
+function coolingLabel(item: CoolingMember): string {
+  const time = item.remainingSecs >= 60 ? `${Math.ceil(item.remainingSecs / 60)} 分钟` : `${item.remainingSecs} 秒`;
+  return `冷却中 · 约 ${time}`;
+}
+
+function GroupCard({ group, busy, cooling, onEdit, onToggle, onDelete }: { group: RoutingGroup; busy: boolean; cooling: Map<string, CoolingMember>; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
   return (
     <div className={`mw-card mw-group ${group.enabled ? '' : 'is-off'}`}>
       <div className="mw-group-head">
@@ -202,6 +207,7 @@ function GroupCard({ group, busy, onEdit, onToggle, onDelete }: { group: Routing
             <div className="mw-member-main"><strong className="mw-mono-text">{member}</strong></div>
             {group.strategy === 'manual' && group.manualMember === member && <span className="mw-chip is-success">固定使用</span>}
             {group.strategy === 'weighted' && <span className="mw-chip">权重 {memberWeight(group, member)} · {weightShare(group, member)}%</span>}
+            {cooling.has(member) && <span className="mw-chip is-warning" title={`连续失败 ${cooling.get(member)?.failures} 次，暂时排到其余成员之后`}>{coolingLabel(cooling.get(member) as CoolingMember)}</span>}
           </li>
         ))}
       </ol>
@@ -287,22 +293,34 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
   const [groups, setGroups] = useState<RoutingGroup[] | null>(null);
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [decisions, setDecisions] = useState<RouteDecision[]>([]);
+  const [cooling, setCooling] = useState<CoolingMember[]>([]);
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<{ group: RoutingGroup; isNew: boolean } | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [nextGroups, nextProviders, nextDecisions] = await Promise.all([listRoutingGroups(), listProviders(), recentRouteDecisions(30)]);
+      const [nextGroups, nextProviders, nextDecisions, nextCooling] = await Promise.all([listRoutingGroups(), listProviders(), recentRouteDecisions(30), routingCooldowns()]);
       setGroups(nextGroups);
       setProviders(nextProviders);
       setDecisions(nextDecisions);
+      setCooling(nextCooling);
       setLoadError('');
     } catch (error) {
       setLoadError(errorText(error));
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  // Members start and stop cooling without any page action, so keep polling
+  // (faster while some are shown) and skip ticks while the window is hidden.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      routingCooldowns().then(setCooling).catch(() => undefined);
+    }, cooling.length > 0 ? 10_000 : 30_000);
+    return () => window.clearInterval(timer);
+  }, [cooling.length]);
+  const coolingByMember = useMemo(() => new Map(cooling.map((item) => [item.member, item])), [cooling]);
 
   const options = useMemo(() => modelOptions(providers, groups ?? []), [providers, groups]);
 
@@ -360,6 +378,7 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
             key={group.id}
             group={group}
             busy={busy}
+            cooling={coolingByMember}
             onEdit={() => setEditing({ group, isNew: false })}
             onToggle={() => void save({ ...group, enabled: !group.enabled }, group.enabled ? `${group.name} 已停用` : `${group.name} 已启用`)}
             onDelete={() => void remove(group)}
@@ -368,6 +387,17 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
       </div>
       <aside className="mw-card mw-decisions" aria-label="最近路由决策">
         <div className="mw-panel-head"><h3>最近决策</h3><button type="button" className="mw-btn is-ghost" onClick={() => void load()}>刷新</button></div>
+        {cooling.length > 0 && (
+          <section className="mw-cooling" aria-label="冷却中的成员">
+            <h4>冷却中</h4>
+            <ul>
+              {cooling.map((item) => (
+                <li key={item.member}><span className="mw-mono-text">{item.member}</span><span className="mw-chip is-warning">{coolingLabel(item)}</span></li>
+              ))}
+            </ul>
+            <small>失败过的成员暂时排到其余成员之后，成功一次即恢复。</small>
+          </section>
+        )}
         <DecisionList decisions={decisions} />
       </aside>
       {editing && (

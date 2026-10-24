@@ -6352,6 +6352,49 @@ fn aggregate_provider_split(
     )
 }
 
+/// 契约 §2.8：本期带 Context 构成的网关行的构成合计与输入合计，读者据此求平均构成。
+/// 没有这样的行时为 `None`，不输出空对象。
+fn aggregate_context_composition(
+    rows: &[StatRow],
+    contexts: &HashMap<i64, crate::gateway::ContextSize>,
+    filter_start: Option<NaiveDateTime>,
+    filter_end: NaiveDateTime,
+) -> Option<Value> {
+    let filter_start = filter_start.map(storage_timestamp);
+    let filter_end = storage_timestamp(filter_end);
+    let mut sum = crate::gateway::ContextSize::default();
+    let (mut requests, mut prompt_tokens) = (0_i64, 0_i64);
+    for row in rows {
+        let Some(context) = contexts.get(&row.id) else {
+            continue;
+        };
+        if filter_start
+            .as_ref()
+            .is_some_and(|start| row.timestamp < *start)
+            || row.timestamp > filter_end
+        {
+            continue;
+        }
+        requests += 1;
+        prompt_tokens += row.input_tokens.max(0) + row.cached_tokens.max(0);
+        sum.system_bytes += context.system_bytes;
+        sum.tools_bytes += context.tools_bytes;
+        sum.history_bytes += context.history_bytes;
+        sum.tool_results_bytes += context.tool_results_bytes;
+        sum.attachments_bytes += context.attachments_bytes;
+        sum.messages += context.messages;
+        sum.tool_results += context.tool_results;
+        sum.attachments += context.attachments;
+    }
+    if requests == 0 {
+        return None;
+    }
+    let mut value = json!(sum);
+    value["requests"] = json!(requests);
+    value["promptTokens"] = json!(prompt_tokens);
+    Some(value)
+}
+
 fn aggregate_rows_for_window(
     rows: &[StatRow],
     range: StatsRange,
@@ -7087,6 +7130,15 @@ fn get_local_stats_v2_snapshot_with_entity_at(
                 bounds.current_start.as_ref().map(DateTime::naive_local),
                 bounds.current_end.naive_local(),
             );
+            let contexts = gateway_overlay::row_contexts(&db_path, &signature)?;
+            if let Some(composition) = aggregate_context_composition(
+                &rows,
+                &contexts,
+                bounds.current_start.as_ref().map(DateTime::naive_local),
+                bounds.current_end.naive_local(),
+            ) {
+                stats["contextComposition"] = composition;
+            }
         }
     }
     Ok(LocalStatsSnapshot {

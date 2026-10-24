@@ -7035,6 +7035,9 @@
   .log-context-legend b { color: var(--color-text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
   .log-context-legend small, .log-context-counts { color: var(--color-text-tertiary); font-size: 10px; }
 
+  .average-context-panel .log-detail-context { display: grid; gap: 8px; }
+  .average-context-panel .log-detail-context > span { color: var(--color-text-tertiary); font-size: 11px; }
+
   .log-detail-context .is-systemBytes { background: var(--chart-1); }
   .log-detail-context .is-toolsBytes { background: var(--chart-2); }
   .log-detail-context .is-historyBytes { background: var(--chart-3); }

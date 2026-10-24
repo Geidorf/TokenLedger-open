@@ -41,10 +41,44 @@ class WallpaperModelTest {
         )
     )
 
+    private fun ok(result: RoutingSnapshotsResult, readAtElapsedMs: Long, account: String = "user-a") =
+        WallpaperRead.Ok(result, readAtElapsedMs, account)
+
+    @Test
+    fun theGapBetweenSegmentsStillCountsAsPlaying() {
+        val model = WallpaperModel()
+        model.accept(ok(result(flow("a", ageMs = 1_000)), 0), 0)
+        assertTrue(model.frame(0, false).playing)
+        val gap = WallpaperTimeline.SEGMENT_MS + WallpaperTimeline.GAP_MS / 2
+        val inGap = model.frame(gap, false)
+        assertNull("no dot is drawn between segments", inGap.active)
+        assertTrue("but frames must keep coming so the next segment is shown", inGap.playing)
+        assertEquals(1, model.frame(WallpaperTimeline.SEGMENT_MS + WallpaperTimeline.GAP_MS + 10, false).active!!.segment)
+    }
+
+    @Test
+    fun switchingAccountsWhileHiddenDropsTheOldAccountsScene() {
+        val model = WallpaperModel()
+        model.accept(ok(result(flow("a", ageMs = 1_000)), 0, account = "user-a"), 0)
+        // Signed out and into another account while the wallpaper was hidden: the first read fails.
+        model.accept(WallpaperRead.Failed(RoutingReadFailure.Unavailable, account = "user-b"), 5_000)
+        val frame = model.frame(5_000, false)
+        assertNull(frame.scene)
+        assertNull(frame.active)
+        assertTrue(frame.lit.isEmpty())
+        assertFalse(frame.playing)
+
+        // A failure with no known account (the stored login itself was unreadable) keeps what is there.
+        val same = WallpaperModel()
+        same.accept(ok(result(flow("a", ageMs = 1_000)), 0, account = "user-a"), 0)
+        same.accept(WallpaperRead.Failed(RoutingReadFailure.Unavailable), 5_000)
+        assertNotNull(same.frame(5_000, false).scene)
+    }
+
     @Test
     fun aNewFlowPlaysOnceThenStaysLitThenFades() {
         val model = WallpaperModel()
-        model.accept(WallpaperRead.Ok(result(flow("a", ageMs = 4_000)), readAtElapsedMs = 0), nowElapsedMs = 0)
+        model.accept(ok(result(flow("a", ageMs = 4_000)), readAtElapsedMs = 0), nowElapsedMs = 0)
         val first = model.frame(0, reduceMotion = false)
         assertNotNull(first.active)
         assertEquals(0, first.active!!.segment)
@@ -52,7 +86,7 @@ class WallpaperModelTest {
         assertEquals(StatusTone.Live, first.status.tone)
 
         // Same flow in the next snapshot: not replayed.
-        model.accept(WallpaperRead.Ok(result(flow("a", ageMs = 9_000)), readAtElapsedMs = 5_000), nowElapsedMs = 5_000)
+        model.accept(ok(result(flow("a", ageMs = 9_000)), readAtElapsedMs = 5_000), nowElapsedMs = 5_000)
         val afterPlay = model.frame(5_000, reduceMotion = false)
         assertNull(afterPlay.active)
         assertEquals(listOf("a"), afterPlay.lit.map { it.flow.id })
@@ -65,11 +99,11 @@ class WallpaperModelTest {
     @Test
     fun oldFlowsAndOfflineDesktopsDoNotPlay() {
         val model = WallpaperModel()
-        model.accept(WallpaperRead.Ok(result(flow("old", ageMs = 11 * 60_000L)), 0), 0)
+        model.accept(ok(result(flow("old", ageMs = 11 * 60_000L)), 0), 0)
         assertNull(model.frame(0, false).active)
 
         val offline = WallpaperModel()
-        offline.accept(WallpaperRead.Ok(result(flow("x", ageMs = 2_000), snapshotAgeMs = 5 * 60_000L), 0), 0)
+        offline.accept(ok(result(flow("x", ageMs = 2_000), snapshotAgeMs = 5 * 60_000L), 0), 0)
         val frame = offline.frame(0, false)
         assertNull(frame.active)
         assertFalse(frame.inflight)
@@ -86,19 +120,19 @@ class WallpaperModelTest {
                 RoutingDeviceSnapshot("d1", server - 3_000, listOf(RoutingSourceState(RoutingSourceId.TokenLedger, true)), d1Flows.toList())
             )
         )
-        model.accept(WallpaperRead.Ok(twoDevices(server, flow("a", 3_000), flow("b", 2_000)), 0), 0)
+        model.accept(ok(twoDevices(server, flow("a", 3_000), flow("b", 2_000)), 0), 0)
         assertEquals("a", model.frame(0, false).active!!.flow.id)
 
         // d1 stops publishing while "b" waits; d2 staying online must not let it play late.
         val later = 5 * 60_000L
-        model.accept(WallpaperRead.Ok(twoDevices(server + later, flow("a", 3_000), flow("b", 2_000)), later), later)
+        model.accept(ok(twoDevices(server + later, flow("a", 3_000), flow("b", 2_000)), later), later)
         assertNull(model.frame(later, false).active)
     }
 
     @Test
     fun inFlightRequestsAnimateOnlyWhileLive() {
         val model = WallpaperModel()
-        model.accept(WallpaperRead.Ok(result(flow("live", ageMs = 1_000, phase = RoutingFlowPhase.Inflight)), 0), 0)
+        model.accept(ok(result(flow("live", ageMs = 1_000, phase = RoutingFlowPhase.Inflight)), 0), 0)
         val frame = model.frame(0, false)
         assertTrue(frame.inflight)
         assertNull("in-flight flows are not played as dots", frame.active)
@@ -108,7 +142,7 @@ class WallpaperModelTest {
     @Test
     fun reducedMotionLightsWithoutPlaying() {
         val model = WallpaperModel()
-        model.accept(WallpaperRead.Ok(result(flow("a", ageMs = 1_000)), 0), 0)
+        model.accept(ok(result(flow("a", ageMs = 1_000)), 0), 0)
         val frame = model.frame(0, reduceMotion = true)
         assertNull(frame.active)
         assertEquals(listOf("a"), frame.lit.map { it.flow.id })
@@ -122,17 +156,17 @@ class WallpaperModelTest {
         assertTrue(statusOf(WallpaperRead.NotConfigured).status.text.contains("没有配置"))
         assertTrue(statusOf(WallpaperRead.Failed(RoutingReadFailure.NotDeployed)).status.text.contains("尚未部署"))
         assertTrue(statusOf(WallpaperRead.Failed(RoutingReadFailure.Unavailable)).status.text.contains("稍后重试"))
-        val none = statusOf(WallpaperRead.Ok(RoutingSnapshotsResult(server, emptyList()), 0))
+        val none = statusOf(ok(RoutingSnapshotsResult(server, emptyList()), 0))
         assertTrue(none.status.text.contains("打开同步"))
         assertNull(none.caption)
-        val idle = statusOf(WallpaperRead.Ok(result(), 0))
+        val idle = statusOf(ok(result(), 0))
         assertEquals("桌面在线 · 暂无请求", idle.status.text)
     }
 
     @Test
     fun signingOutDropsTheOldAccountsScene() {
         val model = WallpaperModel()
-        model.accept(WallpaperRead.Ok(result(flow("a", ageMs = 1_000)), 0), 0)
+        model.accept(ok(result(flow("a", ageMs = 1_000)), 0), 0)
         model.accept(WallpaperRead.SignedOut, 1_000)
         val frame = model.frame(1_000, false)
         assertNull(frame.scene)
@@ -143,7 +177,7 @@ class WallpaperModelTest {
     @Test
     fun aFailedReadKeepsTheLastSceneButSaysSo() {
         val model = WallpaperModel()
-        model.accept(WallpaperRead.Ok(result(flow("a", ageMs = 1_000)), 0), 0)
+        model.accept(ok(result(flow("a", ageMs = 1_000)), 0), 0)
         model.accept(WallpaperRead.Failed(RoutingReadFailure.Unavailable), 5_000)
         val frame = model.frame(5_000, false)
         assertNotNull(frame.scene)
