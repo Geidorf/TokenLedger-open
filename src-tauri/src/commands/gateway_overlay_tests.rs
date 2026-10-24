@@ -245,6 +245,7 @@ fn stats_connection_merges_ledger_without_touching_scanned_rows() {
             source: "gateway".to_string(),
             provider: "openai".to_string(),
             latency_ms: Some(10),
+            context: None,
         })
     );
     let _ = fs::remove_dir_all(root);
@@ -257,10 +258,12 @@ fn usage_details_mark_gateway_source_and_capability() {
     let conn = db::get_connection(&db_path).unwrap();
     insert_scan(&conn, "a", "s9", "2026-10-04 09:00:00", 7, 3);
     drop(conn);
-    write_ledger(
-        &app,
-        &[ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80)],
-    );
+    let mut with_context = ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80);
+    with_context["context"] = json!({
+        "systemBytes": 120, "toolsBytes": 900, "historyBytes": 300, "toolResultsBytes": 60,
+        "attachmentsBytes": 0, "messages": 3, "toolResults": 1, "attachments": 0
+    });
+    write_ledger(&app, &[with_context]);
 
     let query: super::super::UsageDetailsQuery = serde_json::from_value(json!({
         "range": "today",
@@ -281,6 +284,9 @@ fn usage_details_mark_gateway_source_and_capability() {
     assert_eq!(items[1]["source"], json!("scan"));
     assert!(items[1].get("provider").is_none());
     assert!(items[1].get("latencyMs").is_none());
+    assert_eq!(items[0]["context"]["toolsBytes"], json!(900));
+    assert_eq!(items[0]["context"]["toolResults"], json!(1));
+    assert!(items[1].get("context").is_none());
     assert_eq!(details["filteredSummary"]["totalTokens"], json!(290));
     assert_eq!(details["filteredSummary"]["timedRequests"], json!(1));
     assert_eq!(details["filteredSummary"]["timedOutputTokens"], json!(80));

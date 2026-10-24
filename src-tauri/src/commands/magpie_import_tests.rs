@@ -180,6 +180,7 @@ fn import_supersedes_session_duplicates_and_adds_unseen_calls_without_touching_m
             source: "imported-magpie".to_string(),
             provider: "anthropic".to_string(),
             latency_ms: Some(2000),
+            context: None,
         })
     );
     drop(conn);

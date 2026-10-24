@@ -161,6 +161,20 @@ export interface LogHistoryItem {
   provider?: string;
   /** Whole-request duration in ms (contract §2.5); present only on gateway/imported rows that recorded one. */
   latencyMs?: number;
+  /** Prompt composition sizes (contract §2.5); present only on gateway rows that recorded one. */
+  context?: RequestContext;
+}
+
+/** Serialized UTF-8 byte sizes and counts of each prompt part; the gateway never keeps the content. */
+export interface RequestContext {
+  systemBytes: number;
+  toolsBytes: number;
+  historyBytes: number;
+  toolResultsBytes: number;
+  attachmentsBytes: number;
+  messages: number;
+  toolResults: number;
+  attachments: number;
 }
 
 export interface FacetOption {
