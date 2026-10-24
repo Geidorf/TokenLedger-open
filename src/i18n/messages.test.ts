@@ -38,6 +38,8 @@ const FULLY_LOCALIZED = [
   'src/utils/quotaPace.ts',
   'src/components/SessionAnalysisDrawer.tsx',
   'src/types/sessionAnalysis.ts',
+  'src/utils/projectDimension.ts',
+  'src/components/behavior/BehaviorProjectPanel.tsx',
   'src/components/settings/BudgetSection.tsx',
   'src/hooks/useBudget.ts',
   'src/components/settings/SettingsPrimitives.tsx',

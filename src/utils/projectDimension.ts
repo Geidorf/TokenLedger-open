@@ -4,6 +4,7 @@ import type {
   BehaviorSessionProjectReason,
   BehaviorUnattributedReason,
 } from '../types';
+import { localized, t } from '../i18n';
 
 /** 授权版本 1：git 探测关闭，并读取三类元数据文件（T10.165，ADR-016）。 */
 export const PROJECT_DIMENSION_CONSENT_VERSION = 1;
@@ -94,36 +95,36 @@ export function parseProjectDimensionStatus(raw: unknown): ProjectDimensionStatu
 
 export function projectCommandError(cause: unknown): string {
   const code = String(cause);
-  if (code.includes('consent_version_mismatch')) return '授权版本不一致，请重新确认后再开启。';
-  if (code.includes('project_dimension_disabled')) return '按项目统计尚未开启。';
-  if (code.includes('database_error')) return '本机数据库暂时无法完成操作，请稍后重试。';
-  if (code.includes('project_index_task_failed')) return '项目索引任务没有完成，请重试。';
-  return '暂时无法更新按项目统计，请重试。';
+  if (code.includes('consent_version_mismatch')) return t('projectDim.err.consent');
+  if (code.includes('project_dimension_disabled')) return t('projectDim.err.disabled');
+  if (code.includes('database_error')) return t('projectDim.err.database');
+  if (code.includes('project_index_task_failed')) return t('projectDim.err.task');
+  return t('projectDim.err.generic');
 }
 
 export function projectFailureCopy(code: string | null | undefined): string {
-  if (code === 'database_error') return '本机数据库暂时无法建立项目索引。';
-  if (code === 'internal_error') return '建立项目索引时发生内部错误。';
-  if (code === 'purge_pending') return '项目名已删除，数据库日志中的残留将在下次扫描时清除。';
-  return '建立项目索引没有完成。';
+  if (code === 'database_error') return t('projectDim.fail.database');
+  if (code === 'internal_error') return t('projectDim.fail.internal');
+  if (code === 'purge_pending') return t('projectDim.fail.purge');
+  return t('projectDim.fail.generic');
 }
 
-export const FIXED_PROJECT_LABELS: Record<Exclude<BehaviorProjectKind, 'named'>, string> = {
-  home: '主目录',
-  root: '磁盘根目录',
-  temp: '临时目录',
-  managed: '托管会话',
-};
+export const FIXED_PROJECT_LABELS = localized<Exclude<BehaviorProjectKind, 'named'>>({
+  home: 'projectDim.fixed.home',
+  root: 'projectDim.fixed.root',
+  temp: 'projectDim.fixed.temp',
+  managed: 'projectDim.fixed.managed',
+});
 
-export const UNATTRIBUTED_REASON_LABELS: Record<BehaviorUnattributedReason, string> = {
-  unsupported_source: '来源不记录工作目录',
-  unresolved: '无法确定工作目录',
-  pending: '尚未建立索引',
-  missing_session: '缺少会话 ID',
-};
+export const UNATTRIBUTED_REASON_LABELS = localized<BehaviorUnattributedReason>({
+  unsupported_source: 'projectDim.reason.unsupported',
+  unresolved: 'projectDim.reason.unresolved',
+  pending: 'projectDim.reason.pending',
+  missing_session: 'projectDim.reason.missingSession',
+});
 
 export function unattributedReasonLabel(reason: BehaviorSessionProjectReason | BehaviorUnattributedReason | undefined): string {
-  if (!reason) return '无法归属到项目';
+  if (!reason) return t('projectDim.reason.none');
   return UNATTRIBUTED_REASON_LABELS[reason];
 }
 
@@ -136,7 +137,7 @@ export function projectAliasMap(
   if (!hidden) return map;
   const assign = (key: string, kind: string) => {
     if (kind !== 'named' || map.has(key)) return;
-    map.set(key, `项目 ${map.size + 1}`);
+    map.set(key, t('projectDim.alias', { n: map.size + 1 }));
   };
   for (const project of projects ?? []) assign(project.key, project.kind);
   for (const session of sessions ?? []) {
@@ -152,9 +153,9 @@ export function projectDisplayName(
   hidden: boolean,
 ): string {
   if (ref.kind !== 'named') return FIXED_PROJECT_LABELS[ref.kind];
-  if (hidden) return aliases.get(ref.key) ?? '项目';
+  if (hidden) return aliases.get(ref.key) ?? t('projectDim.hidden');
   const label = ref.label?.trim();
-  return label || '未命名项目';
+  return label || t('projectDim.unnamed');
 }
 
 export function requestProjectDimensionFocus(): void {
