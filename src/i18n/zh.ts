@@ -365,6 +365,8 @@ export const zh = {
   'sessionDetail.unavailable.body': '会话详情只读取本机账本。',
   'sessionDetail.empty.title': '找不到这个会话',
   'sessionDetail.empty.body': '本机账本里没有会话 {id} 的记录，可能已被清理，或来自另一台设备。',
+  'sessionDetail.incomplete.title': '没能读完这个会话',
+  'sessionDetail.incomplete.body': '搜索 {id} 命中的其他记录太多，读取上限内没找到完全匹配的记录。可以在请求明细里按会话 ID 继续查找。',
   'sessionDetail.truncated': '会话记录较多，只读取了最新的 {count} 条；时间线、累计费用和对比只覆盖这部分。',
   'sessionDetail.basis': '与「请求」子页同一份去重明细与本机价格表；费用为估算。',
   'sessionDetail.stat.cost': '预估费用',

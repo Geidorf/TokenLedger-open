@@ -60,6 +60,13 @@ describe('SessionDetailPage', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
+  it('读满上限仍没找到时不说会话不存在', async () => {
+    vi.mocked(invoke).mockResolvedValue({ items: [row(1, { sessionId: 'sess-10' })], hasMore: true, nextCursor: 'more', totalCount: 9999, filteredSummary: {}, availableFilters: { tools: [], models: [], machines: [] }, granularity: 'request' });
+    render(<SessionDetailPage sessionRef={{ sessionId: 'sess-1', tool: 'claude' }} timezone="UTC" onBack={vi.fn()} onOpenRequests={vi.fn()} />);
+    expect(await screen.findByText('没能读完这个会话')).toBeTruthy();
+    expect(screen.queryByText('找不到这个会话')).toBeNull();
+  });
+
   it('读取失败时可重新读取', async () => {
     mockBackend();
     vi.mocked(invoke).mockRejectedValueOnce(new Error('boom'));

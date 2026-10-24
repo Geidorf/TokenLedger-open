@@ -357,6 +357,8 @@ export const en: Record<MessageKey, string> = {
   'sessionDetail.unavailable.body': 'Session detail reads the local ledger only.',
   'sessionDetail.empty.title': 'Session not found',
   'sessionDetail.empty.body': 'The local ledger has no records for session {id}. It may have been cleaned up or come from another device.',
+  'sessionDetail.incomplete.title': 'Could not read the whole session',
+  'sessionDetail.incomplete.body': 'Searching for {id} matched too many other records, and no exact match turned up within the read limit. You can keep looking in Requests by session ID.',
   'sessionDetail.truncated': 'This session has many records; only the latest {count} were read, and the timeline, running cost and comparison cover just those.',
   'sessionDetail.basis': 'Same deduplicated details and local price table as the Requests page; costs are estimates.',
   'sessionDetail.stat.cost': 'Estimated cost',

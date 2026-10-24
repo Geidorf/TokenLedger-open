@@ -14,6 +14,8 @@ export type SessionDetailState =
   | { status: 'failed' }
   | { status: 'unavailable' }
   | { status: 'empty' }
+  /** 读满上限仍没找到完全匹配的记录：不能断定会话不存在。 */
+  | { status: 'incomplete' }
   | { status: 'ready'; result: SessionRequestsResult };
 
 /** 读取会话明细，再按会话的工具与最后日期读取同类会话平均。`revision` 变化时重读。 */
@@ -30,7 +32,7 @@ export function useSessionDetail(ref: SessionDetailRef, timezone: string, revisi
       .then(result => {
         if (!current) return;
         if (!result) setState({ status: 'unavailable' });
-        else if (!result.items.length) setState({ status: 'empty' });
+        else if (!result.items.length) setState({ status: result.truncated ? 'incomplete' : 'empty' });
         else setState({ status: 'ready', result });
       })
       .catch(() => { if (current) setState({ status: 'failed' }); });

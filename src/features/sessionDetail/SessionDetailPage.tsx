@@ -284,6 +284,7 @@ export default function SessionDetailPage({ sessionRef, timezone, onBack, onOpen
       {state.status === 'loading' && <div className="panel session-detail-state" role="status">{t('sessionDetail.loading')}</div>}
       {state.status === 'failed' && <div className="panel session-detail-state" role="alert"><h3>{t('sessionDetail.failed.title')}</h3><p>{t('sessionDetail.failed.body')}</p></div>}
       {state.status === 'unavailable' && <div className="panel session-detail-state" role="status"><h3>{t('sessionDetail.unavailable.title')}</h3><p>{t('sessionDetail.unavailable.body')}</p></div>}
+      {state.status === 'incomplete' && <div className="panel session-detail-state" role="status"><h3>{t('sessionDetail.incomplete.title')}</h3><p>{t('sessionDetail.incomplete.body', { id: sessionRef.sessionId })}</p></div>}
       {state.status === 'empty' && <div className="panel session-detail-state" role="status"><h3>{t('sessionDetail.empty.title')}</h3><p>{t('sessionDetail.empty.body', { id: sessionRef.sessionId })}</p></div>}
 
       {state.status === 'ready' && summary && (
