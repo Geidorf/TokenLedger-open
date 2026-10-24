@@ -595,14 +595,18 @@ fn upstream_url(provider: &ProviderRecord) -> Result<Url, String> {
     .map_err(|_| "供应商接口地址无效。".to_string())
 }
 
+/// Keychain reads for background work get their own single slot, so they
+/// never take one the forwarding path needs.
+static BACKGROUND_SECRET_SLOTS: Semaphore = Semaphore::const_new(1);
+
 /// A provider key for background work (the health probe): waits up to 15 s
-/// for a keychain slot and 15 s for the read, sharing the forwarding path's
-/// slots so a stalled keychain cannot pile up blocking threads.
+/// for its slot and 15 s for the read; the slot stays taken until a stalled
+/// keychain call exits, so blocking threads cannot pile up.
 pub(super) async fn read_key_bounded(
     secrets: std::sync::Arc<dyn super::store::SecretStore>,
     account: String,
 ) -> Result<Option<String>, String> {
-    let permit = tokio::time::timeout(CONNECT_TIMEOUT, SECRET_SLOTS.acquire())
+    let permit = tokio::time::timeout(CONNECT_TIMEOUT, BACKGROUND_SECRET_SLOTS.acquire())
         .await
         .map_err(|_| "凭据读取繁忙。".to_string())?
         .map_err(|_| "凭据读取繁忙。".to_string())?;

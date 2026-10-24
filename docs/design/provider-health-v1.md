@@ -47,7 +47,7 @@
 - 开关与间隔存在网关目录的 `health-probe-v1.json`（`enabled` 默认 `false`，`intervalMins` 5–120，默认 15），由仅主窗口命令 `gateway_set_health_probe` 写入。
 - 开启且模型接入总开关打开时，每到间隔对每个启用的供应商发一次 `GET …/models`：OpenAI 兼容供应商为「接口地址 + `/models`」，Anthropic 协议为 `…/v1/models`（带 `anthropic-version`）。两者都是官方公开文档的模型列表接口，不发对话、不消耗 token。只用用户已为该供应商存进钥匙串的 key；没设 key 的供应商不探。连接走与转发相同的地址校验。
 - 「立即探活」（仅主窗口命令 `gateway_probe_providers`）只在用户点击时探一次，开关关着也可以用。
-- 结果只在内存里保留每个供应商最近 12 次，不写用量记录，关闭开关即清空。状态码映射：2xx 正常，401/403 `auth_failed`，402 `quota_exhausted`，429 `rate_limited`，5xx `upstream_failed`，404/405/501 `probe_unsupported`（没有模型列表，不算失败），其余 `upstream_rejected`，连接失败或 20 秒超时（含解析地址与建连）`connect_failed`。一轮最多同时探 4 个供应商。关闭开关时仍在进行的一轮不再写回结果；供应商的 key 被改动或删除、或这一轮因没有 key 被跳过时，丢掉它之前的探活结果。
+- 结果只在内存里保留每个供应商最近 12 次，不写用量记录，关闭开关即清空。状态码映射：2xx 正常，401/403 `auth_failed`，402 `quota_exhausted`，429 `rate_limited`，5xx `upstream_failed`，404/405/501 `probe_unsupported`（没有模型列表，不算失败），其余 `upstream_rejected`，连接失败或 20 秒超时（含解析地址与建连）`connect_failed`。一轮最多同时探 4 个供应商，两轮不重叠（定时一轮进行中点「立即探活」会等它结束）；探活读钥匙串用单独的名额，不占转发请求的名额。关闭开关时仍在进行的一轮不再写回结果；供应商的 key 被改动或删除、或这一轮因没有 key 被跳过时，丢掉它之前的探活结果。
 - 并入状态：最新一次探活失败且比最近一次成功请求更新时，有请求的供应商至少降级、没有请求的判为故障，并把探活原因码加进 `reasons`；探活正常可让无流量的供应商显示为健康。
 - 界面：供应商页列表上方一行「定时主动探活」开关、间隔与「立即探活」按钮；详情「健康度」一节显示最近一次探活结果。
 

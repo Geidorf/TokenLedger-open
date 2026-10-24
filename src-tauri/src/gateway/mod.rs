@@ -708,6 +708,7 @@ impl Gateway {
     /// Probes every enabled provider once, a few at a time.
     pub async fn probe_providers(&self) {
         use futures_util::StreamExt;
+        let _round = self.prober.round().await;
         let generation = self.prober.generation();
         let providers: Vec<ProviderRecord> =
             self.providers().into_iter().filter(|p| p.enabled).collect();
@@ -724,7 +725,7 @@ impl Gateway {
             match result {
                 Some(result) => self.prober.record(generation, &id, result),
                 // Not probed this round: an older result would be stale.
-                None => self.prober.forget(&id),
+                None => self.prober.forget(generation, &id),
             }
         }
     }

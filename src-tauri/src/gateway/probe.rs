@@ -74,6 +74,7 @@ pub struct Prober {
     settings: Mutex<ProbeSettings>,
     results: Mutex<Results>,
     last_round: Mutex<Option<Instant>>,
+    round: tokio::sync::Mutex<()>,
 }
 
 /// Results plus a generation that turning the probe off (or changing a
@@ -103,6 +104,7 @@ impl Prober {
             settings: Mutex::new(settings),
             results: Mutex::new(Results::default()),
             last_round: Mutex::new(None),
+            round: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -165,9 +167,19 @@ impl Prober {
             .retain(|id, _| ids.contains(id));
     }
 
-    /// Drops one provider's results, e.g. when a round skipped it.
-    pub fn forget(&self, provider: &str) {
-        lock(&self.results).by_provider.remove(provider);
+    /// Drops one provider's results when a round skipped it, unless the
+    /// probe was turned off or the provider changed since `generation`.
+    pub fn forget(&self, generation: u64, provider: &str) {
+        let mut results = lock(&self.results);
+        if results.generation == generation {
+            results.by_provider.remove(provider);
+        }
+    }
+
+    /// Held for a whole round, so a click during a timed round waits for it
+    /// instead of overlapping.
+    pub async fn round(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.round.lock().await
     }
 
     /// After a provider's key, address or protocol changed: drops its
@@ -396,7 +408,13 @@ mod tests {
             vec!["2026-10-24T05:00:02.000Z", "2026-10-24T05:00:01.000Z"],
             "a late older result goes behind a newer one"
         );
-        prober.forget("a");
+        prober.forget(generation - 1, "a");
+        assert_eq!(
+            prober.results()["a"].len(),
+            2,
+            "an older round cannot forget"
+        );
+        prober.forget(generation, "a");
         assert!(prober.results().is_empty());
         let before = prober.generation();
         prober.invalidate("a");
