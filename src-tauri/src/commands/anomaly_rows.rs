@@ -61,7 +61,7 @@ pub(crate) fn local_usage_rows(
                 session_id: behavior_session_id(&row.session_id).map(str::to_string),
                 input: row.input_tokens.max(0),
                 output: row.output_tokens.max(0),
-                cache_read: row.cache_read_tokens(),
+                cache_read: row.cache_split_is_proven().then(|| row.cache_read_tokens()),
                 cost: pricer.row_cost(row),
             })
         })
@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(rows.len(), 2);
         let row = rows.iter().find(|row| row.session_id.is_some()).unwrap();
         assert_eq!(row.session_id.as_deref(), Some("s-1"));
-        assert_eq!((row.input, row.output, row.cache_read), (100, 50, 20));
+        assert_eq!((row.input, row.output, row.cache_read), (100, 50, Some(20)));
         assert_eq!(row.cost, Some(0.25));
         assert_eq!(row.at, inside);
         assert!(rows.iter().any(|row| row.session_id.is_none()));

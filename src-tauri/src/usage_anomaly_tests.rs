@@ -22,7 +22,7 @@ fn row(at: NaiveDateTime, tokens: i64, cost: Option<f64>) -> UsageRow {
         session_id: None,
         input: tokens / 2,
         output: tokens - tokens / 2,
-        cache_read: 0,
+        cache_read: Some(0),
         cost,
     }
 }
@@ -180,10 +180,10 @@ fn cache_hit_drop_compares_points_against_the_median_rate() {
         // 80% hit rate normally, 30% on 10-24.
         item.input = 200_000;
         item.output = 200_000;
-        item.cache_read = 800_000;
+        item.cache_read = Some(800_000);
         if day == 24 {
             item.input = 2_000_000;
-            item.cache_read = 857_143;
+            item.cache_read = Some(857_143);
         }
         rows.push(item);
     }
@@ -206,7 +206,7 @@ fn cache_hit_drop_ignores_small_days() {
     for day in 4..=24 {
         let mut item = row(at(day, 10, 0), 400_000, Some(1.0));
         item.input = 200_000;
-        item.cache_read = if day == 24 { 0 } else { 800_000 };
+        item.cache_read = Some(if day == 24 { 0 } else { 800_000 });
         if day == 24 {
             item.input = 50_000;
         }
@@ -221,6 +221,31 @@ fn cache_hit_drop_ignores_small_days() {
         check(&report, AnomalyKind::CacheHitDrop),
         CheckState::Evaluated
     );
+}
+
+#[test]
+fn cache_hit_drop_skips_days_without_a_proven_cache_split() {
+    let mut rows = Vec::new();
+    for day in 4..=24 {
+        let mut item = row(at(day, 10, 0), 400_000, Some(1.0));
+        item.input = 200_000;
+        item.cache_read = Some(800_000);
+        if day == 24 {
+            // A source that cannot split reads from writes: no hit rate.
+            item.input = 2_000_000;
+            item.cache_read = None;
+        }
+        rows.push(item);
+    }
+    let report = detect(&rows, None, now());
+    assert!(!report
+        .findings
+        .iter()
+        .any(|f| f.kind == AnomalyKind::CacheHitDrop));
+    assert!(report
+        .findings
+        .iter()
+        .any(|f| f.kind == AnomalyKind::TokenSpike && f.bucket == "2026-10-24"));
 }
 
 #[test]

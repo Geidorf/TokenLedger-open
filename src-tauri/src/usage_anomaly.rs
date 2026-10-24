@@ -96,7 +96,8 @@ pub(crate) struct UsageRow {
     pub session_id: Option<String>,
     pub input: i64,
     pub output: i64,
-    pub cache_read: i64,
+    /// Cache reads; `None` when the source cannot tell reads from writes.
+    pub cache_read: Option<i64>,
     /// Estimated USD; `None` when the row cannot be priced.
     pub cost: Option<f64>,
 }
@@ -620,7 +621,9 @@ struct Bucket {
     /// `None` once any row in the bucket is unpriced.
     cost: Option<f64>,
     input: f64,
-    cache_read: f64,
+    /// `None` once any row cannot split cache reads from writes, so the
+    /// bucket has no hit rate (its tokens and cost still count).
+    cache_read: Option<f64>,
     last_at: Option<NaiveDateTime>,
 }
 
@@ -630,7 +633,7 @@ impl Default for Bucket {
             tokens: 0.0,
             cost: Some(0.0),
             input: 0.0,
-            cache_read: 0.0,
+            cache_read: Some(0.0),
             last_at: None,
         }
     }
@@ -644,7 +647,10 @@ impl Bucket {
             _ => None,
         };
         self.input += row.input as f64;
-        self.cache_read += row.cache_read as f64;
+        self.cache_read = match (self.cache_read, row.cache_read) {
+            (Some(sum), Some(read)) => Some(sum + read as f64),
+            _ => None,
+        };
         self.last_at = Some(self.last_at.map_or(row.at, |last| last.max(row.at)));
     }
 }
@@ -860,8 +866,9 @@ pub(crate) fn detect(
     // Cache hit rate drop (daily).
     {
         let rate = |bucket: &Bucket, floor: f64| {
-            let prompt = bucket.input + bucket.cache_read;
-            (prompt >= floor).then(|| bucket.cache_read / prompt)
+            let cache_read = bucket.cache_read?;
+            let prompt = bucket.input + cache_read;
+            (prompt >= floor).then(|| cache_read / prompt)
         };
         let mut baseline: Vec<f64> = days
             .range(..recent_day_start)
