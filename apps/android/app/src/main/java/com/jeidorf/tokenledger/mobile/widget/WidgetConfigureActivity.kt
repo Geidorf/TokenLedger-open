@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -36,6 +37,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.jeidorf.tokenledger.mobile.LedgerAppearance
@@ -188,6 +191,7 @@ private fun WidgetConfigureScreen(
     var range by remember { mutableStateOf(initialConfig.range) }
     var providerId by remember { mutableStateOf(initialConfig.providerId) }
     var theme by remember { mutableStateOf(initialConfig.theme) }
+    var showRouting by remember { mutableStateOf(initialConfig.showRouting) }
 
     val providers by produceState(initialValue = emptyList<ProviderOption>()) {
         value = loadProviderOptions(context.applicationContext)
@@ -259,6 +263,16 @@ private fun WidgetConfigureScreen(
                 }
             }
 
+            if ((lockedMode ?: mode) == WidgetMode.QuotaBars) {
+                SectionLabel("实时路由", "数据来自电脑端发布到云端的路由快照，随卡片刷新更新，不是实时画面。")
+                ToggleRow(
+                    label = "底部显示最近一次网关调用",
+                    description = "需要电脑端在「桌面挂件 › 手机动态壁纸」打开同步。",
+                    checked = showRouting,
+                    onCheckedChange = { showRouting = it }
+                )
+            }
+
             SectionLabel("组件主题")
             Column(modifier = Modifier.selectableGroup()) {
                 WidgetThemeMode.entries.forEach { option ->
@@ -292,7 +306,8 @@ private fun WidgetConfigureScreen(
                             mode = lockedMode ?: mode,
                             providerId = providerId,
                             range = range,
-                            theme = theme
+                            theme = theme,
+                            showRouting = showRouting
                         )
                     )
                 },
@@ -312,6 +327,7 @@ private fun ModeOptionRow(
         WidgetMode.MultiRing -> Icons.Default.DataUsage
         WidgetMode.SingleUsage, WidgetMode.MultiBar -> Icons.Default.BarChart
         WidgetMode.BarUsage -> Icons.Default.Widgets
+        WidgetMode.QuotaBars -> Icons.Default.Speed
     }
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -405,5 +421,38 @@ private fun OptionRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        // onCheckedChange=null：由整行 toggleable 处理点击并合并无障碍语义。
+        Switch(checked = checked, onCheckedChange = null)
     }
 }

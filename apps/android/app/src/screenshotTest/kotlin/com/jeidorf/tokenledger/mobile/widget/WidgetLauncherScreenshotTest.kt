@@ -216,6 +216,7 @@ private fun LauncherFixture(mode: WidgetMode, width: Int, height: Int, night: Bo
                 }
             }
             WidgetMode.MultiBar -> Unit // 旧 MultiBar 的既有 WidgetDesign gallery 保留并单独校验。
+            WidgetMode.QuotaBars -> Unit // 额度条有自己的夹具（WidgetQuotaBarsScreenshotTest）。
         }
     }
 }

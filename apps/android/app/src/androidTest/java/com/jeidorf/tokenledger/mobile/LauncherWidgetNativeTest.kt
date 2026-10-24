@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.WorkManager
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerBarWidgetReceiver
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerComboWidgetReceiver
+import com.jeidorf.tokenledger.mobile.widget.TokenLedgerQuotaWidgetReceiver
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerRingWidgetReceiver
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerWidget
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerWidgetReceiver
@@ -736,7 +737,8 @@ class LauncherWidgetNativeTest {
             WidgetTarget(TokenLedgerWidgetReceiver::class.java, WidgetMode.BarUsage),
             WidgetTarget(TokenLedgerRingWidgetReceiver::class.java, WidgetMode.MultiRing),
             WidgetTarget(TokenLedgerBarWidgetReceiver::class.java, WidgetMode.SingleUsage),
-            WidgetTarget(TokenLedgerComboWidgetReceiver::class.java, WidgetMode.BarUsage)
+            WidgetTarget(TokenLedgerComboWidgetReceiver::class.java, WidgetMode.BarUsage),
+            WidgetTarget(TokenLedgerQuotaWidgetReceiver::class.java, WidgetMode.QuotaBars)
         )
     }
 }

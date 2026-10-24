@@ -6,6 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const providerNames = [
   'token_ledger_bar_widget_info.xml',
   'token_ledger_combo_widget_info.xml',
+  'token_ledger_quota_widget_info.xml',
   'token_ledger_ring_widget_info.xml',
   'token_ledger_widget_info.xml',
 ];

@@ -16,6 +16,7 @@ internal object WidgetConfigStore {
     private const val KEY_PROVIDER = "provider_"
     private const val KEY_RANGE = "range_"
     private const val KEY_THEME = "theme_"
+    private const val KEY_ROUTING = "routing_"
 
     fun load(context: Context, appWidgetId: Int, defaultMode: WidgetMode = WidgetMode.BarUsage): WidgetConfig {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -25,7 +26,8 @@ internal object WidgetConfigStore {
             mode = mode,
             providerId = prefs.getString(KEY_PROVIDER + appWidgetId, null)?.takeIf(String::isNotBlank),
             range = WidgetRange.fromStorage(prefs.getString(KEY_RANGE + appWidgetId, null)),
-            theme = WidgetThemeMode.fromStorage(prefs.getString(KEY_THEME + appWidgetId, null))
+            theme = WidgetThemeMode.fromStorage(prefs.getString(KEY_THEME + appWidgetId, null)),
+            showRouting = prefs.getBoolean(KEY_ROUTING + appWidgetId, false)
         )
     }
 
@@ -36,6 +38,7 @@ internal object WidgetConfigStore {
             .putString(KEY_PROVIDER + appWidgetId, config.providerId)
             .putString(KEY_RANGE + appWidgetId, config.range.storageValue)
             .putString(KEY_THEME + appWidgetId, config.theme.storageValue)
+            .putBoolean(KEY_ROUTING + appWidgetId, config.showRouting)
             .apply()
     }
 
@@ -52,6 +55,7 @@ internal object WidgetConfigStore {
             .remove(KEY_PROVIDER + appWidgetId)
             .remove(KEY_RANGE + appWidgetId)
             .remove(KEY_THEME + appWidgetId)
+            .remove(KEY_ROUTING + appWidgetId)
             .apply()
     }
 
@@ -63,6 +67,14 @@ internal object WidgetConfigStore {
         return ids.map { load(appContext, it).range.rangeKey }.toSet()
     }
 
+    /** 是否有额度条实例开了路由行；没有就不在后台读路由快照。 */
+    fun routingRequested(context: Context): Boolean {
+        val appContext = context.applicationContext
+        return installedWidgetIds(appContext).any { id ->
+            load(appContext, id).let { it.mode == WidgetMode.QuotaBars && it.showRouting }
+        }
+    }
+
     fun installedWidgetIds(context: Context): IntArray {
         val appContext = context.applicationContext
         val manager = AppWidgetManager.getInstance(appContext)
@@ -70,7 +82,8 @@ internal object WidgetConfigStore {
             TokenLedgerWidgetReceiver::class.java,
             TokenLedgerRingWidgetReceiver::class.java,
             TokenLedgerBarWidgetReceiver::class.java,
-            TokenLedgerComboWidgetReceiver::class.java
+            TokenLedgerComboWidgetReceiver::class.java,
+            TokenLedgerQuotaWidgetReceiver::class.java
         )
         return receivers.flatMap { receiver ->
             val component = ComponentName(appContext, receiver)
