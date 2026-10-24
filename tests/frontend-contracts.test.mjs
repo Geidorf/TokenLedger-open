@@ -1317,6 +1317,26 @@ test('CI keeps Android screenshot goldens on the macOS source host', () => {
   assert.match(androidScreenshot, /validateDebugScreenshotTest/);
 });
 
+test('CI runs every main commit to completion and reports main failures', () => {
+  const workflows = path.join(process.cwd(), '.github', 'workflows');
+  const ci = readSource(path.join(workflows, 'ci.yml'));
+  // main 上按提交分组、互不取消；只有 PR 分支的新推送才取消旧 run。
+  assert.match(ci, /group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name == 'pull_request' && github\.ref \|\| github\.sha \}\}/);
+  assert.match(ci, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
+  const alert = readSource(path.join(workflows, 'main-ci-alert.yml'));
+  assert.match(alert, /workflows: \[ TokenLedger CI \]/);
+  assert.match(alert, /branches: \[ main \]/);
+  // 告警串行写 Issue，排队不能被后来的 run 顶掉。
+  assert.match(alert, /group: main-ci-alert\n  cancel-in-progress: false\n  queue: max/);
+  // 去重键是 run id + 第几次尝试：重复投递不重复记，重跑（新尝试）照常记。
+  assert.match(alert, /MARKER="<!-- main-ci-alert run=\$RUN_ID attempt=\$RUN_ATTEMPT -->"/);
+  assert.match(alert, /grep -qxF "\$MARKER"/);
+  assert.equal((alert.match(/echo "\$MARKER"/g) || []).length, 2);
+  assert.match(alert, /github\.event\.workflow_run\.event == 'push'/);
+  // 提交消息只经文件交给 gh，不拼进 shell。
+  assert.doesNotMatch(alert, /\$\{\{ github\.event\.workflow_run\.(head_commit|display_title)/);
+});
+
 test('cloud connection rejects secret credentials and non-local HTTP', () => {
   const url = 'https://example.supabase.co';
   const publishableKey = 'sb_publishable_1234567890';
