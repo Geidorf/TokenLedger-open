@@ -135,13 +135,75 @@ fn find_multica_codex_homes(workspace_root: &Path) -> MulticaCodexRootDiscovery 
     discovery
 }
 
-pub(crate) fn discover_codex_log_roots_in(home: &Path) -> Vec<PathBuf> {
-    let codex_home = home.join(".codex");
-    let mut roots = vec![
+pub(crate) fn codex_home_session_roots(codex_home: &Path) -> [PathBuf; 2] {
+    [
         codex_home.join("sessions"),
         codex_home.join("archived_sessions"),
-    ];
+    ]
+}
+
+/// Expands a leading `~` and `%NAME%` environment placeholders in a
+/// user-configured directory. Unknown placeholders are left untouched so the
+/// path simply does not exist instead of pointing somewhere unexpected.
+fn expand_configured_dir(raw: &str, home: &Path) -> Option<PathBuf> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let mut expanded = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(start) = rest.find('%') {
+        let Some(len) = rest[start + 1..].find('%') else {
+            break;
+        };
+        let name = &rest[start + 1..start + 1 + len];
+        expanded.push_str(&rest[..start]);
+        match std::env::var(name).ok().filter(|_| !name.is_empty()) {
+            Some(value) => expanded.push_str(&value),
+            None => expanded.push_str(&rest[start..start + len + 2]),
+        }
+        rest = &rest[start + len + 2..];
+    }
+    expanded.push_str(rest);
+    let path = if expanded == "~" {
+        home.to_path_buf()
+    } else if let Some(stripped) = expanded
+        .strip_prefix("~/")
+        .or_else(|| expanded.strip_prefix("~\\"))
+    {
+        home.join(stripped)
+    } else {
+        PathBuf::from(expanded)
+    };
+    path.is_absolute().then_some(path)
+}
+
+/// Session roots for directories added in settings. An entry may name a Codex
+/// home (containing `sessions`) or a `sessions`/`archived_sessions` directory
+/// itself; any other directory is walked as-is for `rollout-*.jsonl` files.
+pub(crate) fn configured_codex_roots(entries: &[String], home: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for entry in entries {
+        let Some(dir) = expand_configured_dir(entry, home) else {
+            continue;
+        };
+        let is_sessions_dir = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "sessions" || name == "archived_sessions");
+        if !is_sessions_dir && dir.join("sessions").is_dir() {
+            roots.extend(codex_home_session_roots(&dir));
+        } else {
+            roots.push(dir);
+        }
+    }
+    roots
+}
+
+pub(crate) fn discover_codex_log_roots_in(home: &Path) -> Vec<PathBuf> {
+    let mut roots = codex_home_session_roots(&home.join(".codex")).to_vec();
     roots.extend(discover_multica_codex_roots_in(home));
+    roots.extend(super::cindy::cindy_codex_roots_in(home));
     roots
 }
 
@@ -1132,6 +1194,7 @@ pub(crate) fn scan_codex_roots_for_rebuild(
 
 pub(crate) fn scan_codex(
     db_path: &Path,
+    extra_codex_dirs: &[String],
     logs: &mut Vec<LogRecord>,
     pending_checkpoints: &mut Vec<crate::db::ScanCheckpoint>,
 ) -> Result<(
@@ -1140,12 +1203,11 @@ pub(crate) fn scan_codex(
     bool,
 )> {
     let multica = discover_multica_codex_roots();
-    let codex_home = get_home_dir().join(".codex");
-    let mut roots = vec![
-        codex_home.join("sessions"),
-        codex_home.join("archived_sessions"),
-    ];
+    let home = get_home_dir();
+    let mut roots = codex_home_session_roots(&home.join(".codex")).to_vec();
     roots.extend(multica.roots);
+    roots.extend(super::cindy::cindy_codex_roots_in(&home));
+    roots.extend(configured_codex_roots(extra_codex_dirs, &home));
     let machine_id = hostname::get()
         .map(|hostname| hostname.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown_machine".to_string());

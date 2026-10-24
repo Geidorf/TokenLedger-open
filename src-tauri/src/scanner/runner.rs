@@ -12,7 +12,7 @@ use super::pi::*;
 use super::reasonix::*;
 use super::types::{
     AntigravityRecordProvenance, AntigravityUsageProvenance, CoordinatedScanOutcome, LogRecord,
-    ScanOutcome,
+    ScanOptions, ScanOutcome,
 };
 use chrono::Local;
 use rusqlite::{params, OptionalExtension, Result};
@@ -101,9 +101,10 @@ where
 /// scheduler and UI refreshes wait for and reuse the same result.
 pub fn run_scan_singleflight(
     db_path: &Path,
+    options: &ScanOptions,
 ) -> std::result::Result<CoordinatedScanOutcome, String> {
     let (outcome, is_leader) = run_scan_singleflight_with(db_path, || {
-        run_scan(db_path).map_err(|error| error.to_string())
+        run_scan_with_options(db_path, options).map_err(|error| error.to_string())
     });
     Ok(CoordinatedScanOutcome {
         outcome: outcome?,
@@ -197,7 +198,12 @@ pub(crate) fn record_discovered_models(
     Ok(newly_discovered)
 }
 
+#[cfg(test)]
 pub fn run_scan(db_path: &Path) -> Result<ScanOutcome> {
+    run_scan_with_options(db_path, &ScanOptions::default())
+}
+
+pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<ScanOutcome> {
     macro_rules! timed_scan_step {
         ($label:literal, $expression:expr) => {{
             let started = std::time::Instant::now();
@@ -254,7 +260,12 @@ pub fn run_scan(db_path: &Path) -> Result<ScanOutcome> {
     );
     let (codex_scan, codex_rebuild_plan, codex_rebuild_deferred) = timed_scan_step!(
         "codex",
-        scan_codex(db_path, &mut logs, &mut pending_checkpoints)
+        scan_codex(
+            db_path,
+            &options.codex_extra_dirs,
+            &mut logs,
+            &mut pending_checkpoints
+        )
     )?;
     log::debug!(
         "Codex checkpoint scan parsed {} files / {} records, skipped {}, failed {}",

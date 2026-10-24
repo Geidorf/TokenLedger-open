@@ -118,6 +118,10 @@ fn with_settings_write_lock<T>(
 pub struct AppSettings {
     /// Local log scan interval (seconds).
     pub scan_interval_secs: u64,
+    /// Extra Codex homes or session directories to scan, in addition to the
+    /// built-in locations. Entries may use `~` and `%NAME%` placeholders.
+    #[serde(default)]
+    pub codex_extra_dirs: Vec<String>,
     /// Internal one-time migration marker for background scan policy defaults.
     #[serde(default)]
     pub scan_policy_version: u32,
@@ -350,6 +354,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         AppSettings {
             scan_interval_secs: 900,
+            codex_extra_dirs: Vec::new(),
             scan_policy_version: 1,
             desktop_interval_secs: 60,
             lockscreen_interval_secs: 300,
@@ -438,6 +443,7 @@ impl AppSettings {
         // decision when the same settings file is opened elsewhere.
         self.normalize_safe_wallpaper_consent();
         self.scan_interval_secs = self.scan_interval_secs.max(60);
+        self.codex_extra_dirs = sanitize_codex_extra_dirs(&self.codex_extra_dirs);
         self.desktop_interval_secs = self.desktop_interval_secs.max(15);
         self.lockscreen_interval_secs = self.lockscreen_interval_secs.max(30);
         if !cfg!(target_os = "windows") {
@@ -482,6 +488,29 @@ impl AppSettings {
         cost_model::sanitize_stored(&mut self);
         self
     }
+}
+
+const CODEX_EXTRA_DIRS_MAX: usize = 16;
+const CODEX_EXTRA_DIR_MAX_LEN: usize = 1024;
+
+/// Trims entries, drops empty, overlong and duplicate ones, and caps the list.
+fn sanitize_codex_extra_dirs(entries: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for entry in entries {
+        let entry = entry.trim();
+        if entry.is_empty()
+            || entry.len() > CODEX_EXTRA_DIR_MAX_LEN
+            || entry.contains('\0')
+            || kept.iter().any(|existing| existing == entry)
+        {
+            continue;
+        }
+        kept.push(entry.to_string());
+        if kept.len() == CODEX_EXTRA_DIRS_MAX {
+            break;
+        }
+    }
+    kept
 }
 
 fn settings_path(app: &AppContext) -> Result<PathBuf, String> {
@@ -819,6 +848,34 @@ pub(crate) fn save_general_settings_preserving_quota_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_extra_dirs_are_trimmed_deduplicated_and_capped() {
+        let mut entries = vec![
+            "  %APPDATA%/Example/codex-home  ".to_string(),
+            "%APPDATA%/Example/codex-home".to_string(),
+            "".to_string(),
+            "x".repeat(CODEX_EXTRA_DIR_MAX_LEN + 1),
+        ];
+        entries.extend((0..40).map(|index| format!("~/codex-{index}")));
+        let settings = AppSettings {
+            codex_extra_dirs: entries,
+            ..AppSettings::default()
+        }
+        .sanitized();
+
+        assert_eq!(settings.codex_extra_dirs.len(), CODEX_EXTRA_DIRS_MAX);
+        assert_eq!(settings.codex_extra_dirs[0], "%APPDATA%/Example/codex-home");
+        assert_eq!(settings.codex_extra_dirs[1], "~/codex-0");
+    }
+
+    #[test]
+    fn settings_without_codex_extra_dirs_still_load() {
+        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("codex_extra_dirs");
+        let settings: AppSettings = serde_json::from_value(value).unwrap();
+        assert!(settings.codex_extra_dirs.is_empty());
+    }
 
     #[test]
     fn tray_hover_delay_is_clamped_to_a_usable_range() {

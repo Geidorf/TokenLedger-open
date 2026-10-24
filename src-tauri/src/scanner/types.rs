@@ -13,6 +13,21 @@ pub struct LogRecord {
     pub cumulative: bool,
 }
 
+/// User settings that change where a scan looks.
+#[derive(Debug, Default, Clone)]
+pub struct ScanOptions {
+    /// Extra Codex homes or session directories from settings.
+    pub codex_extra_dirs: Vec<String>,
+}
+
+impl ScanOptions {
+    pub fn from_settings(settings: &crate::settings::AppSettings) -> Self {
+        Self {
+            codex_extra_dirs: settings.codex_extra_dirs.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct ScanOutcome {
     pub inserted: usize,

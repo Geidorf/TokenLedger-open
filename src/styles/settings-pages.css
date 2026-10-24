@@ -208,6 +208,15 @@
   font-size: var(--font-size-base);
 }
 
+/* Multi-line directory list: grows with its rows instead of the 44px field. */
+.app-shell .settings-navigation-main .settings-input.settings-dir-list {
+  height: auto;
+  min-height: 76px;
+  padding: 8px 10px;
+  border-width: 0;
+  border-radius: 7px;
+}
+
 .app-shell .settings-navigation-main :is(.settings-input, .settings-number, .settings-select):focus {
   border-color: transparent;
   background-color: var(--color-bg-panel);

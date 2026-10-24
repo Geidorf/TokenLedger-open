@@ -65,4 +65,12 @@ class WallpaperTimelineTest {
             FramePacer.nextFrameDelay(idle.copy(reduceMotion = true, playing = true, inflight = true, nextLingerEndMs = 2_000))
         )
     }
+
+    @Test
+    fun powerSaveStopsPerFrameRedrawsEvenWithAnimatorsOn() {
+        // 省电模式下 ValueAnimator.areAnimatorsEnabled() 仍是 true，所以要单独看。
+        val busy = FramePacer.Activity(visible = true, reduceMotion = false, powerSave = true, playing = true, inflight = true, nextLingerEndMs = null)
+        assertNull(FramePacer.nextFrameDelay(busy))
+        assertEquals("a lit wire still goes out on time", 3_001L, FramePacer.nextFrameDelay(busy.copy(nextLingerEndMs = 3_000)))
+    }
 }

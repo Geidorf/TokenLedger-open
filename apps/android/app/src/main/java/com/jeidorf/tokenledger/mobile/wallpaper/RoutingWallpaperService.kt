@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
@@ -24,7 +25,7 @@ import kotlinx.coroutines.withContext
  * 省电：
  * - 只在壁纸可见时每 [POLL_MS] 读一次云端；不可见时不读、不画。
  * - 只有光点在跑或有在途请求时才逐帧重画（[FramePacer]），其余时间画一次就停。
- * - 系统关闭动画（减少动态效果、省电模式）时只显示点亮状态与说明。
+ * - 系统关闭动画（减少动态效果）或开着省电模式时只显示点亮状态与说明，不逐帧重画。
  */
 class RoutingWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = RoutingEngine()
@@ -37,6 +38,9 @@ class RoutingWallpaperService : WallpaperService() {
         private val renderer = RoutingWallpaperRenderer(resources.displayMetrics.density)
         private var pollJob: Job? = null
         private var visible = false
+        private val powerManager by lazy { getSystemService(PowerManager::class.java) }
+        /** 省电模式；可见时与每次读云端时刷新，不在逐帧里查。 */
+        private var powerSave = false
         private val drawRunnable = Runnable { drawFrame() }
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
@@ -49,6 +53,7 @@ class RoutingWallpaperService : WallpaperService() {
             this.visible = visible
             if (visible) {
                 applyTheme()
+                refreshPowerSave()
                 startPolling()
                 drawFrame()
             } else {
@@ -87,10 +92,15 @@ class RoutingWallpaperService : WallpaperService() {
                 while (isActive) {
                     val read = withContext(Dispatchers.IO) { reader.read() }
                     model.accept(read, SystemClock.elapsedRealtime())
+                    refreshPowerSave()
                     drawFrame()
                     delay(POLL_MS)
                 }
             }
+        }
+
+        private fun refreshPowerSave() {
+            powerSave = powerManager?.isPowerSaveMode == true
         }
 
         private fun stopPolling() {
@@ -102,7 +112,7 @@ class RoutingWallpaperService : WallpaperService() {
             handler.removeCallbacks(drawRunnable)
             if (!visible) return
             val now = SystemClock.elapsedRealtime()
-            val reduceMotion = !ValueAnimator.areAnimatorsEnabled()
+            val reduceMotion = !ValueAnimator.areAnimatorsEnabled() || powerSave
             val frame = model.frame(now, reduceMotion)
             val holder = surfaceHolder
             val canvas = try {
@@ -119,6 +129,7 @@ class RoutingWallpaperService : WallpaperService() {
                 FramePacer.Activity(
                     visible = visible,
                     reduceMotion = reduceMotion,
+                    powerSave = powerSave,
                     playing = frame.playing,
                     inflight = frame.inflight,
                     nextLingerEndMs = frame.nextLingerEndMs,

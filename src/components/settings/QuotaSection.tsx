@@ -335,7 +335,7 @@ function QuotaSourceStatus({ providerId, name, view, readLabel, readBusyLabel, r
         <p>
           {view.sentence}
           {view.detail && (
-            <span className="quota-source-info" tabIndex={0} title={view.detail} aria-label={`${name} 详细原因：${view.detail}`}>
+            <span className="quota-source-info" role="note" tabIndex={0} title={view.detail} aria-label={`${name} 详细原因：${view.detail}`}>
               <Info className="h-3.5 w-3.5" aria-hidden="true" />
             </span>
           )}
@@ -1646,7 +1646,7 @@ function BalanceSourceStatus({ name, view }: { name: string; view: BalanceCardVi
         <p>
           {view.sentence}
           {view.detail && (
-            <span className="quota-source-info" tabIndex={0} title={view.detail} aria-label={`${name} 详细原因：${view.detail}`}>
+            <span className="quota-source-info" role="note" tabIndex={0} title={view.detail} aria-label={`${name} 详细原因：${view.detail}`}>
               <Info className="h-3.5 w-3.5" aria-hidden="true" />
             </span>
           )}

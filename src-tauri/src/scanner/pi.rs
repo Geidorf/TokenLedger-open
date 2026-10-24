@@ -56,7 +56,9 @@ pub(crate) fn pi_session_roots_from(
 pub(crate) fn pi_session_roots(home: &Path) -> Vec<PathBuf> {
     let session_dir = std::env::var_os("PI_CODING_AGENT_SESSION_DIR");
     let agent_dir = std::env::var_os("PI_CODING_AGENT_DIR");
-    pi_session_roots_from(home, session_dir.as_deref(), agent_dir.as_deref())
+    let mut roots = pi_session_roots_from(home, session_dir.as_deref(), agent_dir.as_deref());
+    roots.extend(super::cindy::cindy_pi_roots_in(home));
+    roots
 }
 
 fn pi_hash_prefix(value: &str) -> String {

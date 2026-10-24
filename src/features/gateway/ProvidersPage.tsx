@@ -11,6 +11,7 @@ import { hostOf, PROVIDER_PRESET_GROUPS, type ProviderPreset } from './presets';
 import type { ProviderRecord, ProviderView, WireApi } from './types';
 import { beginProviderSave, clearProviderDraft, endProviderSave, readProviderDraft, useProviderSaving, writeProviderDraft } from './providerDrafts';
 import { ProviderIcon, Sheet } from './ui';
+import { useT } from '../../i18n';
 
 interface PageProps {
   onNotify: (type: ToastType, text: string) => void;
@@ -177,6 +178,7 @@ function PresetPicker({ onPick }: { onPick: (preset: ProviderPreset) => void }) 
 }
 
 export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
+  const t = useT();
   const [providers, setProviders] = useState<ProviderView[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -281,8 +283,8 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
       </div>
       {loadError && <p className="mw-note is-danger" role="alert">读取供应商失败：{loadError} <button type="button" className="mw-btn is-ghost" onClick={() => void load()}>重试</button></p>}
       {providers && providers.length === 0 && (
-        <EmptyState icon={Plug} title="还没有供应商" description="选一个预设（OpenAI、DeepSeek、OpenRouter、本机 Ollama 等）或填任意兼容地址，再填入 API key。启用后网关自动启动，模型会出现在 Agent 与路由组的选择器里。">
-          <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />添加第一个供应商</button>
+        <EmptyState icon={Plug} title={t('empty.providers.title')} description={t('empty.providers.description')}>
+          <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />{t('empty.providers.action')}</button>
         </EmptyState>
       )}
       {on.length > 0 && (
