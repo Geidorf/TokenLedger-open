@@ -7080,7 +7080,7 @@ fn earliest_query_start(bounds: &QueryBounds) -> Option<&DateTime<Tz>> {
         .or(bounds.current_start.as_ref())
 }
 
-fn get_local_stats_v2_impl_at(
+pub(crate) fn get_local_stats_v2_impl_at(
     app: &AppContext,
     query: LocalStatsQuery,
     now: DateTime<Local>,

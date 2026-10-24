@@ -42,6 +42,7 @@ mod scanner;
 mod session_analysis;
 mod settings;
 mod stats_query;
+mod usage_dimensions_publish;
 mod wallpaper;
 mod widget_window;
 
@@ -154,6 +155,8 @@ fn scan_sync_and_notify(
         match block_on_async(commands::sync_to_supabase_impl(ctx)) {
             Ok(result) => {
                 stats_changed |= sync_result_has_stats_changes(&result);
+                // Usage dimensions ride this cycle; their upload runs on its own task.
+                usage_dimensions_publish::nudge_after_cloud_sync();
             }
             Err(e) => {
                 log::debug!("Background cloud sync skipped/failed: {}", e);
@@ -855,6 +858,10 @@ pub fn run() {
                 settings_state_for_setup.clone(),
                 gateway_for_setup.clone(),
             );
+            usage_dimensions_publish::start(
+                app_ctx_for_setup.clone(),
+                settings_state_for_setup.clone(),
+            );
 
             #[cfg(target_os = "macos")]
             {
@@ -889,6 +896,7 @@ pub fn run() {
             commands::peer_shared::peer_sync_shared_clear,
             peer_live::peer_live_snapshot,
             routing_publish::routing_publish_status,
+            usage_dimensions_publish::usage_dimensions_publish_status,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,
