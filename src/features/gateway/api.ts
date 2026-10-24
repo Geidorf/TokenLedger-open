@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AppSettings } from '../../types';
-import type { AgentApplyResult, AgentInspection, AgentPreview, AgentRestoreResult, CodexInspection, CoolingMember, GatewayStatus, HealthReport, LedgerRecord, ProviderRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
+import type { AgentApplyResult, AgentInspection, AgentPreview, AgentRestoreResult, CodexInspection, CoolingMember, GatewayStatus, HealthReport, LedgerRecord, ProviderRecord, ProviderView, RequestLogPage, RequestLogQuery, RouteDecision, RoutingGroup } from './types';
 
 export const gatewayStatus = () => invoke<GatewayStatus>('gateway_status');
 
@@ -22,6 +22,13 @@ export const deleteProvider = (id: string) => invoke<ProviderView[]>('gateway_de
 export const revealLocalToken = () => invoke<string>('gateway_reveal_local_token');
 
 export const recentRequests = (limit = 50) => invoke<LedgerRecord[]>('gateway_recent_requests', { limit });
+
+/** 请求日志一页（筛选、搜索、分页）；只有元数据，费用按本机价格表估算。 */
+export const requestLog = (query: RequestLogQuery) => invoke<RequestLogPage>('gateway_request_log', { query });
+
+/** 按同一筛选导出全部匹配请求到应用数据目录下的固定 CSV 文件。 */
+export const exportRequestLog = (query: RequestLogQuery) =>
+  invoke<{ message: string; path: string }>('gateway_request_log_export', { query });
 
 export const listRoutingGroups = () => invoke<RoutingGroup[]>('gateway_list_routing_groups');
 

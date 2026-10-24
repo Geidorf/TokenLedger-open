@@ -1,5 +1,6 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::{bounded_lines, read_text_capped, MAX_SIDECAR_BYTES};
 use super::types::LogRecord;
 use chrono::{DateTime, Local};
 use regex::Regex;
@@ -7,7 +8,7 @@ use rusqlite::{params, Connection, OpenFlags, Result};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use walkdir::WalkDir;
@@ -15,12 +16,11 @@ use walkdir::WalkDir;
 pub(crate) fn scan_opencode_like(
     logs: &mut Vec<LogRecord>,
     tool_name: &str,
-    relative_db_path: &str,
+    db_path: &Path,
     cursors: &SourceCursorMap,
     pending_cursors: &mut Vec<crate::db::ScanSourceCursor>,
 ) -> usize {
     const PARSER_VERSION: i64 = 1;
-    let db_path = get_home_dir().join(relative_db_path);
     if !db_path.exists() {
         log::info!(
             "Opencode-like scan: DB for {} does not exist at {:?}",
@@ -30,7 +30,7 @@ pub(crate) fn scan_opencode_like(
         return 0;
     }
 
-    let fingerprint = match source_fingerprint(&db_path) {
+    let fingerprint = match source_fingerprint(db_path) {
         Ok(fingerprint) => fingerprint,
         Err(error) => {
             log::warn!("Opencode-like scan for {tool_name}: {error}");
@@ -53,7 +53,7 @@ pub(crate) fn scan_opencode_like(
     }
     let mut saw_row = false;
     match Connection::open_with_flags(
-        &db_path,
+        db_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     ) {
         Ok(conn) => {
@@ -326,7 +326,7 @@ pub(crate) fn scan_tencent_marvis(
     } else if cfg!(target_os = "macos") {
         get_home_dir().join("Library/Application Support/com.tencent.mac.marvis/MarvisData/User")
     } else {
-        get_home_dir().join("Library/Application Support/Tencent/Marvis/User")
+        xdg_config_home().join("Tencent/Marvis/User")
     };
 
     if !marvis_user_dir.exists() {
@@ -558,10 +558,10 @@ fn parse_workbuddy_usage(usage: &Value) -> Option<(i64, i64, i64, i64, Option<f6
     // OpenAI-style prompt_tokens includes cache hits; subtract so the cache
     // share is not counted both as input and as cached.
     if matched_input_field == "prompt_tokens" {
-        final_input = (final_input - cache_read).max(0);
+        final_input = final_input.saturating_sub(cache_read).max(0);
     }
 
-    let cached_tokens = cache_read + cache_write;
+    let cached_tokens = cache_read.saturating_add(cache_write);
 
     if final_input <= 0 && output_tokens <= 0 && cached_tokens <= 0 {
         let total = to_int(
@@ -628,7 +628,7 @@ pub(crate) fn scan_workbuddy_project_logs(
 
             if let Ok(file) = File::open(filepath) {
                 let reader = BufReader::new(file);
-                for (line_num, line) in reader.lines().enumerate() {
+                for (line_num, line) in bounded_lines(reader).enumerate() {
                     if let Ok(line_content) = line {
                         if line_content.trim().is_empty() {
                             continue;
@@ -732,7 +732,7 @@ pub(crate) fn scan_workbuddy_agent_logs(logs: &mut Vec<LogRecord>) -> usize {
             .unwrap_or_else(|| get_home_dir().join("AppData/Roaming"))
             .join("WorkBuddy/logs")
     } else {
-        get_home_dir().join(".local/share/WorkBuddy/logs")
+        xdg_data_home().join("WorkBuddy/logs")
     };
 
     if !path.exists() {
@@ -758,7 +758,7 @@ pub(crate) fn scan_workbuddy_agent_logs(logs: &mut Vec<LogRecord>) -> usize {
         if let Ok(file) = File::open(&filepath) {
             let reader = BufReader::new(file);
             let mut lines = Vec::new();
-            for line in reader.lines().map_while(Result::ok) {
+            for line in bounded_lines(reader).map_while(Result::ok) {
                 // Pre-populate mapping of request_id -> agent_name
                 if let Some(caps) = re_agent.captures(&line) {
                     let req_id = caps
@@ -857,7 +857,7 @@ pub(crate) fn scan_qclaw(logs: &mut Vec<LogRecord>) -> usize {
 
                 if let Ok(file) = File::open(filepath) {
                     let reader = BufReader::new(file);
-                    for (line_num, line) in reader.lines().enumerate() {
+                    for (line_num, line) in bounded_lines(reader).enumerate() {
                         if let Ok(line_content) = line {
                             if line_content.trim().is_empty() {
                                 continue;
@@ -1024,7 +1024,7 @@ pub(crate) fn hermes_state_db_path(home: &Path) -> PathBuf {
     } else if cfg!(target_os = "macos") {
         home.join("Library/Application Support/hermes/state.db")
     } else {
-        home.join(".config/hermes/state.db")
+        xdg_config_home().join("hermes/state.db")
     }
 }
 
@@ -1072,13 +1072,13 @@ pub(crate) fn scan_hermes(logs: &mut Vec<LogRecord>) -> usize {
                 if let Ok(rows) = rows {
                     for r in rows.flatten() {
                         let (id, model, started_at, input, output, c_read, c_write, cost) = r;
-                        if input <= 0 && output <= 0 && c_read + c_write <= 0 {
+                        if input <= 0 && output <= 0 && c_read.saturating_add(c_write) <= 0 {
                             continue;
                         }
 
                         let timestamp = normalize_timestamp(&serde_json::json!(started_at));
                         let unique_key = format!("hermes_{}", id);
-                        let cached = c_read + c_write;
+                        let cached = c_read.saturating_add(c_write);
 
                         // sessions rows accumulate in place while a session is
                         // running; mark cumulative so run_scan stores deltas
@@ -1125,7 +1125,7 @@ pub(crate) fn scan_trae(
         base_dirs.push(get_home_dir().join("AppData/Roaming"));
         base_dirs.push(get_home_dir().join("AppData/Local"));
     } else {
-        base_dirs.push(get_home_dir().join(".config"));
+        base_dirs.push(xdg_config_home());
     }
 
     let mut trae_paths = Vec::new();
@@ -1173,7 +1173,7 @@ pub(crate) fn scan_trae(
                 };
                 if let Ok(file) = File::open(filepath) {
                     let reader = BufReader::new(file);
-                    for line in reader.lines().map_while(Result::ok) {
+                    for line in bounded_lines(reader).map_while(Result::ok) {
                         if !line.contains("HistoryEvent") {
                             continue;
                         }
@@ -1366,13 +1366,13 @@ pub(crate) fn scan_zcode_db(db_path: &std::path::Path, logs: &mut Vec<LogRecord>
 
                         // Reasoning tokens are billed as output; cache read and
                         // creation share the combined cache column.
-                        let output_tokens = output + reasoning;
-                        let cached = cache_read + cache_write;
+                        let output_tokens = output.saturating_add(reasoning);
+                        let cached = cache_read.saturating_add(cache_write);
                         // Zcode's input includes cache hits (computed_total ==
                         // input + output held for every row), so net the cache
                         // volume out — effective tokens must never count it
                         // twice.
-                        let input_tokens = 0.max(input - cached);
+                        let input_tokens = 0.max(input.saturating_sub(cached));
 
                         // status='error' rows report all zeros — drop them.
                         if input_tokens <= 0 && output_tokens <= 0 && cached <= 0 {
@@ -1419,13 +1419,13 @@ pub(crate) fn deepseekgui_threads_dir() -> PathBuf {
             .unwrap_or_else(|| get_home_dir().join("AppData/Roaming"))
             .join("DeepSeek GUI")
     } else {
-        get_home_dir().join(".config/DeepSeek GUI")
+        xdg_config_home().join("DeepSeek GUI")
     };
 
     let mut data_dir = get_home_dir().join(".deepseekgui/kun");
     let settings_path = base_dir.join("deepseek-gui-settings.json");
     if settings_path.exists() {
-        if let Ok(settings_str) = fs::read_to_string(settings_path) {
+        if let Ok(settings_str) = read_text_capped(&settings_path, MAX_SIDECAR_BYTES) {
             if let Ok(settings) = serde_json::from_str::<Value>(&settings_str) {
                 if let Some(custom_dir) = settings
                     .get("agents")
@@ -1467,11 +1467,11 @@ pub(crate) struct DeepSeekGuiUsageSnapshot {
 
 impl DeepSeekGuiUsageSnapshot {
     fn delta_from(&self, previous: &Self) -> Option<Self> {
-        let prompt_tokens = self.prompt_tokens - previous.prompt_tokens;
-        let output_tokens = self.output_tokens - previous.output_tokens;
-        let cached_tokens = self.cached_tokens - previous.cached_tokens;
+        let prompt_tokens = self.prompt_tokens.saturating_sub(previous.prompt_tokens);
+        let output_tokens = self.output_tokens.saturating_sub(previous.output_tokens);
+        let cached_tokens = self.cached_tokens.saturating_sub(previous.cached_tokens);
         let cache_miss_tokens = match (self.cache_miss_tokens, previous.cache_miss_tokens) {
-            (Some(current), Some(previous)) => Some(current - previous),
+            (Some(current), Some(previous)) => Some(current.saturating_sub(previous)),
             _ => None,
         };
 
@@ -1491,7 +1491,7 @@ impl DeepSeekGuiUsageSnapshot {
     fn record_tokens(&self) -> (i64, i64, i64) {
         let input_tokens = self
             .cache_miss_tokens
-            .unwrap_or_else(|| self.prompt_tokens - self.cached_tokens)
+            .unwrap_or_else(|| self.prompt_tokens.saturating_sub(self.cached_tokens))
             .max(0);
         (
             input_tokens,
@@ -1548,7 +1548,7 @@ pub(crate) fn scan_deepseekgui_dir_checkpointed(
                     };
                     if let Ok(file) = File::open(&events_path) {
                         let reader = BufReader::new(file);
-                        for (line_num, line) in reader.lines().enumerate() {
+                        for (line_num, line) in bounded_lines(reader).enumerate() {
                             if let Ok(line_content) = line {
                                 if line_content.trim().is_empty() {
                                     continue;

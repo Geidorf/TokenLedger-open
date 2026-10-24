@@ -22,10 +22,12 @@ use app_paths::AppContext;
 use settings::AppSettings;
 
 mod app_paths;
+mod autostart;
 mod budget;
 mod budget_publish;
 mod cache;
 mod cli;
+mod mcp;
 pub use cli::run_cli;
 mod commands;
 mod cost_profile;
@@ -593,6 +595,7 @@ pub fn run() {
     let model_access_at_launch = settings.model_access_enabled;
     let settings_state = Arc::new(Mutex::new(settings.clone()));
     let tray_state = Arc::new(TrayWindowState::new());
+    autostart::sync_on_launch(settings.autostart_enabled);
     let launch_args: Vec<String> = std::env::args().collect();
     let start_minimized = should_start_minimized(settings.start_minimized, &launch_args);
 
@@ -886,6 +889,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::autostart_supported,
             commands::magpie_import::magpie_import_status,
             commands::magpie_import::magpie_import_run,
             commands::magpie_import::magpie_import_clear,
@@ -922,6 +926,8 @@ pub fn run() {
             gateway::gateway_recent_route_decisions,
             gateway::gateway_routing_cooldowns,
             gateway::gateway_provider_health,
+            commands::gateway_request_log::gateway_request_log,
+            commands::gateway_request_log::gateway_request_log_export,
             gateway::gateway_routing_feed,
             gateway::gateway_external_feed,
             gateway::gateway_reveal_local_token,

@@ -524,9 +524,17 @@ struct Call {
     stream: bool,
     group: Option<String>,
     context: Option<ContextSize>,
+    first_token_ms: Option<u64>,
 }
 
 impl Call {
+    /// Notes the first upstream event that carries output for this attempt.
+    fn saw_event(&mut self, wire: WireApi, event: &Value) {
+        if self.first_token_ms.is_none() && carries_output(wire, event) {
+            self.first_token_ms = Some(self.started.elapsed().as_millis() as u64);
+        }
+    }
+
     fn record(&self, status: u16, usage: Option<Usage>, error: Option<String>) {
         let usage = usage.unwrap_or_default();
         let record = LedgerRecord {
@@ -555,6 +563,7 @@ impl Call {
                 .as_ref()
                 .map(|_| format!("{}/{}", self.provider, self.upstream_model)),
             context: self.context,
+            first_token_ms: self.first_token_ms,
         };
         if let Err(error) = self.shared.ledger.append(&record) {
             log::warn!("gateway ledger: {error}");
@@ -943,7 +952,7 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
         }
     }
     let trace = build_trace(&group, &plan, &attempts);
-    shared.router.record(RouteDecision {
+    let decision = RouteDecision {
         ts: chrono::Utc::now().to_rfc3339(),
         request_id: ctx.request_id.clone(),
         group: group.id.clone(),
@@ -953,7 +962,9 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
         chosen,
         attempts,
         trace,
-    });
+    };
+    shared.ledger.append_decision(&decision);
+    shared.router.record(decision);
     last.unwrap_or_else(|| error_response(StatusCode::SERVICE_UNAVAILABLE, "路由组没有可用成员。"))
 }
 
@@ -989,6 +1000,7 @@ async fn attempt(
         stream: ctx.stream,
         group: ctx.group.clone(),
         context: ctx.context,
+        first_token_ms: None,
     };
 
     let mut payload = original.clone();
@@ -1434,7 +1446,43 @@ fn upstream_stream_error(value: &Value) -> Option<String> {
         })
 }
 
-fn passthrough_stream(call: Call, upstream: reqwest::Response) -> Response<Body> {
+/// Whether a streamed event carries generated output: text, reasoning or a
+/// tool call, as opposed to lifecycle events such as `response.created`.
+fn carries_output(wire: WireApi, event: &Value) -> bool {
+    match wire {
+        WireApi::Chat => event
+            .get("choices")
+            .and_then(Value::as_array)
+            .is_some_and(|choices| {
+                choices.iter().any(|choice| {
+                    let Some(delta) = choice.get("delta") else {
+                        return false;
+                    };
+                    ["content", "reasoning_content", "reasoning"]
+                        .iter()
+                        .any(|key| {
+                            delta
+                                .get(key)
+                                .and_then(Value::as_str)
+                                .is_some_and(|text| !text.is_empty())
+                        })
+                        || delta
+                            .get("tool_calls")
+                            .and_then(Value::as_array)
+                            .is_some_and(|calls| !calls.is_empty())
+                })
+            }),
+        WireApi::Responses => event
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| kind.starts_with("response.") && kind.ends_with(".delta")),
+        WireApi::Anthropic => {
+            event.get("type").and_then(Value::as_str) == Some("content_block_delta")
+        }
+    }
+}
+
+fn passthrough_stream(mut call: Call, upstream: reqwest::Response) -> Response<Body> {
     let (sender, receiver) = mpsc::channel::<Bytes>(STREAM_QUEUE);
     tokio::spawn(async move {
         let mut lines = SseLines::default();
@@ -1468,6 +1516,7 @@ fn passthrough_stream(call: Call, upstream: reqwest::Response) -> Response<Body>
                 if let Some(data) = sse_data(&line) {
                     terminal |= stream_terminal(call.wire, data);
                     if let Ok(value) = serde_json::from_str::<Value>(data) {
+                        call.saw_event(call.wire, &value);
                         usage = usage_of(call.wire, &value, usage);
                         if let Some(message) = upstream_stream_error(&value) {
                             error = Some(message);
@@ -1561,7 +1610,7 @@ async fn send_events(
 }
 
 fn convert_stream(
-    call: Call,
+    mut call: Call,
     upstream: reqwest::Response,
     mut converter: Box<dyn ChatStream>,
 ) -> Response<Body> {
@@ -1614,6 +1663,7 @@ fn convert_stream(
                         break;
                     }
                 };
+                call.saw_event(WireApi::Chat, &value);
                 observed_usage = usage_of(WireApi::Chat, &value, observed_usage);
                 if let Some(message) = upstream_stream_error(&value) {
                     error = Some(message);
