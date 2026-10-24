@@ -36,6 +36,7 @@ npm run tauri build      # 桌面安装包
 - **现代 Android 看板**：原生 Compose + Material 3 的 Ledger Snapshot，支持同期趋势、筛选、实体下钻、离线快照和深色/浅色/E-ink 骨架；手机使用底部导航，`>=600dp` 宽屏使用 NavigationRail，320/390/430dp、字体 200%、E-ink 与 840dp 平板六状态有主机截图回归。
 - **桌面/锁屏壁纸**：基于本地或云端统计生成动态壁纸；Windows 支持桌面和锁屏，macOS/Linux 当前仅提供桌面相关能力或占位实现。
 - **命令行工具**：`tokenledger-cli` 查看今日/本周/本月用量（可按 Agent、模型、账号拆分）、额度剩余、预算状态、网关状态与最近路由，触发扫描，导出 CSV/JSON；每个命令都有表格与 `--json` 输出，便于脚本和状态栏插件调用。数字与桌面端同一套 Rust 实现，见 [命令行文档](docs/cli.md)。
+- **本机 MCP 服务**：`tokenledger-cli mcp` 以 stdio 方式给 Claude Code、Codex 等 Agent 提供只读工具（今日/本周用量与拆分、额度剩余、预算、网关健康与最近路由、用量异常）和额度紧张时自我节制的提示词；不监听端口，不输出密钥与请求内容，见 [MCP 文档](docs/mcp.md)。
 - **系统托盘**：支持最小化到托盘、托盘显示主窗口、安全退出，以及启动时最小化；当启动配置使窗口默认驻留托盘时，可用 `--show` 显式恢复主窗口。
 - **VS Code 状态栏插件**：`extensions/vscode/` 在编辑器状态栏显示今日预估费用或最紧额度的可用%，悬停看额度条、今日拆分、预算与网关健康；数字全部来自本机命令行 `tokenledger-cli`，不读密钥、不联网。打成 .vsix 手动安装，不上架市场，见 [插件说明](extensions/vscode/README.md)。
 - **价格配置**：可在设置页维护模型输入/输出 Token 单价，保存后后续扫描立即使用。

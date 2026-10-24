@@ -27,6 +27,7 @@ mod budget;
 mod budget_publish;
 mod cache;
 mod cli;
+mod mcp;
 pub use cli::run_cli;
 mod commands;
 mod cost_profile;
