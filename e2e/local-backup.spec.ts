@@ -17,7 +17,7 @@ test.describe('设置：备份与迁移', () => {
     expect((exports.at(-1)!.args as { input: Record<string, string> }).input.passphrase).toBe('long enough');
 
     await card.getByRole('button', { name: '列出备份文件夹里的备份' }).click();
-    await card.getByRole('radio', { name: /TokenLedger-auto-20261023-090000/ }).check();
+    await card.getByRole('radio', { name: /TokenLedger-auto-3fa1c2d4-20261023-090000/ }).check();
     await card.getByLabel('备份密码').nth(1).fill('long enough');
     await card.getByRole('button', { name: '预览备份' }).click();
     await expect(card.getByRole('checkbox', { name: /用量账本/ })).toBeChecked();
