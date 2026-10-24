@@ -54,10 +54,19 @@ pub fn run_cli(args: Vec<String>) -> i32 {
     match execute(&app, &invocation) {
         Ok(output) => {
             let mut stdout = std::io::stdout().lock();
-            // 管道被下游提前关掉（例如 `| head`）不算失败。
-            let _ = stdout.write_all(output.as_bytes());
-            let _ = stdout.flush();
-            EXIT_OK
+            match stdout
+                .write_all(output.as_bytes())
+                .and_then(|()| stdout.flush())
+            {
+                Ok(()) => EXIT_OK,
+                // 管道被下游提前关掉（例如 `| head`）不算失败。
+                Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => EXIT_OK,
+                // 磁盘满等写入失败要报出来，脚本才分得清导出是否完整。
+                Err(error) => {
+                    eprintln!("tokenledger-cli: 写入标准输出失败：{error}");
+                    EXIT_FAILURE
+                }
+            }
         }
         Err(error) => {
             if json_mode {

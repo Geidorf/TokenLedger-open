@@ -97,6 +97,33 @@ where
     (result, true)
 }
 
+/// 单飞只协调本进程内的线程；桌面端与命令行是两个进程，各自读到的源快照
+/// 可能新旧颠倒地提交（例如流式更新中的 OpenCode/Kilo 行被旧值覆盖）。所以
+/// 从读源到落库整段再加一把跨进程的文件锁，持有期间另一个进程的扫描排队等待。
+/// 锁文件打不开（只读目录等）时照旧扫描，不让锁把扫描本身拦下。
+pub(crate) fn lock_scan_across_processes(db_path: &Path) -> Option<std::fs::File> {
+    let lock_path = db_path.with_extension("scan.lock");
+    let file = match std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+    {
+        Ok(file) => file,
+        Err(error) => {
+            log::warn!("scan lock unavailable, scanning without it: {error}");
+            return None;
+        }
+    };
+    match file.lock() {
+        Ok(()) => Some(file),
+        Err(error) => {
+            log::warn!("scan lock failed, scanning without it: {error}");
+            None
+        }
+    }
+}
+
 /// Runs at most one filesystem scan for a database at a time. Concurrent
 /// scheduler and UI refreshes wait for and reuse the same result.
 pub fn run_scan_singleflight(
@@ -104,6 +131,7 @@ pub fn run_scan_singleflight(
     options: &ScanOptions,
 ) -> std::result::Result<CoordinatedScanOutcome, String> {
     let (outcome, is_leader) = run_scan_singleflight_with(db_path, || {
+        let _cross_process = lock_scan_across_processes(db_path);
         run_scan_with_options(db_path, options).map_err(|error| error.to_string())
     });
     Ok(CoordinatedScanOutcome {
