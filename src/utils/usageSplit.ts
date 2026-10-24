@@ -6,10 +6,11 @@ import { splitModelCacheRead } from './modelDistribution';
  * 统一「Split by」（对齐 magpie Usage 页）：同一份 StatsData 按 Agent、模型或设备拆分，
  * 选中一项后其他维度随之收窄。只用契约已有字段，不推断：
  * - Agent × 模型的交叉只有 `tools[].models` 里的有效 Token，没有记录数与费用；
- * - 设备只有 `machineDistribution` 的整体构成，不能与 Agent、模型交叉。
+ * - 设备只有 `machineDistribution` 的整体构成，不能与 Agent、模型交叉；
+ * - 账号（网关供应商）只有本机 `providers`（契约 §2.7），只含经网关的记录，同样不与其他维度交叉。
  * 交叉取不到的指标标为不可得，不按 0 显示。
  */
-export type SplitDimension = 'agent' | 'model' | 'device';
+export type SplitDimension = 'agent' | 'model' | 'device' | 'account';
 export type SplitMetric = 'tokens' | 'requests' | 'cost';
 
 export interface SplitFocus {
@@ -42,6 +43,7 @@ export const SPLIT_DIMENSIONS: { id: SplitDimension; label: string }[] = [
   { id: 'agent', label: 'Agent' },
   { id: 'model', label: '模型' },
   { id: 'device', label: '设备' },
+  { id: 'account', label: '账号' },
 ];
 
 export const SPLIT_METRICS: { id: SplitMetric; label: string }[] = [
@@ -56,6 +58,16 @@ export function cacheHitRate(input: number | undefined, cacheRead: number | unde
   if (typeof cacheRead !== 'number' || !Number.isFinite(cacheRead)) return null;
   const denominator = (input || 0) + cacheRead;
   return denominator > 0 ? cacheRead / denominator : null;
+}
+
+/**
+ * 输出速度（tok/s）：输出 Token ÷ 整次请求耗时。耗时只有网关记录带（含首字等待），
+ * 所以这是偏保守的整体速度；没有耗时或没有输出时不可得。
+ */
+export function outputTokensPerSecond(output: number | undefined, latencyMs: number | undefined): number | null {
+  if (typeof latencyMs !== 'number' || !Number.isFinite(latencyMs) || latencyMs <= 0) return null;
+  if (typeof output !== 'number' || !Number.isFinite(output) || output <= 0) return null;
+  return output / (latencyMs / 1000);
 }
 
 /** 只有缓存读写之和等于缓存合计（拆分可证明）时才给命中率，与模型分布的口径一致。 */
@@ -119,6 +131,21 @@ function deviceRows(stats: StatsData, withCache: boolean) {
   }));
 }
 
+function accountRows(stats: StatsData, withCache: boolean) {
+  return Object.values(stats.providers || {}).map((provider) => ({
+    id: provider.name,
+    tokens: effectiveTokens(provider) + (withCache ? provider.cached || 0 : 0),
+    requests: provider.requests,
+    cost: provider.cost,
+    cacheHit: provenCacheHit(provider),
+  }));
+}
+
+/** 账号维度可用：本机统计带了至少一个账号。 */
+export function accountSplitAvailable(stats: StatsData): boolean {
+  return Object.keys(stats.providers || {}).length > 0;
+}
+
 /**
  * `withCache` 跟随概览的「概览有效 / 概览含缓存」口径（与原模型排行一致）；
  * Agent × 模型交叉只有有效 Token，交叉时始终是有效口径，界面会写明。
@@ -127,7 +154,8 @@ export function splitUsage(stats: StatsData, dimension: SplitDimension, metric: 
   const crossFocus = focus && focus.dimension !== dimension ? focus : null;
   const costTotal = stats.summary?.totalCost || 0;
   if (dimension === 'device') return finish(deviceRows(stats, withCache), metric, ALL_METRICS, Boolean(crossFocus), costTotal);
-  if (crossFocus?.dimension === 'device') {
+  if (dimension === 'account') return finish(accountRows(stats, withCache), metric, ALL_METRICS, Boolean(crossFocus), costTotal);
+  if (crossFocus?.dimension === 'device' || crossFocus?.dimension === 'account') {
     return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, true, costTotal);
   }
   if (dimension === 'model' && crossFocus?.dimension === 'agent') {
@@ -143,13 +171,44 @@ export function splitUsage(stats: StatsData, dimension: SplitDimension, metric: 
   return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, false, costTotal);
 }
 
+/** 拆分面板实际显示的指标：所选指标在当前维度与焦点下不可得时为 Token（与面板同一判断）。 */
+export function effectiveSplitMetric(stats: StatsData, dimension: SplitDimension, metric: SplitMetric, focus: SplitFocus | null, withCache = false): SplitMetric {
+  return splitUsage(stats, dimension, metric, focus, withCache).metrics.includes(metric) ? metric : 'tokens';
+}
+
+interface HeatmapSource {
+  heatmap?: Record<string, number>;
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
+}
+
+export interface SplitHeatmapView {
+  heatmap: Record<string, number>;
+  /** 实际画的指标；来源不带所选指标的逐日数据时退回 Token。 */
+  metric: SplitMetric;
+  /** 画的是焦点项自己的逐日数据。 */
+  focused: boolean;
+  /** 所选指标没有逐日数据（云端或旧缓存），已退回 Token。 */
+  metricFallback: boolean;
+}
+
+function pickHeatmap(source: HeatmapSource, metric: SplitMetric): Record<string, number> | undefined {
+  if (metric === 'requests') return source.heatmapRequests;
+  if (metric === 'cost') return source.heatmapCost;
+  return source.heatmap;
+}
+
 /**
- * 热力图跟随焦点：选中 Agent 或模型时用它自己的逐日有效 Token；
- * 设备没有逐日数据，来源也可能不带实体热力图，这两种情况返回 null，由调用方退回整体热力图并说明。
+ * 热力图同时跟随拆分的焦点与指标：本机统计带逐日记录数与费用（契约 §2.6 可选扩展），
+ * 云端与旧缓存只有逐日有效 Token，此时退回 Token 并由调用方说明。
  */
-export function splitHeatmap(stats: StatsData, focus: SplitFocus | null): Record<string, number> | null {
-  if (!focus) return stats.heatmap;
-  if (focus.dimension === 'agent') return stats.tools?.[focus.id]?.heatmap ?? null;
-  if (focus.dimension === 'model') return stats.models?.[focus.id]?.heatmap ?? null;
-  return null;
+export function splitHeatmapView(stats: StatsData, focus: SplitFocus | null, metric: SplitMetric): SplitHeatmapView {
+  const entity: HeatmapSource | undefined = focus?.dimension === 'agent' ? stats.tools?.[focus.id]
+    : focus?.dimension === 'model' ? stats.models?.[focus.id]
+      : focus?.dimension === 'account' ? stats.providers?.[focus.id] : undefined;
+  const source: HeatmapSource = entity?.heatmap ? entity : stats;
+  const focused = source === entity;
+  const picked = pickHeatmap(source, metric);
+  if (picked) return { heatmap: picked, metric, focused, metricFallback: false };
+  return { heatmap: source.heatmap ?? {}, metric: 'tokens', focused, metricFallback: metric !== 'tokens' };
 }

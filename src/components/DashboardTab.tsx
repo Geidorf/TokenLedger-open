@@ -4,7 +4,7 @@ import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
 import { UsageSplitPanel } from './usage/UsageSplitPanel';
-import { splitHeatmap, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
+import { accountSplitAvailable, effectiveSplitMetric, splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
 import { LoadingSkeleton, MetricsSkeleton } from './LoadingSkeleton';
 import { MetricsGrid } from './MetricsGrid';
 import { ModelCostDistributionPanel } from './ModelCostDistributionPanel';
@@ -614,9 +614,16 @@ export function DashboardTab({
   const activeSplitFocus = splitFocus && (
     splitFocus.dimension === 'agent' ? Boolean(stats.tools?.[splitFocus.id])
       : splitFocus.dimension === 'model' ? Boolean(stats.models?.[splitFocus.id])
-        : showDeviceDistribution && (stats.machineDistribution || []).some((machine) => machine.value === splitFocus.id)
+        : splitFocus.dimension === 'account' ? Boolean(stats.providers?.[splitFocus.id])
+          : showDeviceDistribution && (stats.machineDistribution || []).some((machine) => machine.value === splitFocus.id)
   ) ? splitFocus : null;
-  const focusedHeatmap = activeSplitFocus ? splitHeatmap(stats, activeSplitFocus) : null;
+  const activeSplitDimension: SplitDimension = (splitDimension === 'device' && !showDeviceDistribution)
+    || (splitDimension === 'account' && !accountSplitAvailable(stats)) ? 'agent' : splitDimension;
+  // 交叉时拆分面板只能显示 Token；热力图跟面板实际显示的指标走，不跟残留的选择。
+  const heatmapView = splitHeatmapView(stats, activeSplitFocus,
+    effectiveSplitMetric(stats, activeSplitDimension, splitMetric, activeSplitFocus, showTotalTokens));
+  // 日历画的是某个账号时，点开的单日明细筛不出这个账号，会比格子上的数多：先不让点。
+  const accountHeatmap = heatmapView.focused && activeSplitFocus?.dimension === 'account';
   const cloudRecovery = scope === 'cloud'
     ? cloudSyncRecoveryCopy({ authenticated: cloudAuthenticated, capabilityVerified: cloudCapabilityVerified })
     : null;
@@ -878,7 +885,7 @@ export function DashboardTab({
             sourceOrder={displayPreferences.preferences.quotaSourceOrder} hiddenSourceIds={displayPreferences.preferences.hiddenQuotaSourceIds} />
         </div>;
         if (module === 'distribution') return <UsageSplitPanel key={module} stats={stats}
-          dimension={splitDimension === 'device' && !showDeviceDistribution ? 'agent' : splitDimension}
+          dimension={activeSplitDimension}
           metric={splitMetric} focus={activeSplitFocus}
           deviceAvailable={showDeviceDistribution} showTotalTokens={showTotalTokens}
           onDimensionChange={setSplitDimension} onMetricChange={setSplitMetric} onFocusChange={setSplitFocus}
@@ -894,9 +901,11 @@ export function DashboardTab({
           <TemporalInsightsSection trends={stats.trends} context={insightTimeContext} comparison={stats.comparison ?? null} onSelectDate={onSelectDate} dateDrillUnavailable={dateDrillUnavailable} />
           {/* Cloud scope cannot open a single day: calendar cells stay static
               (the reason text there is still open, see T10.158 log). */}
-          {showHeatmap && <HeatmapSection heatmap={focusedHeatmap ?? stats.heatmap} subject={focusedHeatmap && activeSplitFocus ? activeSplitFocus.id : undefined}
-            subjectUnavailable={activeSplitFocus && !focusedHeatmap ? activeSplitFocus.id : undefined}
-            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (focusedHeatmap && activeSplitFocus
+          {showHeatmap && <HeatmapSection heatmap={heatmapView.heatmap} subject={heatmapView.focused && activeSplitFocus ? activeSplitFocus.id : undefined}
+            subjectUnavailable={activeSplitFocus && !heatmapView.focused ? activeSplitFocus.id : undefined}
+            metric={heatmapView.metric} metricFallback={heatmapView.metricFallback}
+            drillUnavailableNote={accountHeatmap && onSelectDate && !dateDrillUnavailable ? '明细暂不能按账号筛选，选中账号时日期不可点开。' : undefined}
+            onSelectDate={dateDrillUnavailable || !onSelectDate || accountHeatmap ? undefined : (date) => (heatmapView.focused && activeSplitFocus
               ? onSelectDate(date, { tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [], models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [] })
               : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} />}
           <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />

@@ -389,4 +389,39 @@ describe('LogsTable 导出与缓存命中率', () => {
     rerender(<LogsTable {...baseProps} details={details} onExportCsv={onExportCsv} exporting />);
     expect(screen.getByRole('button', { name: /导出中/ })).toBeDisabled();
   });
+
+  it('summarises output speed only when the summary carries timed gateway rows', () => {
+    const { rerender } = render(<LogsTable {...baseProps} details={details} />);
+    let summary = document.querySelector('.details-summary') as HTMLElement;
+    expect(within(summary).queryByText('输出速度')).toBeNull();
+
+    rerender(<LogsTable {...baseProps} details={{
+      ...details,
+      filteredSummary: { ...details.filteredSummary, timedRequests: 2, timedOutputTokens: 600, timedLatencyMs: 4000 },
+    }} />);
+    summary = document.querySelector('.details-summary') as HTMLElement;
+    expect(within(summary).getByText('输出速度').nextElementSibling?.textContent).toBe('150.0 tok/s');
+  });
+
+  it('shows duration and output speed only for rows that carry a latency', () => {
+    const timed: UsageDetailsResponse = {
+      ...details,
+      items: [
+        { ...details.items[0], id: 1, outputTokens: 300, latencyMs: 1500, source: 'gateway' },
+        { ...details.items[0], id: 2, sessionId: 'untimed' },
+      ] as LogHistoryItem[],
+      totalCount: 2,
+    };
+    render(<LogsTable {...baseProps} details={timed} />);
+    const expandButtons = screen.getAllByRole('button', { name: '展开此记录详情' });
+    fireEvent.click(expandButtons[0]);
+    let detail = document.querySelector('.log-detail-row') as HTMLElement;
+    expect(within(detail).getByText('耗时').nextElementSibling?.textContent).toBe('1.5 s');
+    expect(within(detail).getByText('输出速度').nextElementSibling?.textContent).toBe('200.0 tok/s');
+
+    fireEvent.click(screen.getAllByRole('button', { name: '展开此记录详情' })[0]);
+    detail = document.querySelector('.log-detail-row') as HTMLElement;
+    expect(within(detail).queryByText('耗时')).toBeNull();
+    expect(within(detail).queryByText('输出速度')).toBeNull();
+  });
 });

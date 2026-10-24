@@ -495,3 +495,5 @@ button.mw-chip { cursor: pointer; }
 /* Actual layout boxes provide non-overlapping targets, never negative hit-area overlays. */
 .mw-row-main, .mw-collapse, .mw-seg button, .mw-chips button, .mw-toast button, button.mw-chip, .mw-select, .mw-preset, .mw-value-btn, .mw-pick { min-height: 44px; min-width: 44px; }
 [data-gateway-modal] .confirm-dialog-actions button, [data-gateway-modal] .ghost-inline { min-height: 44px; min-width: 44px; }
+.mw-weight { display: inline-flex; align-items: center; gap: 6px; }
+.mw-weight input { width: 4.5em; }

@@ -36,7 +36,11 @@ export interface YearHeatmapProps {
   coverage?: HeatmapCoverage | null;
   /** 今天（YYYY-MM-DD）；缺省用本机日期。 */
   today?: string;
+  /** 单格数值的写法；缺省按 Token 写。 */
+  formatValue?: (value: number) => string;
 }
+
+const formatTokenValue = (value: number) => `${formatTokens(value)} Tokens`;
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
@@ -141,7 +145,7 @@ export function heatmapCoverageNote(year: number, coverage: HeatmapCoverage | nu
   return notes.length > 0 ? `${notes.join('；')}。` : '';
 }
 
-export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, today }: YearHeatmapProps) {
+export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, today, formatValue }: YearHeatmapProps) {
   const todayKey = today && DAY_KEY.test(today) ? today : isoDay(new Date());
   const year = yearProp ?? Number(todayKey.slice(0, 4));
   const inCoverage = (date: string) => !coverage
@@ -157,7 +161,10 @@ export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, t
   // 与分时段节奏格同一把尺（T10.111 `rhythmLevel`）：按本年已知日期的峰值相对分 5 档，单色相由浅到深。
   const maxTokens = peak ? peak[1] : 0;
   const coverageNote = heatmapCoverageNote(year, coverage, todayKey);
-  const summary = `${year} 年活跃日历：${observedDays.length} 个有消耗的日期，总计 ${formatTokens(totalTokens)} Token${peak ? `，峰值 ${peak[0]} 为 ${formatTokens(peak[1])}` : ''}。${coverageNote}`;
+  const summary = formatValue
+    ? `${year} 年活跃日历：${observedDays.length} 个有消耗的日期，总计 ${formatValue(totalTokens)}${peak ? `，峰值 ${peak[0]} 为 ${formatValue(peak[1])}` : ''}。${coverageNote}`
+    : `${year} 年活跃日历：${observedDays.length} 个有消耗的日期，总计 ${formatTokens(totalTokens)} Token${peak ? `，峰值 ${peak[0]} 为 ${formatTokens(peak[1])}` : ''}。${coverageNote}`;
+  const cellValue = formatValue ?? formatTokenValue;
   const hasInteractiveDays = observedDays.length > 0 && typeof onSelectDate === 'function';
 
   return (
@@ -186,7 +193,7 @@ export function YearHeatmap({ heatmap, onSelectDate, year: yearProp, coverage, t
           const isClickable = known && tokens > 0 && typeof onSelectDate === 'function';
 
           // 未来与未查询的日期没有数据，读屏与悬停提示都不能说成 0 Token。
-          const valueLabel = isFuture ? '尚未到来' : known ? `${formatTokens(tokens)} Tokens` : '未查询';
+          const valueLabel = isFuture ? '尚未到来' : known ? cellValue(tokens) : '未查询';
           const title = `${date}: ${valueLabel}${isClickable ? ' (点击查看当日明细)' : ''}`;
           const ariaLabel = isClickable ? `${date}: ${valueLabel}，点击查看当日明细` : `${date}: ${valueLabel}`;
           const stateClass = isFuture ? ' heat-future' : !known ? ' heat-unknown' : level === 0 ? ' heat-0' : '';

@@ -36,8 +36,14 @@ const requests: LedgerRecord[] = [
 ];
 
 const decisions: RouteDecision[] = [
-  { ts: minutesAgo(1), requestId: 'r6', group: 'coding', session: 's1', reason: 'rule', detail: '请求带图片', chosen: 'openai/gpt-5', attempts: [{ member: 'openai/gpt-5', outcome: 'ok', status: 200 }] },
-  { ts: minutesAgo(4), requestId: 'r5', group: 'coding', session: 's1', reason: 'failover', detail: '按顺序', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'openai/gpt-5', outcome: 'failed', status: 429 }, { member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }] },
+  { ts: minutesAgo(1), requestId: 'r6', group: 'coding', session: 's1', reason: 'rule', detail: '请求带图片', chosen: 'openai/gpt-5', attempts: [{ member: 'openai/gpt-5', outcome: 'ok', status: 200 }], trace: [
+    { member: 'openai/gpt-5', rank: 0, verdict: 'chosen', reasons: ['rule_match', 'answered'], detail: '请求带图片' },
+    { member: 'deepseek/deepseek-chat', rank: 1, verdict: 'not_reached', reasons: ['fallback', 'not_reached'], detail: null },
+  ] },
+  { ts: minutesAgo(4), requestId: 'r5', group: 'coding', session: 's1', reason: 'failover', detail: '按顺序', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'openai/gpt-5', outcome: 'failed', status: 429 }, { member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }], trace: [
+    { member: 'openai/gpt-5', rank: 0, verdict: 'failed', reasons: ['strategy_first', 'rate_limited'], detail: '上游返回 429 Too Many Requests' },
+    { member: 'deepseek/deepseek-chat', rank: 1, verdict: 'chosen', reasons: ['fallback', 'answered'], detail: null },
+  ] },
   { ts: minutesAgo(20), requestId: 'r2', group: 'cheap', session: 's9', reason: 'affinity', detail: '会话保持', chosen: 'deepseek/deepseek-reasoner', attempts: [{ member: 'deepseek/deepseek-reasoner', outcome: 'ok', status: 200 }] },
 ];
 

@@ -2,6 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import './styles/shell.css';
+import './styles/surfaces.css';
+import './styles/settings-pages.css';
 import { initializeTheme } from './utils/useTheme';
 
 async function bootstrap() {

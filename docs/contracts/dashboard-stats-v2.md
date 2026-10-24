@@ -176,7 +176,9 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 
 规则只在本机执行（本机看板合并与云端上传前的合并，见下），结果是派生的：不修改、不删除扫描入库的原始行，网关文件或扫描数据变化后整体重算。
 
-**明细与能力声明（可选扩展）。** 本机明细 `items[]` 可带可选 `source: "scan" | "gateway" | "imported-magpie"`，网关来源与 magpie 导入来源另带可选 `provider`；字段缺失按 `scan` 理解（旧生产者）。`imported-magpie` 是从 magpie 本机 `usage.jsonl` 导入的调用，读取范围、字段与去重顺序见 [magpie-import-v1](magpie-import-v1.md)：导入行按本节维度映射与规则 A/B 并入，与 TokenLedger 网关记录重复时以网关记录为准，取代扫描记录的方式与网关记录相同，规则 B 下有多条同指纹候选时导入行暂不计入。本机响应在合并生效时声明 `meta.capabilities.gatewayLedger = true`（网关记录与导入行都已按本节合并）；缺失表示生产者未合并网关记录。读者遇到未知 `source` 取值时按未知来源显示，不丢弃该行。
+**明细与能力声明（可选扩展）。** 本机明细 `items[]` 可带可选 `source: "scan" | "gateway" | "imported-magpie"`，网关来源与 magpie 导入来源另带可选 `provider`，记有耗时（大于 0）时另带可选 `latencyMs`（整次请求耗时，毫秒，与去重用的同一个值）；字段缺失按 `scan` 理解（旧生产者），`latencyMs` 缺失即耗时未知，读者不得按 0 计算速度。`imported-magpie` 是从 magpie 本机 `usage.jsonl` 导入的调用，读取范围、字段与去重顺序见 [magpie-import-v1](magpie-import-v1.md)：导入行按本节维度映射与规则 A/B 并入，与 TokenLedger 网关记录重复时以网关记录为准，取代扫描记录的方式与网关记录相同，规则 B 下有多条同指纹候选时导入行暂不计入。本机响应在合并生效时声明 `meta.capabilities.gatewayLedger = true`（网关记录与导入行都已按本节合并）；缺失表示生产者未合并网关记录。读者遇到未知 `source` 取值时按未知来源显示，不丢弃该行。
+
+**带耗时行的合计（可选扩展）。** 本机明细的 `filteredSummary` 在筛选范围内有带 `latencyMs`（且输出大于 0）的行时，另带 `timedRequests`（这些行的条数）、`timedOutputTokens`（它们的输出 Token 合计）与 `timedLatencyMs`（它们的耗时合计，毫秒）；没有这样的行时三项都缺失，不写 0。读者据此给出整体输出速度（输出合计 ÷ 耗时合计）；总览 `summary` 与云端响应不带这三项。
 
 **兼容与边界。**
 
@@ -196,6 +198,14 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 - 迁移 `20261004120000_gateway_aggregate_provenance.sql` 增加上述列与约束，并让物化视图脏标记触发器覆盖 `DELETE`（只删不插的同步也要刷新汇总）。RLS 沿用 `token_logs` 按 `auth.uid() = user_id` 的四条策略。
 
 共享 fixture `gateway-dedupe-v2.json` 锁定上述映射、区间与窗口、两条规则、零 Token 失败请求与合并后的有效 Token 合计。
+
+### 2.6 逐日记录数与费用（2026-10-23，可选，仅本机）
+
+本机统计在顶层与每个 `tools[*]`、`models[*]` 上，与 `heatmap` 并列可带 `heatmapRequests`（当天记录数，正整数）与 `heatmapCost`（当天预估费用，美元，非负有限数，与 `summary.totalCost` 同一逐行估价）。两者与同一对象的 `heatmap` 日期键完全一致；带其一必带另一，且只在有 `heatmap` 的对象上出现。云端 RPC、实体看板的 `heatmap` 与旧缓存不带，读者遇到缺失时只画有效 Token 并说明，不按 0 补齐，也不从 `trends` 或 `dailyCosts` 推算。
+
+### 2.7 按账号（网关供应商）拆分（2026-10-23，可选，仅本机）
+
+本机全局统计（不带实体筛选）在存在网关账本时可带顶层 `providers`：键为网关记录的 `provider`（供应商名，即「账号」），值与 `tools[*]` 同形（`name`、`input`、`output`、`cached`、可证明时的 `cacheRead`/`cacheWrite`、`total`、`cost`、`requests`、`heatmap` 及 §2.6 的 `heatmapRequests`/`heatmapCost`），不带 `models`。只统计时间窗内、`provider` 非空且经 §2.5 去重后仍保留的网关与导入记录；扫描记录没有账号，不计入，所以各账号合计可以小于 `summary`。不读取任何订阅凭据，也不调用未公开接口，`provider` 只来自网关自己记下的转发目标。云端 RPC、实体看板与旧缓存不带；读者遇到缺失或空对象时把账号维度标为不可用，不从其他字段推断。
 
 ## 3. comparison
 
@@ -401,3 +411,7 @@ v2 内的只增扩展逐条记在这里；`meta.contractVersion` 只在 §7 第 
 - 2026-10-04 T10.264（U-95、ADR-017）：新增 §2.5 网关记录来源与去重（规则 A 会话跨度、规则 B 指纹兜底，`W = 120 秒` 待用户确认）、明细可选 `source`/`provider` 与 `meta.capabilities.gatewayLedger`；本期只进本机看板，云端与 Android 不变；`contractVersion` 仍为 2。
 - 2026-10-04 T10.273（U-96）：§2.5 窗口由 120 秒改为 5 秒，并改为对网关记录的 `[ts − latencyMs, ts]` 区间比较；新增「云端合并上传」：桌面合并去重后上传小时聚合，聚合行可选 `gateway_requests` 列，RPC 签名与响应不变，云端不声明 `gatewayLedger`；`contractVersion` 仍为 2。
 - 2026-10-23（magpie 数据打通）：§2.5 明细 `source` 增加取值 `imported-magpie`，引用 `magpie-import-v1`；读者对未知取值仍按未知来源显示，旧版本不丢行；`contractVersion` 仍为 2。
+- 2026-10-23（输出速度）：§2.5 本机明细的网关与导入行增加可选 `latencyMs`；扫描行、小时聚合与云端不带；旧读者忽略该字段；`contractVersion` 仍为 2。
+- 2026-10-23（输出速度合计）：§2.5 本机明细 `filteredSummary` 增加可选 `timedRequests` / `timedOutputTokens` / `timedLatencyMs`；旧读者忽略；`contractVersion` 仍为 2。
+- 2026-10-23（热力图指标）：新增 §2.6 本机可选 `heatmapRequests` / `heatmapCost`（顶层与工具、模型）；云端不带；`contractVersion` 仍为 2。
+- 2026-10-23（账号维度）：新增 §2.7 本机可选顶层 `providers`（按网关供应商汇总，只含网关与导入记录）；§2.6 `heatmapCost` 输出保留 6 位小数；云端不带；`contractVersion` 仍为 2。

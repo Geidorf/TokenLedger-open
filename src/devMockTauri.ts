@@ -2427,6 +2427,22 @@ export function installDevMockTauri() {
         const input = (payload.input ?? {}) as Record<string, unknown>;
         return { url: String(input.url ?? ''), user: String(input.user ?? ''), hasPassword: Boolean(input.password), hasPassphrase: Boolean(input.passphrase) };
       }
+      case 'peer_sync_shared_list':
+        return {
+          computers: [
+            { id: '3f9a1c0e5b7d2468', name: 'studio-mac', days: 41, latest: new Date().toISOString().slice(0, 10), enabled: false },
+          ],
+          last: null,
+        };
+      case 'peer_sync_shared_pull': {
+        const ids = Array.isArray(payload.ids) ? (payload.ids as string[]) : [];
+        return {
+          pulledAt: new Date().toISOString(),
+          computers: ids.map((id) => ({ id, name: 'studio-mac', days: 41, calls: 1280 })),
+        };
+      }
+      case 'peer_sync_shared_clear':
+        return null;
       default: {
         const gatewayResult = handleGatewayMock(cmd, payload);
         if (gatewayResult !== undefined) return gatewayResult;

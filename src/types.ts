@@ -28,6 +28,14 @@ export interface Summary {
   totalCost: number;
   totalRequests: number;
   avgTokensPerReq: number;
+  /**
+   * Local usage-details summary only (contract §2.5): gateway/imported rows in range
+   * that recorded a duration, with their output tokens and summed duration. Absent
+   * when no such row exists; never present on overview stats or cloud responses.
+   */
+  timedRequests?: number;
+  timedOutputTokens?: number;
+  timedLatencyMs?: number;
 }
 
 /** Where the unit prices behind `cacheSavings` come from (contract §2.4). */
@@ -61,6 +69,9 @@ export interface ToolStat {
   requests: number;
   models?: Record<string, number>;
   heatmap?: Record<string, number>;
+  /** Local stats only (contract §2.6): per-day record count and estimated cost, same date keys as `heatmap`. */
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
 }
 
 /**
@@ -117,6 +128,8 @@ export interface ModelStat {
   cost?: number;
   tool?: string;
   heatmap?: Record<string, number>;
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
   displayTotal?: number;
 }
 
@@ -146,6 +159,8 @@ export interface LogHistoryItem {
   source?: 'scan' | 'gateway' | 'imported-magpie' | (string & {});
   /** Gateway provider id; present only on gateway rows. */
   provider?: string;
+  /** Whole-request duration in ms (contract §2.5); present only on gateway/imported rows that recorded one. */
+  latencyMs?: number;
 }
 
 export interface FacetOption {
@@ -399,11 +414,20 @@ export interface StatsData {
   models: Record<string, ModelStat>;
   trends: TrendPoint[];
   heatmap: Record<string, number>;
+  /** Local stats only (contract §2.6): per-day record count and estimated cost; absent on cloud and old caches. */
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
   history: LogHistoryItem[];
   /** Query-bound recorded estimates; absent means this capability is unavailable. */
   dailyCosts?: DailyCosts;
   /** Query-bound device aggregate; absent on clouds that predate T6.3. */
   machineDistribution?: CompositionItem[];
+  /**
+   * Local stats only (contract §2.7): this period's gateway/imported usage split by
+   * provider account, same shape as `tools[*]`. Scan rows carry no account and are
+   * not in any entry; absent on cloud and when no gateway ledger exists.
+   */
+  providers?: Record<string, ToolStat>;
   historyPage?: UsageDetailsResponse;
   comparison?: UsageComparison | null;
   machines?: string[];

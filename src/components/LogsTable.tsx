@@ -6,7 +6,7 @@ import { colorForTool, isEstimatedLogItem, toolColorMap } from '../types';
 import { cacheDetailMetrics, resolveCacheBreakdown } from '../utils/cacheDisplay';
 import { detailGranularityLabel, rowGranularityLabel } from '../utils/detailGranularity';
 import { formatEstimatedUsd, formatNum, formatTokens } from '../utils/format';
-import { cacheHitRate } from '../utils/usageSplit';
+import { cacheHitRate, outputTokensPerSecond } from '../utils/usageSplit';
 import { rangeDisplayName } from '../utils/rangeDisplay';
 import { useTheme } from '../utils/useTheme';
 import { FilterMultiSelect } from './FilterMultiSelect';
@@ -82,6 +82,11 @@ function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return TIMESTAMP_FORMATTER.format(date);
+}
+
+/** 耗时：1 秒以内写毫秒，否则保留一位小数的秒。 */
+function formatLatency(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
 export function LogsTable({
@@ -218,6 +223,7 @@ export function LogsTable({
   const summary = details?.filteredSummary;
   const summaryCacheSplit = summary ? resolveCacheBreakdown(summary) : null;
   const summaryCacheHit = summary && summaryCacheSplit?.kind === 'split' ? cacheHitRate(summary.inputTokens, summaryCacheSplit.read) : null;
+  const summaryOutputSpeed = summary?.timedRequests ? outputTokensPerSecond(summary.timedOutputTokens, summary.timedLatencyMs) : null;
   const granularityLabel = detailGranularityLabel(details);
   const detailRetry = detailActionCopy('retry', loading);
   const detailSearch = detailActionCopy('search', loading);
@@ -387,6 +393,12 @@ export function LogsTable({
             <span>缓存命中率</span>
             <strong>{summaryCacheHit === null ? '不可得' : `${(summaryCacheHit * 100).toFixed(1)}%`}</strong>
           </div>
+          {summaryOutputSpeed !== null && (
+            <div title={`按 ${formatNum(summary.timedRequests || 0)} 条带耗时的网关记录：输出 Token 合计 ÷ 耗时合计（含首字等待）`}>
+              <span>输出速度</span>
+              <strong>{summaryOutputSpeed.toFixed(1)} tok/s</strong>
+            </div>
+          )}
         </div>
       )}
 
@@ -609,6 +621,15 @@ export function LogsTable({
                               const read = cacheMetrics.find((metric) => metric.label === '缓存读取');
                               const hit = read ? cacheHitRate(log.inputTokens, read.tokens) : null;
                               return hit === null ? null : <div><span>缓存命中率</span><strong>{(hit * 100).toFixed(1)}%</strong></div>;
+                            })()}
+                            {(() => {
+                              const speed = outputTokensPerSecond(log.outputTokens, log.latencyMs);
+                              return log.latencyMs ? (
+                                <>
+                                  <div><span>耗时</span><strong>{formatLatency(log.latencyMs)}</strong></div>
+                                  {speed !== null && <div title="输出 Token ÷ 整次请求耗时（含首字等待）"><span>输出速度</span><strong>{speed.toFixed(1)} tok/s</strong></div>}
+                                </>
+                              ) : null;
                             })()}
                             <div><span>记录数</span><strong>{formatNum(log.requests || 1)}</strong></div>
                             <div><span>数据粒度</span><strong>{rowGranularityLabel(log, details)}</strong></div>

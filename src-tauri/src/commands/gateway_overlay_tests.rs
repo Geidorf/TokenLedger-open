@@ -240,8 +240,12 @@ fn stats_connection_merges_ledger_without_touching_scanned_rows() {
         )
         .unwrap();
     assert_eq!(
-        gateway_provider(&merged, provider_id),
-        Some(("gateway".to_string(), "openai".to_string()))
+        gateway_detail(&merged, provider_id),
+        Some(GatewayDetail {
+            source: "gateway".to_string(),
+            provider: "openai".to_string(),
+            latency_ms: Some(10),
+        })
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -273,9 +277,24 @@ fn usage_details_mark_gateway_source_and_capability() {
     assert_eq!(items[0]["source"], json!("gateway"));
     assert_eq!(items[0]["provider"], json!("openai"));
     assert_eq!(items[0]["model"], json!("gpt-5.5"));
+    assert_eq!(items[0]["latencyMs"], json!(10));
     assert_eq!(items[1]["source"], json!("scan"));
     assert!(items[1].get("provider").is_none());
+    assert!(items[1].get("latencyMs").is_none());
     assert_eq!(details["filteredSummary"]["totalTokens"], json!(290));
+    assert_eq!(details["filteredSummary"]["timedRequests"], json!(1));
+    assert_eq!(details["filteredSummary"]["timedOutputTokens"], json!(80));
+    assert_eq!(details["filteredSummary"]["timedLatencyMs"], json!(10));
+
+    let scan_only: super::super::UsageDetailsQuery = serde_json::from_value(json!({
+        "range": "today",
+        "timezone": iana_time_zone::get_timezone().unwrap(),
+        "models": ["openai/gpt-5.5"],
+    }))
+    .unwrap();
+    let details =
+        super::super::get_usage_details_impl_at(&app, scan_only, local_ts(12, 0, 0)).unwrap();
+    assert!(details["filteredSummary"].get("timedRequests").is_none());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -581,4 +600,36 @@ fn antigravity_cache_unknown_survives_temp_gateway_union() {
     assert!(!row.cache_split_is_proven());
     drop(conn);
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn overview_splits_gateway_rows_by_provider_account() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let conn = db::get_connection(&db_path).unwrap();
+    insert_scan(&conn, "a", "s9", "2026-10-04 09:00:00", 7, 3);
+    drop(conn);
+    let mut second = ledger_line("g2", Some("s2"), local_ts(11, 0, 0), 30, 10);
+    second["provider"] = json!("relay");
+    write_ledger(
+        &app,
+        &[
+            ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80),
+            second,
+        ],
+    );
+
+    let query: super::super::LocalStatsQuery = serde_json::from_value(json!({
+        "range": "today",
+        "timezone": iana_time_zone::get_timezone().unwrap(),
+    }))
+    .unwrap();
+    let stats = super::super::get_local_stats_v2_impl_at(&app, query, local_ts(12, 0, 0)).unwrap();
+    let providers = stats["providers"].as_object().unwrap();
+    assert_eq!(providers.len(), 2, "scan rows carry no account");
+    assert_eq!(stats["providers"]["openai"]["total"], json!(280));
+    assert_eq!(stats["providers"]["openai"]["requests"], json!(1));
+    assert_eq!(stats["providers"]["relay"]["total"], json!(40));
+    assert_eq!(stats["summary"]["totalRequests"], json!(3));
+    let _ = fs::remove_dir_all(root);
 }

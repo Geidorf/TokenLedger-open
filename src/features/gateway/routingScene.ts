@@ -12,8 +12,8 @@
 // - No reachable source → `empty: 'no-source'`, and the stage shows an empty
 //   state instead of an idle animation.
 
-import { GROUP_PREFIX } from './helpers';
-import type { RoutingFeedDecision, RoutingFeedRequest } from './types';
+import { GROUP_PREFIX, traceHeadline } from './helpers';
+import type { MemberTrace, RoutingFeedDecision, RoutingFeedRequest } from './types';
 
 /** How long a finished flow stays lit on the stage (12 s). */
 export const FLOW_LINGER_MS = 12_000;
@@ -75,6 +75,8 @@ export interface SceneHop {
   target: string;
   outcome: HopOutcome;
   status?: number | null;
+  /** Short reason from the gateway's decision trace (main window only). */
+  why?: string | null;
 }
 
 /**
@@ -110,6 +112,8 @@ export interface SceneNode {
   state?: 'ok' | 'failed' | 'busy' | 'idle';
   /** Status code of the latest failure, for its tag. */
   status?: number | null;
+  /** Why the latest flow used or passed over this node, when known. */
+  why?: string | null;
 }
 
 export interface RoutingScene {
@@ -129,7 +133,7 @@ export interface SceneInput {
     /** Why reading the gateway failed, when it did. */
     readError?: string;
     /** Full records (main window) and the redacted feed (widgets) both fit. */
-    decisions: RoutingFeedDecision[];
+    decisions: Array<RoutingFeedDecision & { trace?: MemberTrace[] }>;
     requests: RoutingFeedRequest[];
   } | null;
   external?: ExternalLiveSnapshot | null;
@@ -165,7 +169,11 @@ function flowsFromGateway(gateway: NonNullable<SceneInput['gateway']>, now: numb
   }
   const flows: SceneFlow[] = gateway.decisions.map((decision) => {
     const at = parseTime(decision.ts);
-    const hops = decision.attempts.map((attempt) => ({ target: attempt.member, outcome: hopOutcome(attempt.outcome), status: attempt.status ?? null }));
+    const why = (member: string) => {
+      const item = decision.trace?.find((entry) => entry.member === member);
+      return item ? traceHeadline(item.reasons) : null;
+    };
+    const hops = decision.attempts.map((attempt) => ({ target: attempt.member, outcome: hopOutcome(attempt.outcome), status: attempt.status ?? null, why: why(attempt.member) }));
     const answered = decision.chosen != null && hops.some((hop) => hop.outcome === 'ok');
     return {
       id: `tl:${decision.requestId}`,
@@ -282,6 +290,7 @@ export function buildRoutingScene(input: SceneInput): RoutingScene {
         at: flow.at,
         state: hop.outcome === 'pending' ? 'busy' : hop.outcome === 'ok' ? 'ok' : hop.outcome === 'skipped' ? 'idle' : 'failed',
         status: hop.outcome === 'ok' || hop.outcome === 'pending' ? null : hop.status ?? null,
+        why: hop.why ?? null,
       });
     }
   }

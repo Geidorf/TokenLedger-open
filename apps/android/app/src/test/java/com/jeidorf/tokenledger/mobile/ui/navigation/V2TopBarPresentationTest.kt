@@ -96,16 +96,25 @@ class V2TopBarPresentationTest {
     }
 
     @Test
-    fun usageAndMeSubtitleIsQuerySummary() {
-        for (destination in listOf(MobileDestination.Usage, MobileDestination.Me)) {
-            assertEquals(
-                "今日 · 全部设备",
-                v2TopBarSubtitle(
-                    showSettings = false, entityMode = false, destination = destination,
-                    entityKind = null, entityLabel = "", querySummary = "今日 · 全部设备"
-                )
+    fun usageSubtitleIsQuerySummary() {
+        assertEquals(
+            "今日 · 全部设备",
+            v2TopBarSubtitle(
+                showSettings = false, entityMode = false, destination = MobileDestination.Usage,
+                entityKind = null, entityLabel = "", querySummary = "今日 · 全部设备"
             )
-        }
+        )
+    }
+
+    @Test
+    fun meSubtitleIsBlankBecauseMeHasNoUsageQuery() {
+        assertEquals(
+            "",
+            v2TopBarSubtitle(
+                showSettings = false, entityMode = false, destination = MobileDestination.Me,
+                entityKind = null, entityLabel = "", querySummary = "今日 · 全部设备"
+            )
+        )
     }
 
     @Test

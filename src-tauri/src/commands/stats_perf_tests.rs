@@ -651,12 +651,84 @@ pub(super) fn first_difference(path: &str, old: &Value, new: &Value) -> Option<S
 }
 
 pub(super) fn assert_same_output(label: &str, old: &Value, new: &Value) {
-    let new = strip_t10_183_additions(new).unwrap_or_else(|problem| {
+    let mut new = strip_t10_183_additions(new).unwrap_or_else(|problem| {
         panic!("{label}: T10.183 cache savings invariant broken at {problem}")
     });
+    strip_heatmap_metric_additions("$", &mut new)
+        .unwrap_or_else(|problem| panic!("{label}: heatmap metric invariant broken at {problem}"));
     if let Some(difference) = first_difference("$", old, &new) {
         panic!("{label}: optimized output differs from the pre-T10.167 oracle at {difference}");
     }
+}
+
+/// 2026-10-23 逐日记录数与费用热力图的有意重设基线：凡带 `heatmap` 的对象多出
+/// `heatmapRequests` / `heatmapCost`。先核对两者与 `heatmap` 日期键完全一致、
+/// 记录数为正整数、费用为非负有限数，再去掉交给逐字段比较。
+fn strip_heatmap_metric_additions(path: &str, value: &mut Value) -> Result<(), String> {
+    match value {
+        Value::Object(map) => {
+            let requests = map.remove("heatmapRequests");
+            let cost = map.remove("heatmapCost");
+            // 专属看板的 `heatmap` 来自单独的逐日查询，不带这两项，只核对带了的对象。
+            let checked = requests.is_some() || cost.is_some();
+            if let Some(heatmap) = map
+                .get("heatmap")
+                .and_then(Value::as_object)
+                .filter(|_| checked)
+            {
+                let keys: std::collections::BTreeSet<&String> = heatmap.keys().collect();
+                for (name, extra) in [("heatmapRequests", &requests), ("heatmapCost", &cost)] {
+                    let extra = extra
+                        .as_ref()
+                        .and_then(Value::as_object)
+                        .ok_or_else(|| format!("{path}.{name}: missing next to heatmap"))?;
+                    if extra.keys().collect::<std::collections::BTreeSet<_>>() != keys {
+                        return Err(format!("{path}.{name}: date keys differ from heatmap"));
+                    }
+                }
+                for (date, count) in requests
+                    .as_ref()
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flatten()
+                {
+                    if count.as_i64().is_none_or(|count| count <= 0) {
+                        return Err(format!(
+                            "{path}.heatmapRequests.{date}: not a positive count"
+                        ));
+                    }
+                }
+                for (date, amount) in cost
+                    .as_ref()
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flatten()
+                {
+                    if amount
+                        .as_f64()
+                        .is_none_or(|amount| !amount.is_finite() || amount < 0.0)
+                    {
+                        return Err(format!(
+                            "{path}.heatmapCost.{date}: not a non-negative amount"
+                        ));
+                    }
+                }
+            } else if requests.is_some() || cost.is_some() {
+                return Err(format!("{path}: heatmap metrics without heatmap"));
+            }
+
+            for (key, child) in map.iter_mut() {
+                strip_heatmap_metric_additions(&format!("{path}.{key}"), child)?;
+            }
+        }
+        Value::Array(items) => {
+            for (index, child) in items.iter_mut().enumerate() {
+                strip_heatmap_metric_additions(&format!("{path}[{index}]"), child)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 /// T10.183 对 `stats_perf_oracle` 的有意重设基线。

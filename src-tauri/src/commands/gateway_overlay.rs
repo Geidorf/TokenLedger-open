@@ -21,7 +21,7 @@ use crate::gateway::{accounting, LedgerRecord};
 /// end-time match plus up to 1 s of second truncation on each side, plus 1 s.
 pub(super) const DEDUPE_WINDOW_SECS: i64 = 5;
 const LEDGER_FILES: [&str; 2] = ["usage-v1.jsonl.1", "usage-v1.jsonl"];
-const SYNTHETIC_SESSION_PREFIX: &str = "gateway:";
+pub(super) const SYNTHETIC_SESSION_PREFIX: &str = "gateway:";
 
 /// Where a merged row came from: TokenLedger's own gateway, or magpie's
 /// `usage.jsonl` imported by the user (`magpie_import`).
@@ -30,6 +30,8 @@ pub(super) enum RowSource {
     #[default]
     Gateway,
     ImportedMagpie,
+    /// Another computer's call, shared by the peer on WebDAV (`peer_shared`).
+    SharedPeer,
 }
 
 impl RowSource {
@@ -37,6 +39,7 @@ impl RowSource {
         match self {
             Self::Gateway => "gateway",
             Self::ImportedMagpie => "imported-magpie",
+            Self::SharedPeer => "shared-peer",
         }
     }
 }
@@ -59,6 +62,10 @@ pub(super) struct GatewayRow {
     pub output_tokens: i64,
     pub cached_tokens: i64,
     pub cache_write_tokens: i64,
+    /// Machine the row is counted under; `None` is this computer.
+    pub machine_id: Option<String>,
+    /// Request duration in milliseconds as the gateway measured it; 0 when unknown.
+    pub latency_ms: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -155,6 +162,8 @@ pub(super) fn map_record(
         output_tokens: to_i64(record.output),
         cached_tokens: to_i64(record.cache_read.saturating_add(record.cache_write)),
         cache_write_tokens: to_i64(record.cache_write),
+        machine_id: None,
+        latency_ms: to_i64(record.latency_ms),
     })
 }
 
@@ -226,8 +235,10 @@ pub(super) fn resolve_overlay(
         }
     }
 
+    // Another computer's rows never stand for a call scanned here.
     let mut fallback: Vec<&GatewayRow> = gateway
         .iter()
+        .filter(|row| row.source != RowSource::SharedPeer)
         .filter(|row| {
             !row.real_session || !anchored.contains(&(row.tool.as_str(), row.session_id.as_str()))
         })
@@ -336,7 +347,7 @@ pub(super) fn accounting_coverage(db_path: &Path) -> Result<Option<accounting::C
 /// An unreadable source retains presence; consumers must return Err, not pure-scan fallback.
 /// An imported magpie ledger (`magpie_import`) joins the signature, so importing,
 /// re-importing or removing it invalidates the same caches.
-pub(super) fn ledger_signature(db_path: &Path) -> Option<String> {
+fn local_signature(db_path: &Path) -> Option<String> {
     let accounting =
         accounting_present(db_path).then(|| match accounting::horizon(&gateway_dir(db_path)) {
             Ok((coverage, through)) => format!("accounting:{}:{through}", coverage.revision),
@@ -345,6 +356,18 @@ pub(super) fn ledger_signature(db_path: &Path) -> Option<String> {
     match (accounting, super::magpie_import::signature(db_path)) {
         (Some(accounting), Some(magpie)) => Some(format!("{accounting}|{magpie}")),
         (accounting, magpie) => accounting.or(magpie),
+    }
+}
+
+/// `local_signature` joined by the shared usage of other computers
+/// (`peer_shared`), so pulling or clearing it invalidates the same caches.
+pub(super) fn ledger_signature(db_path: &Path) -> Option<String> {
+    match (
+        local_signature(db_path),
+        super::peer_shared::signature(db_path),
+    ) {
+        (Some(local), Some(shared)) => Some(format!("{local}|{shared}")),
+        (local, shared) => local.or(shared),
     }
 }
 
@@ -362,7 +385,7 @@ fn accounting_id(record: &LedgerRecord) -> String {
 /// TokenLedger's own gateway rows, then the imported magpie rows that are not
 /// the same request seen by both gateways (a TokenLedger gateway row wins,
 /// matched by the same rules A and B as a scanned row).
-fn read_merged_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
+fn read_local_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
     let mut rows = if accounting_present(db_path) {
         read_gateway_rows(db_path)?
     } else {
@@ -390,6 +413,14 @@ fn read_merged_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
             .into_iter()
             .filter(|row| !duplicates.contains(&row.id)),
     );
+    Ok(rows)
+}
+
+/// This computer's rows, then other computers' shared rows: those are
+/// different calls by definition, so nothing is deduplicated against them.
+fn read_merged_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
+    let mut rows = read_local_rows(db_path)?;
+    rows.extend(super::peer_shared::read_rows(db_path)?);
     Ok(rows)
 }
 
@@ -437,7 +468,12 @@ pub(super) fn scan_candidates(
     conn: &Connection,
     gateway: &[GatewayRow],
 ) -> rusqlite::Result<Vec<ScanCandidate>> {
-    let spans: Vec<(NaiveDateTime, NaiveDateTime)> = gateway.iter().filter_map(span_of).collect();
+    let local = || {
+        gateway
+            .iter()
+            .filter(|row| row.source != RowSource::SharedPeer)
+    };
+    let spans: Vec<(NaiveDateTime, NaiveDateTime)> = local().filter_map(span_of).collect();
     let (Some(first), Some(last)) = (
         spans.iter().map(|span| span.0).min(),
         spans.iter().map(|span| span.1).max(),
@@ -445,7 +481,7 @@ pub(super) fn scan_candidates(
         return Ok(Vec::new());
     };
     let window = chrono::Duration::seconds(DEDUPE_WINDOW_SECS);
-    let tools: BTreeSet<&str> = gateway.iter().map(|row| row.tool.as_str()).collect();
+    let tools: BTreeSet<&str> = local().map(|row| row.tool.as_str()).collect();
     let mut sql = "SELECT id, tool, session_id, timestamp, input_tokens, output_tokens, \
                    COALESCE(cached_tokens, 0) FROM main.token_logs \
                    WHERE timestamp >= ? AND timestamp <= ? AND tool IN ("
@@ -485,7 +521,8 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
              input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
              cached_tokens INTEGER NOT NULL, cache_write_tokens INTEGER NOT NULL,
              timestamp TEXT NOT NULL, session_id TEXT NOT NULL, cost_usd REAL,
-             machine_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
+             machine_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL,
+             latency_ms INTEGER NOT NULL);
          CREATE TEMP TABLE gw_superseded (id INTEGER PRIMARY KEY);
          CREATE TEMP VIEW token_logs AS
              SELECT id, tool, model, input_tokens, output_tokens, cached_tokens,
@@ -498,7 +535,7 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
                FROM temp.gw_rows;",
     )?;
     let mut insert_row = conn.prepare(
-        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12)",
+        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12, ?13)",
     )?;
     for row in gateway.iter().filter(|row| !held.contains(&row.id)) {
         insert_row.execute(params![
@@ -511,9 +548,10 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
             row.cache_write_tokens,
             row.timestamp,
             row.session_id,
-            machine_id,
+            row.machine_id.as_deref().unwrap_or(&machine_id),
             row.provider,
             row.source.as_str(),
+            row.latency_ms,
         ])?;
     }
     let mut insert_superseded = conn.prepare("INSERT INTO temp.gw_superseded VALUES (?1)")?;
@@ -534,16 +572,43 @@ pub(super) fn open_stats_connection(db_path: &Path) -> Result<Connection, String
     Ok(conn)
 }
 
-/// Source (`gateway` or `imported-magpie`) and provider of a merged row on a
-/// connection from `open_stats_connection`.
-pub(super) fn gateway_provider(conn: &Connection, id: i64) -> Option<(String, String)> {
+/// 每条网关与导入行的供应商（行 id → 供应商 ID），供按账号拆分。读已缓存的网关行，
+/// 不另开统计连接；被暂缓的行不在合并视图里，多出的 id 不会匹配到任何统计行。
+pub(super) fn row_providers(
+    db_path: &Path,
+    signature: &str,
+) -> Result<HashMap<i64, String>, String> {
+    Ok(gateway_rows_cached(db_path, signature)?
+        .iter()
+        .map(|row| (row.id, row.provider.clone()))
+        .collect())
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) struct GatewayDetail {
+    pub source: String,
+    pub provider: String,
+    /// `None` when the gateway did not record a duration.
+    pub latency_ms: Option<i64>,
+}
+
+/// Source (`gateway` or `imported-magpie`), provider and duration of a merged
+/// row on a connection from `open_stats_connection`.
+pub(super) fn gateway_detail(conn: &Connection, id: i64) -> Option<GatewayDetail> {
     if id >= 0 {
         return None;
     }
     conn.query_row(
-        "SELECT source, provider FROM temp.gw_rows WHERE id = ?1",
+        "SELECT source, provider, latency_ms FROM temp.gw_rows WHERE id = ?1",
         params![id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| {
+            let latency_ms: i64 = row.get(2)?;
+            Ok(GatewayDetail {
+                source: row.get(0)?,
+                provider: row.get(1)?,
+                latency_ms: (latency_ms > 0).then_some(latency_ms),
+            })
+        },
     )
     .ok()
 }

@@ -1754,6 +1754,7 @@ mod tests {
             members: members.iter().map(|m| m.to_string()).collect(),
             manual_member: None,
             rules: Vec::new(),
+            weights: Default::default(),
             session_ttl_secs: 600,
             enabled: true,
         }
@@ -1904,6 +1905,17 @@ mod tests {
                 (h.hits("a") - before.0, h.hits("b") - before.1),
                 (1, 1),
                 "rotation"
+            );
+            let before = (h.hits("a"), h.hits("b"));
+            for _ in 0..3 {
+                let body =
+                    json!({"model": "group/mix", "input": "hi", "prompt_cache_key": "conv-7"});
+                assert_eq!(send(&h, body, None).await.0, 200);
+            }
+            let moved = (h.hits("a") - before.0, h.hits("b") - before.1);
+            assert!(
+                moved == (3, 0) || moved == (0, 3),
+                "a body cache key pins without a session header"
             );
             let image = json!({"model": "group/mix", "input": [{"role": "user", "content": [
                 {"type": "input_image", "image_url": "data:image/png;base64,AAAA"}]}]});
@@ -2094,6 +2106,13 @@ mod tests {
                 outcome: "failed",
                 status: Some(429),
                 error: Some("error-secret".into()),
+            }],
+            trace: vec![routing::MemberTrace {
+                member: "a/m".into(),
+                rank: Some(0),
+                verdict: "failed",
+                reasons: vec!["strategy_first", "rate_limited"],
+                detail: Some("detail-secret".into()),
             }],
         };
         let record = LedgerRecord {

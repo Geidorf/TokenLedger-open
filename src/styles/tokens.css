@@ -6,116 +6,114 @@
    The @theme block makes the same values available to Tailwind 4 utilities
    (e.g. `bg-primary`, `text-secondary`, `rounded-md`) without a JS config file.
 
-   Theme strategy:
-   - :root[data-theme="dark"] (default + auto-dark) holds the dark palette.
-     T10.150 moved it from the old macOS window gray (#1c1c1e) to a deeper,
-     slightly cool neutral with three clear depth steps:
-       app/window #0a0c10 → page #0d0f13 → card #15181e → raised #1b1f26.
-     Token names are unchanged so existing component code keeps working.
-   - :root[data-theme="light"] defines the light palette (cool gray page,
-     white cards, soft layered shadows). The useTheme hook applies data-theme
-     on <html> based on user choice or system preference.
-   - Text keeps a readable ladder on cards (dark ≈ 16 / 10.6 / 6.9 : 1,
-     light ≈ 17.9 / 9.7 / 5.7 : 1) so hierarchy comes from tone, not weight:
-     on Windows the CJK UI font only ships Regular and Bold, so every
-     weight ≥ 600 renders as Bold and cannot carry hierarchy by itself.
+   Theme strategy (desktop visual refresh):
+   - :root[data-theme="dark"] (default + auto-dark): quiet neutral greys
+       page #1a1a1e → card #232327 → pill/raised #2d2d33, lines #333339,
+     indigo accent #a5b4fc with dark text on its fill (#14142a).
+   - :root[data-theme="light"]: page #f4f4f6, white cards, lines #e3e3e8,
+     indigo accent #4f46e5. Surfaces are flat: one hairline border, no
+     gradients, glows or ambient light; shadows only on floating layers.
+   - Corners 6–8px on controls, 12px on cards, 14px on dialogs; motion
+     120–180ms on the standard decelerating curve; 13px body text.
+   - Text keeps a readable ladder on cards (every common foreground
+     >= 4.5:1, checked by tests/frontend-contracts), so muted/faint greys sit
+     a little darker (light) or lighter (dark) than a pure grey ramp would.
+     Chart series stay on palette B (user decision U-4).
    ========================================================================== */
 
 :root,
 :root[data-theme="dark"],
 :root[data-theme="auto"] {
   /* ----- Semantic surface colors ----------------------------------------- */
-  --color-bg-app: #0a0c10;
+  --color-bg-app: #161619;
   --color-bg-shell-grad-1: transparent;
-  --color-bg-shell-grad-2: #0d0f13;
-  --color-bg-shell-grad-3: #0d0f13;
-  --color-bg-sidebar: rgba(10, 12, 16, 0.9);
-  --color-bg-header: rgba(13, 15, 19, 0.82);
-  --color-bg-header-solid: #0d0f13;
-  --color-bg-popover: #1d2129;
+  --color-bg-shell-grad-2: #1a1a1e;
+  --color-bg-shell-grad-3: #1a1a1e;
+  --color-bg-sidebar: #1a1a1e;
+  --color-bg-header: rgba(26, 26, 30, 0.86);
+  --color-bg-header-solid: #1a1a1e;
+  --color-bg-popover: #28282d;
   --color-bg-subtle: rgba(255, 255, 255, 0.03);
-  --color-bg-scrim: rgba(3, 5, 9, 0.66);
-  --color-bg-page: #0d0f13;
-  --color-bg-input: rgba(255, 255, 255, 0.045);
+  --color-bg-scrim: rgba(8, 8, 10, 0.6);
+  --color-bg-page: #1a1a1e;
+  --color-bg-input: #2d2d33;
   --color-bg-hover-soft: rgba(255, 255, 255, 0.035);
   --color-bg-hover-mid: rgba(255, 255, 255, 0.055);
   --color-bg-hover-strong: rgba(255, 255, 255, 0.08);
   --color-bg-hover-bright: rgba(255, 255, 255, 0.1);
 
   /* ----- Text colors ----------------------------------------------------- */
-  --color-text-primary: #f2f4f7;
-  --color-text-secondary: #c3c8d2;
-  --color-text-tertiary: #9aa2b0;
-  --color-text-muted: #a5acb9;
-  --color-text-faint: #8f97a5;
-  --color-text-dimmer: #8b93a1;
-  --color-text-weekday: #9aa2b0;
-  --color-text-on-primary: #ffffff;
-  --color-text-inverse: #f2f4f7;
-  --color-text-danger: #fb7185;
-  --color-danger-text: #fb7185;
-  --color-text-month: #b4bac6;
+  --color-text-primary: #ededf1;
+  --color-text-secondary: #b9b9c1;
+  --color-text-tertiary: #a1a1aa;
+  --color-text-muted: #a1a1aa;
+  --color-text-faint: #93939c;
+  --color-text-dimmer: #93939c;
+  --color-text-weekday: #a1a1aa;
+  --color-text-on-primary: #14142a;
+  --color-text-inverse: #ededf1;
+  --color-text-danger: #f28b82;
+  --color-danger-text: #f28b82;
+  --color-text-month: #b9b9c1;
   --color-text-success: #ffffff;
   /* Small status text on tinted chips and cards (T10.150 QA F6). Dark keeps
      the status hues: they already clear 7:1 on every tint. */
-  --color-success-text: #4ade80;
-  --color-warning-text: #fbbf24;
+  --color-success-text: #6fd99b;
+  --color-warning-text: #f2b544;
 
   /* ----- Borders & dividers --------------------------------------------- */
   --color-border-faint: rgba(255, 255, 255, 0.05);
-  --color-border-row: rgba(255, 255, 255, 0.045);
-  --color-border-status: rgba(255, 255, 255, 0.06);
+  --color-border-row: #2c2c32;
+  --color-border-status: #333339;
 
   /* ----- Brand & accent palette ----------------------------------------- */
-  --color-primary-hover: #8fb4ff;
+  --color-primary-hover: #c7d2fe;
   /* 白字压在强调色上不足 4.5:1（T10.128 P1）。填充另立一个 token：
      强调色仍需在深底上够亮，填充色则要暗到白字能过 4.5:1（#2f6be6 为 4.81:1）。 */
-  --color-primary-fill: #2f6be6;
-  --color-primary-fill-hover: #3a75ee;
-  --color-primary-soft-bg: rgba(91, 140, 255, 0.14);
-  --color-primary-soft-border: rgba(91, 140, 255, 0.28);
-  --color-primary-soft-icon: #8fb4ff;
-  --color-primary-glow: rgba(91, 140, 255, 0.28);
-  --color-primary-focus: rgba(107, 157, 255, 0.78);
-  --color-primary-focus-soft: rgba(107, 157, 255, 0.55);
+  --color-primary-fill: #a5b4fc;
+  --color-primary-fill-hover: #b9c4fd;
+  --color-primary-soft-bg: #2b2c47;
+  --color-primary-soft-border: rgba(165, 180, 252, 0.3);
+  --color-primary-soft-icon: #a5b4fc;
+  --color-primary-glow: rgba(165, 180, 252, 0.2);
+  --color-primary-focus: rgba(165, 180, 252, 0.8);
+  --color-primary-focus-soft: rgba(165, 180, 252, 0.55);
 
-  --color-success-soft-bg: rgba(74, 222, 128, 0.12);
-  --color-success-soft-border: rgba(74, 222, 128, 0.32);
-  --color-success-toast-bg: rgba(12, 52, 32, 0.94);
-  --color-success-toast-border: rgba(74, 222, 128, 0.28);
+  --color-success-soft-bg: #1e3a2b;
+  --color-success-soft-border: rgba(111, 217, 155, 0.32);
+  --color-success-toast-bg: rgba(30, 58, 43, 0.96);
+  --color-success-toast-border: rgba(111, 217, 155, 0.3);
 
-  --color-danger-soft-bg: rgba(251, 113, 133, 0.12);
-  --color-danger-soft-border: rgba(251, 113, 133, 0.36);
-  --color-danger-soft-hover: rgba(251, 113, 133, 0.2);
-  --color-danger-toast-bg: rgba(72, 16, 30, 0.94);
-  --color-danger-toast-border: rgba(251, 113, 133, 0.32);
+  --color-danger-soft-bg: #45272a;
+  --color-danger-soft-border: rgba(242, 139, 130, 0.36);
+  --color-danger-soft-hover: rgba(242, 139, 130, 0.2);
+  --color-danger-toast-bg: rgba(69, 39, 42, 0.96);
+  --color-danger-toast-border: rgba(242, 139, 130, 0.32);
 
-  --color-info-toast-bg: rgba(14, 34, 70, 0.94);
-  --color-info-toast-border: rgba(91, 140, 255, 0.32);
+  --color-info-toast-bg: rgba(43, 44, 71, 0.96);
+  --color-info-toast-border: rgba(165, 180, 252, 0.32);
 
-  --color-pill-bg: rgba(255, 255, 255, 0.05);
-  --color-pill-border: rgba(255, 255, 255, 0.08);
-  --color-code-bg: rgba(255, 255, 255, 0.07);
-  --color-toggle-off: rgba(255, 255, 255, 0.14);
-  --color-icon-soft-bg: rgba(91, 140, 255, 0.14);
-  --color-row-divider: rgba(255, 255, 255, 0.06);
-  --color-table-head-bg: #11141a;
+  --color-pill-bg: #2d2d33;
+  --color-pill-border: #333339;
+  --color-code-bg: #2d2d33;
+  --color-toggle-off: #46464e;
+  --color-icon-soft-bg: #2b2c47;
+  --color-row-divider: #2c2c32;
+  --color-table-head-bg: #1f1f23;
 
   --color-scroll-track: transparent;
-  --color-scroll-thumb: rgba(148, 158, 176, 0.28);
-  --color-scroll-thumb-hover: rgba(176, 186, 204, 0.5);
+  --color-scroll-thumb: rgba(255, 255, 255, 0.16);
+  --color-scroll-thumb-hover: rgba(255, 255, 255, 0.28);
 
   /* ----- Brand material (T10.150) -----------------------------------------
      The gradient is identity, not data: logo mark, the active navigation
      indicator, the primary KPI accent and primary buttons. Charts keep the
      flat --chart-* series colors so color never becomes the only cue. */
-  --color-brand-1: #5b8cff;
-  --color-brand-2: #8b6cff;
-  --color-brand-gradient: linear-gradient(135deg, #5b8cff 0%, #8b6cff 100%);
-  --color-brand-gradient-soft: linear-gradient(135deg, rgba(91, 140, 255, 0.2) 0%, rgba(139, 108, 255, 0.14) 100%);
-  --color-ambient:
-    radial-gradient(1100px 420px at 18% -12%, rgba(91, 140, 255, 0.1), transparent 62%),
-    radial-gradient(900px 380px at 100% -6%, rgba(139, 108, 255, 0.07), transparent 60%);
+  --color-brand-1: #a5b4fc;
+  --color-brand-2: #a5b4fc;
+  --color-brand-gradient: linear-gradient(#a5b4fc, #a5b4fc);
+  --color-brand-gradient-soft: linear-gradient(rgba(165, 180, 252, 0.07), rgba(165, 180, 252, 0.07));
+  --color-ambient: linear-gradient(transparent, transparent);
 
   /* ----- Chart series (T10.150; retuned T10.187 to colour-vision palette B,
      user decision U-4, 2026-09-25) -------------------------------------------
@@ -138,7 +136,7 @@
   --chart-7: #3dbdf7;
   --chart-8: #fb923c;
   --chart-grid: rgba(255, 255, 255, 0.06);
-  --chart-axis: #8f97a5;
+  --chart-axis: #93939c;
 
   /* Heatmap levels (kept dark-only; light palette reuses the same tones) */
   --heat-0: #1a2130;
@@ -158,35 +156,35 @@
 
   /* ----- Enhanced semantic palette (v2) ---------------------------------- */
   --color-bg-inset-hover: rgba(0, 0, 0, 0.26);
-  --color-text-label: #a5acb9;
-  --color-text-caption: #98a0ae;
-  --color-primary-muted: rgba(107, 157, 255, 0.55);
-  --color-primary-subtle: rgba(107, 157, 255, 0.08);
-  --color-success-muted: rgba(74, 222, 128, 0.55);
-  --color-success-subtle: rgba(74, 222, 128, 0.08);
-  --color-warning-muted: rgba(251, 191, 36, 0.55);
-  --color-warning-subtle: rgba(251, 191, 36, 0.08);
-  --color-danger-muted: rgba(251, 113, 133, 0.55);
-  --color-danger-subtle: rgba(251, 113, 133, 0.08);
+  --color-text-label: #a1a1aa;
+  --color-text-caption: #93939c;
+  --color-primary-muted: rgba(165, 180, 252, 0.55);
+  --color-primary-subtle: rgba(165, 180, 252, 0.08);
+  --color-success-muted: rgba(111, 217, 155, 0.55);
+  --color-success-subtle: rgba(111, 217, 155, 0.08);
+  --color-warning-muted: rgba(242, 181, 68, 0.55);
+  --color-warning-subtle: rgba(242, 181, 68, 0.08);
+  --color-danger-muted: rgba(242, 139, 130, 0.55);
+  --color-danger-subtle: rgba(242, 139, 130, 0.08);
   --color-info-muted: rgba(56, 189, 248, 0.55);
   --color-info-subtle: rgba(56, 189, 248, 0.08);
 
   /* ----- Enhanced materials & inner highlights -------------------------- */
-  --color-border-inner-highlight: rgba(255, 255, 255, 0.06);
-  --color-border-glass: rgba(255, 255, 255, 0.08);
-  --color-surface-gradient-1: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
-  --color-surface-gradient-card: linear-gradient(180deg, rgba(29, 33, 41, 0.92) 0%, rgba(21, 24, 30, 0.98) 100%);
-  --color-surface-glow-blue: radial-gradient(circle at 50% 0%, rgba(91, 140, 255, 0.16), transparent 70%);
-  --color-surface-glow-emerald: radial-gradient(circle at 50% 0%, rgba(74, 222, 128, 0.14), transparent 70%);
-  --color-surface-glow-violet: radial-gradient(circle at 50% 0%, rgba(139, 108, 255, 0.16), transparent 70%);
-  --color-surface-glow-amber: radial-gradient(circle at 50% 0%, rgba(251, 191, 36, 0.14), transparent 70%);
+  --color-border-inner-highlight: transparent;
+  --color-border-glass: #333339;
+  --color-surface-gradient-1: linear-gradient(transparent, transparent);
+  --color-surface-gradient-card: linear-gradient(#232327, #232327);
+  --color-surface-glow-blue: linear-gradient(transparent, transparent);
+  --color-surface-glow-emerald: linear-gradient(transparent, transparent);
+  --color-surface-glow-violet: linear-gradient(transparent, transparent);
+  --color-surface-glow-amber: linear-gradient(transparent, transparent);
 
   /* ----- Shadows --------------------------------------------------------- */
-  --shadow-toast: 0 24px 60px -12px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --shadow-primary: 0 10px 24px -6px rgba(47, 107, 230, 0.5);
-  --shadow-glow-primary: 0 0 28px rgba(91, 140, 255, 0.24);
-  --shadow-glow-success: 0 0 24px rgba(74, 222, 128, 0.2);
-  --shadow-modal: 0 32px 80px -16px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --shadow-toast: 0 16px 44px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  --shadow-primary: none;
+  --shadow-glow-primary: none;
+  --shadow-glow-success: none;
+  --shadow-modal: 0 16px 44px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
 
   color-scheme: dark;
 }
@@ -200,104 +198,102 @@
    ========================================================================== */
 
 :root[data-theme="light"] {
-  --color-bg-app: #eceef2;
+  --color-bg-app: #ececf0;
   --color-bg-base: #ffffff;
-  --color-bg-elevated: rgba(15, 23, 42, 0.03);
-  --color-bg-overlay: rgba(255, 255, 255, 0.98);
+  --color-bg-elevated: #f9f9fb;
+  --color-bg-overlay: rgba(255, 255, 255, 0.96);
   --color-bg-shell-grad-1: transparent;
-  --color-bg-shell-grad-2: #f7f8fa;
-  --color-bg-shell-grad-3: #f4f5f7;
+  --color-bg-shell-grad-2: #f4f4f6;
+  --color-bg-shell-grad-3: #f4f4f6;
   --color-bg-panel: #ffffff;
-  --color-bg-sidebar: rgba(238, 240, 244, 0.94);
-  --color-bg-header: rgba(246, 247, 249, 0.86);
-  --color-bg-header-solid: #f6f7f9;
+  --color-bg-sidebar: #f4f4f6;
+  --color-bg-header: rgba(244, 244, 246, 0.86);
+  --color-bg-header-solid: #f4f4f6;
   --color-bg-popover: #ffffff;
-  --color-bg-subtle: rgba(15, 23, 42, 0.03);
-  --color-bg-scrim: rgba(15, 23, 42, 0.28);
-  --color-bg-page: #f4f5f7;
-  --color-bg-input: rgba(15, 23, 42, 0.04);
-  --color-bg-hover-soft: rgba(15, 23, 42, 0.03);
-  --color-bg-hover-mid: rgba(15, 23, 42, 0.05);
-  --color-bg-hover-strong: rgba(15, 23, 42, 0.08);
-  --color-bg-hover-bright: rgba(15, 23, 42, 0.1);
+  --color-bg-subtle: #f9f9fb;
+  --color-bg-scrim: rgba(20, 22, 30, 0.24);
+  --color-bg-page: #f4f4f6;
+  --color-bg-input: #f1f1f4;
+  --color-bg-hover-soft: rgba(0, 0, 0, 0.025);
+  --color-bg-hover-mid: #f1f1f4;
+  --color-bg-hover-strong: #e9e9ee;
+  --color-bg-hover-bright: #e6e6eb;
 
-  --color-text-primary: #0f1729;
-  --color-text-secondary: #3b4556;
-  --color-text-tertiary: #5d6778;
-  --color-text-muted: #586273;
-  --color-text-faint: #626c7d;
-  --color-text-dimmer: #667085;
-  --color-text-weekday: #5d6778;
+  --color-text-primary: #1c1c21;
+  --color-text-secondary: #4b4b53;
+  --color-text-tertiary: #63636b;
+  --color-text-muted: #63636b;
+  --color-text-faint: #6e6e76;
+  --color-text-dimmer: #6e6e76;
+  --color-text-weekday: #63636b;
   --color-text-on-primary: #ffffff;
-  --color-text-inverse: #0f1729;
-  --color-text-danger: #c81e3c;
-  --color-danger-text: #c81e3c;
-  --color-text-month: #3b4556;
-  --color-text-success: #15803d;
+  --color-text-inverse: #1c1c21;
+  --color-text-danger: #c23636;
+  --color-danger-text: #c23636;
+  --color-text-month: #4b4b53;
+  --color-text-success: #137a45;
   /* 11px 状态胶囊压在 6–10% 的同色调底上，选中行还要再叠一层主色底：
      #15803d / #a15c07 只有 3.8–4.5:1。小字改用文字档，实测 ≥5.2:1（T10.150 QA F6）。 */
-  --color-success-text: #166534;
-  --color-warning-text: #8a4b00;
+  --color-success-text: #137a45;
+  --color-warning-text: #8f4206;
 
-  --color-border: rgba(15, 23, 42, 0.08);
-  --color-border-strong: rgba(15, 23, 42, 0.14);
-  --color-border-faint: rgba(15, 23, 42, 0.06);
-  --color-border-row: rgba(15, 23, 42, 0.06);
-  --color-border-status: rgba(15, 23, 42, 0.08);
+  --color-border: #e3e3e8;
+  --color-border-strong: #d6d6dc;
+  --color-border-faint: #ececf0;
+  --color-border-row: #ececf0;
+  --color-border-status: #e3e3e8;
 
   /* 选中项标签压在 8% 深底上仍需过 4.5:1（T10.128 P2）：#1f5fd6 约 4.9:1。 */
-  --color-primary: #1f5fd6;
-  --color-primary-hover: #1a52bd;
-  --color-primary-fill: #1f5fd6;
-  --color-primary-fill-hover: #1a52bd;
-  --color-primary-soft-bg: rgba(31, 95, 214, 0.09);
-  --color-primary-soft-border: rgba(31, 95, 214, 0.2);
-  --color-primary-soft-icon: #2563eb;
-  --color-primary-glow: rgba(31, 95, 214, 0.18);
-  --color-primary-focus: rgba(31, 95, 214, 0.72);
-  --color-primary-focus-soft: rgba(31, 95, 214, 0.5);
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-fill: #4f46e5;
+  --color-primary-fill-hover: #4338ca;
+  --color-primary-soft-bg: #eeedfd;
+  --color-primary-soft-border: rgba(79, 70, 229, 0.24);
+  --color-primary-soft-icon: #4f46e5;
+  --color-primary-glow: rgba(79, 70, 229, 0.16);
+  --color-primary-focus: rgba(79, 70, 229, 0.72);
+  --color-primary-focus-soft: rgba(79, 70, 229, 0.5);
 
   /* 状态点、图形与白卡上的正文用它（#15803d 在白卡上 5.0:1）；色调底上的
      小字改用 --color-success-text（T10.150 QA F6）。 */
-  --color-success: #15803d;
-  --color-success-soft-bg: rgba(22, 163, 74, 0.1);
-  --color-success-soft-border: rgba(22, 163, 74, 0.3);
-  --color-success-toast-bg: rgba(236, 253, 243, 0.97);
-  --color-success-toast-border: rgba(22, 163, 74, 0.3);
+  --color-success: #137a45;
+  --color-success-soft-bg: #e4f6ec;
+  --color-success-soft-border: rgba(24, 154, 88, 0.3);
+  --color-success-toast-bg: rgba(228, 246, 236, 0.97);
+  --color-success-toast-border: rgba(24, 154, 88, 0.3);
 
-  --color-accent: #6d4ae0;
+  --color-accent: #4f46e5;
 
-  --color-warning: #a15c07;
+  --color-warning: #a14a07;
 
-  --color-danger: #c81e3c;
-  --color-danger-soft-bg: rgba(225, 29, 72, 0.08);
-  --color-danger-soft-border: rgba(225, 29, 72, 0.28);
-  --color-danger-soft-hover: rgba(225, 29, 72, 0.14);
-  --color-danger-toast-bg: rgba(255, 241, 242, 0.97);
-  --color-danger-toast-border: rgba(225, 29, 72, 0.28);
+  --color-danger: #c23636;
+  --color-danger-soft-bg: #fbe9e9;
+  --color-danger-soft-border: rgba(214, 69, 69, 0.28);
+  --color-danger-soft-hover: rgba(214, 69, 69, 0.14);
+  --color-danger-toast-bg: rgba(251, 233, 233, 0.97);
+  --color-danger-toast-border: rgba(214, 69, 69, 0.28);
 
-  --color-info: #0369a1;
-  --color-info-toast-bg: rgba(239, 246, 255, 0.97);
-  --color-info-toast-border: rgba(31, 95, 214, 0.26);
+  --color-info: #0e6a8f;
+  --color-info-toast-bg: rgba(238, 237, 253, 0.97);
+  --color-info-toast-border: rgba(79, 70, 229, 0.24);
 
   --color-orange: #b45309;
 
-  --color-pill-bg: rgba(15, 23, 42, 0.05);
-  --color-pill-border: rgba(15, 23, 42, 0.08);
-  --color-code-bg: rgba(15, 23, 42, 0.06);
-  --color-toggle-off: rgba(100, 116, 139, 0.36);
-  --color-icon-soft-bg: rgba(31, 95, 214, 0.09);
-  --color-row-divider: rgba(15, 23, 42, 0.07);
-  --color-table-head-bg: #f9fafb;
+  --color-pill-bg: #f1f1f4;
+  --color-pill-border: #e3e3e8;
+  --color-code-bg: #f1f1f4;
+  --color-toggle-off: #c9c9d0;
+  --color-icon-soft-bg: #eeedfd;
+  --color-row-divider: #ececf0;
+  --color-table-head-bg: #f9f9fb;
 
   /* Brand material and ambient light (T10.150). */
-  --color-brand-1: #3b6ff5;
-  --color-brand-2: #7c5cf0;
-  --color-brand-gradient: linear-gradient(135deg, #3b6ff5 0%, #7c5cf0 100%);
-  --color-brand-gradient-soft: linear-gradient(135deg, rgba(59, 111, 245, 0.12) 0%, rgba(124, 92, 240, 0.08) 100%);
-  --color-ambient:
-    radial-gradient(1100px 420px at 18% -12%, rgba(59, 111, 245, 0.07), transparent 62%),
-    radial-gradient(900px 380px at 100% -6%, rgba(124, 92, 240, 0.05), transparent 60%);
+  --color-brand-1: #4f46e5;
+  --color-brand-2: #4f46e5;
+  --color-brand-gradient: linear-gradient(#4f46e5, #4f46e5);
+  --color-brand-gradient-soft: linear-gradient(rgba(79, 70, 229, 0.05), rgba(79, 70, 229, 0.05));
+  --color-ambient: linear-gradient(transparent, transparent);
 
   /* Chart series on white cards (T10.150; retuned T10.187 palette B, U-4).
      All 8 now also clear 3:1 against the bare page background #f4f5f7
@@ -310,8 +306,8 @@
   --chart-6: #16a34a;
   --chart-7: #1d85c3;
   --chart-8: #d34c04;
-  --chart-grid: rgba(15, 23, 42, 0.07);
-  --chart-axis: #5d6778;
+  --chart-grid: #ececf0;
+  --chart-axis: #6e6e76;
 
   /* Light surfaces need their own legible heatmap ramp. */
   --heat-0: #edf0f5;
@@ -330,52 +326,52 @@
   --heat-future: rgba(100, 116, 139, 0.1);
 
   --color-scroll-track: transparent;
-  --color-scroll-thumb: rgba(15, 23, 42, 0.18);
-  --color-scroll-thumb-hover: rgba(15, 23, 42, 0.3);
+  --color-scroll-thumb: rgba(0, 0, 0, 0.16);
+  --color-scroll-thumb-hover: rgba(0, 0, 0, 0.28);
 
   /* ----- Enhanced semantic palette (v2) ---------------------------------- */
-  --color-bg-inset: rgba(15, 23, 42, 0.04);
-  --color-bg-inset-hover: rgba(15, 23, 42, 0.06);
-  --color-bg-elevated-2: rgba(15, 23, 42, 0.05);
-  --color-bg-elevated-3: rgba(15, 23, 42, 0.08);
-  --color-text-label: #586273;
-  --color-text-caption: #5d6778;
-  --color-border-subtle: rgba(15, 23, 42, 0.05);
-  --color-border-accent: rgba(31, 95, 214, 0.3);
-  --color-primary-muted: rgba(31, 95, 214, 0.5);
-  --color-primary-subtle: rgba(31, 95, 214, 0.06);
-  --color-success-muted: rgba(22, 163, 74, 0.5);
-  --color-success-subtle: rgba(22, 163, 74, 0.06);
-  --color-warning-muted: rgba(217, 119, 6, 0.5);
-  --color-warning-subtle: rgba(217, 119, 6, 0.06);
-  --color-danger-muted: rgba(225, 29, 72, 0.5);
-  --color-danger-subtle: rgba(225, 29, 72, 0.06);
+  --color-bg-inset: #f4f4f6;
+  --color-bg-inset-hover: #ececf0;
+  --color-bg-elevated-2: #f1f1f4;
+  --color-bg-elevated-3: #e9e9ee;
+  --color-text-label: #63636b;
+  --color-text-caption: #6e6e76;
+  --color-border-subtle: #ececf0;
+  --color-border-accent: rgba(79, 70, 229, 0.3);
+  --color-primary-muted: rgba(79, 70, 229, 0.5);
+  --color-primary-subtle: rgba(79, 70, 229, 0.05);
+  --color-success-muted: rgba(24, 154, 88, 0.5);
+  --color-success-subtle: rgba(24, 154, 88, 0.06);
+  --color-warning-muted: rgba(180, 83, 9, 0.5);
+  --color-warning-subtle: rgba(180, 83, 9, 0.06);
+  --color-danger-muted: rgba(214, 69, 69, 0.5);
+  --color-danger-subtle: rgba(214, 69, 69, 0.06);
   --color-info-muted: rgba(2, 132, 199, 0.5);
   --color-info-subtle: rgba(2, 132, 199, 0.06);
 
   /* ----- Enhanced materials & inner highlights -------------------------- */
-  --color-border-inner-highlight: rgba(255, 255, 255, 0.7);
-  --color-border-glass: rgba(15, 23, 42, 0.08);
-  --color-surface-gradient-1: linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.4) 100%);
-  --color-surface-gradient-card: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
-  --color-surface-glow-blue: radial-gradient(circle at 50% 0%, rgba(59, 111, 245, 0.08), transparent 70%);
-  --color-surface-glow-emerald: radial-gradient(circle at 50% 0%, rgba(22, 163, 74, 0.08), transparent 70%);
-  --color-surface-glow-violet: radial-gradient(circle at 50% 0%, rgba(124, 92, 240, 0.08), transparent 70%);
-  --color-surface-glow-amber: radial-gradient(circle at 50% 0%, rgba(217, 119, 6, 0.08), transparent 70%);
+  --color-border-inner-highlight: transparent;
+  --color-border-glass: #e3e3e8;
+  --color-surface-gradient-1: linear-gradient(transparent, transparent);
+  --color-surface-gradient-card: linear-gradient(#ffffff, #ffffff);
+  --color-surface-glow-blue: linear-gradient(transparent, transparent);
+  --color-surface-glow-emerald: linear-gradient(transparent, transparent);
+  --color-surface-glow-violet: linear-gradient(transparent, transparent);
+  --color-surface-glow-amber: linear-gradient(transparent, transparent);
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-md: 0 4px 10px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 12px 28px -8px rgba(16, 24, 40, 0.14);
-  --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
-  --shadow-toast: 0 20px 48px -12px rgba(16, 24, 40, 0.22), 0 0 0 1px rgba(16, 24, 40, 0.06);
-  --shadow-primary: 0 8px 20px -6px rgba(31, 95, 214, 0.36);
-  --shadow-xs: 0 1px 1px rgba(16, 24, 40, 0.04);
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px -2px rgba(16, 24, 40, 0.05);
-  --shadow-card-hover: 0 2px 4px rgba(16, 24, 40, 0.04), 0 12px 28px -10px rgba(16, 24, 40, 0.14), 0 0 0 1px rgba(31, 95, 214, 0.08);
-  --shadow-float: 0 16px 40px -10px rgba(16, 24, 40, 0.2), 0 0 0 1px rgba(16, 24, 40, 0.06);
-  --shadow-modal: 0 32px 72px -16px rgba(16, 24, 40, 0.28), 0 0 0 1px rgba(16, 24, 40, 0.06);
-  --shadow-glow-primary: 0 0 24px rgba(31, 95, 214, 0.16);
-  --shadow-glow-success: 0 0 24px rgba(22, 163, 74, 0.16);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(20, 22, 30, 0.08);
+  --shadow-lg: 0 16px 44px rgba(20, 22, 30, 0.16), 0 2px 8px rgba(20, 22, 30, 0.06);
+  --shadow-panel: none;
+  --shadow-toast: 0 16px 44px rgba(20, 22, 30, 0.16), 0 2px 8px rgba(20, 22, 30, 0.06), 0 0 0 0.5px rgba(20, 22, 30, 0.1);
+  --shadow-primary: none;
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.04);
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-float: 0 16px 44px rgba(20, 22, 30, 0.16), 0 2px 8px rgba(20, 22, 30, 0.06), 0 0 0 0.5px rgba(20, 22, 30, 0.1);
+  --shadow-modal: 0 16px 44px rgba(20, 22, 30, 0.16), 0 2px 8px rgba(20, 22, 30, 0.06), 0 0 0 0.5px rgba(20, 22, 30, 0.1);
+  --shadow-glow-primary: none;
+  --shadow-glow-success: none;
 
   color-scheme: light;
 }
@@ -395,36 +391,35 @@
   --space-20: 80px;
 }
 
-/* ----- Radius (unified Apple-style rhythm) -----------------------------
-   Monotonic scale so larger surfaces always read rounder than the controls
-   nested inside them (concentric corners, per Apple HIG). sm stays at 6px so
-   the segmented control's buttons remain concentric with its 10px track
-   (10 − 4px padding = 6). */
+/* ----- Radius ----------------------------------------------------------
+   Monotonic scale so larger surfaces read rounder than the controls nested
+   inside them: 6px buttons sit in an 8px segmented track (2px padding),
+   lists and cards are 12px, dialogs 14px. */
 :root {
   --radius-full: 9999px;
-  --radius-card: 16px;
-  --radius-chip: 10px;
-  --radius-button: 10px;
-  --radius-input: 8px;
-  --radius-modal: 20px;
+  --radius-card: 12px;
+  --radius-chip: 6px;
+  --radius-button: 7px;
+  --radius-input: 7px;
+  --radius-modal: 14px;
 }
 
 /* ----- Typography ----------------------------------------------------- */
 :root {
   --font-size-xs: 11px;
   --font-size-sm: 12px;
-  --font-size-base: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 20px;
-  --font-size-xl2: 24px; /* fills the 20→28 gap (SF Title2/Title1 step) */
-  --font-size-2xl: 28px;
+  --font-size-base: 13px;
+  --font-size-lg: 15px;
+  --font-size-xl: 18px;
+  --font-size-xl2: 20px; /* fills the 20→28 gap (SF Title2/Title1 step) */
+  --font-size-2xl: 24px;
   --font-size-3xs: 11px; /* legacy micro labels respect the 11px floor */
   --font-size-2xs: 11px;
-  --font-size-display: 34px;
-  --font-size-hero: 48px;
+  --font-size-display: 28px;
+  --font-size-hero: 40px;
   /* T10.150：两档常用正文字号收成令牌，替代散落的 13px / 15px 字面量。 */
   --font-size-md: 13px;
-  --font-size-title: 15px;
+  --font-size-title: 14px;
 
   /* Line-heights — tighter on display sizes, roomier on body (SF type ramp) */
   --leading-tight: 1.1;
@@ -435,10 +430,10 @@
   --leading-compact: 1.2;
 
   /* Letter-spacing — SF Pro Display tightens optically at large sizes */
-  --tracking-tight: -0.022em;
+  --tracking-tight: -0.01em;
   --tracking-normal: 0;
   --tracking-wide: 0.02em;
-  --tracking-display: -0.035em;
+  --tracking-display: -0.02em;
   --tracking-label: 0.03em;
 
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -455,24 +450,24 @@
      层级靠字号与色阶，而不是把每个标签都加粗。 */
   --weight-label: 500;
   --weight-title: 600;
-  --tracking-numeric: -0.02em;
+  --tracking-numeric: -0.01em;
 }
 
 /* ----- Motion --------------------------------------------------------- */
 :root {
   --motion-fast: 120ms;
-  --motion-base: 200ms;
-  --motion-slow: 320ms;
-  --motion-toggle: 180ms;
+  --motion-base: 150ms;
+  --motion-slow: 180ms;
+  --motion-toggle: 150ms;
   --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
   --easing-ease: ease;
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
-  --dur-fast: 160ms;
-  --dur-base: 200ms;
-  --dur-slow: 320ms;
-  --dur-sheet: 320ms;
+  --dur-fast: 120ms;
+  --dur-base: 150ms;
+  --dur-slow: 180ms;
+  --dur-sheet: 220ms;
   --motion-instant: 60ms;
-  --motion-gentle: 400ms;
+  --motion-gentle: 220ms;
   --motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --motion-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
   --motion-accelerate: cubic-bezier(0.4, 0.0, 1, 1);
@@ -483,16 +478,16 @@
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
   --motion-press: 90ms;
-  --motion-hover: 160ms;
-  --motion-indicator: 360ms;
-  --motion-enter: 420ms;
-  --motion-stagger: 40ms;
+  --motion-hover: 120ms;
+  --motion-indicator: 180ms;
+  --motion-enter: 180ms;
+  --motion-stagger: 20ms;
 }
 
 /* ----- Glass / translucent surfaces ---------------------------------- */
 :root {
-  --glass-blur: 24px;
-  --glass-saturate: 180%;
+  --glass-blur: 0px;
+  --glass-saturate: 100%;
 }
 
 /* ==========================================================================
@@ -508,26 +503,26 @@
 /* Canonical values live here once; aliases reference differently named tokens.
    Never emit --token: var(--token): that invalidates the token through a cycle. */
 @theme {
-  --color-bg-base: #0d0f13;
-  --color-bg-elevated: #1b1f26;
-  --color-bg-overlay: rgba(21, 24, 30, 0.98);
-  --color-bg-panel: #15181e;
+  --color-bg-base: #1a1a1e;
+  --color-bg-elevated: #2d2d33;
+  --color-bg-overlay: rgba(40, 40, 45, 0.96);
+  --color-bg-panel: #232327;
 
-  --color-primary: #6b9dff;
-  --color-success: #4ade80;
-  --color-accent: #a78bfa;
-  --color-warning: #fbbf24;
-  --color-danger: #fb7185;
-  --color-info: #38bdf8;
-  --color-orange: #fb923c;
+  --color-primary: #a5b4fc;
+  --color-success: #6fd99b;
+  --color-accent: #a5b4fc;
+  --color-warning: #f2b544;
+  --color-danger: #f28b82;
+  --color-info: #7dd3fc;
+  --color-orange: #fdba74;
 
   --color-muted: var(--color-text-muted);
   --color-faint: var(--color-text-faint);
   --color-secondary: var(--color-text-secondary);
   --color-tertiary: var(--color-text-tertiary);
 
-  --color-border: rgba(255, 255, 255, 0.07);
-  --color-border-strong: rgba(255, 255, 255, 0.11);
+  --color-border: #333339;
+  --color-border-strong: #3f3f46;
 
   --spacing-1: var(--space-1);
   --spacing-2: var(--space-2);
@@ -539,14 +534,14 @@
   --spacing-10: var(--space-10);
 
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.42);
-  --shadow-lg: 0 14px 34px -8px rgba(0, 0, 0, 0.55);
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-panel: none;
 
   --text-xs: var(--font-size-xs);
   --text-sm: var(--font-size-sm);
@@ -560,22 +555,22 @@
   --text-display: var(--font-size-display);
   --text-hero: var(--font-size-hero);
 
-  --color-bg-inset: rgba(0, 0, 0, 0.22);
-  --color-bg-elevated-2: #232833;
-  --color-bg-elevated-3: #2b313d;
+  --color-bg-inset: #1f1f23;
+  --color-bg-elevated-2: #2d2d33;
+  --color-bg-elevated-3: #36363d;
   --color-label: var(--color-text-label);
   --color-caption: var(--color-text-caption);
-  --color-border-subtle: rgba(255, 255, 255, 0.04);
-  --color-border-accent: rgba(107, 157, 255, 0.4);
+  --color-border-subtle: #2c2c32;
+  --color-border-accent: rgba(165, 180, 252, 0.4);
 
   --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.25);
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -14px rgba(0, 0, 0, 0.55);
-  --shadow-card-hover: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 2px 6px rgba(0, 0, 0, 0.35), 0 16px 40px -16px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(107, 157, 255, 0.1);
-  --shadow-float: 0 20px 50px -12px rgba(0, 0, 0, 0.66), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-float: 0 16px 44px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
 
   --radius-xs: 4px;
-  --radius-2xl: 20px;
-  --radius-3xl: 24px;
+  --radius-2xl: 14px;
+  --radius-3xl: 16px;
   --radius-pill: 100px;
 
   --spacing-12: var(--space-12);

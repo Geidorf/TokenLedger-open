@@ -6204,6 +6204,9 @@ struct WindowTotals<'a> {
     requests: i64,
     cache_split_proven: bool,
     heatmap: HashMap<&'a str, i64>,
+    /// 与 `heatmap` 同日期键的逐日记录数与预估费用（契约 §2.6 本机可选扩展）。
+    heatmap_requests: HashMap<&'a str, i64>,
+    heatmap_cost: HashMap<&'a str, f64>,
     /// 只有工具使用：该工具下各模型的有效 Token。
     models: HashMap<&'a str, i64>,
 }
@@ -6221,6 +6224,8 @@ impl<'a> WindowTotals<'a> {
             requests: 0,
             cache_split_proven: true,
             heatmap: HashMap::new(),
+            heatmap_requests: HashMap::new(),
+            heatmap_cost: HashMap::new(),
             models: HashMap::new(),
         }
     }
@@ -6244,6 +6249,8 @@ impl<'a> WindowTotals<'a> {
         self.cache_split_proven &= cache_split_proven;
         if let Some(date) = heatmap_date {
             *self.heatmap.entry(date).or_insert(0) += total;
+            *self.heatmap_requests.entry(date).or_insert(0) += 1;
+            *self.heatmap_cost.entry(date).or_insert(0.0) += cost;
         }
     }
 
@@ -6262,6 +6269,11 @@ impl<'a> WindowTotals<'a> {
         object.insert("cost".to_string(), json!(self.cost));
         object.insert("requests".to_string(), json!(self.requests));
         object.insert("heatmap".to_string(), json_counts(self.heatmap));
+        object.insert(
+            "heatmapRequests".to_string(),
+            json_counts(self.heatmap_requests),
+        );
+        object.insert("heatmapCost".to_string(), json_amounts(self.heatmap_cost));
         if include_models {
             object.insert("models".to_string(), json_counts(self.models));
         }
@@ -6269,11 +6281,68 @@ impl<'a> WindowTotals<'a> {
     }
 }
 
+fn json_amounts(amounts: HashMap<&str, f64>) -> Value {
+    Value::Object(
+        amounts
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), json!((value * 1e6).round() / 1e6)))
+            .collect(),
+    )
+}
+
 fn json_counts(counts: HashMap<&str, i64>) -> Value {
     Value::Object(
         counts
             .into_iter()
             .map(|(key, value)| (key.to_string(), json!(value)))
+            .collect(),
+    )
+}
+
+/// 契约 §2.7：按网关供应商（账号）拆分本期用量。只有网关与导入行带供应商，
+/// 扫描行不计入任何账号；口径与 `tools[*]` 相同（逐行估价、同一窗口）。
+fn aggregate_provider_split(
+    rows: &[StatRow],
+    providers: &HashMap<i64, String>,
+    prices: &Value,
+    filter_start: Option<NaiveDateTime>,
+    filter_end: NaiveDateTime,
+) -> Value {
+    let filter_start = filter_start.map(storage_timestamp);
+    let filter_end = storage_timestamp(filter_end);
+    let mut memo = PriceMemo::new(prices);
+    let mut totals: HashMap<&str, WindowTotals> = HashMap::new();
+    for row in rows {
+        let Some(provider) = providers
+            .get(&row.id)
+            .filter(|provider| !provider.is_empty())
+        else {
+            continue;
+        };
+        if filter_start
+            .as_ref()
+            .is_some_and(|start| row.timestamp < *start)
+            || row.timestamp > filter_end
+        {
+            continue;
+        }
+        let clean_date = row.timestamp.split_whitespace().next().unwrap_or("");
+        let price = memo.row_price(row);
+        totals
+            .entry(provider.as_str())
+            .or_insert_with(WindowTotals::new)
+            .add(
+                row,
+                effective_tokens(row.input_tokens, row.output_tokens),
+                price.cost,
+                row.cache_split_is_proven(),
+                (clean_date.len() == 10).then_some(clean_date),
+            );
+    }
+    Value::Object(
+        totals
+            .into_iter()
+            .map(|(name, totals)| (name.to_string(), totals.into_json(name, false)))
             .collect(),
     )
 }
@@ -6310,6 +6379,8 @@ fn aggregate_rows_for_window(
     let mut tools: HashMap<&str, WindowTotals> = HashMap::new();
     let mut models: HashMap<&str, WindowTotals> = HashMap::new();
     let mut heatmap_map: HashMap<&str, i64> = HashMap::new();
+    let mut heatmap_requests: HashMap<&str, i64> = HashMap::new();
+    let mut heatmap_cost: HashMap<&str, f64> = HashMap::new();
     let mut history_list = Vec::new();
     let mut active_tools: HashSet<&str> = HashSet::new();
     let mut machine_stats: HashMap<&str, SummaryAccumulator> = HashMap::new();
@@ -6345,6 +6416,8 @@ fn aggregate_rows_for_window(
 
         if let Some(date) = heatmap_date {
             *heatmap_map.entry(date).or_insert(0) += row_total;
+            *heatmap_requests.entry(date).or_insert(0) += 1;
+            *heatmap_cost.entry(date).or_insert(0.0) += row_cost;
         }
 
         let tool = tools
@@ -6493,6 +6566,8 @@ fn aggregate_rows_for_window(
     stats.insert("models".to_string(), Value::Object(models_stats));
     stats.insert("trends".to_string(), Value::Array(trends_list));
     stats.insert("heatmap".to_string(), json_counts(heatmap_map));
+    stats.insert("heatmapRequests".to_string(), json_counts(heatmap_requests));
+    stats.insert("heatmapCost".to_string(), json_amounts(heatmap_cost));
     stats.insert("history".to_string(), Value::Array(history_list));
     stats.insert("machines".to_string(), json!(machine_list));
     stats.insert(
@@ -6627,6 +6702,7 @@ fn read_local_rows_filtered(
 mod gateway_cloud;
 mod gateway_overlay;
 pub mod magpie_import;
+pub mod peer_shared;
 mod price_memo;
 mod price_repricing;
 mod scanner_sync;
@@ -6995,8 +7071,18 @@ fn get_local_stats_v2_snapshot_with_entity_at(
     insert_stats_v2_fields(
         &mut stats, &rows, &bounds, &query, &prices, zoned_now, entity,
     );
-    if gateway_overlay::ledger_signature(&db_path).is_some() {
+    if let Some(signature) = gateway_overlay::ledger_signature(&db_path) {
         stats["meta"]["capabilities"]["gatewayLedger"] = json!(true);
+        if entity.is_none() {
+            let providers = gateway_overlay::row_providers(&db_path, &signature)?;
+            stats["providers"] = aggregate_provider_split(
+                &rows,
+                &providers,
+                &prices,
+                bounds.current_start.as_ref().map(DateTime::naive_local),
+                bounds.current_end.naive_local(),
+            );
+        }
     }
     Ok(LocalStatsSnapshot {
         stats,
@@ -8138,6 +8224,46 @@ fn query_filtered_summary_with_entity(
     Ok(summary)
 }
 
+/// 筛选范围内带耗时的网关与导入行：(行数, 输出 Token, 耗时毫秒)。没有这样的行时为 `None`。
+fn query_timed_output_summary(
+    conn: &Connection,
+    query: &NormalizedStatsQuery,
+    bounds: &QueryBounds,
+    entity: Option<&NormalizedEntitySelector>,
+) -> Result<Option<(i64, i64, i64)>, String> {
+    let mut sql = "SELECT COUNT(*), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(latency_ms), 0) \
+                   FROM temp.gw_rows WHERE latency_ms > 0 AND output_tokens > 0 \
+                   AND id IN (SELECT id FROM token_logs WHERE 1 = 1"
+        .to_string();
+    let mut values = Vec::new();
+    append_stats_filters_with_entity(
+        &mut sql,
+        &mut values,
+        bounds.current_start.as_ref(),
+        &bounds.current_end,
+        query,
+        entity,
+    );
+    sql.push(')');
+    let (requests, output, latency): (i64, i64, i64) = conn
+        .query_row(&sql, params_from_iter(values.iter()), |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(|e| e.to_string())?;
+    Ok((requests > 0).then_some((requests, output, latency)))
+}
+
+/// 契约 §2.5：有带耗时的行时，合计另带 `timedRequests` / `timedOutputTokens` / `timedLatencyMs`。
+fn filtered_summary_json(summary: &SummaryAccumulator, timed: Option<(i64, i64, i64)>) -> Value {
+    let mut value = summary.as_json();
+    if let (Some((requests, output, latency)), Some(object)) = (timed, value.as_object_mut()) {
+        object.insert("timedRequests".to_string(), json!(requests));
+        object.insert("timedOutputTokens".to_string(), json!(output));
+        object.insert("timedLatencyMs".to_string(), json!(latency));
+    }
+    value
+}
+
 #[cfg(test)]
 mod details_summary_matches_overview_tests {
     use super::*;
@@ -8424,6 +8550,11 @@ fn get_usage_details_normalized_at(
     let transaction = conn.transaction().map_err(|e| e.to_string())?;
     let summary =
         query_filtered_summary_with_entity(&transaction, &query, &bounds, &prices, entity)?;
+    let timed = if gateway_ledger {
+        query_timed_output_summary(&transaction, &query, &bounds, entity)?
+    } else {
+        None
+    };
     let mut rows = query_detail_items_with_entity(
         &transaction,
         &query,
@@ -8475,10 +8606,13 @@ fn get_usage_details_normalized_at(
                 .as_object_mut()
                 .expect("local detail item is an object");
             if gateway_ledger {
-                match gateway_overlay::gateway_provider(&conn, row.id) {
-                    Some((source, provider)) => {
-                        object.insert("source".to_string(), json!(source));
-                        object.insert("provider".to_string(), json!(provider));
+                match gateway_overlay::gateway_detail(&conn, row.id) {
+                    Some(detail) => {
+                        object.insert("source".to_string(), json!(detail.source));
+                        object.insert("provider".to_string(), json!(detail.provider));
+                        if let Some(latency_ms) = detail.latency_ms {
+                            object.insert("latencyMs".to_string(), json!(latency_ms));
+                        }
                     }
                     None => {
                         object.insert("source".to_string(), json!("scan"));
@@ -8536,7 +8670,7 @@ fn get_usage_details_normalized_at(
         "nextCursor": next_cursor,
         "hasMore": has_more,
         "totalCount": summary.requests,
-        "filteredSummary": summary.as_json(),
+        "filteredSummary": filtered_summary_json(&summary, timed),
         "availableFilters": {
             "tools": available_tools,
             "models": available_models,

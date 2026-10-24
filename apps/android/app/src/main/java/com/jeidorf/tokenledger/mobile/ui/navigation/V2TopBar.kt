@@ -108,6 +108,8 @@ internal fun v2TopBarSubtitle(
     }
     destination == MobileDestination.Routing -> ""
     destination == MobileDestination.Quota -> ""
+    // 「我的」是设置与展示，不受用量查询影响，顶栏不挂查询摘要（重构 R5）。
+    destination == MobileDestination.Me -> ""
     else -> querySummary
 }
 

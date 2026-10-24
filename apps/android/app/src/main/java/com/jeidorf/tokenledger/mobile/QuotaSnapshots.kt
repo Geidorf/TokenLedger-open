@@ -196,14 +196,17 @@ data class QuotaProviderState(
         get() = "${providerId}:${scope.wireValue}"
 }
 
+/** 已知来源 ID 的规范名（同一工具的不同采集方式归到一个名字）；未知 ID 返回 null。 */
+internal fun quotaProviderCanonicalName(providerId: String): String? = when (providerId) {
+    "openai-codex-local", "codex-app-server" -> "Codex"
+    "anthropic-claude-consumer", "claude-code" -> "Claude"
+    "google-antigravity-consumer" -> "Antigravity"
+    else -> null
+}
+
 internal fun QuotaProviderEnvelope.localizedDisplayName(): String {
     if (scope == QuotaScope.ManualBudget || providerId == "manual-budget") return "手动预算"
-    val canonicalName = when (providerId) {
-        "openai-codex-local", "codex-app-server" -> "Codex"
-        "anthropic-claude-consumer", "claude-code" -> "Claude"
-        "google-antigravity-consumer" -> "Antigravity"
-        else -> return displayName
-    }
+    val canonicalName = quotaProviderCanonicalName(providerId) ?: return displayName
     val raw = displayName.trim()
     val normalized = raw.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
     val technicalNames = when (canonicalName) {

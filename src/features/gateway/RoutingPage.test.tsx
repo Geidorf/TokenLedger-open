@@ -35,7 +35,10 @@ describe('RoutingPage', () => {
       { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', wire: 'chat', models: ['deepseek-chat', 'deepseek-reasoner'], enabled: true, hasKey: true },
     ]);
     vi.mocked(api.recentRouteDecisions).mockResolvedValue([
-      { ts: '2026-10-03T16:00:00Z', requestId: 'r1', group: 'coding', session: 's1', reason: 'failover', detail: '按顺序', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'openai/gpt-5', outcome: 'failed', status: 429 }, { member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }] },
+      { ts: '2026-10-03T16:00:00Z', requestId: 'r1', group: 'coding', session: 's1', reason: 'failover', detail: '按顺序', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'openai/gpt-5', outcome: 'failed', status: 429 }, { member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }], trace: [
+        { member: 'openai/gpt-5', rank: 0, verdict: 'failed', reasons: ['strategy_first', 'rate_limited'], detail: '上游返回 429' },
+        { member: 'deepseek/deepseek-chat', rank: 1, verdict: 'chosen', reasons: ['fallback', 'answered'] },
+      ] },
     ]);
     vi.mocked(api.upsertRoutingGroup).mockImplementation(async (group) => [group]);
     vi.mocked(api.deleteRoutingGroup).mockResolvedValue([]);
@@ -48,6 +51,15 @@ describe('RoutingPage', () => {
     expect(screen.getByText('会话保持 1 小时')).toBeInTheDocument();
     const panel = screen.getByRole('complementary', { name: '最近路由决策' });
     await waitFor(() => expect(within(panel).getByText(/失败已切换 429/)).toBeInTheDocument());
+  });
+
+  it('最近决策可展开每个成员为何被选或被跳过', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    const panel = screen.getByRole('complementary', { name: '最近路由决策' });
+    const toggle = await within(panel).findByText('为什么这样选（2 个成员）');
+    fireEvent.click(toggle);
+    const trace = within(panel).getByRole('list', { name: 'group/coding 成员决策' });
+    expect(within(trace).getAllByRole('listitem')[0]).toHaveTextContent('策略首选 · 限流');
   });
 
   it('新建路由组：添加成员、规则与会话保持后提交', async () => {
@@ -76,6 +88,57 @@ describe('RoutingPage', () => {
       sessionTtlSecs: 1800,
       enabled: true,
     }));
+  });
+
+  it('嵌套组：可把其他启用的路由组加为成员，但不能选自己', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    await screen.findByText('编码主力');
+    fireEvent.click(screen.getByRole('button', { name: /新建路由组/ }));
+    const dialog = screen.getByRole('dialog', { name: '新建路由组' });
+    fireEvent.change(within(dialog).getByLabelText('名称'), { target: { value: '总入口' } });
+    fireEvent.change(within(dialog).getByLabelText(/^ID/), { target: { value: 'entry' } });
+    fireEvent.change(within(dialog).getByLabelText('选择成员'), { target: { value: 'group/coding' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加成员/ }));
+    fireEvent.change(within(dialog).getByLabelText('选择成员'), { target: { value: 'deepseek/deepseek-chat' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /添加成员/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.upsertRoutingGroup).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'entry',
+      members: ['group/coding', 'deepseek/deepseek-chat'],
+    })));
+  });
+
+  it('嵌套组：编辑时成员候选里没有自己', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    await screen.findByText('编码主力');
+    fireEvent.click(screen.getByRole('button', { name: '编辑 编码主力' }));
+    const edit = screen.getByRole('dialog');
+    const choices = within(edit).getAllByRole('option').map((option) => option.getAttribute('value'));
+    expect(choices).toContain('deepseek/deepseek-reasoner');
+    expect(choices).not.toContain('group/coding');
+  });
+
+  it('按权重：每个成员可设权重并显示占比，只提交非默认权重', async () => {
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    await screen.findByText('编码主力');
+    fireEvent.click(screen.getByRole('button', { name: /新建路由组/ }));
+    const dialog = screen.getByRole('dialog', { name: '新建路由组' });
+    fireEvent.change(within(dialog).getByLabelText('名称'), { target: { value: '分流' } });
+    fireEvent.change(within(dialog).getByLabelText(/^ID/), { target: { value: 'split' } });
+    for (const member of ['openai/gpt-5', 'deepseek/deepseek-chat']) {
+      fireEvent.change(within(dialog).getByLabelText('选择成员'), { target: { value: member } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /添加成员/ }));
+    }
+    fireEvent.change(within(dialog).getByLabelText(/^分配方式/), { target: { value: 'weighted' } });
+    fireEvent.change(within(dialog).getByLabelText('openai/gpt-5 的权重'), { target: { value: '3' } });
+    expect(within(dialog).getByText('75%')).toBeInTheDocument();
+    expect(within(dialog).getByText('25%')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.upsertRoutingGroup).toHaveBeenCalledWith(expect.objectContaining({
+      strategy: 'weighted',
+      members: ['openai/gpt-5', 'deepseek/deepseek-chat'],
+      weights: { 'openai/gpt-5': 3 },
+    })));
   });
 
   it('固定一个时提交选定成员', async () => {

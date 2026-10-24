@@ -266,6 +266,22 @@ fn unsupported_conversion_never_sends_and_native_group_member_preserves_semantic
         let decision = &shared.router.recent(1)[0];
         assert_eq!(decision.attempts[0].outcome, "skipped");
         assert_eq!(decision.chosen.as_deref(), Some("b/m"));
+        let trace: Vec<_> = decision
+            .trace
+            .iter()
+            .map(|item| (item.member.as_str(), item.verdict, item.reasons.clone()))
+            .collect();
+        assert_eq!(
+            trace,
+            [
+                (
+                    "a/m",
+                    "skipped",
+                    vec!["strategy_first", "protocol_unsupported"]
+                ),
+                ("b/m", "chosen", vec!["fallback", "answered"]),
+            ]
+        );
         std::fs::remove_dir_all(dir).unwrap();
     });
 }
@@ -369,9 +385,10 @@ fn real_http_streams_use_idle_deadlines_keep_partial_usage_and_bound_accumulatio
             b"data: {\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\n".to_vec();
         for endpoint in [Endpoint::Chat, Endpoint::Responses] {
             let mut chunks = vec![(Duration::ZERO, usage.clone())];
-            for _ in 0..6 {
+            // Gaps stay well under the idle deadline, yet together outlast it.
+            for _ in 0..8 {
                 chunks.push((
-                    Duration::from_millis(200),
+                    Duration::from_millis(150),
                     b"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n"
                         .to_vec(),
                 ));
@@ -394,7 +411,7 @@ fn real_http_streams_use_idle_deadlines_keep_partial_usage_and_bound_accumulatio
                     vec![
                         (Duration::ZERO, usage.clone()),
                         (
-                            STREAM_IDLE_TIMEOUT + Duration::from_millis(100),
+                            STREAM_IDLE_TIMEOUT + Duration::from_millis(500),
                             b": heartbeat\n\n".to_vec(),
                         ),
                     ],
@@ -494,7 +511,7 @@ fn real_http_streams_use_idle_deadlines_keep_partial_usage_and_bound_accumulatio
         // waiting for the idle deadline.
         let waiting = Upstream::raw(sse_packets(
             vec![(
-                STREAM_IDLE_TIMEOUT + Duration::from_millis(100),
+                STREAM_IDLE_TIMEOUT + Duration::from_millis(500),
                 b": wait\n\n".to_vec(),
             )],
             true,

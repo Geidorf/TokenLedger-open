@@ -25,7 +25,9 @@ use super::convert::{chat_to_response, responses_to_chat, ChatStream, StreamConv
 use super::gemini::{self, GeminiPath, GeminiStream};
 use super::ledger::{agent_from_user_agent, sse_data, LedgerRecord, SseLines, Usage};
 use super::policy;
-use super::routing::{Features, RouteAttempt, RouteDecision, GROUP_PREFIX};
+use super::routing::{
+    body_session, build_trace, Features, RouteAttempt, RouteDecision, GROUP_PREFIX,
+};
 use super::store::{provider_account, validate_auth_mode, AuthMode, ProviderRecord, WireApi};
 use super::Shared;
 
@@ -45,7 +47,8 @@ const fn deadline(seconds: u64, test_millis: u64) -> Duration {
 const REQUEST_READ_TIMEOUT: Duration = deadline(30, 300);
 const UPSTREAM_HEADERS_TIMEOUT: Duration = deadline(60, 400);
 const WHOLE_RESPONSE_TIMEOUT: Duration = deadline(300, 800);
-const STREAM_IDLE_TIMEOUT: Duration = deadline(120, 400);
+// Test value leaves the stream case's 150 ms gaps a wide margin on loaded CI runners.
+const STREAM_IDLE_TIMEOUT: Duration = deadline(120, 1000);
 const CLIENT_SEND_TIMEOUT: Duration = deadline(30, 300);
 const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
@@ -873,9 +876,11 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
     };
     ctx.group = Some(group.id.clone());
     let features = Features::extract(payload, ctx.agent.as_deref(), local_minutes());
+    // Header sessions are recorded; a body-derived key only pins routing.
+    let affinity_key = ctx.session.clone().or_else(|| body_session(payload));
     let plan = shared
         .router
-        .plan(&group, &features, ctx.session.as_deref());
+        .plan(&group, &features, affinity_key.as_deref());
     let mut attempts = Vec::new();
     let mut chosen = None;
     let mut last = None;
@@ -890,11 +895,12 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
                     error: None,
                 });
                 if ok {
+                    shared.router.recover(member);
                     chosen = Some(member.clone());
                     if !plan.is_rule() {
                         shared
                             .router
-                            .remember(&group, ctx.session.as_deref(), member);
+                            .remember(&group, affinity_key.as_deref(), member);
                     }
                 }
                 last = Some(response);
@@ -906,6 +912,9 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
                 status,
                 error,
             } => {
+                if outcome == "failed" {
+                    shared.router.cool(member);
+                }
                 attempts.push(RouteAttempt {
                     member: member.clone(),
                     outcome,
@@ -916,6 +925,7 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
             }
         }
     }
+    let trace = build_trace(&group, &plan, &attempts);
     shared.router.record(RouteDecision {
         ts: chrono::Utc::now().to_rfc3339(),
         request_id: ctx.request_id.clone(),
@@ -925,6 +935,7 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
         detail: plan.detail,
         chosen,
         attempts,
+        trace,
     });
     last.unwrap_or_else(|| error_response(StatusCode::SERVICE_UNAVAILABLE, "路由组没有可用成员。"))
 }

@@ -8,6 +8,8 @@ import {
   ATTEMPT_OUTCOME_LABEL,
   DECISION_REASON_LABEL,
   defaultCondition,
+  MAX_WEIGHT,
+  memberWeight,
   modelOptions,
   RULE_KIND_LABEL,
   ruleSummary,
@@ -17,11 +19,13 @@ import {
   STRATEGY_LABEL,
   TTL_OPTIONS,
   ttlLabel,
+  weightShare,
 } from './helpers';
 import type { ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
 import { Sheet } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 import { RoutingStage, RoutingStageEmpty } from './RoutingStage';
+import { DecisionTrace } from './DecisionTrace';
 import { readExternalGateway, useRoutingLive } from './useRoutingLive';
 
 interface PageProps {
@@ -67,10 +71,15 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
   const [group, setGroup] = useState(initial);
   const [candidate, setCandidate] = useState('');
   const set = (patch: Partial<RoutingGroup>) => setGroup((current) => ({ ...current, ...patch }));
-  const available = options.filter((option) => !option.value.startsWith('group/') && !group.members.includes(option.value));
+  // Subgroups are allowed; cycles and depth are checked when saving.
+  const available = options.filter((option) => option.value !== `group/${group.id}` && !group.members.includes(option.value));
 
+  const setWeight = (member: string, value: number) => set({
+    weights: { ...group.weights, [member]: Math.min(MAX_WEIGHT, Math.max(1, Math.round(value) || 1)) },
+  });
   const removeMember = (member: string) => set({
     members: group.members.filter((item) => item !== member),
+    weights: Object.fromEntries(Object.entries(group.weights ?? {}).filter(([key]) => key !== member)),
     rules: group.rules.filter((rule) => rule.member !== member),
     manualMember: group.manualMember === member ? null : group.manualMember,
   });
@@ -84,7 +93,12 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSave({ ...group, name: group.name.trim(), manualMember: group.strategy === 'manual' ? group.manualMember ?? group.members[0] ?? null : null });
+    const { weights: _weights, ...rest } = group;
+    const next: RoutingGroup = { ...rest, name: group.name.trim(), manualMember: group.strategy === 'manual' ? group.manualMember ?? group.members[0] ?? null : null };
+    if (group.strategy === 'weighted') {
+      next.weights = Object.fromEntries(group.members.filter((member) => memberWeight(group, member) !== 1).map((member) => [member, memberWeight(group, member)]));
+    }
+    onSave(next);
   };
 
   return (
@@ -110,6 +124,12 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
               {group.strategy === 'manual' && (
                 <button type="button" role="radio" aria-checked={group.manualMember === member} aria-label={`只用 ${member}`} className={`mw-radio ${group.manualMember === member ? 'is-on' : ''}`} onClick={() => set({ manualMember: member })}><span /></button>
               )}
+              {group.strategy === 'weighted' && (
+                <label className="mw-weight">
+                  <input type="number" min={1} max={MAX_WEIGHT} aria-label={`${member} 的权重`} value={memberWeight(group, member)} onChange={(event) => setWeight(member, Number(event.target.value))} />
+                  <span className="mw-faint">{weightShare(group, member)}%</span>
+                </label>
+              )}
               <button type="button" className="mw-icon-btn" aria-label={`上移 ${member}`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp className="h-3.5 w-3.5" /></button>
               <button type="button" className="mw-icon-btn" aria-label={`下移 ${member}`} disabled={index === group.members.length - 1} onClick={() => move(index, 1)}><ArrowDown className="h-3.5 w-3.5" /></button>
               <button type="button" className="mw-icon-btn" aria-label={`移除 ${member}`} onClick={() => removeMember(member)}><Trash2 className="h-3.5 w-3.5" /></button>
@@ -118,7 +138,7 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
         </ol>
         <div className="mw-editor-row">
           <select className="mw-native-select is-compact" aria-label="选择成员" value={candidate} onChange={(event) => setCandidate(event.target.value)}>
-            <option value="">选择 供应商/模型…</option>
+            <option value="">选择 供应商/模型 或子路由组…</option>
             {available.map((option) => <option key={option.value} value={option.value}>{option.value}</option>)}
           </select>
           <button type="button" className="mw-btn is-ghost" disabled={!candidate} onClick={() => { set({ members: [...group.members, candidate] }); setCandidate(''); }}><Plus className="h-3.5 w-3.5" />添加成员</button>
@@ -181,6 +201,7 @@ function GroupCard({ group, busy, onEdit, onToggle, onDelete }: { group: Routing
             <span className="mw-member-n">{index + 1}</span>
             <div className="mw-member-main"><strong className="mw-mono-text">{member}</strong></div>
             {group.strategy === 'manual' && group.manualMember === member && <span className="mw-chip is-success">固定使用</span>}
+            {group.strategy === 'weighted' && <span className="mw-chip">权重 {memberWeight(group, member)} · {weightShare(group, member)}%</span>}
           </li>
         ))}
       </ol>
@@ -250,6 +271,12 @@ function DecisionList({ decisions }: { decisions: RouteDecision[] }) {
               ))}
             </div>
           )}
+          {decision.trace && decision.trace.length > 0 && (
+            <details className="mw-trace-toggle">
+              <summary>为什么这样选（{decision.trace.length} 个成员）</summary>
+              <DecisionTrace decision={decision} />
+            </details>
+          )}
         </li>
       ))}
     </ul>
@@ -277,7 +304,7 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const options = useMemo(() => modelOptions(providers, []), [providers]);
+  const options = useMemo(() => modelOptions(providers, groups ?? []), [providers, groups]);
 
   const save = async (group: RoutingGroup, success: string) => {
     setBusy(true);
