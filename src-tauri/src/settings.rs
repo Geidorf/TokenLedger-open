@@ -160,6 +160,10 @@ pub struct AppSettings {
     /// above the wallpaper). A visible side effect, so it defaults to off.
     #[serde(default)]
     pub desktop_widget_enabled: bool,
+    /// Publish the live routing scene to the cloud for the Android live
+    /// wallpaper (routing-snapshot-v1). Uploads data, so it defaults to off.
+    #[serde(default)]
+    pub routing_publish_enabled: bool,
     /// Last desktop-widget position in physical pixels; None = bottom-right
     /// corner of the primary work area.
     #[serde(default)]
@@ -331,6 +335,7 @@ impl Default for AppSettings {
             tray_hover_widget_enabled: true,
             tray_hover_delay_ms: default_tray_hover_delay_ms(),
             desktop_widget_enabled: false,
+            routing_publish_enabled: false,
             desktop_widget_position: None,
             widget_popover_layout: default_widget_layout(),
             widget_popover_theme: default_widget_theme(),
@@ -708,6 +713,7 @@ pub(crate) fn save_general_settings_preserving_quota_sync(
         merge_changed_field!(tray_hover_widget_enabled);
         merge_changed_field!(tray_hover_delay_ms);
         merge_changed_field!(desktop_widget_enabled);
+        merge_changed_field!(routing_publish_enabled);
         merge_changed_field!(desktop_widget_position);
         merge_changed_field!(widget_popover_layout);
         merge_changed_field!(widget_popover_theme);

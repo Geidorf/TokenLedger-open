@@ -70,6 +70,7 @@
     "allow-peer-sync-shared-pull",
     "allow-peer-sync-shared-clear",
     "allow-peer-live-snapshot",
+    "allow-routing-publish-status",
     "allow-set-project-dimension",
     "allow-rebuild-project-index",
     "allow-get-local-session-analysis",

@@ -684,6 +684,8 @@ export interface AppSettings {
   tray_hover_delay_ms: number;
   /** 桌面层长驻一块小组件（壁纸之上、其他窗口之下）；托盘菜单勾选项与之同源。 */
   desktop_widget_enabled: boolean;
+  /** 把实时路由同步到手机动态壁纸（routing-snapshot-v1）；会上传数据，默认关闭。旧设置文件没有这一项。 */
+  routing_publish_enabled?: boolean;
   /** 桌面小组件上次被拖到的位置（物理像素），null = 工作区右下角。 */
   desktop_widget_position: [number, number] | null;
   /**
@@ -1056,6 +1058,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tray_hover_widget_enabled: true,
   tray_hover_delay_ms: 450,
   desktop_widget_enabled: false,
+  routing_publish_enabled: false,
   widget_popover_layout: 'usage',
   widget_popover_theme: 'system',
   widget_popover_range: 'today',
