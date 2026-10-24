@@ -281,13 +281,11 @@ internal fun V2ProviderWindowRow(
     val okProgress = (value as? QuotaDisplayValue.Progress)
         ?.takeIf { presentation.status == QuotaWindowStatus.Ok }
     val remainingFraction = okProgress?.let(::v2QuotaRemainingFraction)
-    // experimental 来源的窗口时长或重置时间由推断得到，匀速线与用尽预测都不画（与桌面同规则）。
+    // experimental 来源的窗口时长或重置时间由推断得到，匀速线不画（与桌面速度规则同一资格）。
+    // 用尽预测按 GLB-11 / T10.172 Q5 待桌面稳定一个版本后再移植，这里只画按时间的匀速参考线。
     val trustedTimeline = quotaCapabilityTrustsTimeline(provider.capability)
     val pace = okProgress?.takeIf { trustedTimeline }
         ?.let { quotaPaceRemainingFraction(window.windowMinutes, window.resetsAt, now) }
-    val shortfallNote = remainingFraction
-        ?.let { quotaForecastShortfallMinutes(window, provider.capability, 1.0 - it, now) }
-        ?.let { quotaShortfallNote(name, it) }
     // 匀速线只画在画布上，读屏要靠这里的文字拿到同样的比较（父级 clearAndSetSemantics 会吞掉子节点语义）。
     val paceNote = if (remainingFraction != null && pace != null) {
         quotaPaceAccessibilityNote(remainingFraction, pace)
@@ -309,7 +307,7 @@ internal fun V2ProviderWindowRow(
                     provider.localizedDisplayName(), name, presentation.status.localizedLabel(),
                     quotaValueLabel(value)?.let { label -> severity?.let { "$label（${it.label}）" } ?: label },
                     resetText, quotaFullTimestamp(window.observedAt)
-                ) + listOfNotNull(paceNote, shortfallNote).joinToString("") { "，$it" }
+                ) + paceNote?.let { "，$it" }.orEmpty()
             },
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -375,9 +373,6 @@ internal fun V2ProviderWindowRow(
                     style = LedgerType.caption
                 )
             }
-        }
-        shortfallNote?.let {
-            Text(it, color = palette.amber, style = LedgerType.caption)
         }
     }
 }

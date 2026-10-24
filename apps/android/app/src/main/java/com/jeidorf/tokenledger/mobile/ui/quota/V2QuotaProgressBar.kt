@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jeidorf.tokenledger.mobile.LedgerMotion
+import com.jeidorf.tokenledger.mobile.QuotaCapability
 import com.jeidorf.tokenledger.mobile.QuotaProviderStatus
 import com.jeidorf.tokenledger.mobile.QuotaSeverity
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
@@ -147,19 +148,6 @@ internal fun quotaPaceAccessibilityNote(remainingFraction: Float, pace: Float): 
     return "按时间匀速应剩 $expected%，$verdict"
 }
 
-/** 「照现在的速度，5 小时额度会比重置早 25 分钟用完。」时长按分钟、小时、天取最粗的一级。 */
-internal fun quotaShortfallNote(windowLabel: String, shortfallMinutes: Long): String {
-    val duration = when {
-        shortfallMinutes < 60L -> "$shortfallMinutes 分钟"
-        shortfallMinutes < 60L * 24L -> {
-            val rest = shortfallMinutes % 60L
-            "${shortfallMinutes / 60L} 小时" + if (rest > 0L) " $rest 分钟" else ""
-        }
-        else -> "${shortfallMinutes / (60L * 24L)} 天"
-    }
-    return "照现在的速度，${windowLabel}会比重置早 ${duration}用完。"
-}
-
 /**
  * 相对重置时间。外层只需要「什么时候回血」这个量级；精确时间戳留在详情抽屉里。
  * 解析不出来时退回原字符串，不编造。
@@ -184,3 +172,7 @@ internal fun v2QuotaStatusColor(
     QuotaProviderStatus.Error -> palette.danger
     QuotaProviderStatus.Unsupported -> palette.muted
 }
+
+/** 只有 stable 与 plan-dependent 来源的窗口时长与重置时间可信；experimental 的时间线由推断得到（forecast-and-pace-v1 §3.1）。 */
+internal fun quotaCapabilityTrustsTimeline(capability: QuotaCapability): Boolean =
+    capability == QuotaCapability.Stable || capability == QuotaCapability.PlanDependent
