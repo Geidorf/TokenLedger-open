@@ -15,6 +15,18 @@
 
 ## 构建与安装
 
+桌面安装包已经带上它：Tauri 打包时会把 crate 里的所有可执行文件一起装进去，不用另外配置。装好后位置如下（不会自动加进 `PATH`，需要时自己加或建链接）：
+
+| 安装包 | 位置 |
+|---|---|
+| Linux deb | `/usr/bin/tokenledger-cli`（已在 `PATH`） |
+| Windows NSIS / MSI | 安装目录里与 `tokenledger.exe` 同级的 `tokenledger-cli.exe` |
+| macOS DMG | `TokenLedger.app/Contents/MacOS/tokenledger-cli`，可 `ln -s` 到 `/usr/local/bin` |
+
+Linux deb 已在本地打包核对过；Windows 与 macOS 按同一套打包规则，待验收工位装机确认。
+
+单独构建：
+
 ```sh
 # 在仓库根目录
 mkdir -p dist   # 编译期校验 frontendDist，空目录即可
