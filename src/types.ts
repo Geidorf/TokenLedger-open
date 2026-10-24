@@ -780,13 +780,13 @@ export interface CustomDateRange {
 export type DataScope = 'local' | 'cloud';
 export type StatsErrorAction = 'load' | 'scan';
 /** Model access pages: Agent, providers, gateway and routing (U-92). */
-export type ModelTab = 'agents' | 'providers' | 'gateway' | 'routing';
+export type ModelTab = 'agents' | 'providers' | 'gateway' | 'gatewaylog' | 'routing';
 /**
  * Page surfaces. `dashboard`, `records` and `behavior` are the 概览 / 记录 / 行为分析 sub-views
  * of the single sidebar entry 「用量」 (U-89, U-100); the header still adapts per surface.
  */
 export type Tab = 'dashboard' | 'logs' | 'behavior' | 'allowances' | 'settings' | ModelTab;
-export const MODEL_TABS: readonly ModelTab[] = ['agents', 'providers', 'gateway', 'routing'];
+export const MODEL_TABS: readonly ModelTab[] = ['agents', 'providers', 'gateway', 'gatewaylog', 'routing'];
 export const isModelTab = (tab: Tab): tab is ModelTab => (MODEL_TABS as readonly Tab[]).includes(tab);
 
 /** 用量四个子页：概览、请求（原活动明细）、会话（原行为分析）、额度（对齐 magpie Usage）。 */
