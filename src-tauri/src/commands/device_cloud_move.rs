@@ -5,13 +5,15 @@
 //! aggregates under the device id, so rows still under the hostname would be
 //! counted twice. Every row is copied with its values as they are, including
 //! hours the local ledger no longer has, and only then are the copied
-//! originals deleted (by id, so a row written under the hostname meanwhile
-//! waits for the next sync instead of being lost). A failure in between
+//! originals deleted (fenced by id and `updated_at`, so a row written or
+//! updated under the hostname meanwhile waits for the next sync instead of
+//! being lost). A failure in between
 //! leaves both; the retry copies again (an upsert of the same keys) and then
 //! deletes. Once moved, a sync costs one empty read per old id.
 
 use std::path::Path;
 
+use chrono::{DateTime, FixedOffset};
 use serde_json::Value;
 
 use super::{gateway_cloud, supabase_api_error, CloudConfig, CloudSession, CloudSessionUseLease};
@@ -34,6 +36,15 @@ pub(super) fn moved_row(row: &Value, legacy: &str, device_id: &str) -> Option<Va
     copy.insert("unique_key".into(), Value::String(key));
     copy.insert("machine_id".into(), Value::String(device_id.to_string()));
     Some(Value::Object(copy))
+}
+
+/// The latest `updated_at` among copied rows. Rows changed after they were
+/// read carry a later one, so a delete fenced by it keeps them.
+pub(super) fn newest_update(rows: &[Value]) -> Option<DateTime<FixedOffset>> {
+    rows.iter()
+        .filter_map(|row| row.get("updated_at")?.as_str())
+        .filter_map(|value| DateTime::parse_from_rfc3339(value).ok())
+        .max()
 }
 
 /// Returns how many cloud rows were moved for the signed-in account.
@@ -102,6 +113,9 @@ async fn move_one(
     let machine = format!("eq.{legacy}");
     let mut after: i64 = 0;
     let mut moved = 0;
+    // An old client can still update a copied row under the hostname (same
+    // id, newer `updated_at`); such a row is not deleted and moves next sync.
+    let mut fence: Option<DateTime<FixedOffset>> = None;
     loop {
         session_lease.ensure_current(app)?;
         let res = client
@@ -137,6 +151,7 @@ async fn move_one(
             break;
         };
         after = last_id;
+        fence = fence.max(newest_update(&rows));
         let copies: Vec<Value> = rows
             .iter()
             .filter_map(|row| moved_row(row, legacy, device_id))
@@ -169,14 +184,18 @@ async fn move_one(
     if moved == 0 {
         return Ok(0);
     }
+    let mut filter = vec![
+        ("user_id", owner),
+        ("machine_id", machine),
+        ("id", format!("lte.{after}")),
+    ];
+    if let Some(fence) = fence {
+        filter.push(("updated_at", format!("lte.{}", fence.to_rfc3339())));
+    }
     session_lease.ensure_current(app)?;
     let res = client
         .delete(&url)
-        .query(&[
-            ("user_id", owner),
-            ("machine_id", machine),
-            ("id", format!("lte.{after}")),
-        ])
+        .query(&filter)
         .header("apikey", &config.supabase_key)
         .header("Authorization", format!("Bearer {}", session.access_token))
         .header("Prefer", "return=minimal")
@@ -242,6 +261,20 @@ mod tests {
             gateway_cloud::move_state(&state, "other", "MY-PC", "tl-0123456789abcdef").is_none()
         );
         assert!(gateway_cloud::move_state(&moved, "u", "MY-PC", "tl-0123456789abcdef").is_none());
+    }
+
+    #[test]
+    fn the_delete_fence_is_the_newest_copied_update() {
+        let rows = vec![
+            json!({"id": 1, "updated_at": "2026-10-24T11:00:00.5+00:00"}),
+            json!({"id": 2, "updated_at": "2026-10-24T19:00:01+08:00"}),
+            json!({"id": 3}),
+        ];
+        assert_eq!(
+            newest_update(&rows).map(|fence| fence.to_rfc3339()),
+            Some("2026-10-24T19:00:01+08:00".to_string())
+        );
+        assert_eq!(newest_update(&[json!({"id": 1})]), None);
     }
 
     #[test]
