@@ -170,6 +170,17 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('概览：核心指标卡与趋势卡是英文', async ({ page }) => {
+    await openEnglish(page, 'dashboard');
+    const metrics = page.getByRole('region', { name: 'Key metrics' });
+    await expect(metrics).toContainText('Effective tokens');
+    await expect(metrics).toContainText('Estimated cost');
+    await expect(metrics).toContainText('Records');
+    await expect(page.getByRole('region', { name: 'Trends and comparison' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Switch to cost view' })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('设置：云端账户与壁纸是英文', async ({ page }) => {
     await openEnglish(page, 'settings-cloud');
     await expect(page.getByRole('heading', { name: 'Cloud account' })).toBeVisible();

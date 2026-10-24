@@ -10,7 +10,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ESTIMATED_COST_HELP, ESTIMATED_COST_LABEL } from '../utils/costCopy';
+import { estimatedCostHelp, estimatedCostLabel } from '../utils/costCopy';
+import { t } from '../i18n';
 import type { DataScope } from '../types';
 import '../styles/costHelp.css';
 
@@ -19,7 +20,6 @@ const GAP = 8;
 
 // 云端汇总把没有费用的记录按 0 计入（方案 §2.1 末条），只在云端范围出现，避免误导本机用户
 // （T10.186 评审待定点 4）。这句话只描述统计口径，不出现「金额」字样，守卫不需要额外放行。
-const CLOUD_ZERO_COALESCE_NOTE = '云端汇总把没有费用的记录按 0 计入。';
 
 interface CostHelpButtonProps {
   /** 云端范围额外补一句零值合计说明；本机范围或未传都不显示。 */
@@ -166,10 +166,10 @@ export function CostHelpButton({ scope }: CostHelpButtonProps = {}) {
         ref={buttonRef}
         type="button"
         className="cost-help-button"
-        aria-label={`${ESTIMATED_COST_LABEL}说明`}
+        aria-label={t('cost.helpAria', { label: estimatedCostLabel() })}
         aria-expanded={open}
         aria-controls={open ? popoverId : undefined}
-        title={`${ESTIMATED_COST_LABEL}说明`}
+        title={t('cost.helpAria', { label: estimatedCostLabel() })}
         onClick={toggle}
       >
         <Info aria-hidden="true" />
@@ -180,13 +180,13 @@ export function CostHelpButton({ scope }: CostHelpButtonProps = {}) {
           id={popoverId}
           className="cost-help-popover"
           role="dialog"
-          aria-label={`${ESTIMATED_COST_LABEL}说明`}
+          aria-label={t('cost.helpAria', { label: estimatedCostLabel() })}
           tabIndex={-1}
           style={placement ?? { visibility: 'hidden' }}
           onKeyDown={handlePopoverKeyDown}
         >
-          <p><strong>{ESTIMATED_COST_LABEL}</strong>：{ESTIMATED_COST_HELP}</p>
-          {scope === 'cloud' && <p>{CLOUD_ZERO_COALESCE_NOTE}</p>}
+          <p><strong>{estimatedCostLabel()}</strong>{t('cost.helpSep')}{estimatedCostHelp()}</p>
+          {scope === 'cloud' && <p>{t('cost.cloudZero')}</p>}
         </div>,
         container,
       )}

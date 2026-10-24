@@ -56,8 +56,9 @@ import {
   type PeriodForecast,
 } from '../utils/forecast';
 import { toolDisplayName } from '../utils/toolDisplayName';
-import { computeUnitCostUsd, formatUnitCost, UNIT_COST_DESCRIPTION, UNIT_COST_LABEL } from '../utils/unitCost';
+import { computeUnitCostUsd, formatUnitCost, unitCostDescription, unitCostLabel, unitCostUnavailable } from '../utils/unitCost';
 import { InfoTip } from './InfoTip';
+import { getLang, t, useLang, type MessageKey } from '../i18n';
 
 export type TrackViewMode = 'tokens' | 'cost' | 'dual';
 /** 日桶对比的呈现方式：逐日走势或累计走势（T10.154 §4.4 把“累积燃烧”改名为“累计走势”）。 */
@@ -69,13 +70,13 @@ export function trendPresentationLabels(
   bucket: UsageComparison['window']['bucket'] | null,
 ): { metric: string; shape: string } {
   const metric = track === 'tokens'
-    ? '有效 Token'
+    ? t('trend.seriesTokens')
     : track === 'cost'
-      ? '预估费用 · USD'
-      : 'Token + 费用 · 双轴';
-  if (bucket === 'hour') return { metric, shape: '逐小时值' };
-  if (bucket === 'day') return { metric, shape: viewMode === 'cumulative' ? '累计总量' : '逐日值' };
-  return { metric, shape: '当前范围' };
+      ? t('trend.metric.costUsd')
+      : t('trend.metric.dual');
+  if (bucket === 'hour') return { metric, shape: t('trend.shape.hourly') };
+  if (bucket === 'day') return { metric, shape: viewMode === 'cumulative' ? t('trend.shape.cumulative') : t('trend.shape.daily') };
+  return { metric, shape: t('trend.shape.range') };
 }
 
 interface TrendPanelBaseProps {
@@ -116,14 +117,14 @@ export interface TrendPanelOverviewProps extends TrendPanelBaseProps {
 
 export type TrendPanelProps = TrendPanelEntityProps | TrendPanelOverviewProps;
 
-const RANGE_COMPARISON_LABELS: Partial<Record<RangeKey, [string, string]>> = {
-  today: ['今日', '昨日同期'],
-  week: ['本周', '上周同期'],
-  month: ['本月', '上月同期'],
-  custom: ['所选区间', '上一同长区间'],
+const RANGE_COMPARISON_LABELS: Partial<Record<RangeKey, [MessageKey, MessageKey]>> = {
+  today: ['trend.label.today', 'trend.label.yesterday'],
+  week: ['trend.label.week', 'trend.label.lastWeek'],
+  month: ['trend.label.month', 'trend.label.lastMonth'],
+  custom: ['trend.label.custom', 'trend.label.previousRange'],
 };
 
-const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
+const WEEKDAY_KEYS = ['trend.weekday.0', 'trend.weekday.1', 'trend.weekday.2', 'trend.weekday.3', 'trend.weekday.4', 'trend.weekday.5', 'trend.weekday.6'] as const;
 
 export function isCloudComparisonBaselineUnverified(
   scope: DataScope,
@@ -176,7 +177,12 @@ export function formatForecastTriple(
 export function formatBucketLabel(value: string): string {
   if (/^\d{2}:00$/.test(value)) return value;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value.slice(5);
-  if (/^\d{4}-\d{2}$/.test(value)) return `${Number(value.slice(5, 7))}月`;
+  if (/^\d{4}-\d{2}$/.test(value)) {
+    const month = Number(value.slice(5, 7));
+    return getLang() === 'en'
+      ? new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(2000, month - 1, 1))
+      : t('trend.monthLabel', { month });
+  }
   return value;
 }
 
@@ -184,7 +190,8 @@ export function getWeekdayName(dateStr: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return '';
   const d = new Date(dateStr + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return '';
-  return WEEKDAY_NAMES[d.getDay()] || '';
+  const key = WEEKDAY_KEYS[d.getDay()];
+  return key ? t(key) : '';
 }
 
 /**
@@ -194,9 +201,9 @@ export function getWeekdayName(dateStr: string): string {
 export function overviewTrendWindowNote(range: RangeKey, scope: DataScope): string | undefined {
   if (range !== 'all') return undefined;
   if (scope === 'local') {
-    return `本机“全部”仅显示最近 ${LOCAL_ALL_OBSERVATION_DAYS} 天走势；上方指标仍统计全部历史，全部范围不自动推断对比周期。`;
+    return t('trend.windowNote.local', { days: LOCAL_ALL_OBSERVATION_DAYS });
   }
-  return '云端“全部”按全部历史逐日绘制走势；全部范围不自动推断对比周期。';
+  return t('trend.windowNote.cloud');
 }
 
 /** 规则层不给数字、但界面仍需说明原因的状态（GLB-11：说明原因而不给数字）。 */
@@ -213,7 +220,7 @@ export interface TrendForecast {
 
 function civilMonthDay(date: string): string {
   const [, month, day] = date.split('-').map(Number);
-  return `${month}月${day}日`;
+  return t('forecast.monthDay', { month, day });
 }
 
 /** 云端来源只在明确读到 0 条待上传记录时才算完整；未知（null）与 > 0 都不完整。本机作用域不看上传状态。 */
@@ -225,24 +232,24 @@ function sourceIncompleteNotice(title: string, pendingUploads: number | null): F
   if (typeof pendingUploads === 'number' && Number.isFinite(pendingUploads) && pendingUploads > 0) {
     return {
       title,
-      method: `本机还有 ${formatNum(pendingUploads)} 条记录待上传，云端数据可能不完整，暂不预测`,
-      detail: '云端只含已经上传的记录，按不完整的云端数据外推会偏低。上传完成后再给出预测。',
+      method: t('trend.pending', { n: formatNum(pendingUploads) }),
+      detail: t('trend.pending.detail'),
     };
   }
   return {
     title,
-    method: '无法确认本机是否还有待上传的记录，云端数据可能不完整，暂不预测',
-    detail: '待上传记录数暂时读不到（数据库信息尚未读取或读取失败）。读不到不等于没有：为免按可能不完整的云端数据外推出偏低的预测，确认没有待上传记录后再给出预测。',
+    method: t('trend.pendingUnknown'),
+    detail: t('trend.pendingUnknown.detail'),
   };
 }
 
 function clippedNotice(title: string, range: RangeKey, through: string | undefined): ForecastNotice {
-  const day = through ? civilMonthDay(through) : '上月的最后一天';
+  const day = through ? civilMonthDay(through) : t('trend.lastDayOfLastMonth');
   const month = range === 'month';
   return {
     title,
-    method: `${month ? '月末与上月按同日对齐，本月' : '与上一周期按同日对齐，本期'}只统计到 ${day}，暂不预测`,
-    detail: `${month ? '本月比上月天数多，与上月按同日对齐时' : '与上一周期按同日对齐时'}同期对比只统计到 ${day}：核心指标的同期变化和这里的日均、单位费用都截至这一天。为免把 ${day} 当成今天去外推，${month ? '月末' : ''}这几天不给预测。`,
+    method: t(month ? 'trend.clipped.month' : 'trend.clipped.period', { day }),
+    detail: t(month ? 'trend.clipped.month.detail' : 'trend.clipped.period.detail', { day }),
   };
 }
 
@@ -275,7 +282,7 @@ export function trendForecast(
     : forecast;
   const clipped = shape.status === 'unavailable' && shape.reason === 'comparison-clipped';
   const title = describePeriodForecast(shape, 'tokens')?.title
-    ?? (clipped ? (range === 'month' ? '月末预测' : '预测') : null);
+    ?? (clipped ? t(range === 'month' ? 'forecast.title.month' : 'forecast.tag') : null);
   // 周期已结束、范围不支持或结构不可用（月末截短除外）：本来就不预测，也不需要说明。
   if (title === null) return none;
   if (stats.meta?.stale) {
@@ -283,8 +290,8 @@ export function trendForecast(
       forecast: null,
       notice: {
         title,
-        method: '当前是缓存快照，生成那天可能已经过去，暂不预测',
-        detail: '缓存快照的“今天”是它生成的那一天；为免把旧的一天当成今天，刷新成功后再给出预测。',
+        method: t('trend.stale'),
+        detail: t('trend.stale.detail'),
       },
     };
   }
@@ -377,7 +384,7 @@ function TrendKpiCell({ cell }: { cell: TrendKpiCellModel }) {
 
 /** 方法句已经点名指标时（“有效 Token 预测不可得”“费用预测不可得”）不再重复指标名。 */
 function mentionsMetric(text: string, metric: ForecastMetricKey): boolean {
-  return metric === 'tokens' ? text.includes('有效 Token') : text.includes('费用');
+  return text.includes(t(metric === 'tokens' ? 'trend.mentions.tokens' : 'trend.mentions.cost'));
 }
 
 /**
@@ -385,10 +392,10 @@ function mentionsMetric(text: string, metric: ForecastMetricKey): boolean {
  * 规则层整句不是以“预测：{标题}”开头时，把指标名放在最前面，不丢信息。
  */
 export function withMetricLabel(ariaLabel: string, title: string, metricLabel: string): string {
-  const head = `预测：${title}`;
+  const head = t('forecast.ariaHead', { title });
   return ariaLabel.startsWith(head)
     ? `${head} ${metricLabel}${ariaLabel.slice(head.length)}`
-    : `${metricLabel}：${ariaLabel}`;
+    : t('trend.metricPrefix', { metric: metricLabel, text: ariaLabel });
 }
 
 /** 一行预测：来自规则层 `describePeriodForecast`，或界面补的不带数字的原因。 */
@@ -414,7 +421,7 @@ function ForecastLine({ line }: { line: ForecastLineModel }) {
         aria-label={line.ariaLabel}
         className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md text-xs text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
       >
-        <span className="badge badge-subtle">预测</span>
+        <span className="badge badge-subtle">{t('forecast.tag')}</span>
         <span className="font-medium">{line.title}</span>
         {line.metricLabel && <span>{line.metricLabel}</span>}
         {line.value && <strong className="font-semibold tabular-nums text-[var(--color-text-primary)]">{line.value}</strong>}
@@ -422,7 +429,7 @@ function ForecastLine({ line }: { line: ForecastLineModel }) {
         <span className="text-tertiary">{line.method}</span>
         {line.caveats.map((caveat) => <span key={caveat} className="text-tertiary">{caveat}</span>)}
         <span className="inline-flex items-center gap-0.5 text-tertiary underline decoration-dotted underline-offset-2">
-          计算方法
+          {t('trend.howCalculated')}
           <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" aria-hidden="true" />
         </span>
       </summary>
@@ -463,18 +470,20 @@ function TrendPanelComponent(props: TrendPanelProps) {
   const [track, setTrack] = useState<TrackViewMode>(initialTrack);
   const [viewMode, setViewMode] = useState<TrendViewMode>('daily');
   const { effective } = useTheme();
-  const t = getChartThemeTokens();
-  const reduceMotion = t.reduceMotion;
+  const theme = getChartThemeTokens();
+  const reduceMotion = theme.reduceMotion;
   const trackSegRef = useSegmentedIndicator<HTMLDivElement>();
   const viewSegRef = useSegmentedIndicator<HTMLDivElement>();
-  const currentLabel = RANGE_COMPARISON_LABELS[range]?.[0] || '当前周期';
-  const previousLabel = RANGE_COMPARISON_LABELS[range]?.[1] || '上一周期';
+  const lang = useLang();
+  const comparisonLabels = RANGE_COMPARISON_LABELS[range];
+  const currentLabel = t(comparisonLabels?.[0] ?? 'trend.label.current');
+  const previousLabel = t(comparisonLabels?.[1] ?? 'trend.label.previous');
   const hourBuckets = comparison?.window.bucket === 'hour';
   // 所有日桶对比（本周、本月、多日自定义）都能切到累计走势（审计 Q5：此前多日自定义的切换不生效）。
   const dayBuckets = comparison?.window.bucket === 'day';
   const isCumulative = dayBuckets && viewMode === 'cumulative';
-  const unitWord = hourBuckets ? '小时' : '天';
-  const averagePrefix = hourBuckets ? '小时均' : '日均';
+  const unitWord = t(hourBuckets ? 'trend.unit.hour' : 'trend.unit.day');
+  const averagePrefix = t(hourBuckets ? 'trend.prefix.hour' : 'trend.prefix.day');
   const currentTokens = comparison?.current.summary.totalTokens || 0;
   const previousTokens = comparison?.previous.summary.totalTokens || 0;
   // 未知费用不按 0 兜底（T10.186 评审 P3-2；GLB-01）：非有限或负值一律「不可得」，交给
@@ -484,7 +493,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
   const currentCost = isKnownCost(currentCostRaw) ? currentCostRaw : null;
   const previousCost = isKnownCost(previousCostRaw) ? previousCostRaw : null;
   const cloudBaselineUnverified = isCloudComparisonBaselineUnverified(scope, comparison);
-  const forecastColor = t.seriesPalette[1] ?? t.textTertiary;
+  const forecastColor = theme.seriesPalette[1] ?? theme.textTertiary;
 
   // 总览快照必须与本卡的 comparison 是同一份响应，才用它判断预测、截短与逐日费用。
   const overview = overviewStats && comparison && overviewStats.comparison === comparison ? overviewStats : null;
@@ -548,7 +557,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
         method: notice.method,
         caveats: [],
         detail: notice.detail,
-        ariaLabel: `预测：${notice.title}。${notice.method}。`,
+        ariaLabel: t('trend.noticeAria', { title: notice.title, method: notice.method }),
       }];
     }
     if (!forecast) return [];
@@ -582,7 +591,9 @@ function TrendPanelComponent(props: TrendPanelProps) {
         ariaLabel: metricLabel ? withMetricLabel(copy.ariaLabel, copy.title, metricLabel) : copy.ariaLabel,
       };
     });
-  }, [forecastState, forecast, track]);
+  // 文案随界面语言变化：`lang` 进依赖以便切换后重算。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forecastState, forecast, track, lang]);
 
   // 预测线与色带只画在单指标的累计走势上；双轨与逐日走势只显示文字行（T10.153 §6、§10）。
   const overlay = useMemo(() => {
@@ -590,7 +601,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
     return buildForecastOverlay(track === 'tokens' ? forecast.tokens : forecast.cost, currentSeries.map((point) => point.bucket));
   }, [forecast, isCumulative, track, currentSeries]);
   const overlayMethod = overlay
-    ? forecastLines.find((line) => line.metric === track)?.method ?? '按已完成日的日均外推'
+    ? forecastLines.find((line) => line.metric === track)?.method ?? t('trend.overlayDefault')
     : '';
 
   const derivedComparison = comparison ? deriveTrendComparison(comparison) : null;
@@ -600,20 +611,20 @@ function TrendPanelComponent(props: TrendPanelProps) {
 
   const tokenInsight = comparison
     ? cloudBaselineUnverified
-      ? `云端未返回${previousLabel}的可验证记录；为避免把缺失数据误报为 0，本次不计算趋势变化`
+      ? t('trend.insight.cloudUnverified', { previous: previousLabel })
       : comparison.delta.tokens.direction === 'new'
-      ? `${currentLabel}出现新的 Token 消耗，${previousLabel}基期为 0`
+      ? t('trend.insight.new', { current: currentLabel, previous: previousLabel })
       : comparison.delta.tokens.direction === 'flat'
         ? currentTokens === 0 && previousTokens === 0
-          ? `${currentLabel}与${previousLabel}均无 Token 消耗`
-          : `${currentLabel}与${previousLabel}用量持平`
+          ? t('trend.insight.bothZero', { current: currentLabel, previous: previousLabel })
+          : t('trend.insight.flat', { current: currentLabel, previous: previousLabel })
         : comparison.delta.tokens.percent === null
-          ? `${currentLabel}与${previousLabel}暂无可计算的百分比基线`
-          : `${currentLabel}较${previousLabel}${comparison.delta.tokens.percent > 0 ? '增加' : '下降'} ${Math.abs(comparison.delta.tokens.percent).toFixed(1)}%`
+          ? t('trend.insight.noBaseline', { current: currentLabel, previous: previousLabel })
+          : t(comparison.delta.tokens.percent > 0 ? 'trend.insight.up' : 'trend.insight.down', { current: currentLabel, previous: previousLabel, pct: Math.abs(comparison.delta.tokens.percent).toFixed(1) })
     : '';
 
   const comparisonInsight = comparison
-    ? `${tokenInsight}${peakInsight ? `，${peakInsight}` : ''}。`
+    ? t(peakInsight ? 'trend.insightWithPeak' : 'trend.insight', { token: tokenInsight, peak: peakInsight })
     : '';
 
   // 趋势卡只保留两个 KPI 没有回答的问题：日均（按已完成的桶）与单位费用（审计 Q3）。
@@ -621,30 +632,30 @@ function TrendPanelComponent(props: TrendPanelProps) {
   const kpiCells = useMemo<TrendKpiCellModel[]>(() => {
     if (!comparison) return [];
     const clipNote = clip?.note ?? null;
-    const clipTitle = clip ? `；月末与上月按同日对齐，只统计到 ${civilMonthDay(clip.date)}` : '';
+    const clipTitle = clip ? t('trend.clipTitle', { date: civilMonthDay(clip.date) }) : '';
     // 云端费用无从核实时的原因（P3-2）；可证或不需要核实时为 null。`count` 只看前几个桶（已完成的日子）。
     const costUnknown = (count?: number): string | null => {
       if (cloudCostKnown === undefined) return null;
-      if (cloudCostKnown === null) return '云端未提供可验证的逐日费用';
+      if (cloudCostKnown === null) return t('trend.cloudCostUnverified');
       const unknown = cloudCostKnown.slice(0, count).filter((known) => !known).length;
-      return unknown > 0 ? `有 ${unknown} ${unitWord}的费用未知` : null;
+      return unknown > 0 ? t('trend.costUnknownCount', { n: unknown, unit: unitWord }) : null;
     };
     const averageCell = (metric: 'tokens' | 'cost', average: CompletedBucketAverage | null): TrendKpiCellModel => {
-      const label = `${averagePrefix}${metric === 'tokens' ? '有效 Token' : '预估费用'}`;
+      const label = t('trend.avgLabel', { prefix: averagePrefix, metric: t(metric === 'tokens' ? 'trend.seriesTokens' : 'trend.seriesCost') });
       const format = metric === 'tokens' ? formatAverageTokens : formatEstimatedUsd;
       const formatAbsolute = metric === 'tokens' ? formatAverageTokens : formatUsdMagnitude;
-      const title = `${label}：只平均已经结束的${unitWord === '天' ? '日子' : '小时'}，进行中的${unitWord === '天' ? '今天' : '这一小时'}不计入${clipTitle}`;
+      const title = t(hourBuckets ? 'trend.avgTitle.hour' : 'trend.avgTitle.day', { label, clip: clipTitle });
       const base = { key: `average-${metric}`, label, title, clipNote };
       if (!average) {
-        return { ...base, value: '—', change: null, note: `无法确定哪些${unitWord === '天' ? '日子' : '小时'}已经结束，暂不计算` };
+        return { ...base, value: '—', change: null, note: t(hourBuckets ? 'trend.avgUnknown.hour' : 'trend.avgUnknown.day') };
       }
       if (average.buckets === 0 || average.current === null) {
-        return { ...base, value: '—', change: null, note: `还没有完整的一${unitWord}` };
+        return { ...base, value: '—', change: null, note: t(hourBuckets ? 'trend.noFull.hour' : 'trend.noFull.day') };
       }
-      const basis = `按已完成 ${average.buckets} ${unitWord}`;
+      const basis = t('trend.basis', { n: average.buckets, unit: unitWord });
       const unknownCost = metric === 'cost' ? costUnknown(average.buckets) : null;
       if (unknownCost) {
-        return { ...base, title: `${title}；${basis}`, value: '不可得', change: null, note: `${unknownCost}，不按 $0 计算` };
+        return { ...base, title: t('trend.titleBasis', { title, basis }), value: unitCostUnavailable(), change: null, note: t('trend.notZero', { reason: unknownCost }) };
       }
       const value = format(average.current);
       if (cloudBaselineUnverified) {
@@ -653,21 +664,21 @@ function TrendPanelComponent(props: TrendPanelProps) {
           value,
           change: {
             direction: null,
-            headline: '基线缺失',
+            headline: t('trend.baselineMissing'),
             absolute: null,
-            period: `较${previousLabel}`,
-            description: `${label}：${previousLabel}基线缺失，不按 0 计算变化`,
+            period: t('trend.vs', { label: previousLabel }),
+            description: t('trend.baselineMissingDesc', { label, previous: previousLabel }),
           },
-          note: `${basis} · 基线缺失 · 不按 0 计算`,
+          note: t('trend.baselineMissingNote', { basis }),
         };
       }
       if (!average.delta || average.previous === null) {
-        return { ...base, value, change: null, note: `${basis} · ${previousLabel}不可比` };
+        return { ...base, value, change: null, note: t('trend.notComparable', { basis, previous: previousLabel }) };
       }
       return {
         ...base,
         value,
-        change: describeMetricChange(average.delta, formatAbsolute, `较${previousLabel}`, label),
+        change: describeMetricChange(average.delta, formatAbsolute, t('trend.vs', { label: previousLabel }), label),
         note: `${basis} · ${previousLabel} ${format(average.previous)}`,
       };
     };
@@ -676,20 +687,22 @@ function TrendPanelComponent(props: TrendPanelProps) {
     const previousUnitCost = cloudBaselineUnverified ? null : computeUnitCostUsd(previousCost, previousTokens);
     const unitCostCell: TrendKpiCellModel = {
       key: 'unit-cost',
-      label: UNIT_COST_LABEL,
-      title: `${UNIT_COST_LABEL}：${UNIT_COST_DESCRIPTION}${clipTitle}`,
+      label: unitCostLabel(),
+      title: t('trend.unitCostTitle', { label: unitCostLabel(), desc: unitCostDescription(), clip: clipTitle }),
       value: currentTokens > 0 ? formatUnitCost(unitUnknown ? null : computeUnitCostUsd(currentCost, currentTokens)) : '—',
       change: null,
       note: currentTokens <= 0
-        ? '还没有有效 Token，无法计算'
+        ? t('trend.noTokens')
         : unitUnknown
-          ? `${unitUnknown}，不按 $0 计算`
-          : previousUnitCost === null ? '每百万有效 Token 的预估费用' : `${previousLabel} ${formatUnitCost(previousUnitCost)}`,
+          ? t('trend.notZero', { reason: unitUnknown })
+          : previousUnitCost === null ? t('trend.perMillionHint') : `${previousLabel} ${formatUnitCost(previousUnitCost)}`,
       clipNote,
     };
     if (track === 'tokens') return [averageCell('tokens', tokenAverage), unitCostCell];
     if (track === 'cost') return [averageCell('cost', costAverage), unitCostCell];
     return [averageCell('tokens', tokenAverage), averageCell('cost', costAverage), unitCostCell];
+  // 文案随界面语言变化：`lang` 进依赖以便切换后重算。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     comparison,
     track,
@@ -705,6 +718,8 @@ function TrendPanelComponent(props: TrendPanelProps) {
     previousCost,
     clip,
     cloudCostKnown,
+    hourBuckets,
+    lang,
   ]);
 
   // ECharts Multi-Track Options
@@ -728,9 +743,9 @@ function TrendPanelComponent(props: TrendPanelProps) {
     const previousValues = (metric: 'tokens' | 'cost') => padToAxis(cloudBaselineUnverified
       ? activePreviousSeries.map(() => null)
       : activePreviousSeries.map((point) => point[metric]));
-    const cumulativeSuffix = isCumulative ? '（累计）' : '';
+    const cumulativeSuffix = isCumulative ? t('trend.cumulativeSuffix') : '';
 
-    const neutralDelta = (text: string) => `<span style="color: ${t.textSecondary}; font-weight: 600;">${text}</span>`;
+    const neutralDelta = (text: string) => `<span style="color: ${theme.textSecondary}; font-weight: 600;">${text}</span>`;
     const forecastMetric: ForecastMetricKey = track === 'cost' ? 'cost' : 'tokens';
     const formatForecastPoint = (point: { point: number; low: number; high: number }) => (
       formatForecastTriple(forecastMetric, point.point, point.low, point.high)
@@ -744,19 +759,19 @@ function TrendPanelComponent(props: TrendPanelProps) {
       const formatted = formatForecastPoint(point);
       return `
         <div style="min-width: 220px; font-family: ${CHART_FONT_FAMILY}; font-size: 12px; line-height: 1.55;">
-          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; border-bottom: 1px solid ${t.borderStrong}; padding-bottom: 4px;">
-            <strong style="color: ${t.textPrimary}; font-size: 13px;">${escapeHtml(`${bucket}${weekday ? ` (${weekday})` : ''}`)}</strong>
-            <span style="color: ${t.textTertiary}; font-size: 11px;">预测 · 尚未发生</span>
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; border-bottom: 1px solid ${theme.borderStrong}; padding-bottom: 4px;">
+            <strong style="color: ${theme.textPrimary}; font-size: 13px;">${escapeHtml(`${bucket}${weekday ? ` (${weekday})` : ''}`)}</strong>
+            <span style="color: ${theme.textTertiary}; font-size: 11px;">${t('trend.tip.notHappened')}</span>
           </div>
           <div style="display: flex; justify-content: space-between; gap: 12px; margin: 3px 0;">
-            <span style="color: ${t.textSecondary};">预测累计${track === 'cost' ? '预估费用' : '有效 Token'}:</span>
-            <strong style="color: ${t.textPrimary}; font-variant-numeric: tabular-nums;">${escapeHtml(formatted.point)}</strong>
+            <span style="color: ${theme.textSecondary};">${t(track === 'cost' ? 'trend.tip.forecastCost' : 'trend.tip.forecastTokens')}:</span>
+            <strong style="color: ${theme.textPrimary}; font-variant-numeric: tabular-nums;">${escapeHtml(formatted.point)}</strong>
           </div>
           <div style="display: flex; justify-content: space-between; gap: 12px; margin: 3px 0;">
-            <span style="color: ${t.textSecondary};">粗略范围:</span>
-            <span style="color: ${t.textPrimary}; font-variant-numeric: tabular-nums;">${escapeHtml(`${formatted.low}–${formatted.high}`)}</span>
+            <span style="color: ${theme.textSecondary};">${t('trend.tip.range')}:</span>
+            <span style="color: ${theme.textPrimary}; font-variant-numeric: tabular-nums;">${escapeHtml(`${formatted.low}–${formatted.high}`)}</span>
           </div>
-          <div style="color: ${t.textTertiary}; font-size: 11px; margin-top: 4px;">${escapeHtml(overlayMethod)}，不是实际记录</div>
+          <div style="color: ${theme.textTertiary}; font-size: 11px; margin-top: 4px;">${t('trend.tip.notActual', { method: escapeHtml(overlayMethod) })}</div>
         </div>
       `;
     };
@@ -790,11 +805,11 @@ function TrendPanelComponent(props: TrendPanelProps) {
       // 括号里的绝对值同样不能混用 ASCII 减号：符号统一在这里按 U+2212 拼出来，`formatTokens`
       // 只吃绝对值、不再自己签一次名（T10.197 评审 P3-5）。
       const tokenDeltaBadge = cloudBaselineUnverified
-        ? `<span style="color: ${t.textTertiary};">云端基线未验证</span>`
+        ? `<span style="color: ${theme.textTertiary};">${t('trend.tip.cloudUnverified')}</span>`
         : prevPoint.tokens === 0 && currPoint.tokens > 0
-          ? neutralDelta('新增')
+          ? neutralDelta(t('trend.new'))
           : prevPoint.tokens === 0 && currPoint.tokens === 0
-            ? `<span style="color: ${t.textTertiary};">持平</span>`
+            ? `<span style="color: ${theme.textTertiary};">${t('trend.flat')}</span>`
             : neutralDelta(`${formatSignedPercent(tokenPercent)} (${tokenDelta > 0 ? '+' : tokenDelta < 0 ? '−' : ''}${formatTokens(Math.abs(tokenDelta))})`);
 
       // 两端有一端不可得时不画徽标（空字符串），不写「不可得」三个字——不可得是「没有这个数」，
@@ -803,9 +818,9 @@ function TrendPanelComponent(props: TrendPanelProps) {
       const costDeltaBadge = cloudBaselineUnverified || !costKnown
         ? ''
         : prevPoint.cost === 0 && currPoint.cost > 0
-          ? neutralDelta('新增')
+          ? neutralDelta(t('trend.new'))
           : prevPoint.cost === 0 && currPoint.cost === 0
-            ? `<span style="color: ${t.textTertiary};">持平</span>`
+            ? `<span style="color: ${theme.textTertiary};">${t('trend.flat')}</span>`
             : neutralDelta(`${formatSignedPercent(costPercent)} (${formatSignedUsd(costDelta)})`);
 
       let headerTitle = '';
@@ -815,15 +830,15 @@ function TrendPanelComponent(props: TrendPanelProps) {
         const nextH = (hour + 1) % 24;
         const nextStr = `${nextH < 10 ? '0' : ''}${nextH}:00`;
         headerTitle = `${currBucket} - ${nextStr}`;
-        headerSub = `昨日同期: ${prevBucket || '—'}`;
+        headerSub = t('trend.tip.yesterday', { bucket: prevBucket || '—' });
       } else if (/^\d{4}-\d{2}-\d{2}$/.test(currBucket)) {
         const wk = getWeekdayName(currBucket);
         headerTitle = `${currBucket}${wk ? ` (${wk})` : ''}`;
         const prevWk = getWeekdayName(prevBucket);
-        headerSub = prevBucket ? `上期对齐: ${prevBucket}${prevWk ? ` (${prevWk})` : ''}` : '';
+        headerSub = prevBucket ? t('trend.tip.aligned', { bucket: `${prevBucket}${prevWk ? ` (${prevWk})` : ''}` }) : '';
       } else {
         headerTitle = formatBucketLabel(currBucket);
-        headerSub = prevBucket ? `上期: ${formatBucketLabel(prevBucket)}` : '';
+        headerSub = prevBucket ? t('trend.tip.previous', { bucket: formatBucketLabel(prevBucket) }) : '';
       }
 
       const reqs = currPoint.requests || 0;
@@ -834,40 +849,40 @@ function TrendPanelComponent(props: TrendPanelProps) {
       const todayForecast = overlay && index === overlay.startIndex ? formatForecastPoint(overlay.points[0]) : null;
       const todayForecastRow = todayForecast
         ? `
-          <div style="margin-top: 6px; border-top: 1px dashed ${t.borderFaint}; padding-top: 4px; font-size: 11px; color: ${t.textSecondary}; display: flex; justify-content: space-between; gap: 8px;">
-            <span>预测今日结束累计:</span>
-            <span><b style="color: ${t.textPrimary};">${escapeHtml(todayForecast.point)}</b> · 粗略范围 ${escapeHtml(`${todayForecast.low}–${todayForecast.high}`)}</span>
+          <div style="margin-top: 6px; border-top: 1px dashed ${theme.borderFaint}; padding-top: 4px; font-size: 11px; color: ${theme.textSecondary}; display: flex; justify-content: space-between; gap: 8px;">
+            <span>${t('trend.tip.todayForecast')}:</span>
+            <span><b style="color: ${theme.textPrimary};">${escapeHtml(todayForecast.point)}</b> · ${escapeHtml(t('forecast.interval', { low: todayForecast.low, high: todayForecast.high }))}</span>
           </div>
         `
         : '';
 
       return `
         <div style="min-width: 220px; font-family: ${CHART_FONT_FAMILY}; font-size: 12px; line-height: 1.55;">
-          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; border-bottom: 1px solid ${t.borderStrong}; padding-bottom: 4px;">
-            <strong style="color: ${t.textPrimary}; font-size: 13px;">${escapeHtml(headerTitle)}</strong>
-            <span style="color: ${t.textTertiary}; font-size: 11px;">${escapeHtml(headerSub)}</span>
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; border-bottom: 1px solid ${theme.borderStrong}; padding-bottom: 4px;">
+            <strong style="color: ${theme.textPrimary}; font-size: 13px;">${escapeHtml(headerTitle)}</strong>
+            <span style="color: ${theme.textTertiary}; font-size: 11px;">${escapeHtml(headerSub)}</span>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin: 3px 0;">
-            <span style="color: ${t.textSecondary};">有效 Token:</span>
+            <span style="color: ${theme.textSecondary};">${t('trend.seriesTokens')}:</span>
             <div style="display: flex; align-items: baseline; gap: 6px;">
-              <strong style="color: ${t.primary}; font-variant-numeric: tabular-nums;">${formatTokens(currPoint.tokens)}</strong>
+              <strong style="color: ${theme.primary}; font-variant-numeric: tabular-nums;">${formatTokens(currPoint.tokens)}</strong>
               ${tokenDeltaBadge}
             </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin: 3px 0;">
-            <span style="color: ${t.textSecondary};">预估费用:</span>
+            <span style="color: ${theme.textSecondary};">${t('trend.seriesCost')}:</span>
             <div style="display: flex; align-items: baseline; gap: 6px;">
-              <strong style="color: ${t.success}; font-variant-numeric: tabular-nums;">${formatEstimatedUsd(currentCostKnown ? currPoint.cost : null)}</strong>
+              <strong style="color: ${theme.success}; font-variant-numeric: tabular-nums;">${formatEstimatedUsd(currentCostKnown ? currPoint.cost : null)}</strong>
               ${costDeltaBadge}
             </div>
           </div>
-          <div style="display: flex; justify-content: space-between; gap: 8px; color: ${t.textTertiary}; font-size: 11px; margin-top: 4px;">
-            <span>请求: ${formatNum(reqs)} 次${reqs > 0 ? ` (均耗 ≈${formatTokens(avgReqTokens)})` : ''}</span>
-            <span>${UNIT_COST_LABEL}: ${escapeHtml(unitCost)}</span>
+          <div style="display: flex; justify-content: space-between; gap: 8px; color: ${theme.textTertiary}; font-size: 11px; margin-top: 4px;">
+            <span>${t('trend.tip.requests', { n: formatNum(reqs) })}${reqs > 0 ? t('trend.tip.avgPerRequest', { tokens: formatTokens(avgReqTokens) }) : ''}</span>
+            <span>${unitCostLabel()}: ${escapeHtml(unitCost)}</span>
           </div>
-          <div style="margin-top: 6px; border-top: 1px dashed ${t.borderFaint}; padding-top: 4px; font-size: 11px; color: ${t.textSecondary}; display: flex; justify-content: space-between;">
-            <span>截至此时累计:</span>
-            <span><b>${formatTokens(cumPoint.tokens)}</b> · <b style="color: ${t.success};">${formatEstimatedUsd(cumPoint.cost)}</b></span>
+          <div style="margin-top: 6px; border-top: 1px dashed ${theme.borderFaint}; padding-top: 4px; font-size: 11px; color: ${theme.textSecondary}; display: flex; justify-content: space-between;">
+            <span>${t('trend.tip.cumulativeSoFar')}:</span>
+            <span><b>${formatTokens(cumPoint.tokens)}</b> · <b style="color: ${theme.success};">${formatEstimatedUsd(cumPoint.cost)}</b></span>
           </div>
           ${todayForecastRow}
         </div>
@@ -879,17 +894,17 @@ function TrendPanelComponent(props: TrendPanelProps) {
       boundaryGap: false,
       data: axisBuckets,
       axisLabel: {
-        color: t.textTertiary,
+        color: theme.textTertiary,
         fontSize: 11,
         formatter: formatBucketLabel,
       },
-      axisLine: { lineStyle: { color: t.border } },
+      axisLine: { lineStyle: { color: theme.border } },
     };
 
     const forecastSeries = (): Array<Record<string, unknown>> => (overlay
       ? [
         {
-          name: '预测下限',
+          name: t('trend.forecastLow'),
           type: 'line',
           stack: 'forecast-band',
           smooth: false,
@@ -899,7 +914,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
           data: overlay.low,
         },
         {
-          name: '预测（粗略范围）',
+          name: t('trend.forecastRange'),
           type: 'line',
           stack: 'forecast-band',
           smooth: false,
@@ -910,7 +925,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
           data: overlay.band,
         },
         {
-          name: '预测',
+          name: t('forecast.tag'),
           type: 'line',
           smooth: false,
           symbol: 'none',
@@ -929,10 +944,10 @@ function TrendPanelComponent(props: TrendPanelProps) {
       if (metric === 'cost' && currentSeries.slice(0, average.buckets).some((_, index) => !cloudCostBucketKnown(cloudCostKnown, index))) return [];
       const value = metric === 'tokens' ? Math.round(average.current) : average.current;
       return [{
-        name: `日均基准（${metric === 'tokens' ? '有效 Token' : '预估费用'}）`,
+        name: t('trend.baselineSeries', { metric: t(metric === 'tokens' ? 'trend.seriesTokens' : 'trend.seriesCost') }),
         type: 'line',
         data: activeCurrentSeries.map(() => value),
-        lineStyle: { type: 'dotted', color: t.borderStrong, width: 1.5 },
+        lineStyle: { type: 'dotted', color: theme.borderStrong, width: 1.5 },
         symbol: 'none',
         silent: true,
       }];
@@ -940,10 +955,10 @@ function TrendPanelComponent(props: TrendPanelProps) {
 
     if (track === 'tokens' || track === 'cost') {
       const metric = track;
-      const color = metric === 'tokens' ? t.primary : t.success;
+      const color = metric === 'tokens' ? theme.primary : theme.success;
       const seriesList: Array<Record<string, unknown>> = [
         {
-          name: metric === 'tokens' ? `${currentLabel}${cumulativeSuffix}` : `${currentLabel} 预估费用${cumulativeSuffix}`,
+          name: metric === 'tokens' ? `${currentLabel}${cumulativeSuffix}` : t('trend.costSeries', { label: currentLabel, suffix: cumulativeSuffix }),
           type: 'line',
           smooth: 0.35,
           showSymbol: true,
@@ -960,12 +975,12 @@ function TrendPanelComponent(props: TrendPanelProps) {
           data: padToAxis(activeCurrentSeries.map((point) => point[metric])),
         },
         {
-          name: metric === 'tokens' ? `${previousLabel}${cumulativeSuffix}` : `${previousLabel} 预估费用${cumulativeSuffix}`,
+          name: metric === 'tokens' ? `${previousLabel}${cumulativeSuffix}` : t('trend.costSeries', { label: previousLabel, suffix: cumulativeSuffix }),
           type: 'line',
           smooth: 0.35,
           showSymbol: false,
-          lineStyle: { width: 2, type: 'dashed', color: t.textTertiary },
-          itemStyle: { color: t.textTertiary },
+          lineStyle: { width: 2, type: 'dashed', color: theme.textTertiary },
+          itemStyle: { color: theme.textTertiary },
           data: previousValues(metric),
         },
         ...baselineSeries(metric),
@@ -977,7 +992,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
         ...getChartAnimation(reduceMotion),
         textStyle: { fontFamily: CHART_FONT_FAMILY },
         tooltip: {
-          ...getChartTooltip(t),
+          ...getChartTooltip(theme),
           trigger: 'axis',
           renderMode: 'html',
           formatter: formatTooltipHtml,
@@ -987,19 +1002,19 @@ function TrendPanelComponent(props: TrendPanelProps) {
           top: 0,
           itemWidth: 18,
           itemHeight: 3,
-          textStyle: { color: t.textSecondary, fontSize: 11 },
+          textStyle: { color: theme.textSecondary, fontSize: 11 },
         },
         grid: getChartGrid({ left: 10, right: 18, top: 16, bottom: 8 }),
         xAxis: commonXAxis,
         yAxis: {
           type: 'value',
           min: 0,
-          splitLine: { lineStyle: { color: t.borderFaint } },
+          splitLine: { lineStyle: { color: theme.borderFaint } },
           axisLabel: {
-            color: t.textTertiary,
+            color: theme.textTertiary,
             formatter: (value: number) => (metric === 'tokens' ? formatAxisTokens(value) : formatUsd(value)),
           },
-          axisLine: { lineStyle: { color: t.border } },
+          axisLine: { lineStyle: { color: theme.border } },
         },
         series: seriesList,
       };
@@ -1011,7 +1026,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
       ...getChartAnimation(reduceMotion),
       textStyle: { fontFamily: CHART_FONT_FAMILY },
       tooltip: {
-        ...getChartTooltip(t),
+        ...getChartTooltip(theme),
         trigger: 'axis',
         renderMode: 'html',
         formatter: formatTooltipHtml,
@@ -1020,28 +1035,28 @@ function TrendPanelComponent(props: TrendPanelProps) {
         top: 0,
         itemWidth: 18,
         itemHeight: 3,
-        textStyle: { color: t.textSecondary, fontSize: 11 },
+        textStyle: { color: theme.textSecondary, fontSize: 11 },
       },
       grid: getChartGrid({ left: 10, right: 38, top: 38, bottom: 8 }),
       xAxis: commonXAxis,
       yAxis: [
         {
-          name: '有效 Token',
-          nameTextStyle: { color: t.textTertiary, fontSize: 10 },
+          name: t('trend.seriesTokens'),
+          nameTextStyle: { color: theme.textTertiary, fontSize: 10 },
           type: 'value',
           min: 0,
-          splitLine: { lineStyle: { color: t.borderFaint } },
-          axisLabel: { color: t.textTertiary, formatter: (value: number) => formatAxisTokens(value) },
-          axisLine: { lineStyle: { color: t.border } },
+          splitLine: { lineStyle: { color: theme.borderFaint } },
+          axisLabel: { color: theme.textTertiary, formatter: (value: number) => formatAxisTokens(value) },
+          axisLine: { lineStyle: { color: theme.border } },
         },
         {
-          name: '预估费用（USD）',
-          nameTextStyle: { color: t.textTertiary, fontSize: 10 },
+          name: t('trend.costUsdAxis'),
+          nameTextStyle: { color: theme.textTertiary, fontSize: 10 },
           type: 'value',
           min: 0,
           splitLine: { show: false },
-          axisLabel: { color: t.textTertiary, formatter: (value: number) => formatUsd(value) },
-          axisLine: { lineStyle: { color: t.border } },
+          axisLabel: { color: theme.textTertiary, formatter: (value: number) => formatUsd(value) },
+          axisLine: { lineStyle: { color: theme.border } },
         },
       ],
       series: [
@@ -1052,21 +1067,21 @@ function TrendPanelComponent(props: TrendPanelProps) {
           smooth: 0.35,
           showSymbol: activeCurrentSeries.length <= 8,
           symbolSize: 5,
-          lineStyle: { width: 2.25, color: t.primary },
-          itemStyle: { color: t.primary },
-          areaStyle: { color: lineAreaGradient(t.primary) },
+          lineStyle: { width: 2.25, color: theme.primary },
+          itemStyle: { color: theme.primary },
+          areaStyle: { color: lineAreaGradient(theme.primary) },
           data: activeCurrentSeries.map((p) => p.tokens),
         },
         {
-          name: `${currentLabel} 预估费用${cumulativeSuffix}`,
+          name: t('trend.costSeries', { label: currentLabel, suffix: cumulativeSuffix }),
           yAxisIndex: 1,
           type: 'line',
           smooth: 0.35,
           showSymbol: true,
           symbol: 'circle',
           symbolSize: 5,
-          lineStyle: { width: 2.25, color: t.success, shadowColor: 'rgba(48, 209, 88, 0.3)', shadowBlur: 6 },
-          itemStyle: { color: t.success },
+          lineStyle: { width: 2.25, color: theme.success, shadowColor: 'rgba(48, 209, 88, 0.3)', shadowBlur: 6 },
+          itemStyle: { color: theme.success },
           data: activeCurrentSeries.map((p) => p.cost),
         },
         {
@@ -1075,18 +1090,18 @@ function TrendPanelComponent(props: TrendPanelProps) {
           type: 'line',
           smooth: 0.35,
           showSymbol: false,
-          lineStyle: { width: 1.5, type: 'dashed', color: t.textTertiary },
-          itemStyle: { color: t.textTertiary },
+          lineStyle: { width: 1.5, type: 'dashed', color: theme.textTertiary },
+          itemStyle: { color: theme.textTertiary },
           data: previousValues('tokens'),
         },
         {
-          name: `${previousLabel} 预估费用${cumulativeSuffix}`,
+          name: t('trend.costSeries', { label: previousLabel, suffix: cumulativeSuffix }),
           yAxisIndex: 1,
           type: 'line',
           smooth: 0.35,
           showSymbol: false,
-          lineStyle: { width: 1.5, type: 'dotted', color: t.textTertiary },
-          itemStyle: { color: t.textTertiary },
+          lineStyle: { width: 1.5, type: 'dotted', color: theme.textTertiary },
+          itemStyle: { color: theme.textTertiary },
           data: previousValues('cost'),
         },
       ],
@@ -1110,7 +1125,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
     overlayMethod,
     forecastColor,
     reduceMotion,
-    t,
+    theme,
   ]);
 
   const currentOnlyOption = useMemo(() => {
@@ -1133,7 +1148,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
       // palette would only ever mislead a future reader into thinking the
       // legend/tooltip marker colour could still come from somewhere else.
       tooltip: {
-        ...getChartTooltip(t),
+        ...getChartTooltip(theme),
         trigger: 'axis',
         renderMode: 'richText',
       },
@@ -1141,7 +1156,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
         top: 0,
         itemWidth: 10,
         itemHeight: 10,
-        textStyle: { color: t.textSecondary, fontSize: 11 },
+        textStyle: { color: theme.textSecondary, fontSize: 11 },
       },
       // T10.178 review B1: the end-of-line tool name is drawn in the series'
       // own colour, so a right margin only wide enough for the axis label
@@ -1154,16 +1169,16 @@ function TrendPanelComponent(props: TrendPanelProps) {
         boundaryGap: false,
         data: trends.map((item) => item.date),
         axisLabel: {
-          color: t.textTertiary,
+          color: theme.textTertiary,
           fontSize: 11,
           formatter: formatBucketLabel,
         },
-        axisLine: { lineStyle: { color: t.border } },
+        axisLine: { lineStyle: { color: theme.border } },
       },
       yAxis: {
         type: 'value' as const,
-        splitLine: { lineStyle: { color: t.borderFaint } },
-        axisLabel: { color: t.textTertiary, formatter: (value: number) => formatAxisTokens(value) },
+        splitLine: { lineStyle: { color: theme.borderFaint } },
+        axisLabel: { color: theme.textTertiary, formatter: (value: number) => formatAxisTokens(value) },
       },
       series: tools.map((tool, index) => {
         const color = toolColors[index];
@@ -1196,29 +1211,42 @@ function TrendPanelComponent(props: TrendPanelProps) {
         };
       }),
     };
-  }, [trends, activeTools, currentSeriesName, currentSeriesIsTool, effective, reduceMotion, t]);
+  }, [trends, activeTools, currentSeriesName, currentSeriesIsTool, effective, reduceMotion, theme]);
 
   const windowNote = currentOnlyNote ?? (overviewStats ? overviewTrendWindowNote(range, scope) : undefined);
   const subtitle = comparison
-    ? `${comparisonInsight} 按相同进度对齐 · 截止 ${comparison.window.alignedThrough}`
+    ? t('trend.subtitle', { insight: comparisonInsight, date: comparison.window.alignedThrough })
     : windowNote
       ? windowNote
       : range === 'year'
-        ? '当前范围展示绝对趋势；今年范围不自动推断对比周期。'
+        ? t('trend.subtitle.year')
         : range === 'all'
-          ? '当前范围展示绝对趋势；全部范围不自动推断对比周期。'
-          : '当前范围暂未返回可比较数据。';
+          ? t('trend.subtitle.all')
+          : t('trend.subtitle.none');
 
   const chartAriaLabel = useMemo(() => {
     if (comparison) {
-      const modeDesc = track === 'tokens' ? 'Token 视角' : track === 'cost' ? '费用视角' : '双轨视角';
+      const modeDesc = t(track === 'tokens' ? 'trend.view.tokens' : track === 'cost' ? 'trend.view.cost' : 'trend.view.dualAria');
       const averageSentence = tokenAverage && tokenAverage.current !== null
-        ? ` ${averagePrefix}有效 Token ${formatAverageTokens(tokenAverage.current)}（按已完成 ${tokenAverage.buckets} ${unitWord}${clip ? `，${clip.note}` : ''}）${!cloudBaselineUnverified && tokenAverage.previous !== null ? `，${previousLabel} ${formatAverageTokens(tokenAverage.previous)}` : ''}。`
+        ? ` ${t('trend.aria.average', {
+          prefix: averagePrefix,
+          value: formatAverageTokens(tokenAverage.current),
+          basis: `${t('trend.basis', { n: tokenAverage.buckets, unit: unitWord })}${clip ? t('trend.aria.clipSuffix', { note: clip.note }) : ''}`,
+          previous: !cloudBaselineUnverified && tokenAverage.previous !== null ? t('trend.aria.previousAverage', { label: previousLabel, value: formatAverageTokens(tokenAverage.previous) }) : '',
+        })}`
         : '';
       const forecastSentence = forecastLines.map((line) => ` ${line.ariaLabel}`).join('');
-      return `${modeDesc}有效 Token 与预估费用趋势${isCumulative ? '（累计走势）' : ''}。${comparisonInsight} ${currentLabel}${formatTokens(currentTokens)} (${formatEstimatedUsd(currentCost)})，${previousLabel}${cloudBaselineUnverified ? '基线未验证' : `${formatTokens(previousTokens)} (${formatEstimatedUsd(previousCost)})`}。${averageSentence}${forecastSentence}`;
+      const totals = t('trend.aria.totals', {
+        current: currentLabel,
+        currentValue: `${formatTokens(currentTokens)} (${formatEstimatedUsd(currentCost)})`,
+        previous: previousLabel,
+        previousValue: cloudBaselineUnverified ? t('trend.aria.baselineUnverified') : `${formatTokens(previousTokens)} (${formatEstimatedUsd(previousCost)})`,
+      });
+      return `${t('trend.aria.chart', { mode: modeDesc, cumulative: isCumulative ? t('trend.aria.cumulative') : '' })}${comparisonInsight} ${totals}${averageSentence}${forecastSentence}`;
     }
-    return `当前统计范围有效 Token 消耗趋势。${subtitle}`;
+    return t('trend.aria.noComparison', { subtitle });
+  // 文案随界面语言变化：`lang` 进依赖以便切换后重算。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     comparison,
     track,
@@ -1237,6 +1265,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
     clip,
     forecastLines,
     subtitle,
+    lang,
   ]);
 
   const showViewToggle = !!comparison && dayBuckets;
@@ -1247,108 +1276,110 @@ function TrendPanelComponent(props: TrendPanelProps) {
     if (!comparison) return [];
     const notes: string[] = [];
     if (cloudBaselineUnverified) {
-      notes.push('上一周期基线未验证：不计算变化，图中不按 0 补齐');
+      notes.push(t('trend.note.baselineUnverified'));
     }
     if (clip) {
-      notes.push(`同期窗口已截断：${clip.note}，只比较两期都覆盖的部分`);
+      notes.push(t('trend.note.clipped', { note: clip.note }));
     }
     if (tokenAverage) {
       notes.push(tokenAverage.buckets > 0
-        ? `${averagePrefix}只计已完成 ${tokenAverage.buckets} ${unitWord}；进行中的${hourBuckets ? '当前小时' : '今天'}不计入`
-        : `进行中的${hourBuckets ? '当前小时' : '今天'}不计入${averagePrefix}；当前还没有完整${unitWord}`);
+        ? t(hourBuckets ? 'trend.note.avgHour' : 'trend.note.avgDay', { prefix: averagePrefix, n: tokenAverage.buckets, unit: unitWord })
+        : t(hourBuckets ? 'trend.note.noFullHour' : 'trend.note.noFullDay', { prefix: averagePrefix, unit: unitWord }));
     } else {
-      notes.push(`无法确认已完成的${unitWord}，暂不计算${averagePrefix}`);
+      notes.push(t('trend.note.unknown', { unit: unitWord, prefix: averagePrefix }));
     }
     return notes;
-  }, [comparison, cloudBaselineUnverified, clip, tokenAverage, averagePrefix, unitWord, hourBuckets]);
+  // 文案随界面语言变化：`lang` 进依赖以便切换后重算。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comparison, cloudBaselineUnverified, clip, tokenAverage, averagePrefix, unitWord, hourBuckets, lang]);
   // 基线未验证或同期截断会改变读数含义，这时比较口径留在卡面；常规口径只在 ⓘ 里。
   const contextNotesAlert = cloudBaselineUnverified || !!clip;
 
   return (
-    <section className="panel trend-panel comparison-trend-panel" aria-label="趋势与对比看板">
+    <section className="panel trend-panel comparison-trend-panel" aria-label={t('trend.aria.panel')}>
       <div className="comparison-panel-head">
         <div>
           <div className="panel-title flex items-center gap-2">
             <span className="trend-icon-tile" aria-hidden="true">
               {comparison ? <GitCompareArrows className="h-4 w-4" /> : <TrendingUp className="h-4 w-4" />}
             </span>
-            <span>{comparison ? '有效 Token 与预估费用趋势' : '有效 Token 趋势'}</span>
+            <span>{comparison ? t('trend.title.comparison') : t('trend.title')}</span>
             {/* U-102：副标题、呈现方式、常规比较口径与 Token 口径都收进 ⓘ，卡面只留标题与图。 */}
-            <InfoTip label="趋势说明">
+            <InfoTip label={t('trend.info')}>
               <span>{subtitle}</span>
-              <span className="trend-presentation-context" aria-label="当前趋势呈现方式">
-                {comparison && <span>视角：<strong>{track === 'tokens' ? 'Token 视角' : track === 'cost' ? '费用视角 · USD' : '双轨对比'}</strong></span>}
-                <span>指标：<strong>{presentationLabels.metric}</strong></span>
-                <span>方式：<strong>{presentationLabels.shape}</strong></span>
+              <span className="trend-presentation-context" aria-label={t('trend.presentationAria')}>
+                {comparison && <span>{t('trend.viewLabel')}<strong>{t(track === 'tokens' ? 'trend.view.tokens' : track === 'cost' ? 'trend.view.costUsd' : 'trend.view.dual')}</strong></span>}
+                <span>{t('trend.metricLabel')}<strong>{presentationLabels.metric}</strong></span>
+                <span>{t('trend.shapeLabel')}<strong>{presentationLabels.shape}</strong></span>
               </span>
               {comparisonContextNotes.length > 0 && !contextNotesAlert && (
-                <span className="trend-context-notes" aria-label="趋势比较口径">
-                  <strong>比较口径</strong> {comparisonContextNotes.join(' · ')}
+                <span className="trend-context-notes" aria-label={t('trend.contextAria')}>
+                  <strong>{t('trend.contextTitle')}</strong> {comparisonContextNotes.join(' · ')}
                 </span>
               )}
-              <span className="trend-accounting-note">Token 口径为输入 + 输出，不含缓存读写；预估费用按价格表估算，含缓存读写费用，非账单。</span>
+              <span className="trend-accounting-note">{t('trend.accounting')}</span>
             </InfoTip>
           </div>
         </div>
 
         {/* 视角切换只作用于对比图；没有对比时图表只按工具画 Token，不放一个无效的开关（审计 Q5）。 */}
         {comparison && (
-          <div className="segmented tl-seg trend-track-control" role="group" aria-label="趋势呈现视角" ref={trackSegRef}>
+          <div className="segmented tl-seg trend-track-control" role="group" aria-label={t('trend.trackAria')} ref={trackSegRef}>
             <button
               type="button"
               className={track === 'tokens' ? 'active' : ''}
               onClick={() => setTrack('tokens')}
               aria-pressed={track === 'tokens'}
-              aria-label="切换至 Token 视角"
+              aria-label={t('trend.switchTokens')}
             >
               <Activity className="h-3.5 w-3.5" />
-              <span>Token 视角</span>
+              <span>{t('trend.view.tokens')}</span>
             </button>
             <button
               type="button"
               className={track === 'cost' ? 'active' : ''}
               onClick={() => setTrack('cost')}
               aria-pressed={track === 'cost'}
-              aria-label="切换至费用视角"
+              aria-label={t('trend.switchCost')}
             >
               <Banknote className="h-3.5 w-3.5" />
-              <span>费用视角</span>
+              <span>{t('trend.view.cost')}</span>
             </button>
             <button
               type="button"
               className={track === 'dual' ? 'active' : ''}
               onClick={() => setTrack('dual')}
               aria-pressed={track === 'dual'}
-              aria-label="切换至双轨对比"
+              aria-label={t('trend.switchDual')}
             >
               <Layers className="h-3.5 w-3.5" />
-              <span>双轨对比</span>
+              <span>{t('trend.view.dual')}</span>
             </button>
           </div>
         )}
       </div>
 
       {comparison && (
-        <div className={`comparison-kpis ${kpiCells.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`} role="region" aria-label="趋势对比摘要">
+        <div className={`comparison-kpis ${kpiCells.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`} role="region" aria-label={t('trend.kpiAria')}>
           {kpiCells.map((cell) => <TrendKpiCell key={cell.key} cell={cell} />)}
         </div>
       )}
 
       {showStrip && (
-        <div className="trend-insight-strip is-justified" role="region" aria-label="走势呈现与周期末预测">
+        <div className="trend-insight-strip is-justified" role="region" aria-label={t('trend.stripAria')}>
           <div className="trend-insight-strip-group min-w-0 flex-1">
             {forecastLines.map((line) => <ForecastLine key={line.key} line={line} />)}
           </div>
           {showViewToggle && (
             // 预测详情展开时切换按钮留在首行，不随展开区上下跳动。
-            <div className="segmented tl-seg trend-subtoggle self-start" role="group" aria-label="逐日与累计走势切换" ref={viewSegRef}>
+            <div className="segmented tl-seg trend-subtoggle self-start" role="group" aria-label={t('trend.viewModeAria')} ref={viewSegRef}>
               <button
                 type="button"
                 className={viewMode === 'daily' ? 'active' : ''}
                 onClick={() => setViewMode('daily')}
                 aria-pressed={viewMode === 'daily'}
               >
-                逐日走势
+                {t('trend.daily')}
               </button>
               <button
                 type="button"
@@ -1356,7 +1387,7 @@ function TrendPanelComponent(props: TrendPanelProps) {
                 onClick={() => setViewMode('cumulative')}
                 aria-pressed={viewMode === 'cumulative'}
               >
-                累计走势
+                {t('trend.cumulative')}
               </button>
             </div>
           )}
@@ -1364,8 +1395,8 @@ function TrendPanelComponent(props: TrendPanelProps) {
       )}
 
       {comparisonContextNotes.length > 0 && contextNotesAlert && (
-        <aside className="trend-context-notes" aria-label="趋势比较口径">
-          <strong>比较口径</strong>
+        <aside className="trend-context-notes" aria-label={t('trend.contextAria')}>
+          <strong>{t('trend.contextTitle')}</strong>
           <span>{comparisonContextNotes.join(' · ')}</span>
         </aside>
       )}
@@ -1374,16 +1405,16 @@ function TrendPanelComponent(props: TrendPanelProps) {
         <div className="comparison-period-summary" aria-hidden="true">
           <span>
             <i className="current-line" style={track === 'cost' ? { borderTopColor: 'var(--color-success)' } : undefined} />
-            {currentLabel}{isCumulative ? '（累计）' : ''} <b className="font-semibold">{formatTokens(currentTokens)}</b> (<b className="font-semibold">{formatEstimatedUsd(currentCost)}</b>)
+            {currentLabel}{isCumulative ? t('trend.cumulativeSuffix') : ''} <b className="font-semibold">{formatTokens(currentTokens)}</b> (<b className="font-semibold">{formatEstimatedUsd(currentCost)}</b>)
           </span>
           <span>
             <i className="previous-line" />
-            {previousLabel} {cloudBaselineUnverified ? '—（未验证）' : <><b className="font-semibold">{formatTokens(previousTokens)}</b> (<b className="font-semibold">{formatEstimatedUsd(previousCost)}</b>)</>}
+            {previousLabel} {cloudBaselineUnverified ? t('trend.unverifiedDash') : <><b className="font-semibold">{formatTokens(previousTokens)}</b> (<b className="font-semibold">{formatEstimatedUsd(previousCost)}</b>)</>}
           </span>
           {overlay && (
             <span>
               <i style={{ borderTopColor: forecastColor, borderTopStyle: 'dashed', borderTopWidth: 2 }} />
-              预测（粗略范围）
+              {t('trend.forecastRange')}
             </span>
           )}
         </div>

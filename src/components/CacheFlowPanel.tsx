@@ -4,7 +4,7 @@ import { ArrowRight, Database, PiggyBank, TriangleAlert } from 'lucide-react';
 import type { CacheSavings, Summary } from '../types';
 import { formatEstimatedUsd, formatTokens } from '../utils/format';
 import { resolveCacheBreakdown } from '../utils/cacheDisplay';
-import { ESTIMATED_COST_NOTE } from '../utils/costCopy';
+import { estimatedCostNote } from '../utils/costCopy';
 import { parseCacheSavings } from '../utils/contracts/statsQuery';
 import { InfoTip } from './InfoTip';
 
@@ -87,7 +87,7 @@ function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
               <span>命中缓存在更低单价下复用前缀上下文，减少全价重算。</span>
               <span>复用率 = 命中读取 ÷（未命中输入 + 命中缓存读）；上下文输入总量 = 未命中输入 + 命中缓存读。</span>
               <span>缓存写入单列计费，不计入复用率分母。</span>
-              <span>缓存净节省 = 缓存读取节省 − 缓存写入溢价；三项均{ESTIMATED_COST_NOTE}。</span>
+              <span>缓存净节省 = 缓存读取节省 − 缓存写入溢价；三项均{estimatedCostNote('zh')}。</span>
             </InfoTip>
           )}
         </div>

@@ -9,7 +9,7 @@ import { TrendPanel } from './TrendPanel';
 import { YearHeatmap } from './YearHeatmap';
 import { focusWrapTarget } from '../utils/frontendContracts';
 import { toolDisplayName } from '../utils/toolDisplayName';
-import { computeUnitCostUsd, formatUnitCost, UNIT_COST_LABEL } from '../utils/unitCost';
+import { computeUnitCostUsd, formatUnitCost, unitCostLabel } from '../utils/unitCost';
 import { useSegmentedIndicator } from '../hooks/useSegmentedIndicator';
 
 interface EntitySelection {
@@ -551,7 +551,7 @@ export function EntityDashboardModal({
               {showUnitCostCell && (
                 <div>
                   <DollarSign className="h-4 w-4" />
-                  <span>{UNIT_COST_LABEL}</span>
+                  <span>{unitCostLabel()}</span>
                   <strong>{unitCostDisplay}</strong>
                 </div>
               )}

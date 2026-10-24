@@ -35,7 +35,7 @@ import {
 import { cloudSidebarStatusCopy } from '../src/components/Sidebar.tsx';
 import { assignToolChartSlots, colorsForToolsInView, toolChartSlot } from '../src/types.ts';
 import { getChartThemeTokens } from '../src/utils/chartTheme.ts';
-import { MetricsGrid } from '../src/components/MetricsGrid.tsx';
+import { MetricsGridView } from '../src/components/MetricsGrid.tsx';
 import { YearHeatmap } from '../src/components/YearHeatmap.tsx';
 import {
   companyQuotaWindowLabel,
@@ -1926,7 +1926,8 @@ test('cache presentation keeps proven splits and falls back to one combined metr
     [{ label: '缓存合计', tokens: 120 }],
   );
 
-  const combinedMarkup = MetricsGrid({
+  // MetricsGrid 外层只订阅界面语言，卡片内容由 MetricsGridView 给出，可以直接当函数调用。
+  const combinedMarkup = MetricsGridView({
     summary: {
       totalTokens: 30,
       inputTokens: 20,
@@ -1958,8 +1959,9 @@ test('dashboard visual hierarchy keeps contributor panels aligned and trend metr
   assert.doesNotMatch(trend, /metricLabel="有效 Tokens"/);
   assert.match(trend, /completedBucketAverage\(comparison, 'tokens'\)/);
   // 单位费用的标签、计算与显示保护统一在 utils/unitCost（T10.159 决定 d，专属看板条带共用）。
-  assert.match(trend, /label: UNIT_COST_LABEL/);
-  assert.match(readSource(path.join(process.cwd(), 'src', 'utils', 'unitCost.ts')), /UNIT_COST_LABEL = '单位费用'/);
+  assert.match(trend, /label: unitCostLabel\(\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'utils', 'unitCost.ts')), /return t\('unitCost\.label'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'unitCost\.label': '单位费用'/);
   assert.match(trend, /className="comparison-kpi-main"/);
   assert.match(css, /\.comparison-kpi-main \{[\s\S]*gap:\s*4px;/);
   assert.match(css, /\.comparison-kpi-main > b \{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-width:\s*0;/);

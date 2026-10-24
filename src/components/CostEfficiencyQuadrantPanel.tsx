@@ -4,7 +4,7 @@ import { EChart } from './EChart';
 import type { ModelStat } from '../types';
 import { toolColorMap } from '../types';
 import { formatAxisTokens, formatEstimatedUsd, formatNum, formatTokens, formatUsd } from '../utils/format';
-import { computeUnitCostUsd, formatUnitCost, UNIT_COST_LABEL } from '../utils/unitCost';
+import { computeUnitCostUsd, formatUnitCost, unitCostLabel } from '../utils/unitCost';
 import { useTheme } from '../utils/useTheme';
 import { escapeHtml } from '../utils/frontendContracts';
 import { CHART_FONT_FAMILY, getChartAnimation, getChartGrid, getChartThemeTokens, getChartTooltip } from '../utils/chartTheme';
@@ -193,7 +193,7 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
               <div>预估费用: <b style="color: ${theme.success};">${formatEstimatedUsd(cost)}</b></div>
               <div>有效 Token: <b>${formatTokens(tokens)}</b></div>
               <div style="color: ${theme.textSecondary};">记录数: ${formatNum(requests)} 条${requests > 0 ? ` · 每条均耗 ≈${formatTokens(averagePerRequest)}` : ''}</div>
-              <div style="color: ${theme.textTertiary}; font-size: 11px; margin-top: 2px;">${UNIT_COST_LABEL}: ${escapeHtml(unitCost)}</div>
+              <div style="color: ${theme.textTertiary}; font-size: 11px; margin-top: 2px;">${unitCostLabel()}: ${escapeHtml(unitCost)}</div>
               ${canDrill ? `<div style="margin-top: 4px; border-top: 1px solid ${theme.borderStrong}; padding-top: 4px; font-size: 10px; color: ${theme.primary};">点击圆点打开专属看板</div>` : ''}
             </div>
           `;
