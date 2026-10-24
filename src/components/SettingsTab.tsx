@@ -9,6 +9,7 @@ import {
   Route,
   Search,
   Sliders,
+  Wallet,
   X,
 } from "lucide-react";
 import {
@@ -24,6 +25,7 @@ import { useSegmentedIndicator } from "../hooks/useSegmentedIndicator";
 import "../styles/settings-navigation.css";
 import { CloudAccountSection } from "./settings/CloudAccountSection";
 import type { CloudAccountSectionProps } from "./settings/CloudAccountSection";
+import { BudgetSection } from "./settings/BudgetSection";
 import { QuotaSection } from "./settings/QuotaSection";
 import type { QuotaSectionProps } from "./settings/QuotaSection";
 import { WallpaperSection } from "./settings/WallpaperSection";
@@ -58,7 +60,7 @@ interface SettingsTabProps {
   settingsAnchor?: string | null;
   onSettingsAnchorHandled?: () => void;
 }
-const ICONS = { Cloud, CircleGauge, Sliders, ImageIcon, DollarSign, Database, AppWindow, Route };
+const ICONS = { Cloud, CircleGauge, Sliders, ImageIcon, DollarSign, Database, AppWindow, Route, Wallet };
 const DEFAULT_SECTION = "settings-scan";
 
 function hashSection(): string {
@@ -261,6 +263,11 @@ export function SettingsTab(props: SettingsTabProps) {
         >
           <QuotaSection {...props.quota} />
         </section>
+        {activeSection === "settings-budget" && (
+          <section>
+            <BudgetSection />
+          </section>
+        )}
         {props.modelAccess && (
           <section
             hidden={activeSection !== "settings-model-access"}

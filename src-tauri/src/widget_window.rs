@@ -1145,7 +1145,12 @@ fn summary_numbers(stats: &Value) -> (Option<i64>, Option<f64>) {
 }
 
 /// 用本机“今日”统计刷新托盘文字。读取走缓存过的本地统计路径，失败只记日志。
-pub fn refresh_tray_status(ctx: &AppContext, app: &tauri::AppHandle, tray_text_enabled: bool) {
+pub fn refresh_tray_status(
+    ctx: &AppContext,
+    app: &tauri::AppHandle,
+    tray_text_enabled: bool,
+    budget_line: Option<String>,
+) {
     let stats = match commands::get_stats_impl(ctx, "today".to_string()) {
         Ok(stats) => stats,
         Err(error) => {
@@ -1154,7 +1159,10 @@ pub fn refresh_tray_status(ctx: &AppContext, app: &tauri::AppHandle, tray_text_e
         }
     };
     let (tokens, cost) = summary_numbers(&stats);
-    let (tooltip, title) = tray_status_text(tokens, cost);
+    let (mut tooltip, title) = tray_status_text(tokens, cost);
+    if let Some(line) = budget_line {
+        tooltip = format!("{tooltip}\n{line}");
+    }
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
