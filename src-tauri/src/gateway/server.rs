@@ -1091,6 +1091,7 @@ async fn attempt(
         Err(message) => return skip(&call, StatusCode::INTERNAL_SERVER_ERROR, message),
     };
 
+    let presented_key = key.clone();
     let sent = tokio::time::timeout(UPSTREAM_HEADERS_TIMEOUT, async {
         let url = upstream_url(&provider)?;
         let client = upstream_client(&url).await?;
@@ -1143,7 +1144,7 @@ async fn attempt(
 
     let status = upstream.status();
     if !status.is_success() {
-        let text = read_limited(upstream).await;
+        let text = redact_key(&read_limited(upstream).await, &presented_key);
         let message = format!(
             "{UPSTREAM_REPLY} {status}：{}",
             text.chars().take(200).collect::<String>()
@@ -1213,6 +1214,17 @@ async fn read_upstream_body(
     })
     .await
     .unwrap_or_else(|_| Err("上游非流式请求超过 300 秒总时限。".into()))
+}
+
+/// Some upstreams echo the presented key in their error text, which then
+/// reaches the agent and the request ledger.
+fn redact_key(text: &str, key: &str) -> String {
+    let key = key.trim();
+    if key.len() >= 8 {
+        text.replace(key, "[已隐去 API key]")
+    } else {
+        text.to_string()
+    }
 }
 
 async fn read_limited(response: reqwest::Response) -> String {

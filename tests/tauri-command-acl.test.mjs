@@ -128,9 +128,9 @@ function validatePolicy(policy) {
   }
 }
 
-test('all 111 registered commands have generated permissions and exact per-window grants', () => {
+test('all 114 registered commands have generated permissions and exact per-window grants', () => {
   const policy = productionPolicy();
-  assert.equal(policy.registered.length, 111, 'review the surface matrix when adding or removing an application command');
+  assert.equal(policy.registered.length, 114, 'review the surface matrix when adding or removing an application command');
   validatePolicy(policy);
 });
 

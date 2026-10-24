@@ -57,6 +57,19 @@ internal class RoutingWallpaperRenderer(private val density: Float) {
         val targets: Map<String, Pair<Float, Float>>,
     )
 
+    // 流动虚线的相位每帧一变；同一帧里所有在途连线共用一个 DashPathEffect。
+    private var dashPhase = Float.NaN
+    private var dashEffect: DashPathEffect? = null
+
+    private fun flowingDash(phase: Float): DashPathEffect {
+        val cached = dashEffect
+        if (cached != null && phase == dashPhase) return cached
+        return DashPathEffect(floatArrayOf(dp(6f), dp(5f)), -phase * dp(11f)).also {
+            dashPhase = phase
+            dashEffect = it
+        }
+    }
+
     private fun layout(scene: RoutingScene, width: Float, height: Float): Layout {
         val padding = dp(16f)
         val nodeWidth = ((width - padding * 2) * 0.34f).coerceAtMost(dp(168f))
@@ -224,7 +237,7 @@ internal class RoutingWallpaperRenderer(private val density: Float) {
     ) {
         fun style(wireColor: Int, wireDashed: Boolean) {
             stroke.color = wireColor
-            stroke.pathEffect = if (wireDashed) DashPathEffect(floatArrayOf(dp(6f), dp(5f)), -phase * dp(11f)) else null
+            stroke.pathEffect = if (wireDashed) flowingDash(phase) else null
         }
         stroke.strokeWidth = dp(2f)
         style(color, dashed)

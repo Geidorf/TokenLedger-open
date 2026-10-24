@@ -24,6 +24,86 @@ export function hopTiming(hops: number): { step: number; run: number; total: num
   return { step, run, total: step * hops + run };
 }
 
+/** Looping effects redraw this many times a second; enough for a 3–8px dash flow and a soft pulse. */
+const LOOP_FPS = 12;
+const DASH_PERIOD = 8;
+const DASH_SECONDS = 0.7;
+const PULSE_SECONDS = 1.2;
+const RING_SECONDS = 1.8;
+
+/** Which elements each looping value is set on: only these restyle on a tick, not the whole stage. */
+const LOOP_TARGETS = {
+  '--rs-dash': '.rs-wire.is-live',
+  '--rs-pulse': '.rs-node.is-busy .rs-node-dot, .rs-held',
+  '--rs-ring-width': '.rs-hub.is-busy circle',
+  '--rs-ring-opacity': '.rs-hub.is-busy circle',
+} as const;
+type LoopProperty = keyof typeof LOOP_TARGETS;
+
+/** The --rs-* values the looping effects read (routingStage.css) at `seconds` into the loop. */
+export function loopFrame(seconds: number): Record<LoopProperty, string> {
+  const dash = -Math.floor(((seconds % DASH_SECONDS) / DASH_SECONDS) * DASH_PERIOD);
+  const pulse = 1 - 0.65 * (0.5 - 0.5 * Math.cos((2 * Math.PI * seconds) / PULSE_SECONDS));
+  // The ring grows over the first 70% of its period (ease-out), then waits.
+  const grow = Math.min(1, (seconds % RING_SECONDS) / (RING_SECONDS * 0.7));
+  const eased = 1 - (1 - grow) ** 3;
+  return {
+    '--rs-dash': String(dash),
+    '--rs-pulse': pulse.toFixed(2),
+    '--rs-ring-width': (1.5 + 5.5 * eased).toFixed(2),
+    '--rs-ring-opacity': (1 - 0.85 * eased).toFixed(2),
+  };
+}
+
+/**
+ * One timer drives every looping effect on the stage, a dozen times a
+ * second, by setting CSS custom properties on the looping elements (no
+ * React render). Infinite CSS keyframes cost a style recalc and repaint on
+ * every display frame for as long as a request was in flight, which the
+ * desktop widget can be for hours. Stops when nothing loops, when the
+ * window is hidden, and under reduced motion (the static look stays).
+ */
+function useLoopClock(ref: { current: SVGSVGElement | null }, active: boolean) {
+  useEffect(() => {
+    const node = ref.current;
+    if (!active || !node) return undefined;
+    const started = Date.now();
+    const tick = () => {
+      if (document.visibilityState === 'hidden') return;
+      const frame = loopFrame((Date.now() - started) / 1000);
+      for (const name of Object.keys(LOOP_TARGETS) as LoopProperty[]) {
+        for (const element of node.querySelectorAll<SVGElement>(LOOP_TARGETS[name])) {
+          if (element.style.getPropertyValue(name) !== frame[name]) element.style.setProperty(name, frame[name]);
+        }
+      }
+    };
+    let timer: number | undefined;
+    const stop = () => {
+      if (timer === undefined) return;
+      window.clearInterval(timer);
+      timer = undefined;
+      // Back to the static look the CSS fallbacks describe.
+      for (const name of Object.keys(LOOP_TARGETS) as LoopProperty[]) {
+        for (const element of node.querySelectorAll<SVGElement>(LOOP_TARGETS[name])) element.style.removeProperty(name);
+      }
+    };
+    const start = () => {
+      if (timer !== undefined) return;
+      tick();
+      timer = window.setInterval(tick, 1000 / LOOP_FPS);
+    };
+    // Reduced motion is followed live, as the CSS media query it replaces was.
+    const reduced = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const follow = () => (reduced?.matches ? stop() : start());
+    follow();
+    reduced?.addEventListener?.('change', follow);
+    return () => {
+      reduced?.removeEventListener?.('change', follow);
+      stop();
+    };
+  }, [ref, active]);
+}
+
 export type StageVariant = 'page' | 'compact';
 
 /** Below this width the page stage switches to the compact layout so labels stay legible. */
@@ -106,9 +186,9 @@ function NodeBox({ node, x, y, width, height, maxLabel, side, color }: {
 }
 
 /**
- * The stage itself: pure SVG plus CSS keyframes, no animation loop. A fresh
+ * The stage itself: pure SVG. Packets are one-shot CSS keyframes; a fresh
  * flow mounts its packets once (keyed by flow id), so a poll that returns the
- * same records does not replay them.
+ * same records does not replay them. Looping effects follow `useLoopClock`.
  */
 export function RoutingStage({ scene, variant: requested = 'auto', title }: { scene: RoutingScene; variant?: StageVariant | 'auto'; title?: string }) {
   const { ref, variant } = useAutoVariant(requested);
@@ -185,10 +265,14 @@ export function RoutingStage({ scene, variant: requested = 'auto', title }: { sc
     );
   };
 
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  useLoopClock(svgRef, liveAgents.size + liveTargets.size > 0 || scene.stats.inflight > 0
+    || [...scene.agents, ...scene.targets].some((node) => node.state === 'busy'));
+
   const label = title ?? '实时路由动画';
   return (
     <figure ref={ref} className={`rs-stage is-${variant}`} aria-label={label}>
-      <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={`${label}：${scene.agents.length} 个 Agent，${scene.targets.length} 个上游`} preserveAspectRatio="xMidYMid meet">
+      <svg ref={svgRef} viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={`${label}：${scene.agents.length} 个 Agent，${scene.targets.length} 个上游`} preserveAspectRatio="xMidYMid meet">
         <g className="rs-wires" aria-hidden="true">
           {scene.agents.map((node) => (
             <path

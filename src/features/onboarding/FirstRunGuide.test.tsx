@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getLang, LANG_STORAGE_KEY, setLangPreference } from '../../i18n';
 import * as api from '../gateway/api';
 import { FirstRunGuide, type FirstRunGuideProps } from './FirstRunGuide';
 import { ONBOARDING_STORAGE_KEY, requestOpenOnboarding } from './onboardingState';
@@ -43,6 +44,10 @@ describe('FirstRunGuide', () => {
     window.localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(api.gatewayStatus).mockResolvedValue({ running: false, port: 3462, providerCount: 0, enabledCount: 0 });
+  });
+
+  afterEach(() => {
+    act(() => setLangPreference('zh'));
   });
 
   it('本机账本为空的新电脑自动打开，第一步可直接扫描', () => {
@@ -132,5 +137,30 @@ describe('FirstRunGuide', () => {
   it('不读取任何订阅凭据：只调用网关状态与模型接入两个命令', () => {
     renderGuide();
     expect(screen.getByText(/不读取任何订阅账号的登录凭据/)).toBeInTheDocument();
+  });
+
+  it('切到英文后整份引导立即换成英文，选择记在本机', () => {
+    renderGuide({}, { totalRecords: 1200, modelAccessEnabled: true });
+    act(() => requestOpenOnboarding());
+    fireEvent.change(screen.getByRole('combobox', { name: '界面语言' }), { target: { value: 'en' } });
+    expect(getLang()).toBe('en');
+    expect(window.localStorage.getItem(LANG_STORAGE_KEY)).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
+    expect(screen.getByRole('dialog', { name: 'Welcome to TokenLedger' })).toBeInTheDocument();
+    expect(screen.getByText('Found 1,200 records. The Overview page has data now.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Interface language' })).toHaveValue('en');
+    expect(screen.queryByText(/[\u4e00-\u9fff]{2,}/, { ignore: 'option, script, style' })).not.toBeInTheDocument();
+  });
+
+  it('键盘 Tab 在对话框里循环时能到达语言选择', () => {
+    renderGuide();
+    const select = screen.getByRole('combobox', { name: '界面语言' });
+    const skip = screen.getByRole('button', { name: '跳过引导' });
+    skip.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(select).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(skip).toHaveFocus();
   });
 });

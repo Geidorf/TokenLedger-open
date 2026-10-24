@@ -16,6 +16,8 @@ import { ProjectDimensionCard } from './ProjectDimensionCard';
 import { MagpieImportCard } from './MagpieImportCard';
 import { PeerSharedUsageCard } from './PeerSharedUsageCard';
 import { PeerSyncCard } from './PeerSyncCard';
+import { LanguageCard } from './LanguageCard';
+import { useT } from '../../i18n';
 
 export interface DataHelpSectionProps {
   dbInfo: DbInfo | null;
@@ -111,6 +113,7 @@ export function getDataSyncGuidance(
 }
 
 export function DataHelpSection(props: DataHelpSectionProps) {
+  const t = useT();
   const { dbInfo, busy } = props;
   const hasDbInfoSnapshot = dbInfo !== null;
   const syncGuidance = getDataSyncGuidance(props.cloudSetup, dbInfo?.unsyncedRecords ?? 0);
@@ -166,13 +169,15 @@ export function DataHelpSection(props: DataHelpSectionProps) {
         )}
       </SettingsCard>
 
-      <SettingsCard title="新手引导">
+      <LanguageCard />
+
+      <SettingsCard title={t('onboarding.settings.title')}>
         <SettingsGroup>
-          <p className="settings-project-note">扫描本机数据、开启模型网关、云端同步与手机锁屏壁纸，四步各自的完成情况都在这里。</p>
+          <p className="settings-project-note">{t('onboarding.settings.note')}</p>
           <SettingsActionRow>
             <button className="secondary-inline" type="button" onClick={requestOpenOnboarding}>
               <Sparkles className="h-4 w-4" />
-              打开新手引导
+              {t('onboarding.settings.open')}
             </button>
           </SettingsActionRow>
         </SettingsGroup>

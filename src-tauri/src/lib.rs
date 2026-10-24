@@ -22,6 +22,7 @@ use app_paths::AppContext;
 use settings::AppSettings;
 
 mod app_paths;
+mod budget;
 mod cache;
 mod commands;
 mod cost_profile;
@@ -180,7 +181,10 @@ pub(crate) fn refresh_tray_status(ctx: &AppContext, app_handle: &tauri::AppHandl
         .try_state::<Arc<Mutex<AppSettings>>>()
         .and_then(|state| state.lock().ok().map(|guard| guard.tray_text_enabled))
         .unwrap_or(false);
-    widget_window::refresh_tray_status(ctx, app_handle, tray_text_enabled);
+    // Budgets read the same local stats, so they are re-checked on every
+    // refresh: alerts fire here and near/over budgets add a tooltip line.
+    let budget_line = budget::tray_summary(&budget::check_budget_alerts(ctx));
+    widget_window::refresh_tray_status(ctx, app_handle, tray_text_enabled, budget_line);
 }
 
 /// 跨日检测（R-52）：与上次记录的本地日历日不同就该立即刷新一次托盘文字（“今日”的统计换了
@@ -349,6 +353,11 @@ fn start_background_scheduler(
                         tauri::async_runtime::block_on(quota::get_local_quota_providers_impl(&ctx));
                 }
                 sync_quota_and_notify(&ctx, &app_handle);
+                // Gateway requests land in the ledger without a scan, so
+                // budgets get their own five-minute check.
+                if !budget::load_settings(ctx.app_data_dir()).rules.is_empty() {
+                    refresh_tray_status(&ctx, &app_handle);
+                }
                 next_quota_sync = now + Duration::from_secs(5 * 60);
             }
 
@@ -934,6 +943,9 @@ pub fn run() {
             quota::authorize_antigravity_quota,
             quota::alerts::get_quota_alert_settings,
             quota::alerts::set_quota_alert_settings,
+            budget::get_budget_settings,
+            budget::set_budget_settings,
+            budget::get_budget_status,
             quota_sync::get_quota_snapshot_sync_status,
             quota_sync::set_quota_snapshot_sync_enabled,
             quota_sync::sync_quota_snapshots_now,

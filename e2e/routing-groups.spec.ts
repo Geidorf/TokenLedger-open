@@ -111,7 +111,7 @@ test.describe('路由组', () => {
       ],
     }] });
     await openPage(page, 'routing');
-    const panel = page.getByRole('complementary', { name: '最近路由决策' });
+    const panel = page.getByRole('region', { name: '最近路由决策' });
     await expect(panel).toContainText('openai/gpt-5 冷却中，已后移');
     await panel.getByText('为什么这样选（2 个成员）').click();
     const rows = panel.getByRole('list', { name: 'group/entry 成员决策' }).getByRole('listitem');

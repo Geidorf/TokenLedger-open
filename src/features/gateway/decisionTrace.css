@@ -14,7 +14,10 @@
 .mw-trace-member { min-width: 0; overflow-wrap: anywhere; color: var(--color-text-primary); }
 .mw-trace-reasons, .mw-trace-detail { grid-column: 2 / -1; min-width: 0; color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .mw-trace-detail { color: var(--color-text-tertiary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.mw-trace-item.is-not_reached, .mw-trace-item.is-excluded { opacity: 0.72; }
+/* Not tried / excluded members read quieter through colour, not opacity:
+   opacity also faded the small chips and reasons below 4.5:1 contrast. */
+.mw-trace-item.is-not_reached .mw-trace-member, .mw-trace-item.is-excluded .mw-trace-member,
+.mw-trace-item.is-not_reached .mw-trace-reasons, .mw-trace-item.is-excluded .mw-trace-reasons { color: var(--color-text-tertiary); }
 .mw-trace-toggle { margin-top: 4px; }
 .mw-trace-toggle > summary { cursor: pointer; color: var(--color-text-secondary); font-size: var(--font-size-xs); width: fit-content; }
 .mw-trace-toggle > summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }

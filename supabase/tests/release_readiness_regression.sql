@@ -88,7 +88,8 @@ begin
     'public.upsert_quota_snapshots_v3(integer,bigint,jsonb)',
     'public.publish_routing_snapshot_v1(text,jsonb)',
     'public.get_routing_snapshots_v1()',
-    'public.clear_routing_snapshot_v1(text)'
+    'public.clear_routing_snapshot_v1(text)',
+    'public.get_activity_rhythm_v1(jsonb)'
   ]
   loop
     if pg_catalog.to_regprocedure(v_signature) is null then

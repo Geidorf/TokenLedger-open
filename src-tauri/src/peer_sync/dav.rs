@@ -49,6 +49,9 @@ impl DavClient {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .connect_timeout(Duration::from_secs(15))
+            // Credentials are checked against the saved address only, so a
+            // redirect must not take a listing or download to another host.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|error| format!("无法创建 WebDAV 客户端：{error}"))?;
         Ok(Self {
