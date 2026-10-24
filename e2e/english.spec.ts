@@ -105,6 +105,18 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('额度页：订阅额度面板、重置时间与待处理来源是英文', async ({ page }) => {
+    await openEnglish(page, 'allowances');
+    const panel = page.locator('section.quota-panel');
+    await expect(panel.getByRole('heading', { name: /Plan quotas/ })).toBeVisible();
+    await expect(panel.getByText('Remaining', { exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Refresh quotas' })).toBeVisible();
+    await expect(panel.getByText(/^Resets /).first()).toBeVisible();
+    await expect(panel.getByText('Sources to set up')).toBeVisible();
+    await expect(panel.getByRole('progressbar', { name: '5-hour available' })).toHaveAttribute('aria-valuetext', '80% available');
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('网关页：接入说明、模型目录与最近请求是英文', async ({ page }) => {
     await openEnglish(page, 'gateway');
     await expect(page.getByRole('heading', { name: /^Connect/ })).toBeVisible();

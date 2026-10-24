@@ -297,8 +297,9 @@ test('额度刷新失败保留上次来源快照并给出重试语义', () => {
   const quotaHook = readSource(path.join(process.cwd(), 'src', 'hooks', 'useQuota.ts'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
   assert.match(quota, /const hasProviderSnapshot = providers\.length > 0;/);
-  assert.match(quota, /\{\(!error \|\| showRecoveryActions\) && \([\s\S]*aria-label=\{quotaRefreshAriaLabel\}[\s\S]*\{error && \([\s\S]*className="quota-panel-error" role="alert"[\s\S]*<span>\{error\}<\/span>[\s\S]*hasProviderSnapshot[\s\S]*仍显示上次读取到的来源结果[\s\S]*检查额度来源/);
-  assert.doesNotMatch(quota, /className="quota-panel-error-actions"[\s\S]*重新读取额度/);
+  assert.match(quota, /\{\(!error \|\| showRecoveryActions\) && \([\s\S]*aria-label=\{quotaRefreshAriaLabel\}[\s\S]*\{error && \([\s\S]*className="quota-panel-error" role="alert"[\s\S]*<span>\{error\}<\/span>[\s\S]*hasProviderSnapshot[\s\S]*t\('quota\.error\.snapshot'\)[\s\S]*t\('quota\.error\.check'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.error\.snapshot': '仍显示上次读取到的来源结果。'[\s\S]*'quota\.error\.check': '检查额度来源'/);
+  assert.doesNotMatch(quota, /className="quota-panel-error-actions"[\s\S]*quota\.refresh'/);
   assert.match(quotaHook, /setQuotaError\(formatQuotaLoadError\(err\)\);/);
   assert.equal((dashboard.match(/showRecoveryActions=\{false\}/g) || []).length, 2);
   assert.match(quota, /\{providers\.length === 0 && loading \?/);
@@ -2943,8 +2944,8 @@ test('quota dashboard is a continuous provider list without legacy hero, rings, 
   assert.doesNotMatch(css, /\.quota-ring|quota-ring-sweep|\.quota-hero|\.quota-view-switch/);
   assert.match(source, /ChevronDown/);
   assert.match(source, /<summary[^>]*aria-label=/);
-  assert.match(source, /详情/);
-  assert.match(source, /aria-label=\{`\$\{windowLabel\} 可用额度`\}/);
+  assert.match(source, /t\('quota\.details\.sr'\)/);
+  assert.match(source, /aria-label=\{t\('quota\.meterAria', \{ label: windowLabel \}\)\}/);
   assert.match(source, /<span style=\{\{ width: `\$\{100 - used\}%` \}\} \/>/);
   assert.match(css, /\.quota-dashboard \{[\s\S]{0,360}display: grid;[\s\S]{0,360}grid-template-columns: 1fr;/);
   assert.match(css, /\.quota-provider \{/);
@@ -3009,7 +3010,8 @@ test('quota providers without displayable windows move into a compact pending gr
   }), false);
   assert.match(source, /const renderableProviders = displayedProviderViews\.filter\(\(view\) => view\.hasRenderableWindows\)/);
   assert.match(source, /className="quota-pending-providers"/);
-  assert.match(source, /<h3 id="quota-pending-title">待处理来源<\/h3>/);
+  assert.match(source, /<h3 id="quota-pending-title">\{t\('quota\.pending\.title'\)\}<\/h3>/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.pending\.title': '待处理来源'/);
   assert.match(source, /pending \? 'quota-provider-pending' : 'quota-provider'/);
   assert.match(css, /\.quota-pending-list \{[\s\S]*grid-template-columns: 1fr/);
   assert.match(css, /\.quota-provider-pending \{[\s\S]*background: var\(--color-bg-subtle\)/);
@@ -3025,8 +3027,8 @@ test('quota dashboard keeps normal windows compact while preserving exceptional 
     path.join(process.cwd(), 'src', 'components', 'QuotaPanel.tsx'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
   assert.match(source, /effectiveStatus !== 'ok'/);
-  assert.match(source, /className="sr-only">数据最新，\{formatObserved\(window\.observedAt\)\}/);
-  assert.match(source, /来源快照，不推算未提供的余额/);
+  assert.match(source, /className="sr-only">\{t\('quota\.fresh', \{ observed: formatObserved\(window\.observedAt\) \}\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.panel\.sr': '来源快照，不推算未提供的余额。'/);
   assert.match(source, /quota-panel-subtitle/);
   assert.match(source, /<section className="panel quota-panel" aria-labelledby="quota-panel-title"[^>]*>/);
   assert.match(source, /<h2 id="quota-panel-title" className="panel-title"/);
@@ -3034,21 +3036,23 @@ test('quota dashboard keeps normal windows compact while preserving exceptional 
   // T10.159：行尾详情另收额度消耗速度的方法、区间与不预测的原因（T10.153 §5.2、§10 第 3 条），
   // 多一个可选的来源能力参数，交给 computeQuotaPace 判断。
   assert.match(source, /function QuotaDetails\(\{ windows, now, label(?:, providerCapability)? \}/);
-  assert.match(source, /<details className="quota-details">[\s\S]{0,180}<summary aria-label=\{`\$\{label\}：查看额度详情`\}/);
+  assert.match(source, /<details className="quota-details">[\s\S]{0,180}<summary aria-label=\{t\('quota\.details\.aria', \{ label \}\)\}/);
   assert.match(source, /<QuotaDetails windows=\{windows\} now=\{now\} label=/);
   assert.match(source, /const sharedStatus = states\.length && states\.every\(state => state\.effectiveStatus === states\[0\]\.effectiveStatus\)[\s\S]{0,100}\? states\[0\]\.effectiveStatus : undefined;/);
-  assert.match(source, /title="仅展示来源返回的真实额度，不推算未提供的余额"/);
-  assert.match(source, /<p className="quota-panel-subtitle">剩余额度<\/p>/);
+  assert.match(source, /title=\{t\('quota\.panel\.titleHint'\)\}/);
+  assert.match(source, /<p className="quota-panel-subtitle">\{t\('quota\.panel\.subtitle'\)\}<\/p>/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.panel\.titleHint': '仅展示来源返回的真实额度，不推算未提供的余额'[\s\S]*'quota\.panel\.subtitle': '剩余额度'/);
   assert.match(source, /<strong title=\{windowLabel\}>\{windowLabel\}<\/strong>/);
   assert.doesNotMatch(source, /effectiveStatus === 'ok' \? '最新'/);
   assert.doesNotMatch(source, /\{usedDisplay\}% 已使用/);
   assert.match(source, /const quotaRefreshBusy = loading \|\| quotaSyncBusy;/);
-  assert.match(source, /const quotaRefreshButtonLabel = loading \? '读取中…' : quotaSyncBusy \? '同步中…' : '刷新额度';/);
-  assert.match(source, /const quotaRefreshAriaLabel = loading \? '正在读取额度' : quotaSyncBusy \? '正在同步额度' : '刷新额度';/);
+  assert.match(source, /const quotaRefreshButtonLabel = t\(loading \? 'quota\.refresh\.loading' : quotaSyncBusy \? 'quota\.refresh\.syncing' : 'quota\.refresh'\);/);
+  assert.match(source, /const quotaRefreshAriaLabel = t\(loading \? 'quota\.refresh\.loadingAria' : quotaSyncBusy \? 'quota\.refresh\.syncingAria' : 'quota\.refresh'\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.refresh\.loading': '读取中…',\s*'quota\.refresh\.syncing': '同步中…',\s*'quota\.refresh': '刷新额度',\s*'quota\.refresh\.loadingAria': '正在读取额度',\s*'quota\.refresh\.syncingAria': '正在同步额度'/);
   assert.match(source, /aria-label=\{quotaRefreshAriaLabel\}/);
   assert.match(source, /aria-busy=\{quotaRefreshBusy\}/);
-  assert.match(source, /title=\{quotaRefreshBusy \? quotaRefreshAriaLabel : '重新读取本机与已授权的额度来源'\}/);
-  assert.match(source, /刷新额度/);
+  assert.match(source, /title=\{quotaRefreshBusy \? quotaRefreshAriaLabel : t\('quota\.refresh\.title'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.refresh\.title': '重新读取本机与已授权的额度来源'/);
   assert.match(source, /providerEmptyActionLabel/);
   assert.match(source, /providerEmptyStateLabel/);
   assert.match(source, /className=\{`quota-provider-state quota-provider-state-\$\{provider\.status\}`\}/);
@@ -3076,7 +3080,8 @@ test('额度待处理来源的复制动作暴露进行中状态并禁用重复�
   assert.match(source, /finally \{[\s\S]*setActionBusy\(false\)/);
   assert.match(source, /aria-busy=\{actionBusy \|\| undefined\}/);
   assert.match(source, /disabled=\{actionBusy\}/);
-  assert.match(source, /复制中…/);
+  assert.match(source, /t\('quota\.empty\.copying'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.empty\.copying': '复制中…'/);
   assert.match(source, /LoaderCircle className="h-3\.5 w-3\.5 animate-spin"/);
 });
 
@@ -3129,7 +3134,7 @@ test('all percentage quota meters expose localized available-value text', () => 
   const source = readSource(
     path.join(process.cwd(), 'src', 'components', 'QuotaPanel.tsx'));
   assert.equal(
-    (source.match(/aria-valuetext=\{remainingDisplay === null \? undefined : `\$\{remainingDisplay\}% 可用`\}/g) || []).length,
+    (source.match(/aria-valuetext=\{remainingDisplay === null \? undefined : t\('quota\.meterText', \{ n: remainingDisplay \}\)\}/g) || []).length,
     1,
   );
 });
@@ -4348,7 +4353,7 @@ test('quota backend reason codes have localized user-facing copy', () => {
   ]) {
     assert.match(source, new RegExp(`\\b${reason}:`));
   }
-  assert.match(source, /Claude Desktop 额度页可能正常/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.reason\.claudeNativeUsageUnavailable': 'Claude Desktop 额度页可能正常/);
   // T10.143f 起这段安卓文案在 ui/foundation/V2Formatters.kt，读整个看板界面源码。
   const android = readAndroidDashboardUi();
   assert.match(android, /secure_storage_unavailable.*系统安全存储暂时无法读取/);
