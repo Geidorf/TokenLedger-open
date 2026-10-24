@@ -1,17 +1,21 @@
 package com.jeidorf.tokenledger.mobile.ui.me
 
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.app.WallpaperManager
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.service.wallpaper.WallpaperService
 import com.jeidorf.tokenledger.mobile.R
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerBarWidgetReceiver
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerComboWidgetReceiver
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerRingWidgetReceiver
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerWidgetReceiver
+import com.jeidorf.tokenledger.mobile.widget.WidgetConfigureActivity
 
 /**
  * 「我的」页通往系统的入口：动态壁纸选择器、小组件固定请求。
@@ -63,9 +67,23 @@ internal object V2MeSystemLinks {
         AppWidgetManager.getInstance(context)?.isRequestPinAppWidgetSupported == true
     }.getOrDefault(false)
 
-    /** 请桌面固定一个小组件；桌面会弹出它自己的确认框，之后照常进配置页。 */
+    /**
+     * 请桌面固定一个小组件。经这条路添加时桌面不会自己拉起配置页（见 requestPinAppWidget 文档），
+     * 所以带上成功回调：系统把新实例的 EXTRA_APPWIDGET_ID 填进回调 Intent，再打开配置页选来源、范围与主题。
+     * 回调 Intent 必须可变，系统才能往里填 ID。
+     */
     fun requestPinWidget(context: Context, kind: WidgetKind): Boolean = runCatching {
-        AppWidgetManager.getInstance(context)
-            ?.requestPinAppWidget(ComponentName(context, kind.receiver), null, null) == true
+        val manager = AppWidgetManager.getInstance(context) ?: return false
+        val configure = Intent(context, WidgetConfigureActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ActivityOptions.makeBasic()
+                .setPendingIntentCreatorBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                .toBundle()
+        } else null
+        val callback = PendingIntent.getActivity(context, kind.ordinal, configure, flags, options)
+        manager.requestPinAppWidget(ComponentName(context, kind.receiver), null, callback)
     }.getOrDefault(false)
 }

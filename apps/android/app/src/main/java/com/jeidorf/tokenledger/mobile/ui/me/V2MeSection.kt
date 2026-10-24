@@ -78,6 +78,7 @@ import com.jeidorf.tokenledger.mobile.LocalToggleCostMask
 import com.jeidorf.tokenledger.mobile.QuotaUiState
 import com.jeidorf.tokenledger.mobile.StatsData
 import com.jeidorf.tokenledger.mobile.TokenDisplayMode
+import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.ui.ambient.v2WidgetItems
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerSpace
@@ -119,7 +120,10 @@ internal fun LazyListScope.v2MeItems(
     when (page) {
         V2MePage.Standby -> {
             item(key = "me-standby-header", contentType = "heading") {
-                V2MeSubPageHeader(palette, "待机屏 / 墨水屏") { onPageChange(V2MePage.Root) }
+                // 预览按用量页当前的查询出数，顶栏在「我的」不挂查询摘要，这里补上范围与筛选，免得小计没有出处。
+                V2MeSubPageHeader(palette, "待机屏 / 墨水屏", dashboardQuerySummary(state.query)) {
+                    onPageChange(V2MePage.Root)
+                }
             }
             if (stats != null) {
                 v2WidgetItems(
@@ -273,7 +277,7 @@ private fun V2MeIconTile(palette: MobileV2Palette, icon: ImageVector) {
 }
 
 @Composable
-private fun V2MeSubPageHeader(palette: MobileV2Palette, title: String, onBack: () -> Unit) {
+private fun V2MeSubPageHeader(palette: MobileV2Palette, title: String, subtitle: String, onBack: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Box(
             Modifier
@@ -284,7 +288,10 @@ private fun V2MeSubPageHeader(palette: MobileV2Palette, title: String, onBack: (
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回我的", tint = palette.text)
         }
-        Text(title, color = palette.text, style = LedgerType.titleM, modifier = Modifier.semantics { heading() })
+        Column {
+            Text(title, color = palette.text, style = LedgerType.titleM, modifier = Modifier.semantics { heading() })
+            Text(subtitle, color = palette.muted, style = LedgerType.meta)
+        }
     }
 }
 

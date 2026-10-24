@@ -1,6 +1,7 @@
 package com.jeidorf.tokenledger.mobile.ui.me
 
 import com.jeidorf.tokenledger.mobile.DashboardSessionState
+import com.jeidorf.tokenledger.mobile.DashboardUiError
 import com.jeidorf.tokenledger.mobile.DashboardUiState
 import com.jeidorf.tokenledger.mobile.MobileSession
 import java.time.Instant
@@ -40,6 +41,12 @@ class V2MeModelsTest {
     fun syncWithoutDataIsMissingNotOk() {
         assertEquals(V2MeSyncTone.Missing, v2MeSync(signedIn, now).tone)
         assertEquals("还没有同步数据", v2MeSync(signedIn, now).summary)
+    }
+
+    @Test
+    fun failedFirstSyncSaysWhyInsteadOfNoData() {
+        val failed = signedIn.copy(error = DashboardUiError.Network("网络不可用"))
+        assertEquals(V2MeSync("同步失败 · 网络不可用", V2MeSyncTone.Stale), v2MeSync(failed, now))
     }
 
     @Test

@@ -49,6 +49,9 @@ internal fun v2MeSync(state: DashboardUiState, now: Instant, zone: ZoneId = Zone
     val updated = state.lastUpdatedEpochMillis?.let(Instant::ofEpochMilli)
     return when {
         state.visibleData == null && state.dashboardLoading -> V2MeSync("正在读取", V2MeSyncTone.Missing)
+        // 没有缓存可显示的失败（离线、服务端出错）要照实说，不能说成桌面端还没同步。
+        state.visibleData == null && state.userVisibleError != null ->
+            V2MeSync("同步失败 · ${state.userVisibleError}", V2MeSyncTone.Stale)
         state.visibleData == null -> V2MeSync("还没有同步数据", V2MeSyncTone.Missing)
         state.showingCachedData || state.error != null ->
             V2MeSync("离线 · 显示${updated?.let { " " + v2MeAgo(it, now, zone) } ?: "缓存"}的数据", V2MeSyncTone.Stale)
