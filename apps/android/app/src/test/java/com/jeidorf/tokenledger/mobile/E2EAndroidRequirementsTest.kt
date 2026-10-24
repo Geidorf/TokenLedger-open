@@ -215,7 +215,7 @@ class E2EAndroidRequirementsTest {
     @Test
     fun tier1_f08_persistentNavigationSelectionAcrossTabs() {
         assertEquals(listOf("用量", "路由", "额度", "我的"), MobileDestination.entries.map { it.label })
-        assertEquals(listOf("概览", "趋势", "来源", "日历", "请求"), InsightPane.entries.map { it.label })
+        assertEquals(listOf("概览", "趋势", "来源", "日历", "请求", "会话"), InsightPane.entries.map { it.label })
         assertEquals(listOf("查看趋势"), TodayReviewAction.entries.map { it.label })
         assertEquals(InsightPane.Trend, TodayReviewAction.ExplainChange.targetPane)
         assertEquals(3, TODAY_SOURCE_LIMIT)
