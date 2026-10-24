@@ -50,7 +50,7 @@ test.describe('英文界面', () => {
     test('会话与额度页', async ({ page }) => {
       await openEnglish(page, 'behavior', '1');
       await expect(page.getByText('No local sessions yet')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Scan local logs' })).toBeVisible();
+      await expect(page.getByRole('main').getByRole('button', { name: 'Scan local logs' })).toBeVisible();
       await openEnglish(page, 'allowances', '1');
       await expect(page.getByText('No quota data yet')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Authorize in Settings' })).toBeVisible();
@@ -64,5 +64,59 @@ test.describe('英文界面', () => {
       await expect(page.getByRole('button', { name: 'Add your first provider' })).toBeVisible();
       await expectNoHorizontalOverflow(page);
     });
+  });
+
+  test('路由页：新建路由组、按权重与会话保持都是英文', async ({ page }) => {
+    await openEnglish(page, 'routing');
+    await expect(page.getByRole('navigation', { name: 'Main pages' })).toContainText('Providers');
+    await expect(page.getByRole('heading', { name: 'Routing', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Live routing' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recent decisions' })).toBeVisible();
+    await page.getByRole('button', { name: /New routing group/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'New routing group' });
+    await dialog.getByLabel('Name').fill('Split');
+    await dialog.getByLabel('Choose a member').selectOption('openai/gpt-5');
+    await dialog.getByRole('button', { name: /Add member/ }).click();
+    await dialog.getByLabel(/^Distribution/).selectOption('weighted');
+    await expect(dialog.getByText('New sessions are split by weight; on failure members are tried from highest weight down')).toBeVisible();
+    await expect(dialog.getByLabel('Weight of openai/gpt-5')).toBeVisible();
+    await expect(dialog.getByLabel(/^Session affinity/)).toContainText('1 h');
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('网关页：接入说明、模型目录与最近请求是英文', async ({ page }) => {
+    await openEnglish(page, 'gateway');
+    await expect(page.getByRole('heading', { name: /^Connect/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Model catalog' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copy local token' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Recent requests/ })).toBeVisible();
+    await expect(page.getByText('Effective tokens = input + output; cache reads and writes are listed separately')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('用量页顶栏：子页、数据范围与主题都是英文', async ({ page }) => {
+    await openEnglish(page, 'dashboard');
+    await expect(page.getByRole('navigation', { name: 'Usage pages' })).toContainText('Allowances');
+    await expect(page.getByRole('group', { name: 'Data scope' })).toContainText('Cloud total');
+    await expect(page.getByRole('button', { name: 'Settings & cloud' }).first()).toBeVisible();
+  });
+
+  test('请求明细：筛选、汇总与表头是英文', async ({ page }) => {
+    await openEnglish(page, 'records');
+    await expect(page.getByRole('region', { name: 'Usage detail filters' })).toContainText('Filters');
+    await expect(page.getByRole('group', { name: 'Time range' })).toContainText('Custom');
+    await expect(page.getByRole('button', { name: 'Tool: All Tools' })).toBeVisible();
+    await expect(page.getByLabel('Search tools, models, devices or sessions')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Estimated cost' })).toBeAttached();
+    await expect(page.getByRole('button', { name: 'Expand this record' }).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Expand this record' }).first().click();
+    await expect(page.getByText('Full timestamp')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('设置：手机动态壁纸与其他电脑的共享用量卡片是英文', async ({ page }) => {
+    await openEnglish(page, 'settings-data');
+    await expect(page.getByText('Shared usage from other computers')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Show computers sharing usage' })).toBeVisible();
   });
 });

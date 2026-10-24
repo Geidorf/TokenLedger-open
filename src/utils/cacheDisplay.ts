@@ -1,3 +1,5 @@
+import type { MessageKey } from '../i18n';
+
 export interface CacheMetricSource {
   cachedTokens: number;
   cacheReadTokens?: number;
@@ -20,6 +22,13 @@ export interface CacheDetailMetric {
   label: '缓存读取' | '缓存写入' | '缓存合计';
   tokens: number;
 }
+
+/** Message keys for `CacheDetailMetric.label`, which stays the stable Chinese id. */
+export const CACHE_METRIC_LABEL_KEY = {
+  '缓存读取': 'logs.cache.read',
+  '缓存写入': 'logs.cache.write',
+  '缓存合计': 'logs.cache.total',
+} as const satisfies Record<CacheDetailMetric['label'], MessageKey>;
 
 /**
  * Preserve unknown read/write provenance without turning it into an empty UI.

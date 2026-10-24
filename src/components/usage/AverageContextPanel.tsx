@@ -2,6 +2,7 @@ import { Layers } from 'lucide-react';
 import type { ContextCompositionTotals, RequestContext } from '../../types';
 import { formatNum } from '../../utils/format';
 import { ContextCompositionBar } from './ContextComposition';
+import { useT } from '../../i18n';
 
 const average = (value: number, requests: number) => (Number.isFinite(value) && value > 0 ? value / requests : 0);
 const oneDecimal = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 1 });
@@ -11,6 +12,7 @@ const oneDecimal = (value: number) => value.toLocaleString('zh-CN', { maximumFra
  * 只有本机网关记下构成时才有；其他来源没有请求体，不推算。
  */
 export function AverageContextPanel({ totals }: { totals: ContextCompositionTotals | undefined }) {
+  const t = useT();
   const requests = totals?.requests ?? 0;
   if (!totals || !Number.isFinite(requests) || requests <= 0) return null;
   const context: RequestContext = {
@@ -24,23 +26,23 @@ export function AverageContextPanel({ totals }: { totals: ContextCompositionTota
     attachments: average(totals.attachments, requests),
   };
   const counts = [
-    `平均 ${oneDecimal(context.messages)} 条消息`,
-    context.toolResults > 0 ? `${oneDecimal(context.toolResults)} 个工具结果` : '',
-    context.attachments > 0 ? `${oneDecimal(context.attachments)} 个附件` : '',
-    `基于 ${formatNum(requests)} 次经网关的请求`,
+    t('context.avg.messages', { count: oneDecimal(context.messages) }),
+    context.toolResults > 0 ? t('context.toolResults', { count: oneDecimal(context.toolResults) }) : '',
+    context.attachments > 0 ? t('context.attachments', { count: oneDecimal(context.attachments) }) : '',
+    t('context.avg.basis', { count: formatNum(requests) }),
   ].filter(Boolean).join(' · ');
   return (
-    <section className="panel average-context-panel" aria-label="平均 Context 构成">
+    <section className="panel average-context-panel" aria-label={t('context.avg.title')}>
       <div className="panel-header">
         <div className="panel-title">
           <span className="panel-icon" aria-hidden="true"><Layers className="h-4 w-4" /></span>
-          <span>平均 Context 构成</span>
+          <span>{t('context.avg.title')}</span>
         </div>
       </div>
       <ContextCompositionBar
         context={context}
         promptTokens={average(totals.promptTokens, requests)}
-        title="每次请求平均输入 · 估算（按请求体字节占比分摊输入 Token）"
+        title={t('context.avg.barTitle')}
         counts={counts}
       />
     </section>
