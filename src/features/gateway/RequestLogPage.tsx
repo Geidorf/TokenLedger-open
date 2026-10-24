@@ -218,6 +218,11 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
     try {
       const next = await requestLog(toQuery(filters, offset));
       if (mine !== generation.current) return;
+      // 刷新后匹配条数变少、当前页已越界：退到最后一页重新读取。
+      if (next.total > 0 && offset >= next.total) {
+        setOffset(Math.floor((next.total - 1) / PAGE_SIZE) * PAGE_SIZE);
+        return;
+      }
       // 尾随时新到的行短暂高亮；首次加载不算新。
       const ids = next.entries.map((entry) => entry.id);
       const arrived = seen.current.size === 0 ? new Set<string>() : new Set(ids.filter((id) => !seen.current.has(id)));

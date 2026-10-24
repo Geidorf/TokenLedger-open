@@ -282,7 +282,7 @@ pub fn group_records(
         decisions
             .values()
             .filter(|decision| !groups.contains_key(&decision.request_id))
-            .filter(|decision| decision.attempts.iter().all(|a| a.outcome == "skipped"))
+            .filter(|decision| decision.attempts.iter().all(unrecorded))
             .filter(|decision| match (oldest, parse_ts(&decision.ts)) {
                 (Some(oldest), Some(ts)) => ts >= oldest,
                 _ => true,
@@ -385,17 +385,24 @@ fn skipped_attempt(attempt: &StoredDecisionAttempt, ts: &str) -> RequestLogAttem
     }
 }
 
+/// A skipped member with no status never got a `Call` (its provider is gone),
+/// so no ledger line exists for it. Skips with a status (protocol or key
+/// problems) were recorded like any other attempt.
+fn unrecorded(attempt: &StoredDecisionAttempt) -> bool {
+    attempt.outcome == "skipped" && attempt.status.is_none()
+}
+
 fn merge_skipped(entry: &mut RequestLogEntry) {
     let Some(decision) = entry.decision.as_ref() else {
         return;
     };
-    if !decision.attempts.iter().any(|a| a.outcome == "skipped") {
+    if !decision.attempts.iter().any(unrecorded) {
         return;
     }
     let mut ledger = std::mem::take(&mut entry.attempts).into_iter();
     let mut merged = Vec::with_capacity(decision.attempts.len());
     for attempt in &decision.attempts {
-        if attempt.outcome == "skipped" {
+        if unrecorded(attempt) {
             let ts = merged.last().map_or_else(
                 || entry.started_at.clone(),
                 |a: &RequestLogAttempt| a.ts.clone(),
@@ -901,5 +908,81 @@ mod tests {
         let listed = facets(&entries);
         assert!(listed.providers.contains(&"gone".to_string()));
         assert!(listed.models.contains(&"gone/m".to_string()));
+    }
+
+    #[test]
+    fn recorded_skips_keep_their_own_status_and_line() {
+        let decision = StoredDecision {
+            ts: "2026-10-24T01:00:02Z".into(),
+            request_id: "L1".into(),
+            group: "fast".into(),
+            reason: "failover".into(),
+            detail: String::new(),
+            chosen: None,
+            attempts: vec![
+                StoredDecisionAttempt {
+                    member: "p1/m".into(),
+                    outcome: "failed".into(),
+                    status: Some(429),
+                    error: None,
+                },
+                StoredDecisionAttempt {
+                    member: "p2/m".into(),
+                    outcome: "skipped".into(),
+                    status: Some(401),
+                    error: Some("未设置 Key".into()),
+                },
+            ],
+            trace: vec![],
+        };
+        let mut rows = sample();
+        rows[1].status = 401;
+        rows[1].ok = false;
+        let entries = group_records(&rows, &HashMap::from([("L1".to_string(), decision)]));
+        let l1 = entries.iter().find(|e| e.id == "L1").unwrap();
+        assert_eq!(
+            (l1.status, l1.provider.as_str(), l1.attempts.len()),
+            (401, "p2", 2)
+        );
+    }
+
+    #[test]
+    fn a_skipped_first_member_counts_as_a_switch_when_the_next_succeeds() {
+        let decision = StoredDecision {
+            ts: "2026-10-24T02:00:00Z".into(),
+            request_id: "L2".into(),
+            group: "fast".into(),
+            reason: "failover".into(),
+            detail: String::new(),
+            chosen: Some("p1/m".into()),
+            attempts: vec![
+                StoredDecisionAttempt {
+                    member: "gone/m".into(),
+                    outcome: "skipped".into(),
+                    status: None,
+                    error: Some("gone".into()),
+                },
+                StoredDecisionAttempt {
+                    member: "p1/m".into(),
+                    outcome: "ok".into(),
+                    status: Some(200),
+                    error: None,
+                },
+            ],
+            trace: vec![],
+        };
+        let entries = group_records(&sample(), &HashMap::from([("L2".to_string(), decision)]));
+        let l2 = entries.iter().find(|e| e.id == "L2").unwrap();
+        assert_eq!(
+            (l2.ok, l2.status, l2.retries, l2.switched),
+            (true, 200, 1, true)
+        );
+        let retried = RequestLogQuery {
+            status: Some("retried".into()),
+            ..Default::default()
+        };
+        assert!(filter_all(entries.clone(), &retried)
+            .iter()
+            .any(|e| e.id == "L2"));
     }
 }
