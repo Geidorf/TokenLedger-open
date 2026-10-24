@@ -1443,6 +1443,224 @@ mod scanner_codex_tests {
         );
         assert!(!batch.logs.is_empty(), "real machine has Multica rollouts");
     }
+
+    /// The Cindy `userData` directory derived from the fixture home (the
+    /// platform's per-user app data directory plus the CN build's name).
+    fn cindy_user_data(home: &Path) -> PathBuf {
+        super::super::cindy::cindy_user_data_dirs_in(home)
+            .into_iter()
+            .find(|dir| dir.starts_with(home) && dir.ends_with("Cindy"))
+            .expect("home-derived Cindy userData directory")
+    }
+
+    fn sessions_day(root: &Path) -> PathBuf {
+        let day = root.join("2026").join("10").join("24");
+        fs::create_dir_all(&day).unwrap();
+        day
+    }
+
+    #[test]
+    fn discovers_cindy_default_and_account_codex_homes() {
+        let home = temp_root();
+        let user_data = cindy_user_data(&home);
+        let default_home = user_data.join("codex-home");
+        fs::create_dir_all(default_home.join("sessions")).unwrap();
+        let account_home = user_data
+            .join("codex-accounts")
+            .join("0f".repeat(32))
+            .join("openai");
+        fs::create_dir_all(account_home.join("sessions")).unwrap();
+
+        let roots = discover_codex_log_roots_in(&home);
+
+        assert!(roots.contains(&home.join(".codex").join("sessions")));
+        assert!(roots.contains(&default_home.join("sessions")));
+        assert!(roots.contains(&default_home.join("archived_sessions")));
+        assert!(roots.contains(&account_home.join("sessions")));
+        // The global build keeps its own directory next to the CN one.
+        assert!(roots
+            .iter()
+            .any(|root| root.ends_with(Path::new("CindyGlobal/codex-home/sessions"))));
+        fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn cindy_rollouts_take_deltas_and_count_copied_threads_once() {
+        let home = temp_root();
+        let codex_sessions = sessions_day(&home.join(".codex").join("sessions"));
+        let cindy_sessions =
+            sessions_day(&cindy_user_data(&home).join("codex-home").join("sessions"));
+        let first = token_event_with(
+            Some("2026-10-24T01:00:01Z"),
+            (1_000, 600, 100),
+            Some((1_000, 600, 100)),
+            None,
+        );
+        let second = token_event_with(
+            Some("2026-10-24T01:00:02Z"),
+            (2_500, 1_600, 180),
+            Some((1_500, 1_000, 80)),
+            None,
+        );
+        let header = [
+            session_meta(ROOT_ID, "2026-10-24T01:00:00Z", None, None, None),
+            turn_context("2026-10-24T01:00:00Z", "gpt-5.5"),
+        ];
+        // Cindy imported the thread from the default home and continued it,
+        // so its copy extends the original rollout.
+        let mut original = header.to_vec();
+        original.push(first.clone());
+        write_rollout_values(&rollout_path(&codex_sessions, ROOT_ID), &original);
+        let mut copy = header.to_vec();
+        copy.extend([first, second]);
+        write_rollout_values(&rollout_path(&cindy_sessions, ROOT_ID), &copy);
+
+        let roots = discover_codex_log_roots_in(&home);
+        let batch = scan_codex_roots_checkpointed(&roots, &HashMap::new(), false);
+
+        assert!(batch.complete);
+        assert_eq!(batch.logs.len(), 2, "one record per token_count event");
+        let input: i64 = batch.logs.iter().map(|log| log.input_tokens).sum();
+        let cached: i64 = batch.logs.iter().map(|log| log.cached_tokens).sum();
+        let output: i64 = batch.logs.iter().map(|log| log.output_tokens).sum();
+        // Sums equal the final cumulative total, not the sum of both copies'
+        // totals or of the cumulative snapshots.
+        assert_eq!(input + cached, 2_500);
+        assert_eq!(cached, 1_600);
+        assert_eq!(output, 180);
+        fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn cindy_fork_of_a_default_home_thread_skips_the_replayed_history() {
+        let home = temp_root();
+        let codex_sessions = sessions_day(&home.join(".codex").join("sessions"));
+        let cindy_sessions =
+            sessions_day(&cindy_user_data(&home).join("codex-home").join("sessions"));
+        let inherited = token_event_with(
+            Some("2026-10-24T01:00:01Z"),
+            (1_000, 800, 100),
+            Some((1_000, 800, 100)),
+            None,
+        );
+        write_rollout_values(
+            &rollout_path(&codex_sessions, PARENT_ID),
+            &[
+                session_meta(PARENT_ID, "2026-10-24T01:00:00Z", None, None, None),
+                turn_context("2026-10-24T01:00:00Z", "gpt-5.5"),
+                inherited.clone(),
+                serde_json::json!({
+                    "timestamp": "2026-10-24T01:00:03Z",
+                    "type": "event_msg",
+                    "payload": { "type": "task_complete" }
+                }),
+            ],
+        );
+        write_rollout_values(
+            &rollout_path(&cindy_sessions, CHILD_ID),
+            &[
+                session_meta(
+                    CHILD_ID,
+                    "2026-10-24T01:00:02Z",
+                    Some(PARENT_ID),
+                    None,
+                    None,
+                ),
+                turn_context("2026-10-24T01:00:02Z", "gpt-5.5"),
+                inherited,
+                token_event_with(
+                    Some("2026-10-24T01:00:04Z"),
+                    (1_600, 1_200, 150),
+                    Some((600, 400, 50)),
+                    None,
+                ),
+            ],
+        );
+
+        let roots = discover_codex_log_roots_in(&home);
+        let batch = scan_codex_roots_checkpointed(&roots, &HashMap::new(), false);
+
+        assert!(batch.complete);
+        let child = batch
+            .logs
+            .iter()
+            .filter(|log| log.session_id == CHILD_ID)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            child.len(),
+            1,
+            "the replayed parent event is not counted again"
+        );
+        assert_eq!(child[0].input_tokens, 200);
+        assert_eq!(child[0].cached_tokens, 400);
+        assert_eq!(child[0].output_tokens, 50);
+        fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn configured_codex_dirs_accept_homes_and_session_dirs() {
+        let home = temp_root();
+        let codex_home = home.join("custom-codex-home");
+        fs::create_dir_all(codex_home.join("sessions")).unwrap();
+        let sessions_only = home.join("other").join("sessions");
+        fs::create_dir_all(&sessions_only).unwrap();
+        let plain = home.join("exported-rollouts");
+        fs::create_dir_all(&plain).unwrap();
+
+        let roots = configured_codex_roots(
+            &[
+                codex_home.to_string_lossy().to_string(),
+                sessions_only.to_string_lossy().to_string(),
+                "~/exported-rollouts".to_string(),
+                "relative/dir".to_string(),
+                "%TOKENLEDGER_TEST_UNSET_VARIABLE%/sessions".to_string(),
+                "  ".to_string(),
+            ],
+            &home,
+        );
+
+        assert_eq!(
+            roots,
+            vec![
+                codex_home.join("sessions"),
+                codex_home.join("archived_sessions"),
+                sessions_only,
+                plain,
+            ]
+        );
+        fs::remove_dir_all(home).ok();
+    }
+
+    /// Real-machine probe: scans the Cindy Codex homes on this host.
+    ///
+    /// `cargo test -- --ignored cindy_real_machine_probe --nocapture`
+    /// Only aggregate counters are printed.
+    #[test]
+    #[ignore = "requires a real Cindy installation on this machine"]
+    fn cindy_real_machine_probe() {
+        let roots = super::super::cindy::cindy_codex_roots_in(&get_home_dir());
+        let existing: Vec<&PathBuf> = roots.iter().filter(|root| root.is_dir()).collect();
+        println!("existing Cindy Codex roots: {}", existing.len());
+        if existing.is_empty() {
+            println!("no Cindy Codex home present; nothing to scan");
+            return;
+        }
+        let batch = scan_codex_roots_checkpointed(&roots, &HashMap::new(), false);
+        let threads: HashSet<&str> = batch
+            .logs
+            .iter()
+            .map(|log| log.session_id.as_str())
+            .collect();
+        let input: i64 = batch.logs.iter().map(|log| log.input_tokens).sum();
+        let cached: i64 = batch.logs.iter().map(|log| log.cached_tokens).sum();
+        let output: i64 = batch.logs.iter().map(|log| log.output_tokens).sum();
+        println!(
+            "complete={} threads={} logs={} input={input} cached={cached} output={output}",
+            batch.complete,
+            threads.len(),
+            batch.logs.len()
+        );
+    }
 }
 
 #[cfg(test)]

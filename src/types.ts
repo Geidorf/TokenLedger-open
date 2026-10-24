@@ -696,6 +696,8 @@ export type CostProfileClearResult =
 
 export interface AppSettings {
   scan_interval_secs: number;
+  /** 额外的 Codex 日志目录（Codex 主目录或 sessions 目录），可用 ~ 与 %APPDATA% 这类占位。 */
+  codex_extra_dirs: string[];
   scan_policy_version: number;
   desktop_interval_secs: number;
   lockscreen_interval_secs: number;
@@ -1073,6 +1075,7 @@ export interface PriceMigrationNotice {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   scan_interval_secs: 900,
+  codex_extra_dirs: [],
   scan_policy_version: 1,
   desktop_interval_secs: 60,
   lockscreen_interval_secs: 300,

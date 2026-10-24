@@ -1,4 +1,5 @@
-import { Coins, Power, Rocket, Timer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Coins, FolderSearch, Power, Rocket, Timer } from "lucide-react";
 import type { AppSettings, BusyState } from "../../types";
 import {
   SettingsCard,
@@ -31,6 +32,49 @@ export function scanFrequencyHint(seconds: number): string {
   return `${frequency}扫描一次；最短 1 分钟。`;
 }
 
+/** 每行一个目录；去掉首尾空白、空行与重复项。 */
+export function parseExtraDirs(text: string): string[] {
+  const dirs: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const dir = line.trim();
+    if (dir && !dirs.includes(dir)) dirs.push(dir);
+  }
+  return dirs;
+}
+
+function CodexExtraDirsRow(props: ScanStartupSectionProps) {
+  const saved = props.appSettings.codex_extra_dirs ?? [];
+  const savedText = saved.join("\n");
+  const [draft, setDraft] = useState(savedText);
+  useEffect(() => setDraft(savedText), [savedText]);
+  const commit = () => {
+    const next = parseExtraDirs(draft);
+    if (next.join("\n") !== savedText) {
+      props.onSettingChange("codex_extra_dirs", next);
+    }
+  };
+  return (
+    <SettingsRow
+      label="额外的 Codex 日志目录"
+      hint="已自动扫描默认目录与 Cindy 的 Codex 目录。其他把 Codex 装在别处的应用，在这里每行填一个 Codex 主目录或 sessions 目录，可写 ~ 或 %APPDATA%。"
+      icon={FolderSearch}
+      wideControl
+    >
+      <textarea
+        className="settings-input settings-dir-list"
+        rows={3}
+        spellCheck={false}
+        value={draft}
+        placeholder={"%APPDATA%\\Example\\codex-home\n~/example/codex-home"}
+        aria-label="额外的 Codex 日志目录"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        disabled={props.busy.settings}
+      />
+    </SettingsRow>
+  );
+}
+
 export function ScanStartupSection(props: ScanStartupSectionProps) {
   const { appSettings, busy } = props;
   return (
@@ -58,6 +102,7 @@ export function ScanStartupSection(props: ScanStartupSectionProps) {
               disabled={busy.settings}
             />
           </SettingsRow>
+          <CodexExtraDirsRow {...props} />
         </SettingsGroup>
       </SettingsCard>
       <SettingsCard title="启动">

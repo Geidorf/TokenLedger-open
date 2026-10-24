@@ -128,7 +128,8 @@ fn scan_sync_and_notify(
     let mut stats_changed = false;
     let mut persisted_changes = false;
 
-    match scanner::run_scan_singleflight(&db_path) {
+    let scan_options = scanner::ScanOptions::from_settings(&crate::settings::load_settings(ctx));
+    match scanner::run_scan_singleflight(&db_path, &scan_options) {
         Ok(scan) => {
             if scan.joined_existing {
                 log::debug!("background scan joined an existing in-flight scan");

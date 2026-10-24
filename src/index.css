@@ -2761,6 +2761,14 @@
     width: 112px;
   }
 
+  .settings-dir-list {
+    width: 100%;
+    resize: vertical;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
   .settings-input:focus,
   .settings-number:focus,
   .settings-select:focus,

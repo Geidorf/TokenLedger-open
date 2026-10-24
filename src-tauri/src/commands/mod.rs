@@ -12023,7 +12023,8 @@ pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
     db::init_db(&db_path).map_err(|e| e.to_string())?;
     let prices_before = auto_discovered_price_keys(app);
 
-    match scanner::run_scan_singleflight(&db_path) {
+    let scan_options = scanner::ScanOptions::from_settings(&crate::settings::load_settings(app));
+    match scanner::run_scan_singleflight(&db_path, &scan_options) {
         Ok(scan) => {
             let outcome = scan.outcome;
             if scan.joined_existing {
