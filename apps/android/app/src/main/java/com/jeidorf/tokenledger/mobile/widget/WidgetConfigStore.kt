@@ -67,13 +67,26 @@ internal object WidgetConfigStore {
         return ids.map { load(appContext, it).range.rangeKey }.toSet()
     }
 
-    /** 是否有额度条实例开了路由行；没有就不在后台读路由快照。 */
-    fun routingRequested(context: Context): Boolean {
+    /** 是否有额度条实例开了路由行。 */
+    fun quotaRoutingRequested(context: Context): Boolean {
         val appContext = context.applicationContext
         return installedWidgetIds(appContext).any { id ->
             load(appContext, id).let { it.mode == WidgetMode.QuotaBars && it.showRouting }
         }
     }
+
+    /** 是否需要在后台读路由快照：额度条开了路由行，或桌面上有实时路由小组件。 */
+    fun routingRequested(context: Context): Boolean =
+        quotaRoutingRequested(context) || RoutingLiveWidgets.installed(context)
+
+    /**
+     * 共用周期刷新的使用者数：五种额度/用量小组件实例 + 实时路由小组件实例 + 快捷设置磁贴（已添加记 1）。
+     * 只有它为 0 时才取消周期任务（[shouldCancelWidgetRefresh]）。
+     */
+    fun backgroundConsumerCount(context: Context): Int =
+        installedWidgetIds(context).size +
+            RoutingLiveWidgets.installedIds(context).size +
+            if (com.jeidorf.tokenledger.mobile.tile.QuickTileStore.isAdded(context)) 1 else 0
 
     fun installedWidgetIds(context: Context): IntArray {
         val appContext = context.applicationContext

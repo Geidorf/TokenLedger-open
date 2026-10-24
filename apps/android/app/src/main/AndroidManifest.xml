@@ -111,6 +111,32 @@
                 android:resource="@xml/token_ledger_quota_widget_info" />
         </receiver>
 
+        <!-- 实时路由（4×3）：路由帧 + 最近 3 条调用（routing-snapshot-v1，近实时静态帧）。 -->
+        <receiver
+            android:name=".widget.RoutingLiveWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_routing_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/token_ledger_routing_widget_info" />
+        </receiver>
+
+        <!-- 快捷设置磁贴：最紧额度的可用百分比或今日预估费用，点按打开应用。 -->
+        <service
+            android:name=".tile.LedgerQuickTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_quick_tile"
+            android:label="@string/quick_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- 锁屏动态壁纸（routing-snapshot-v1）：近实时网关路由动画，数据经云端中转。 -->
         <service
             android:name=".wallpaper.RoutingWallpaperService"

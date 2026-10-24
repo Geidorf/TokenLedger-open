@@ -47,7 +47,7 @@ internal open class BaseTokenLedgerWidgetReceiver(
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
         runCatching {
-            if (shouldCancelWidgetRefresh(WidgetConfigStore.installedWidgetIds(context).size)) {
+            if (shouldCancelWidgetRefresh(WidgetConfigStore.backgroundConsumerCount(context))) {
                 WidgetScheduler.cancelPeriodicRefresh(context)
             }
         }

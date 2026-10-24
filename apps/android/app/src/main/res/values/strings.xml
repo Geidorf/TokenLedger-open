@@ -17,4 +17,7 @@
     <string name="widget_combo_description">双栏全量卡片，同时展示来源额度与 Token 消耗及预估费用</string>
     <string name="widget_quota_label">TokenLedger · 额度条 (4×3)</string>
     <string name="widget_quota_description">每个额度窗口一行，显示可用百分比与多久后重置，可附最近一次网关路由</string>
+    <string name="widget_routing_label">TokenLedger · 实时路由 (4×3)</string>
+    <string name="widget_routing_description">网关路由图与最近 3 条调用，桌面在线时几分钟更新一次</string>
+    <string name="quick_tile_label">TokenLedger 额度</string>
 </resources>
