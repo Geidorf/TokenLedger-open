@@ -36,6 +36,8 @@ const FULLY_LOCALIZED = [
   'src/components/RangeControls.tsx',
   'src/components/FilterMultiSelect.tsx',
   'src/utils/detailGranularity.ts',
+  'src/components/settings/LocalBackupCard.tsx',
+  'src/components/settings/DatabaseHealthCard.tsx',
   'src/components/settings/AlertWebhookCard.tsx',
   'src/hooks/useAlertWebhooks.ts',
   'src/utils/quotaPace.ts',

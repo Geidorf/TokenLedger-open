@@ -120,28 +120,6 @@ export function useSettings({
     }
   }, [showMessage]);
 
-  // 托盘菜单勾选“桌面小组件”、关闭小组件窗口等原生入口改了设置后，
-  // 设置页的开关要跟着刷新，不能停在旧值（T10.110）。
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-    const install = async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        const cleanup = await listen('settings-updated', () => void loadSettings(true));
-        if (cancelled) cleanup();
-        else unlisten = cleanup;
-      } catch {
-        // 浏览器 fixture 没有原生事件桥。
-      }
-    };
-    void install();
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [loadSettings]);
-
   const loadPrices = useCallback(async () => {
     const requestId = ++pricesRequestId.current;
     setPricesLoading(true);
@@ -178,6 +156,40 @@ export function useSettings({
       if (requestId === pricesRequestId.current) setPricesLoading(false);
     }
   }, [showMessage]);
+
+  // 价格表在别处被改（本机备份恢复、扫描发现新模型）后，没有未保存修改的
+  // 价格编辑器跟着重读，免得下一次保存把旧整表写回去。
+  const pricesDirtyRef = useRef(pricesDirty);
+  pricesDirtyRef.current = pricesDirty;
+  const reloadCleanPrices = useCallback(() => {
+    if (!pricesDirtyRef.current) void loadPrices();
+  }, [loadPrices]);
+
+  // 托盘菜单勾选“桌面小组件”、关闭小组件窗口等原生入口改了设置后，
+  // 设置页的开关要跟着刷新，不能停在旧值（T10.110）。价格表同理（见上）。
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    const install = async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const cleanups = [
+          await listen('settings-updated', () => void loadSettings(true)),
+          await listen('prices-updated', reloadCleanPrices),
+        ];
+        const cleanup = () => cleanups.forEach((stop) => stop());
+        if (cancelled) cleanup();
+        else unlisten = cleanup;
+      } catch {
+        // 浏览器 fixture 没有原生事件桥。
+      }
+    };
+    void install();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [loadSettings, reloadCleanPrices]);
 
   const loadDbInfo = useCallback(async () => {
     setDbInfoError('');

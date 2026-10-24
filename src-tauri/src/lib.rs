@@ -35,6 +35,7 @@ mod cost_profile;
 mod db;
 mod device_identity;
 mod gateway;
+mod local_backup;
 mod models_dev;
 mod project_index;
 mod quota;
@@ -341,6 +342,7 @@ fn start_background_scheduler(
         #[cfg(target_os = "windows")]
         let mut next_lockscreen = now + Duration::from_secs(initial.lockscreen_interval_secs);
         let mut current_day = chrono::Local::now().date_naive();
+        let mut next_local_backup = now + Duration::from_secs(10 * 60);
 
         loop {
             let now = Instant::now();
@@ -420,6 +422,13 @@ fn start_background_scheduler(
                 }
                 period_report::check_due(&ctx, &app_handle);
                 next_quota_sync = now + Duration::from_secs(5 * 60);
+            }
+
+            if now >= next_local_backup {
+                // Scheduled local backups (local-backup-v1 §5); off by default.
+                let gateway = app_handle.state::<Arc<gateway::Gateway>>();
+                local_backup::auto::run_if_due(&ctx, &gateway, &gateway::KeyringSecrets);
+                next_local_backup = now + Duration::from_secs(10 * 60);
             }
 
             if now >= next_desktop {
@@ -618,20 +627,42 @@ fn main_settings_anchor(requested: Option<&str>) -> &'static str {
     }
 }
 
-pub fn run() {
-    let app_ctx = Arc::new(AppContext::new());
-    let db_path = db::get_db_path(&app_ctx);
-    if let Err(e) = db::init_db(&db_path) {
-        report_fatal(&format!(
-            "数据库初始化失败: {e}\n路径: {db_path}\n\n请确认该文件未被其他程序（如旧版 server.js）占用。",
-            db_path = db_path.display()
-        ));
-        return;
-    }
-    if let Ok(conn) = db::get_connection(&db_path) {
+fn init_local_cache(db_path: &std::path::Path) {
+    if let Ok(conn) = db::get_connection(db_path) {
         if let Err(e) = db::init_local_cache(&conn) {
             log::warn!("local stats cache init failed: {e}");
         }
+    }
+}
+
+pub fn run() {
+    let app_ctx = Arc::new(AppContext::new());
+    let db_path = db::get_db_path(&app_ctx);
+    // A ledger too damaged to open is rebuilt from the rows that still read
+    // (local-backup-v1 §6), but only in setup: a second launch must not move
+    // the files a running instance still has open. Anything else stays fatal.
+    let ledger_rebuild_deferred = match db::init_db(&db_path) {
+        Ok(()) => false,
+        Err(error) if local_backup::health::is_corruption(&error) => {
+            if let Err(e) = local_backup::health::schedule_rebuild(&app_ctx, true) {
+                report_fatal(&format!(
+                    "数据库已损坏，且无法安排修复: {e}\n路径: {db_path}",
+                    db_path = db_path.display()
+                ));
+                return;
+            }
+            true
+        }
+        Err(e) => {
+            report_fatal(&format!(
+                "数据库初始化失败: {e}\n路径: {db_path}\n\n请确认该文件未被其他程序（如旧版 server.js）占用。",
+                db_path = db_path.display()
+            ));
+            return;
+        }
+    };
+    if !ledger_rebuild_deferred {
+        init_local_cache(&db_path);
     }
 
     let gateway_state = Arc::new(gateway::Gateway::new(
@@ -742,6 +773,24 @@ pub fn run() {
             _ => {}
         })
         .setup(move |app| {
+            // Only the primary instance gets here, before the scheduler or any
+            // window opens the ledger: a rebuild the user scheduled from the
+            // settings page swaps the database file now.
+            {
+                let ctx = app.state::<Arc<AppContext>>();
+                let db_path = db::get_db_path(&ctx);
+                local_backup::health::run_pending(&ctx, &db_path);
+                if ledger_rebuild_deferred {
+                    if let Err(e) = db::init_db(&db_path) {
+                        report_fatal(&format!(
+                            "数据库已损坏，自动修复后仍无法打开: {e}\n路径: {db_path}",
+                            db_path = db_path.display()
+                        ));
+                        std::process::exit(1);
+                    }
+                    init_local_cache(&db_path);
+                }
+            }
             // macOS: back the transparent window (see tauri.macos.conf.json,
             // which sets transparent + Overlay titlebar) with a native
             // NSVisualEffect material so the chrome reads as frosted glass.
@@ -967,6 +1016,16 @@ pub fn run() {
             commands::peer_shared::peer_sync_shared_list,
             commands::peer_shared::peer_sync_shared_pull,
             commands::peer_shared::peer_sync_shared_clear,
+            local_backup::local_backup_status,
+            local_backup::local_backup_export,
+            local_backup::local_backup_list,
+            local_backup::local_backup_preview,
+            local_backup::local_backup_apply,
+            local_backup::local_backup_save_auto,
+            local_backup::local_backup_run_auto_now,
+            local_backup::local_backup_db_check,
+            local_backup::local_backup_db_repair,
+            local_backup::local_backup_quit,
             peer_live::peer_live_snapshot,
             routing_publish::routing_publish_status,
             gateway::gateway_legacy_inspect,

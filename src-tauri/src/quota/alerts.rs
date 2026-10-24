@@ -83,7 +83,7 @@ impl Default for QuotaAlertSettings {
 }
 
 impl QuotaAlertSettings {
-    fn sanitized(mut self) -> Self {
+    pub(crate) fn sanitized(mut self) -> Self {
         self.thresholds
             .retain(|value| ALLOWED_THRESHOLDS.contains(value));
         self.thresholds.sort_unstable_by(|a, b| b.cmp(a));
@@ -164,6 +164,16 @@ pub(crate) fn load_settings(app_data_dir: &Path) -> QuotaAlertSettings {
         .and_then(|bytes| serde_json::from_slice::<QuotaAlertSettings>(&bytes).ok())
         .map(QuotaAlertSettings::sanitized)
         .unwrap_or_default()
+}
+
+/// Writes restored settings (contract `local-backup-v1`).
+pub(crate) fn save_settings(
+    app_data_dir: &Path,
+    settings: &QuotaAlertSettings,
+) -> Result<(), String> {
+    let bytes =
+        serde_json::to_vec(&settings.clone().sanitized()).map_err(|error| error.to_string())?;
+    super::write_private_app_data_file(app_data_dir, SETTINGS_FILE, &bytes)
 }
 
 fn load_state(app_data_dir: &Path) -> AlertState {
