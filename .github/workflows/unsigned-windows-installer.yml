@@ -72,9 +72,12 @@ jobs:
           mkdir -p "$STAGE"
 
           EXE_PATH=src-tauri/target/release/tokenledger.exe
+          # 安装包随附的命令行工具（Tauri 打包会带上 crate 里所有可执行文件）。
+          CLI_PATH=src-tauri/target/release/tokenledger-cli.exe
           NSIS_PATH="$(find src-tauri/target/release/bundle/nsis -maxdepth 1 -name '*.exe' -print -quit)"
           MSI_PATH="$(find src-tauri/target/release/bundle/msi -maxdepth 1 -name '*.msi' -print -quit)"
           test -s "$EXE_PATH"
+          test -s "$CLI_PATH"
           test -n "$NSIS_PATH"
           test -n "$MSI_PATH"
 
@@ -102,8 +105,9 @@ jobs:
 
           cp "$NSIS_PATH" "$STAGE/TokenLedger_Windows_${VERSION}_x64-unsigned-setup.exe"
           cp "$MSI_PATH" "$STAGE/TokenLedger_Windows_${VERSION}_x64-unsigned.msi"
-          # 安装包内容是压缩的，扫描脚本看不到里面；改扫打包前的同一个 exe。
+          # 安装包内容是压缩的，扫描脚本看不到里面；改扫打包前的同一批 exe（桌面端与命令行）。
           cp "$EXE_PATH" "$STAGE/tokenledger.exe"
+          cp "$CLI_PATH" "$STAGE/tokenledger-cli.exe"
 
           sha256sum "$STAGE"/*.exe "$STAGE"/*.msi | tee "$STAGE/windows-sha256.txt"
 
@@ -111,7 +115,7 @@ jobs:
         env:
           # 维护者标识清单从 secret 注入；未配置时脚本只跑通用规则并给出警告。
           TOKENLEDGER_FORBIDDEN_JSON: ${{ secrets.RELEASE_FORBIDDEN_JSON }}
-        run: node scripts/verify-release-artifact-clean.mjs release-stage/windows/tokenledger.exe
+        run: node scripts/verify-release-artifact-clean.mjs release-stage/windows/tokenledger.exe release-stage/windows/tokenledger-cli.exe
 
       - uses: actions/upload-artifact@v4
         with:
