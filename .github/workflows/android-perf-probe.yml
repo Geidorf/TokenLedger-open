@@ -80,17 +80,29 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
       - name: Boot the emulator
+        timeout-minutes: 15
         run: |
+          emulator -accel-check || true
           nohup emulator -avd perf -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -camera-back none > emulator.log 2>&1 &
-          adb wait-for-device
+          EMULATOR_PID=$!
+          # 模拟器进程退出时 adb wait-for-device 会一直等，所以自己轮询并盯着进程。
+          booted=0
           for attempt in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo "emulator exited early"
+              break
+            fi
+            if [ "$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
               echo "booted after ${attempt} checks"
+              booted=1
               break
             fi
             sleep 5
           done
-          [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ] || { tail -50 emulator.log; exit 1; }
+          if [ "$booted" != "1" ]; then
+            tail -80 emulator.log
+            exit 1
+          fi
           adb shell input keyevent 82
           adb shell settings put global window_animation_scale 1
           adb shell settings put global transition_animation_scale 1
