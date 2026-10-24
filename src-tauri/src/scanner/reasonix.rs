@@ -1,4 +1,5 @@
 use super::helpers::*;
+use super::jsonl::{read_text_capped, MAX_SIDECAR_BYTES};
 use super::types::LogRecord;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 use regex::Regex;
@@ -63,7 +64,7 @@ pub(crate) fn reasonix_session_roots(bases: &[PathBuf]) -> Vec<PathBuf> {
 /// coordinator-single-write).
 pub(crate) fn reasonix_default_model(bases: &[PathBuf]) -> String {
     for base in bases {
-        if let Ok(config_str) = fs::read_to_string(base.join("config.toml")) {
+        if let Ok(config_str) = read_text_capped(&base.join("config.toml"), MAX_SIDECAR_BYTES) {
             if let Some(model) = reasonix_toml_default_model(&config_str) {
                 return clean_model_name(&model);
             }
@@ -71,7 +72,7 @@ pub(crate) fn reasonix_default_model(bases: &[PathBuf]) -> String {
     }
     for base in bases {
         let config_path = base.join("config.json");
-        if let Ok(config_str) = fs::read_to_string(config_path) {
+        if let Ok(config_str) = read_text_capped(&config_path, MAX_SIDECAR_BYTES) {
             if let Ok(config) = serde_json::from_str::<Value>(&config_str) {
                 if let Some(m) = config.get("model").and_then(|v| v.as_str()) {
                     return clean_model_name(m);
@@ -195,7 +196,7 @@ pub(crate) fn reasonix_read_meta_sidecar(filepath: &Path) -> ReasonixSessionMeta
         return ReasonixSessionMeta::default();
     };
     let meta_path = filepath.with_file_name(format!("{stem}.jsonl.meta"));
-    let Ok(meta_str) = fs::read_to_string(&meta_path) else {
+    let Ok(meta_str) = read_text_capped(&meta_path, MAX_SIDECAR_BYTES) else {
         return ReasonixSessionMeta::default();
     };
     let Ok(meta) = serde_json::from_str::<Value>(&meta_str) else {
@@ -282,7 +283,7 @@ pub(crate) fn scan_reasonix_from(
                     continue;
                 };
 
-                if let Ok(meta_str) = fs::read_to_string(&filepath) {
+                if let Ok(meta_str) = read_text_capped(&filepath, MAX_SIDECAR_BYTES) {
                     if let Ok(meta) = serde_json::from_str::<Value>(&meta_str) {
                         // Newer telemetry nests the counters under `usage`;
                         // classic meta files keep them at the top level.
@@ -301,7 +302,9 @@ pub(crate) fn scan_reasonix_from(
                         // cache hits is uncached input.
                         let prompt_tokens =
                             reasonix_pick_int(usage, &["promptTokens", "totalPromptTokens"]);
-                        let input_tokens = cache_miss.max(prompt_tokens - cached_tokens).max(0);
+                        let input_tokens = cache_miss
+                            .max(prompt_tokens.saturating_sub(cached_tokens))
+                            .max(0);
                         let output_tokens = reasonix_pick_int(
                             usage,
                             &["completionTokens", "totalCompletionTokens"],

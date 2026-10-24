@@ -1,5 +1,6 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::bounded_lines;
 use super::types::LogRecord;
 use chrono::{Local, TimeZone};
 use serde_json::Value;
@@ -7,7 +8,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -114,7 +115,7 @@ pub(crate) fn scan_kimi_file_as(
     let legacy_prefix = tool;
     let v2_prefix = format!("{tool}_v2");
     let mut seen_legacy_keys = HashSet::new();
-    for (line_index, line) in reader.lines().enumerate() {
+    for (line_index, line) in bounded_lines(reader).enumerate() {
         let Ok(line_content) = line else {
             continue;
         };

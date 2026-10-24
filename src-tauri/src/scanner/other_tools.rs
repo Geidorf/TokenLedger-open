@@ -1,5 +1,6 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::{bounded_lines, read_text_capped, MAX_SIDECAR_BYTES};
 use super::types::LogRecord;
 use chrono::{DateTime, Local};
 use regex::Regex;
@@ -7,7 +8,7 @@ use rusqlite::{params, Connection, OpenFlags, Result};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use walkdir::WalkDir;
@@ -558,10 +559,10 @@ fn parse_workbuddy_usage(usage: &Value) -> Option<(i64, i64, i64, i64, Option<f6
     // OpenAI-style prompt_tokens includes cache hits; subtract so the cache
     // share is not counted both as input and as cached.
     if matched_input_field == "prompt_tokens" {
-        final_input = (final_input - cache_read).max(0);
+        final_input = final_input.saturating_sub(cache_read).max(0);
     }
 
-    let cached_tokens = cache_read + cache_write;
+    let cached_tokens = cache_read.saturating_add(cache_write);
 
     if final_input <= 0 && output_tokens <= 0 && cached_tokens <= 0 {
         let total = to_int(
@@ -628,7 +629,7 @@ pub(crate) fn scan_workbuddy_project_logs(
 
             if let Ok(file) = File::open(filepath) {
                 let reader = BufReader::new(file);
-                for (line_num, line) in reader.lines().enumerate() {
+                for (line_num, line) in bounded_lines(reader).enumerate() {
                     if let Ok(line_content) = line {
                         if line_content.trim().is_empty() {
                             continue;
@@ -758,7 +759,7 @@ pub(crate) fn scan_workbuddy_agent_logs(logs: &mut Vec<LogRecord>) -> usize {
         if let Ok(file) = File::open(&filepath) {
             let reader = BufReader::new(file);
             let mut lines = Vec::new();
-            for line in reader.lines().map_while(Result::ok) {
+            for line in bounded_lines(reader).map_while(Result::ok) {
                 // Pre-populate mapping of request_id -> agent_name
                 if let Some(caps) = re_agent.captures(&line) {
                     let req_id = caps
@@ -857,7 +858,7 @@ pub(crate) fn scan_qclaw(logs: &mut Vec<LogRecord>) -> usize {
 
                 if let Ok(file) = File::open(filepath) {
                     let reader = BufReader::new(file);
-                    for (line_num, line) in reader.lines().enumerate() {
+                    for (line_num, line) in bounded_lines(reader).enumerate() {
                         if let Ok(line_content) = line {
                             if line_content.trim().is_empty() {
                                 continue;
@@ -1072,13 +1073,13 @@ pub(crate) fn scan_hermes(logs: &mut Vec<LogRecord>) -> usize {
                 if let Ok(rows) = rows {
                     for r in rows.flatten() {
                         let (id, model, started_at, input, output, c_read, c_write, cost) = r;
-                        if input <= 0 && output <= 0 && c_read + c_write <= 0 {
+                        if input <= 0 && output <= 0 && c_read.saturating_add(c_write) <= 0 {
                             continue;
                         }
 
                         let timestamp = normalize_timestamp(&serde_json::json!(started_at));
                         let unique_key = format!("hermes_{}", id);
-                        let cached = c_read + c_write;
+                        let cached = c_read.saturating_add(c_write);
 
                         // sessions rows accumulate in place while a session is
                         // running; mark cumulative so run_scan stores deltas
@@ -1173,7 +1174,7 @@ pub(crate) fn scan_trae(
                 };
                 if let Ok(file) = File::open(filepath) {
                     let reader = BufReader::new(file);
-                    for line in reader.lines().map_while(Result::ok) {
+                    for line in bounded_lines(reader).map_while(Result::ok) {
                         if !line.contains("HistoryEvent") {
                             continue;
                         }
@@ -1366,13 +1367,13 @@ pub(crate) fn scan_zcode_db(db_path: &std::path::Path, logs: &mut Vec<LogRecord>
 
                         // Reasoning tokens are billed as output; cache read and
                         // creation share the combined cache column.
-                        let output_tokens = output + reasoning;
-                        let cached = cache_read + cache_write;
+                        let output_tokens = output.saturating_add(reasoning);
+                        let cached = cache_read.saturating_add(cache_write);
                         // Zcode's input includes cache hits (computed_total ==
                         // input + output held for every row), so net the cache
                         // volume out — effective tokens must never count it
                         // twice.
-                        let input_tokens = 0.max(input - cached);
+                        let input_tokens = 0.max(input.saturating_sub(cached));
 
                         // status='error' rows report all zeros — drop them.
                         if input_tokens <= 0 && output_tokens <= 0 && cached <= 0 {
@@ -1425,7 +1426,7 @@ pub(crate) fn deepseekgui_threads_dir() -> PathBuf {
     let mut data_dir = get_home_dir().join(".deepseekgui/kun");
     let settings_path = base_dir.join("deepseek-gui-settings.json");
     if settings_path.exists() {
-        if let Ok(settings_str) = fs::read_to_string(settings_path) {
+        if let Ok(settings_str) = read_text_capped(&settings_path, MAX_SIDECAR_BYTES) {
             if let Ok(settings) = serde_json::from_str::<Value>(&settings_str) {
                 if let Some(custom_dir) = settings
                     .get("agents")
@@ -1467,11 +1468,11 @@ pub(crate) struct DeepSeekGuiUsageSnapshot {
 
 impl DeepSeekGuiUsageSnapshot {
     fn delta_from(&self, previous: &Self) -> Option<Self> {
-        let prompt_tokens = self.prompt_tokens - previous.prompt_tokens;
-        let output_tokens = self.output_tokens - previous.output_tokens;
-        let cached_tokens = self.cached_tokens - previous.cached_tokens;
+        let prompt_tokens = self.prompt_tokens.saturating_sub(previous.prompt_tokens);
+        let output_tokens = self.output_tokens.saturating_sub(previous.output_tokens);
+        let cached_tokens = self.cached_tokens.saturating_sub(previous.cached_tokens);
         let cache_miss_tokens = match (self.cache_miss_tokens, previous.cache_miss_tokens) {
-            (Some(current), Some(previous)) => Some(current - previous),
+            (Some(current), Some(previous)) => Some(current.saturating_sub(previous)),
             _ => None,
         };
 
@@ -1491,7 +1492,7 @@ impl DeepSeekGuiUsageSnapshot {
     fn record_tokens(&self) -> (i64, i64, i64) {
         let input_tokens = self
             .cache_miss_tokens
-            .unwrap_or_else(|| self.prompt_tokens - self.cached_tokens)
+            .unwrap_or_else(|| self.prompt_tokens.saturating_sub(self.cached_tokens))
             .max(0);
         (
             input_tokens,
@@ -1548,7 +1549,7 @@ pub(crate) fn scan_deepseekgui_dir_checkpointed(
                     };
                     if let Ok(file) = File::open(&events_path) {
                         let reader = BufReader::new(file);
-                        for (line_num, line) in reader.lines().enumerate() {
+                        for (line_num, line) in bounded_lines(reader).enumerate() {
                             if let Ok(line_content) = line {
                                 if line_content.trim().is_empty() {
                                     continue;

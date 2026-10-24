@@ -1,11 +1,12 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::bounded_lines;
 use super::types::{CheckpointScanStats, LogRecord};
 use rusqlite::Result;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -159,7 +160,7 @@ pub(crate) fn scan_claude_file(
     let reader = BufReader::new(file);
     let mut count = 0;
 
-    for (line_num, line) in reader.lines().enumerate() {
+    for (line_num, line) in bounded_lines(reader).enumerate() {
         let line_content = line.map_err(|error| {
             format!(
                 "failed to read Claude JSONL {} at line {}: {error}",
@@ -240,7 +241,7 @@ pub(crate) fn claude_record_from_value(
         model,
         input_tokens,
         output_tokens,
-        cached_tokens: cache_read + cache_write,
+        cached_tokens: cache_read.saturating_add(cache_write),
         cache_write_tokens: cache_write,
         timestamp,
         session_id: session_id.to_string(),
