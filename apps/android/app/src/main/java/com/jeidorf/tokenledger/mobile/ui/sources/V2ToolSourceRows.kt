@@ -26,11 +26,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
+import com.jeidorf.tokenledger.mobile.ui.foundation.readableOn
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -239,7 +241,8 @@ internal fun V2SourceTile(palette: MobileV2Palette, label: String, color: Color)
     ) {
         Text(
             sourceTileInitials(label),
-            color = if (eInk) palette.text else color,
+            // 身份色直接当小字在浅色下只有 2.8～3.6:1，按色块底色调到至少 4.5:1，色相不变。
+            color = if (eInk) palette.text else readableOn(color, color.copy(alpha = 0.16f).compositeOver(palette.surface), palette.text),
             fontSize = LedgerFont.caption,
             fontWeight = FontWeight.Bold,
             maxLines = 1

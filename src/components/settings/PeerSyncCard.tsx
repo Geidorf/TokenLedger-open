@@ -28,11 +28,15 @@ export interface PeerSyncPreview {
   app: string;
   carriesKeys: boolean;
   providers: PeerSyncCandidate[];
+  /** 预览读到的那份备份的摘要；导入时交回，服务器换了备份就拒绝导入。 */
+  digest: string;
 }
 
 export interface PeerSyncImportResult {
   imported: string[];
   keysSaved: number;
+  /** 接口地址换了主机的已有供应商，旧 key 被清掉、需要重新填写的个数。 */
+  keysCleared?: number;
   skipped: string[];
 }
 
@@ -119,8 +123,15 @@ export function PeerSyncCard() {
   });
 
   const importPicked = () => run('import', async () => {
-    const result = await invoke<PeerSyncImportResult>('peer_sync_import_providers', { peerIds: [...picked] });
-    setNote(`已导入 ${result.imported.length} 个供应商，${result.keysSaved} 个 API key 存入系统钥匙串。可在「供应商」页查看。`);
+    if (!preview) return;
+    const result = await invoke<PeerSyncImportResult>('peer_sync_import_providers', {
+      peerIds: [...picked],
+      digest: preview.digest,
+    });
+    const cleared = result.keysCleared
+      ? `${result.keysCleared} 个供应商的接口地址换了主机，原来的 API key 已清除，请重新填写。`
+      : '';
+    setNote(`已导入 ${result.imported.length} 个供应商，${result.keysSaved} 个 API key 存入系统钥匙串。${cleared}可在「供应商」页查看。`);
     setPreview(null);
   });
 

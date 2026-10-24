@@ -387,8 +387,9 @@ internal fun LedgerDashboardV2Screen(
                         // 目的地那样带分享；旧版这里没按 destination 分支，额度页其实也在分享，
                         // 顺手把这处也修了。
                         // 「我的」是设置与展示入口，没有可分享的统计画面（重构 R5）。
+                        // 新账户还没有任何桌面数据时没有可分享的内容。
                         onShare = displayedData
-                            ?.takeIf { destination == MobileDestination.Usage }
+                            ?.takeIf { destination == MobileDestination.Usage && desktopData != false }
                             ?.let { { showSharePoster = true } },
                         filtersActive = state.hasActiveFilters,
                         onOpenFilters = { filterSheet = V2FilterSheet.All },

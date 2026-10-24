@@ -10,6 +10,7 @@ import { diffLineClass, modelOptions, type ModelOption } from './helpers';
 import type { AgentInspection, AgentPreview } from './types';
 import { CopyButton, RevealCopyButton, Sheet } from './ui';
 import { LegacyRestoreCard } from './LegacyRestoreCard';
+import { useT } from '../../i18n';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3462/v1';
 
@@ -268,6 +269,7 @@ function ManualRow({ agent, baseUrl, options }: { agent: ManualAgent; baseUrl: s
 }
 
 export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, manual = MANUAL_AGENTS, pending = PENDING_AGENTS, onOpenProviders }: PageProps) {
+  const t = useT();
   const [options, setOptions] = useState<ModelOption[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
@@ -294,8 +296,8 @@ export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, 
       </div>
       {loadError && <p className="mw-note is-danger" role="alert">读取模型列表失败：{loadError}</p>}
       {options?.length === 0 && (
-        <EmptyState variant="banner" icon={Waypoints} title="还没有可选的模型" description="添加一个供应商并填入 API key，它的模型就会出现在下面每个 Agent 的选择器里。">
-          {onOpenProviders && <button type="button" className="mw-btn is-primary" onClick={onOpenProviders}><Plus className="h-4 w-4" />添加供应商</button>}
+        <EmptyState variant="banner" icon={Waypoints} title={t('empty.agents.title')} description={t('empty.agents.description')}>
+          {onOpenProviders && <button type="button" className="mw-btn is-primary" onClick={onOpenProviders}><Plus className="h-4 w-4" />{t('empty.agents.action')}</button>}
         </EmptyState>
       )}
       <div className="mw-card mw-rows">

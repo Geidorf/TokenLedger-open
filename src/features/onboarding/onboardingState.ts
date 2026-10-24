@@ -4,6 +4,8 @@
  * phone routing toggle); it never reads subscription credentials.
  */
 
+import { formatCount, getLang, t, type Lang } from '../../i18n';
+
 export type OnboardingStepId = 'scan' | 'gateway' | 'cloud' | 'phone';
 
 /**
@@ -55,15 +57,15 @@ export function cloudReady(facts: OnboardingFacts) {
   return facts.cloudAuthenticated && facts.cloudCapabilityVerified && facts.cloudFirstSyncCompleted;
 }
 
-function scanStep(facts: OnboardingFacts): OnboardingStep {
+function scanStep(facts: OnboardingFacts, lang: Lang): OnboardingStep {
   if (facts.totalRecords === null) {
-    return { id: 'scan', status: 'unknown', detail: '正在读取本机数据库…', action: null, actionLabel: '' };
+    return { id: 'scan', status: 'unknown', detail: t('onboarding.scan.loading', undefined, lang), action: null, actionLabel: '' };
   }
   if (facts.totalRecords > 0) {
     return {
       id: 'scan',
       status: 'done',
-      detail: `已读到 ${facts.totalRecords.toLocaleString('zh-CN')} 条记录，概览页已经有数据了。`,
+      detail: t('onboarding.scan.done', { count: formatCount(facts.totalRecords, lang) }, lang),
       action: null,
       actionLabel: '',
     };
@@ -71,93 +73,95 @@ function scanStep(facts: OnboardingFacts): OnboardingStep {
   return {
     id: 'scan',
     status: 'todo',
-    detail: '读取 Claude Code、Codex 等工具留在本机的日志，只在本机计算，不上传。',
+    detail: t('onboarding.scan.todo', undefined, lang),
     action: 'scan',
-    actionLabel: '扫描本机日志',
+    actionLabel: t('onboarding.scan.action', undefined, lang),
   };
 }
 
-function gatewayStep(facts: OnboardingFacts): OnboardingStep {
+function gatewayStep(facts: OnboardingFacts, lang: Lang): OnboardingStep {
   if (facts.modelAccessEnabled === undefined) {
-    return { id: 'gateway', status: 'unknown', detail: '正在读取设置…', action: null, actionLabel: '' };
+    return { id: 'gateway', status: 'unknown', detail: t('onboarding.gateway.loadingSettings', undefined, lang), action: null, actionLabel: '' };
   }
   if (!facts.modelAccessEnabled) {
     return {
       id: 'gateway',
       status: 'todo',
-      detail: '在本机起一个统一入口，Agent 经它转发就能自动记账、按规则路由、失败自动切换。',
+      detail: t('onboarding.gateway.off', undefined, lang),
       action: 'enable-model-access',
-      actionLabel: '开启模型接入',
+      actionLabel: t('onboarding.gateway.offAction', undefined, lang),
     };
   }
   if (facts.gateway === null) {
-    return { id: 'gateway', status: 'unknown', detail: '正在读取网关状态…', action: null, actionLabel: '' };
+    return { id: 'gateway', status: 'unknown', detail: t('onboarding.gateway.loadingStatus', undefined, lang), action: null, actionLabel: '' };
   }
   const { enabledProviders, running, error } = facts.gateway;
   if (enabledProviders === 0) {
     return {
       id: 'gateway',
       status: 'todo',
-      detail: '模型接入已开启。添加一个供应商并填入 API key，网关就会自动启动。',
+      detail: t('onboarding.gateway.noProvider', undefined, lang),
       action: 'open-providers',
-      actionLabel: '添加供应商',
+      actionLabel: t('onboarding.gateway.noProviderAction', undefined, lang),
     };
   }
   if (!running) {
     return {
       id: 'gateway',
       status: 'todo',
-      detail: `已启用 ${enabledProviders} 个供应商，但网关没有启动${error ? `：${error}` : '。'}`,
+      detail: error
+        ? t('onboarding.gateway.stoppedError', { count: enabledProviders, error }, lang)
+        : t('onboarding.gateway.stopped', { count: enabledProviders }, lang),
       action: 'open-gateway',
-      actionLabel: '查看网关',
+      actionLabel: t('onboarding.gateway.stoppedAction', undefined, lang),
     };
   }
   return {
     id: 'gateway',
     status: 'done',
-    detail: `网关运行中，${enabledProviders} 个供应商已启用。`,
+    detail: t('onboarding.gateway.running', { count: enabledProviders }, lang),
     action: null,
     actionLabel: '',
   };
 }
 
-function cloudStep(facts: OnboardingFacts): OnboardingStep {
+function cloudStep(facts: OnboardingFacts, lang: Lang): OnboardingStep {
   if (!facts.cloudAuthenticated) {
     return {
       id: 'cloud',
       status: 'todo',
-      detail: '登录账户后，多台电脑的用量汇总到一起，手机也能看。',
+      detail: t('onboarding.cloud.signedOut', undefined, lang),
       action: 'open-cloud-settings',
-      actionLabel: '登录账户',
+      actionLabel: t('onboarding.cloud.signedOutAction', undefined, lang),
     };
   }
   if (!facts.cloudCapabilityVerified) {
     return {
       id: 'cloud',
       status: 'todo',
-      detail: '已登录，还需要检查一次数据连接。',
+      detail: t('onboarding.cloud.unchecked', undefined, lang),
       action: 'open-cloud-settings',
-      actionLabel: '检查连接',
+      actionLabel: t('onboarding.cloud.uncheckedAction', undefined, lang),
     };
   }
   if (!facts.cloudFirstSyncCompleted) {
     return {
       id: 'cloud',
       status: 'todo',
-      detail: '连接正常。完成首次同步后，云端汇总和手机端才会有数据。',
+      detail: t('onboarding.cloud.unsynced', undefined, lang),
       action: 'sync-now',
-      actionLabel: '立即同步',
+      actionLabel: t('onboarding.cloud.unsyncedAction', undefined, lang),
     };
   }
-  return { id: 'cloud', status: 'done', detail: '已登录并完成首次同步。', action: null, actionLabel: '' };
+  return { id: 'cloud', status: 'done', detail: t('onboarding.cloud.done', undefined, lang), action: null, actionLabel: '' };
 }
 
-function phoneStep(facts: OnboardingFacts): OnboardingStep {
+function phoneStep(facts: OnboardingFacts, lang: Lang): OnboardingStep {
   if (facts.routingPublishEnabled) {
     return {
       id: 'phone',
       status: 'done',
-      detail: '已开启。手机登录同一账户，在「我的」里设为动态壁纸即可。',
+      detail: t('onboarding.phone.done', undefined, lang),
       action: null,
       actionLabel: '',
     };
@@ -166,7 +170,7 @@ function phoneStep(facts: OnboardingFacts): OnboardingStep {
     return {
       id: 'phone',
       status: 'blocked',
-      detail: '手机经云端读取路由，先完成上一步的云端同步。',
+      detail: t('onboarding.phone.blocked', undefined, lang),
       action: null,
       actionLabel: '',
     };
@@ -174,14 +178,14 @@ function phoneStep(facts: OnboardingFacts): OnboardingStep {
   return {
     id: 'phone',
     status: 'todo',
-    detail: '把实时路由同步到手机，Android 锁屏显示网关路由动画。只上传 Agent 名、供应商/模型和状态码。',
+    detail: t('onboarding.phone.todo', undefined, lang),
     action: 'enable-phone-routing',
-    actionLabel: '开启同步到手机',
+    actionLabel: t('onboarding.phone.action', undefined, lang),
   };
 }
 
-export function deriveOnboardingSteps(facts: OnboardingFacts): OnboardingStep[] {
-  return [scanStep(facts), gatewayStep(facts), cloudStep(facts), phoneStep(facts)];
+export function deriveOnboardingSteps(facts: OnboardingFacts, lang: Lang = getLang()): OnboardingStep[] {
+  return [scanStep(facts, lang), gatewayStep(facts, lang), cloudStep(facts, lang), phoneStep(facts, lang)];
 }
 
 export function completedCount(steps: OnboardingStep[]) {

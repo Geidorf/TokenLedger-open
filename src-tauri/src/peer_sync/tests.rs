@@ -228,6 +228,60 @@ fn a_backup_without_keys_keeps_existing_keys() {
 }
 
 #[test]
+fn a_backup_without_keys_that_moves_a_provider_drops_its_old_key() {
+    let dir = temp_dir();
+    let secrets = Arc::new(MemorySecrets::default());
+    let gateway = Gateway::new(&dir, secrets.clone(), 0);
+    let mut bundle = go_bundle();
+    bundle.keys = false;
+    bundle.providers_keys = Some(false);
+    let picked = BTreeSet::from(["deepseek".to_string()]);
+    // First import creates the provider; the user then sets a key for it.
+    apply(&gateway, &bundle, &picked).unwrap();
+    secrets.set("provider:deepseek", "already-here").unwrap();
+
+    // Same address again: the key stays.
+    let again = apply(&gateway, &bundle, &picked).unwrap();
+    assert_eq!(again.keys_cleared, 0);
+    assert!(secrets.get("provider:deepseek").unwrap().is_some());
+
+    // Another host: the old key must not be sent there.
+    let deepseek = bundle
+        .providers
+        .iter_mut()
+        .find(|provider| provider.id == "deepseek")
+        .unwrap();
+    for url in [
+        &mut deepseek.chat,
+        &mut deepseek.responses,
+        &mut deepseek.anthropic,
+    ] {
+        if !url.trim().is_empty() {
+            *url = "https://elsewhere.example/v1".into();
+        }
+    }
+    let moved = apply(&gateway, &bundle, &picked).unwrap();
+    assert_eq!(moved.keys_cleared, 1);
+    assert_eq!(secrets.get("provider:deepseek").unwrap(), None);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn origins_compare_scheme_host_and_port() {
+    assert!(same_origin(
+        "https://a.example/v1",
+        "https://A.example:443/other"
+    ));
+    assert!(!same_origin("https://a.example/v1", "http://a.example/v1"));
+    assert!(!same_origin(
+        "https://a.example/v1",
+        "https://a.example:8443/v1"
+    ));
+    assert!(!same_origin("https://a.example/v1", "https://b.example/v1"));
+    assert!(!same_origin("not a url", "not a url"));
+}
+
+#[test]
 fn config_keeps_secrets_in_the_keychain_only() {
     let dir = temp_dir();
     let secrets = MemorySecrets::default();
@@ -390,4 +444,17 @@ fn the_shared_selection_survives_saving_the_setup() {
         .unwrap()
         .contains("sharedComputers"));
     let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn importing_needs_the_backup_that_was_previewed() {
+    let previewed = backup_digest(&go_backup());
+    assert_eq!(previewed.len(), 64);
+    assert_eq!(previewed, backup_digest(&go_backup()));
+    assert!(check_digest(&previewed, &backup_digest(&go_backup())).is_ok());
+    assert!(check_digest(&previewed.to_ascii_uppercase(), &previewed).is_ok());
+    let mut swapped = go_backup();
+    swapped.push(b'\n');
+    assert!(check_digest(&previewed, &backup_digest(&swapped)).is_err());
+    assert!(check_digest("", &previewed).is_err());
 }

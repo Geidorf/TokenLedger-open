@@ -22,6 +22,7 @@ import { BehaviorProjectPanel, SessionProjectChip, behaviorProjectAliases, behav
 import { useHideProjectNames } from '../utils/projectNamePrivacy';
 import { InfoTip } from './InfoTip';
 import '../styles/workbuddyAnalytics.css';
+import { useT } from '../i18n';
 
 // The per-turn drawer is also used by the details page; load it on demand here.
 const SessionAnalysisDrawer = lazy(() => import('./SessionAnalysisDrawer'));
@@ -234,6 +235,7 @@ function valueAxis(theme: ChartThemeTokens, formatter: (value: number) => string
 }
 
 export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loading, refreshing = false, updatedAt = null, error, scope, range, customRange, onRangeChange, onRetry, onViewLocal, onSelectDate, onOpenTool, onOpenSession, projectFilter = [], onProjectFilterChange, onOpenProjectSettings, onRebuildProjectIndex, projectBackfill = null, ledgerEmpty = false, onScan, scanBusy = false }: Props) {
+  const t = useT();
   const { effective } = useTheme(); // Tool-ranking/session-ranking colours below must recompute on theme toggle (T10.178 review P2-1).
   const { hidden: hideProjectNames, setHidden: setHideProjectNames } = useHideProjectNames();
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
@@ -545,12 +547,12 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
         onHideNamesChange={setHideProjectNames}
       />
       {data.summary.requests === 0 ? (!ledgerEmpty ? (
-        <EmptyState icon={CalendarDays} title="这段时间没有会话" description="所选范围内没有本机账本记录。换成更长的时间范围看看，或先扫描一次本机日志。">
-          {range !== 'custom' || preset !== 'thirtyDays' ? <button type="button" className="secondary-inline" onClick={() => choosePreset('thirtyDays')}>看近 30 天</button> : null}
+        <EmptyState icon={CalendarDays} title={t('empty.sessions.rangeTitle')} description={t('empty.sessions.rangeDescription')}>
+          {range !== 'custom' || preset !== 'thirtyDays' ? <button type="button" className="secondary-inline" onClick={() => choosePreset('thirtyDays')}>{t('empty.sessions.rangeAction')}</button> : null}
         </EmptyState>
       ) : (
-        <EmptyState icon={FolderSearch} title="本机还没有会话记录" description="扫描 Claude Code、Codex 等工具留在本机的日志后，这里会按会话、项目和工具拆开看用量。">
-          {onScan && <button type="button" className="primary-inline" onClick={onScan} disabled={scanBusy} aria-busy={scanBusy || undefined}><RefreshCw className={`h-4 w-4 ${scanBusy ? 'animate-spin' : ''}`} />扫描本机日志</button>}
+        <EmptyState icon={FolderSearch} title={t('empty.sessions.title')} description={t('empty.sessions.description')}>
+          {onScan && <button type="button" className="primary-inline" onClick={onScan} disabled={scanBusy} aria-busy={scanBusy || undefined}><RefreshCw className={`h-4 w-4 ${scanBusy ? 'animate-spin' : ''}`} />{t('empty.sessions.action')}</button>}
         </EmptyState>
       )) : <>
         <div className="behavior-day-pager" aria-label="分析日期窗口">

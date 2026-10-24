@@ -11194,6 +11194,21 @@ mod export_usage_csv_tests {
 
 /// 导出 CSV 的正文与记录数。`prices` 只用于 `estimated_cost_usd`；由调用方传入，
 /// 测试可以换一张查不到价格的表。
+/// 导出 CSV 的单元格。型号、工具、会话 ID 来自别的程序写的日志，以 `=`、`+`、
+/// `-`、`@` 或制表符开头的值在表格软件里会被当成公式执行，所以前面加 `'`。
+fn csv_field(s: &str) -> String {
+    let s = if s.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{s}")
+    } else {
+        s.to_string()
+    };
+    if s.contains([',', '"', '\n', '\r', '\'']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s
+    }
+}
+
 fn ledger_csv(conn: &Connection, prices: &Value) -> Result<(String, usize), String> {
     let mut stmt = conn
         .prepare("SELECT id, tool, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status, cloud_user_id, synced_at, cache_write_known, usage_provenance FROM token_logs ORDER BY timestamp DESC")
@@ -11230,13 +11245,7 @@ fn ledger_csv(conn: &Connection, prices: &Value) -> Result<(String, usize), Stri
         let synced_at: String = row.get(14).unwrap_or_default();
         let estimated_cost_usd = estimator.estimate(&log);
 
-        let esc = |s: &str| -> String {
-            if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
-                format!("\"{}\"", s.replace('"', "\"\""))
-            } else {
-                s.to_string()
-            }
-        };
+        let esc = csv_field;
         // 两个费用列同一数字格式；None 写空。
         let usd = |cost: Option<f64>| cost.map(|cost| cost.to_string()).unwrap_or_default();
 
@@ -11615,6 +11624,18 @@ mod csv_export_tests {
         let costs = ledger.exported_costs();
         assert_eq!(costs["stored-zero"], pair("0", "0"));
         assert_eq!(costs["priced-zero"], pair("", "0"));
+    }
+
+    #[test]
+    fn csv_field_neutralizes_formula_prefixes() {
+        assert_eq!(csv_field("gpt-5"), "gpt-5");
+        assert_eq!(csv_field("a,b"), "\"a,b\"");
+        assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv_field("=HYPERLINK(\"x\")"), "\"'=HYPERLINK(\"\"x\"\")\"");
+        assert_eq!(csv_field("+1"), "\"'+1\"");
+        assert_eq!(csv_field("-2"), "\"'-2\"");
+        assert_eq!(csv_field("@SUM(A1)"), "\"'@SUM(A1)\"");
+        assert_eq!(csv_field("\tx"), "\"'\tx\"");
     }
 
     #[test]

@@ -201,9 +201,16 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 
 共享 fixture `gateway-dedupe-v2.json` 锁定上述映射、区间与窗口、两条规则、零 Token 失败请求与合并后的有效 Token 合计。
 
-### 2.6 逐日记录数与费用（2026-10-23，可选，仅本机）
+### 2.6 逐日记录数与费用（2026-10-23 本机；2026-10-24 起云端也输出，可选）
 
-本机统计在顶层与每个 `tools[*]`、`models[*]` 上，与 `heatmap` 并列可带 `heatmapRequests`（当天记录数，正整数）与 `heatmapCost`（当天预估费用，美元，非负有限数，与 `summary.totalCost` 同一逐行估价）。两者与同一对象的 `heatmap` 日期键完全一致；带其一必带另一，且只在有 `heatmap` 的对象上出现。云端 RPC、实体看板的 `heatmap` 与旧缓存不带，读者遇到缺失时只画有效 Token 并说明，不按 0 补齐，也不从 `trends` 或 `dailyCosts` 推算。
+本机统计在顶层与每个 `tools[*]`、`models[*]` 上，与 `heatmap` 并列可带 `heatmapRequests`（当天记录数，正整数）与 `heatmapCost`（当天预估费用，美元，非负有限数，保留 6 位小数，与 `summary.totalCost` 同一逐行估价）。两者与同一对象的 `heatmap` 日期键完全一致，且只在有 `heatmap` 的对象上出现。本机带其一必带另一。实体看板的 `heatmap` 与旧缓存不带，读者遇到缺失时只画有效 Token 并说明，不按 0 补齐，也不从 `trends` 或 `dailyCosts` 推算。
+
+云端 `get_dashboard_stats_v2(p_user,p_query)` 自迁移 `20261024030000_cloud_heatmap_metrics_and_activity_rhythm` 起，在同样三类对象上按同样的键规则输出这两个字段，取值来自同一 canonical 用户/设备/工具/模型/search 过滤与该对象 `heatmap` 自己的日期范围（顶层预设范围是年初至今，custom 是所选区间；工具、模型跟随所选范围）：
+
+- `heatmapRequests[date]` 是当天匹配聚合行 `requests` 之和。云端行是小时聚合，所以这是「记录数」之和，不是行数。
+- `heatmapCost[date]` 是当天匹配聚合行 `cost_usd` 之和，四舍五入到 6 位小数。
+- **整项省略规则**：云端两个字段各自独立判断，只要该对象有一天的值不可信，就整项不输出，不补 0、不只加已知部分。`heatmapRequests` 在某天 `requests` 之和小于 1 时省略；`heatmapCost` 在某天任一匹配行的 `cost_usd` 为空、非有限、为负或为 0（与 §2.3 `dailyCosts` 的 `missing-cost`、`invalid-cost`、`legacy-zero` 同一判断），或日合计超出 float8 时省略。因此云端可以只带 `heatmapRequests` 而不带 `heatmapCost`，读者对两个字段分别判断是否可用；`heatmap` 为空对象时两者都是空对象。
+- 旧云端（未部署该迁移）不带这两个字段，读者按缺失处理，规则同上。
 
 ### 2.7 按账号（网关供应商）拆分（2026-10-23，可选，仅本机）
 
@@ -425,4 +432,5 @@ v2 内的只增扩展逐条记在这里；`meta.contractVersion` 只在 §7 第 
 - 2026-10-23（Context 构成）：§2.5 本机明细的网关行增加可选 `context`（各部分字节数与条数）；其他来源与云端不带；旧读者忽略；`contractVersion` 仍为 2。
 - 2026-10-23（账号维度）：新增 §2.7 本机可选顶层 `providers`（按网关供应商汇总，只含网关与导入记录）；§2.6 `heatmapCost` 输出保留 6 位小数；云端不带；`contractVersion` 仍为 2。
 - 2026-10-24（平均 Context 构成）：新增 §2.8 本机可选顶层 `contextComposition`（带构成的网关记录的构成与输入合计）；云端不带；旧读者忽略；`contractVersion` 仍为 2。
+- 2026-10-24（云端热力图指标）：§2.6 云端 `get_dashboard_stats_v2` 也输出 `heatmapRequests` / `heatmapCost`（顶层与工具、模型），键规则与本机相同；云端两项各自独立，任一天不可信时整项省略（费用判断与 `dailyCosts` 一致）；新增独立的云端活动节律 RPC，见 `activity-rhythm-cloud-v1`；`contractVersion` 仍为 2。
 - 2026-10-24（明细按账号筛选）：§2.7 本机明细查询增加可选 `providers[]`，非空时回显并进入游标指纹；游标允许负 `id`；云端带非空值时报错；`contractVersion` 仍为 2。

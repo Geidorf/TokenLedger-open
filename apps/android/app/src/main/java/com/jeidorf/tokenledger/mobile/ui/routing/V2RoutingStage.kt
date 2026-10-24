@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.addOutline
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -49,6 +51,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.jeidorf.tokenledger.mobile.LedgerFont
 import com.jeidorf.tokenledger.mobile.LedgerType
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
@@ -65,7 +70,9 @@ import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshots
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
+import com.jeidorf.tokenledger.mobile.ui.foundation.readableOn
 import com.jeidorf.tokenledger.mobile.ui.sources.sourceTileInitials
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 
 /**
@@ -81,6 +88,7 @@ import kotlinx.coroutines.delay
 internal const val RECENT_LIT_MS = 30_000L
 
 private val AGENT_TILE_HEIGHT = 60.dp
+private val AGENT_INITIALS_SIZE = 24.dp
 private val AGENT_GAP = 8.dp
 private val AGENT_MAX_WIDTH = 96.dp
 private val HUB_GAP = 34.dp
@@ -93,6 +101,8 @@ private val TARGET_INSET = 22.dp
 private val GUTTER_X = 8.dp
 
 private const val SEGMENT_MS = 700
+/** 虚线流动只要 30 帧就看起来连贯；不跟着 90/120 Hz 屏逐帧重画。 */
+internal const val DASH_FRAME_MS = 33L
 private const val SEGMENT_GAP_MS = 250L
 private const val MAX_PLAY_MS = 4_000
 
@@ -104,9 +114,29 @@ internal fun routingAgentColor(palette: MobileV2Palette, index: Int): Color {
     return chart.getOrElse(slots[index]) { palette.muted }
 }
 
+/**
+ * 大字号时块要跟着文字长高：[base] 是 100% 字号下的块高，[textNow] 是此刻字号下块里文字占的高度，
+ * [textAtBase] 是同样文字在 100% 下的高度。只长不缩，100% 时与原版面逐像素一致。
+ */
+internal fun grownBlockHeight(base: Float, textNow: Float, textAtBase: Float): Float =
+    base + (textNow - textAtBase).coerceAtLeast(0f)
+
+/** 此刻字号下块里各行文字的高度（像素），以及它们在 100% 字号下的高度。 */
+private data class StageText(
+    val agentNow: Float,
+    val agentBase: Float,
+    val hubNow: Float,
+    val hubBase: Float,
+    val targetNow: Float,
+    val targetBase: Float
+)
+
 private data class StageGeometry(
     val width: Float,
     val height: Float,
+    val agentTileHeight: Float,
+    val hubHeight: Float,
+    val targetRowHeight: Float,
     val agentCenters: List<Offset>,
     val agentWidth: Float,
     val hubTop: Float,
@@ -118,25 +148,31 @@ private data class StageGeometry(
     val gutterX: Float
 )
 
-private fun stageGeometry(widthPx: Float, agents: Int, targets: Int, px: (Dp) -> Float): StageGeometry {
+private fun stageGeometry(widthPx: Float, agents: Int, targets: Int, text: StageText, px: (Dp) -> Float): StageGeometry {
+    val agentTileHeight = grownBlockHeight(px(AGENT_TILE_HEIGHT), text.agentNow, text.agentBase)
+    val hubHeight = grownBlockHeight(px(HUB_HEIGHT), text.hubNow, text.hubBase)
+    val targetRowHeight = grownBlockHeight(px(TARGET_ROW_HEIGHT), text.targetNow, text.targetBase)
     val agentCount = agents.coerceAtLeast(1)
     // Agent 少时块不拉满整行，按最大宽度居中排。
     val agentWidth = minOf((widthPx - px(AGENT_GAP) * (agentCount - 1)) / agentCount, px(AGENT_MAX_WIDTH))
     val agentRowStart = (widthPx - agentWidth * agentCount - px(AGENT_GAP) * (agentCount - 1)) / 2f
     val agentCenters = List(agents) { index ->
-        Offset(agentRowStart + index * (agentWidth + px(AGENT_GAP)) + agentWidth / 2f, px(AGENT_TILE_HEIGHT))
+        Offset(agentRowStart + index * (agentWidth + px(AGENT_GAP)) + agentWidth / 2f, agentTileHeight)
     }
-    val hubTop = px(AGENT_TILE_HEIGHT) + px(HUB_GAP)
-    val hubBottom = hubTop + px(HUB_HEIGHT)
+    val hubTop = agentTileHeight + px(HUB_GAP)
+    val hubBottom = hubTop + hubHeight
     val targetTop = hubBottom + px(TARGET_TOP_GAP)
-    val rowStep = px(TARGET_ROW_HEIGHT) + px(TARGET_ROW_GAP)
+    val rowStep = targetRowHeight + px(TARGET_ROW_GAP)
     val targetCenters = List(targets) { index ->
-        Offset(px(TARGET_INSET), targetTop + index * rowStep + px(TARGET_ROW_HEIGHT) / 2f)
+        Offset(px(TARGET_INSET), targetTop + index * rowStep + targetRowHeight / 2f)
     }
     val height = if (targets == 0) hubBottom else targetTop + targets * rowStep - px(TARGET_ROW_GAP)
     return StageGeometry(
         width = widthPx,
         height = height,
+        agentTileHeight = agentTileHeight,
+        hubHeight = hubHeight,
+        targetRowHeight = targetRowHeight,
         agentCenters = agentCenters,
         agentWidth = agentWidth,
         hubTop = hubTop,
@@ -168,6 +204,12 @@ private fun targetWire(g: StageGeometry, index: Int): Path = Path().apply {
 /** 播放中的一条流：第几段、段内进度、这段的颜色与是否失败回弹。 */
 private data class PlayingDot(val path: Path, val progress: Float, val color: Color, val bounce: Boolean)
 
+/** 一套几何下的全部连线，几何不变就一直复用，不在每帧里重新建 Path。 */
+private class StageWires(g: StageGeometry, agents: Int, targets: Int) {
+    val agents: List<Path> = List(agents) { agentWire(g, it) }
+    val targets: List<Path> = List(targets) { targetWire(g, it) }
+}
+
 @Composable
 internal fun V2RoutingStage(
     palette: MobileV2Palette,
@@ -182,8 +224,10 @@ internal fun V2RoutingStage(
     val latest = scene.flows.firstOrNull { it.phase != RoutingFlowPhase.Inflight }
         ?.takeIf { nowServerMs - it.atServerMs in 0 until RECENT_LIT_MS }
     val inflight = scene.flows.filter { it.phase == RoutingFlowPhase.Inflight }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     // 虚线流动用帧时钟推相位（0.7 秒一周期），不经 tween：关动画时根本不跑。
+    // 每 DASH_FRAME_MS 才推一次，高刷屏上也只重画 30 次/秒。
     var dash by remember { mutableFloatStateOf(0f) }
     val animateDash = motion && inflight.isNotEmpty()
     LaunchedEffect(animateDash) {
@@ -191,6 +235,7 @@ internal fun V2RoutingStage(
         if (!animateDash) return@LaunchedEffect
         while (true) {
             withFrameMillis { ms -> dash = -18f * ((ms % SEGMENT_MS) / SEGMENT_MS.toFloat()) }
+            delay(DASH_FRAME_MS)
         }
     }
 
@@ -198,34 +243,46 @@ internal fun V2RoutingStage(
     val tracker = remember { RoutingPlaybackTracker() }
     var playing by remember { mutableStateOf<Pair<RoutingFlow, Float>?>(null) }
     val queue = remember { RoutingPlaybackQueue() }
+    // 有新流入队时叫醒播放循环；队列空时循环挂起等它，不再每 250 ms 醒一次查队列。
+    val wake = remember { Channel<Unit>(Channel.CONFLATED) }
     val currentNow by rememberUpdatedState(nowServerMs)
     val currentScene by rememberUpdatedState(scene)
     // 键里带上阶段：同一个在途请求变成已结束时也要重新判断要不要播放。
     val flowIds = scene.flows.joinToString(",") { "${it.id}:${it.phase}" }
     LaunchedEffect(flowIds, scene.playable) {
         val fresh = tracker.takeNew(scene, currentNow)
-        if (motion) queue.offer(fresh)
+        if (motion && fresh.isNotEmpty()) {
+            queue.offer(fresh)
+            wake.trySend(Unit)
+        }
     }
-    LaunchedEffect(motion) {
+    LaunchedEffect(motion, lifecycleOwner) {
         if (!motion) return@LaunchedEffect
-        val progress = Animatable(0f)
-        while (true) {
-            val next = queue.next(currentScene, currentNow)
-            if (next == null) {
-                delay(250L)
-                continue
-            }
-            val segments = 1 + next.hops.size
-            val perSegment = minOf(SEGMENT_MS.toLong(), MAX_PLAY_MS / segments.toLong()).toInt()
-            for (segment in 0 until segments) {
-                progress.snapTo(0f)
-                playing = next to segment.toFloat()
-                progress.animateTo(1f, ledgerTween(perSegment, motion, easing = LinearEasing)) {
-                    playing = next to (segment + value)
+        // 应用退到后台就停下，回到前台再接着播队列里还能播的。
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val progress = Animatable(0f)
+            try {
+                while (true) {
+                    val next = queue.next(currentScene, currentNow)
+                    if (next == null) {
+                        wake.receive()
+                        continue
+                    }
+                    val segments = 1 + next.hops.size
+                    val perSegment = minOf(SEGMENT_MS.toLong(), MAX_PLAY_MS / segments.toLong()).toInt()
+                    for (segment in 0 until segments) {
+                        progress.snapTo(0f)
+                        playing = next to segment.toFloat()
+                        progress.animateTo(1f, ledgerTween(perSegment, motion, easing = LinearEasing)) {
+                            playing = next to (segment + value)
+                        }
+                        delay(SEGMENT_GAP_MS.coerceAtMost(perSegment / 2L))
+                    }
+                    playing = null
                 }
-                delay(SEGMENT_GAP_MS.coerceAtMost(perSegment / 2L))
+            } finally {
+                playing = null
             }
-            playing = null
         }
     }
 
@@ -234,10 +291,25 @@ internal fun V2RoutingStage(
         val px = { dp: Dp -> with(density) { dp.toPx() } }
         val widthPx = with(density) { maxWidth.toPx() }
         val g = remember(widthPx, scene.agents.size, scene.targets.size, density) {
-            stageGeometry(widthPx, scene.agents.size, scene.targets.size, px)
+            val caption = with(density) { LedgerType.caption.lineHeight.toPx() }
+            val title = with(density) { LedgerType.titleS.lineHeight.toPx() }
+            val label = with(density) { LedgerType.label.lineHeight.toPx() }
+            val text = StageText(
+                agentNow = maxOf(px(AGENT_INITIALS_SIZE), caption) + caption,
+                agentBase = px(AGENT_INITIALS_SIZE) + px(16.dp),
+                hubNow = title + caption,
+                hubBase = px(20.dp) + px(16.dp),
+                targetNow = label,
+                targetBase = px(20.dp)
+            )
+            stageGeometry(widthPx, scene.agents.size, scene.targets.size, text, px)
         }
+        val wires = remember(g) { StageWires(g, scene.agents.size, scene.targets.size) }
+        val measure = remember { PathMeasure() }
         val heightDp = with(density) { g.height.toDp() }
         val agentWidthDp = with(density) { g.agentWidth.toDp() }
+        val agentTileHeightDp = with(density) { g.agentTileHeight.toDp() }
+        val targetRowHeightDp = with(density) { g.targetRowHeight.toDp() }
         val summary = stageSummary(scene)
 
         Box(
@@ -249,45 +321,43 @@ internal fun V2RoutingStage(
             Canvas(Modifier.fillMaxSize()) {
                 val idle = palette.divider
                 val thin = Stroke(width = 1.25.dp.toPx(), cap = StrokeCap.Round)
-                val flowing = { color: Color, path: Path ->
-                    drawPath(
-                        path,
-                        color,
-                        style = Stroke(
-                            width = 1.5.dp.toPx(),
-                            cap = StrokeCap.Round,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 4.dp.toPx()), dash.dp.toPx())
-                        )
-                    )
-                }
-                scene.agents.indices.forEach { drawPath(agentWire(g, it), idle, style = thin) }
-                scene.targets.indices.forEach { drawPath(targetWire(g, it), idle, style = thin) }
+                val lit = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+                val failedLit = Stroke(
+                    width = 1.5.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx()))
+                )
+                wires.agents.forEach { drawPath(it, idle, style = thin) }
+                wires.targets.forEach { drawPath(it, idle, style = thin) }
 
                 // 最近结束的一条：按结果点亮。
                 latest?.let { flow ->
-                    agentIndex[flow.agent]?.let { drawPath(agentWire(g, it), agentColor(flow.agent), style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round)) }
+                    agentIndex[flow.agent]?.let { drawPath(wires.agents[it], agentColor(flow.agent), style = lit) }
                     flow.hops.forEach { hop ->
                         val index = targetIndex[hop.target] ?: return@forEach
                         val ok = hop.outcome == RoutingHopOutcome.Ok
                         drawPath(
-                            targetWire(g, index),
+                            wires.targets[index],
                             if (ok) palette.tokens.success else palette.tokens.danger,
-                            style = Stroke(
-                                width = 1.5.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                pathEffect = if (ok) null else PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx()))
-                            )
+                            style = if (ok) lit else failedLit
                         )
                     }
                 }
-                // 在途：两段虚线流动。
-                inflight.forEach { flow ->
-                    val color = agentColor(flow.agent)
-                    agentIndex[flow.agent]?.let { flowing(color, agentWire(g, it)) }
-                    flow.hops.forEach { hop -> targetIndex[hop.target]?.let { flowing(color, targetWire(g, it)) } }
+                // 在途：两段虚线流动。相位每帧都变，所以只有这一个 Stroke 按帧新建，所有在途连线共用。
+                if (inflight.isNotEmpty()) {
+                    val flowing = Stroke(
+                        width = 1.5.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 4.dp.toPx()), dash.dp.toPx())
+                    )
+                    inflight.forEach { flow ->
+                        val color = agentColor(flow.agent)
+                        agentIndex[flow.agent]?.let { drawPath(wires.agents[it], color, style = flowing) }
+                        flow.hops.forEach { hop -> targetIndex[hop.target]?.let { drawPath(wires.targets[it], color, style = flowing) } }
+                    }
                 }
                 playing?.let { (flow, position) ->
-                    playingDot(g, flow, position, agentIndex, targetIndex, agentColor(flow.agent), palette)?.let { drawDot(it) }
+                    playingDot(wires, flow, position, agentIndex, targetIndex, agentColor(flow.agent), palette)?.let { drawDot(it, measure) }
                 }
             }
 
@@ -300,7 +370,7 @@ internal fun V2RoutingStage(
                     modifier = Modifier
                         .offset(x = with(density) { (center.x - g.agentWidth / 2f).toDp() })
                         .width(agentWidthDp)
-                        .height(AGENT_TILE_HEIGHT)
+                        .height(agentTileHeightDp)
                 )
             }
             V2RoutingHub(
@@ -313,7 +383,7 @@ internal fun V2RoutingStage(
                         y = with(density) { g.hubTop.toDp() }
                     )
                     .width(with(density) { g.hubWidth.toDp() })
-                    .height(HUB_HEIGHT)
+                    .height(with(density) { g.hubHeight.toDp() })
             )
             scene.targets.forEachIndexed { index, node ->
                 val center = g.targetCenters[index]
@@ -325,10 +395,10 @@ internal fun V2RoutingStage(
                     modifier = Modifier
                         .offset(
                             x = TARGET_INSET,
-                            y = with(density) { (center.y - px(TARGET_ROW_HEIGHT) / 2f).toDp() }
+                            y = with(density) { (center.y - g.targetRowHeight / 2f).toDp() }
                         )
                         .width(with(density) { (g.width - g.targetLeft).toDp() })
-                        .height(TARGET_ROW_HEIGHT)
+                        .height(targetRowHeightDp)
                 )
             }
         }
@@ -336,7 +406,7 @@ internal fun V2RoutingStage(
 }
 
 private fun playingDot(
-    g: StageGeometry,
+    wires: StageWires,
     flow: RoutingFlow,
     position: Float,
     agentIndex: Map<String, Int>,
@@ -349,16 +419,15 @@ private fun playingDot(
     if (segment == 0) {
         // 折叠进 +N 的 Agent 从折叠节点出发。
         val index = agentIndex[flow.agent] ?: agentIndex[RoutingSnapshots.FOLDED_AGENTS] ?: return null
-        return PlayingDot(agentWire(g, index), progress, color, bounce = false)
+        return PlayingDot(wires.agents[index], progress, color, bounce = false)
     }
     val hop = flow.hops.getOrNull(segment - 1) ?: return null
     val index = targetIndex[hop.target] ?: targetIndex[RoutingSnapshots.FOLDED_TARGETS] ?: return null
     val ok = hop.outcome == RoutingHopOutcome.Ok || hop.outcome == RoutingHopOutcome.Pending
-    return PlayingDot(targetWire(g, index), progress, if (ok) color else palette.tokens.danger, bounce = !ok)
+    return PlayingDot(wires.targets[index], progress, if (ok) color else palette.tokens.danger, bounce = !ok)
 }
 
-private fun DrawScope.drawDot(dot: PlayingDot) {
-    val measure = PathMeasure()
+private fun DrawScope.drawDot(dot: PlayingDot, measure: PathMeasure) {
     measure.setPath(dot.path, false)
     val length = measure.length
     if (length <= 0f) return
@@ -400,14 +469,15 @@ private fun V2RoutingAgentTile(palette: MobileV2Palette, node: RoutingNode, colo
     ) {
         Box(
             Modifier
-                .size(24.dp)
+                .defaultMinSize(minWidth = AGENT_INITIALS_SIZE, minHeight = AGENT_INITIALS_SIZE)
                 .background(if (palette.isEInk || folded) Color.Transparent else color.copy(alpha = 0.18f), RoundedCornerShape(LedgerRadius.md))
                 .then(if (palette.isEInk) Modifier.border(LedgerStroke.hairline, palette.text, RoundedCornerShape(LedgerRadius.md)) else Modifier),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 if (folded) node.label else sourceTileInitials(node.label),
-                color = if (palette.isEInk || folded) palette.text else color,
+                // 身份色本身当小字只有 2.8～4.3:1，按底色调到至少 4.5:1，色相不变。
+                color = if (palette.isEInk || folded) palette.text else readableOn(color, color.copy(alpha = 0.18f).compositeOver(palette.surfaceContainerLow), palette.text),
                 fontSize = LedgerFont.caption,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
