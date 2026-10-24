@@ -1,5 +1,9 @@
 package com.jeidorf.tokenledger.mobile.ui.me
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +43,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -79,6 +84,10 @@ import com.jeidorf.tokenledger.mobile.LocalToggleCostMask
 import com.jeidorf.tokenledger.mobile.QuotaUiState
 import com.jeidorf.tokenledger.mobile.StatsData
 import com.jeidorf.tokenledger.mobile.TokenDisplayMode
+import com.jeidorf.tokenledger.mobile.budget.BudgetAlertNotifier
+import com.jeidorf.tokenledger.mobile.budget.BudgetAlertScheduler
+import com.jeidorf.tokenledger.mobile.budget.BudgetAlertStore
+import com.jeidorf.tokenledger.mobile.budget.BudgetAlertWorker
 import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerSpace
@@ -501,6 +510,8 @@ private fun V2MePreferencesCard(
             actions.forceLandscape,
             actions.onForceLandscapeChange
         )
+        V2MeDivider(palette)
+        V2MeBudgetAlertRow(palette)
     }
     when (dialog) {
         V2MePreferenceDialog.Appearance -> V2MeChoiceDialog(
@@ -521,6 +532,60 @@ private fun V2MePreferencesCard(
             onSelect = { dialog = null; onTokenDisplayModeChange(it) }
         )
         null -> Unit
+    }
+}
+
+/** 「预算提醒」开关下的说明：没开时说清从哪来，开了说清现在收不收得到。 */
+internal fun budgetAlertMeta(enabled: Boolean, canPost: Boolean, lastResult: String?): String = when {
+    !enabled -> "桌面在「预算提醒」打开「同步到手机」后，接近或超出预算时推通知"
+    !canPost -> "通知权限未开，请在系统设置里允许 TokenLedger 发通知"
+    lastResult == BudgetAlertWorker.RESULT_SIGNED_OUT -> "需要先登录，与桌面用同一账号"
+    lastResult == BudgetAlertWorker.RESULT_NOT_DEPLOYED -> "云端尚未部署预算同步，部署后自动开始"
+    lastResult == BudgetAlertWorker.RESULT_NO_DESKTOP -> "还没有桌面同步预算；在桌面打开「同步到手机」"
+    lastResult == BudgetAlertWorker.RESULT_FAILED -> "读取失败，稍后自动重试"
+    else -> "约每 30 分钟检查一次，每条预算每个周期接近与超出各提醒一次"
+}
+
+@Composable
+private fun V2MeBudgetAlertRow(palette: MobileV2Palette) {
+    val context = LocalContext.current
+    val preview = LocalInspectionMode.current
+    val store = remember(context, preview) { if (preview) null else BudgetAlertStore(context) }
+    var enabled by remember(store) { mutableStateOf(store?.enabled == true) }
+    var canPost by remember(store) { mutableStateOf(store != null && BudgetAlertNotifier.canPost(context)) }
+    var lastResult by remember(store) { mutableStateOf(store?.lastResult) }
+    // 后台读取写回结果时刷新说明，不必离开页面再回来。
+    DisposableEffect(store) {
+        val unsubscribe = store?.observe { lastResult = store.lastResult }
+        onDispose { unsubscribe?.invoke() }
+    }
+    // 从系统设置开关通知或渠道回来时重新判断能否推送。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(store, lifecycleOwner) {
+        if (store == null) return@LaunchedEffect
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            canPost = BudgetAlertNotifier.canPost(context)
+        }
+    }
+    val apply = { on: Boolean ->
+        store?.enabled = on
+        enabled = on
+        canPost = store != null && BudgetAlertNotifier.canPost(context)
+        BudgetAlertScheduler.sync(context)
+        if (on) BudgetAlertScheduler.runNow(context)
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { apply(true) }
+    V2MeSwitchRow(
+        palette,
+        "预算提醒",
+        budgetAlertMeta(enabled, canPost, lastResult),
+        enabled
+    ) { on ->
+        if (on && !BudgetAlertNotifier.canPost(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            apply(on)
+        }
     }
 }
 

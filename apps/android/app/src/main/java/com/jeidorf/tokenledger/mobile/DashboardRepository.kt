@@ -18,7 +18,11 @@ interface DashboardDataSource {
 
     suspend fun activateSession(session: MobileSession, expectedGeneration: Long) = persistSession(session)
 
-    fun revokeSessionNow() = Unit
+    /** Returns the session that was committed before the local tombstone, if any. */
+    fun revokeSessionNow(): MobileSession? = null
+
+    /** Best effort: ends the server session after logout. Callers ignore its failures. */
+    suspend fun revokeRemoteSession(session: MobileSession) = Unit
 
     suspend fun clearSession()
 
@@ -97,7 +101,9 @@ class DashboardRepository(context: Context) : DashboardDataSource {
         if (!sessionAuthority.activate(session, expectedGeneration)) throw SessionRevokedException()
     }
 
-    override fun revokeSessionNow() { sessionAuthority.revokeNow() }
+    override fun revokeSessionNow(): MobileSession? = sessionAuthority.revokeNow()
+
+    override suspend fun revokeRemoteSession(session: MobileSession) = gateway.revokeSession(session)
 
     override suspend fun clearSession() {
         withContext(Dispatchers.IO) {

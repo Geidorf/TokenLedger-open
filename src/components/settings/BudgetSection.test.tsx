@@ -196,6 +196,9 @@ describe('BudgetSection', () => {
       render(<BudgetSection />);
       await screen.findByRole('meter');
       const statusCalls = () => vi.mocked(invoke).mock.calls.filter(([name]) => name === 'get_budget_status').length;
+      // 首次挂载读一次，设置读回后 revision 变了再读一次；meter 可能在第二次读之前就出现，
+      // 先等这两次初始读取落定，避免慢 runner 上把第二次初始读取误算成可见性触发的重读。
+      await waitFor(() => expect(statusCalls()).toBe(2));
       const before = statusCalls();
       await act(async () => {
         document.dispatchEvent(new Event('visibilitychange'));

@@ -286,7 +286,7 @@ pub(crate) fn kimi_desktop_wire_candidates() -> Vec<PathBuf> {
     } else if cfg!(target_os = "macos") {
         home.join("Library/Application Support/kimi-desktop")
     } else {
-        home.join(".config/kimi-desktop")
+        super::helpers::xdg_config_home().join("kimi-desktop")
     };
     vec![base.join(suffix)]
 }

@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ScanStartupSection, parseExtraDirs, scanFrequencyHint } from "./ScanStartupSection";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+const invokeMock = vi.mocked(invoke);
 
 const props = {
   appSettings: { scan_interval_secs: 900 },
@@ -11,6 +15,31 @@ const props = {
 } as unknown as React.ComponentProps<typeof ScanStartupSection>;
 
 describe("ScanStartupSection", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockRejectedValue(new Error("unknown command"));
+  });
+
+  it("后端说本平台支持（Linux）时显示开机自动启动开关并保存", async () => {
+    invokeMock.mockResolvedValue(true);
+    const onSettingChange = vi.fn();
+    render(<ScanStartupSection {...props}
+      appSettings={{ ...props.appSettings, autostart_enabled: false }}
+      onSettingChange={onSettingChange}
+    />);
+    fireEvent.click(await screen.findByRole("switch", { name: "开机自动启动" }));
+    expect(invokeMock).toHaveBeenCalledWith("autostart_supported");
+    expect(onSettingChange).toHaveBeenCalledExactlyOnceWith("autostart_enabled", true);
+    expect(screen.queryByText("应用内暂不支持")).not.toBeInTheDocument();
+  });
+
+  it("后端返回非 true 时仍显示不支持", async () => {
+    invokeMock.mockResolvedValue(false);
+    render(<ScanStartupSection {...props} />);
+    await Promise.resolve();
+    expect(screen.getByText("应用内暂不支持")).toBeVisible();
+  });
+
   it.each([false, true])("旧自动启动配置为 %s 时也明确说明不可用，不提交无效操作", (enabled) => {
     const onSettingChange = vi.fn();
     render(<ScanStartupSection {...props}

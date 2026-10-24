@@ -1,6 +1,8 @@
 use super::antigravity::*;
 use super::claude::*;
+use super::cline::*;
 use super::codex::*;
+use super::copilot::*;
 use super::dsh::*;
 use super::gemini::*;
 use super::grok::*;
@@ -9,6 +11,7 @@ use super::kimi::*;
 use super::minimax::*;
 use super::other_tools::*;
 use super::pi::*;
+use super::qwen::*;
 use super::reasonix::*;
 use super::types::{
     AntigravityRecordProvenance, AntigravityUsageProvenance, CoordinatedScanOutcome, LogRecord,
@@ -97,6 +100,33 @@ where
     (result, true)
 }
 
+/// 单飞只协调本进程内的线程；桌面端与命令行是两个进程，各自读到的源快照
+/// 可能新旧颠倒地提交（例如流式更新中的 OpenCode/Kilo 行被旧值覆盖）。所以
+/// 从读源到落库整段再加一把跨进程的文件锁，持有期间另一个进程的扫描排队等待。
+/// 锁文件打不开（只读目录等）时照旧扫描，不让锁把扫描本身拦下。
+pub(crate) fn lock_scan_across_processes(db_path: &Path) -> Option<std::fs::File> {
+    let lock_path = db_path.with_extension("scan.lock");
+    let file = match std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+    {
+        Ok(file) => file,
+        Err(error) => {
+            log::warn!("scan lock unavailable, scanning without it: {error}");
+            return None;
+        }
+    };
+    match file.lock() {
+        Ok(()) => Some(file),
+        Err(error) => {
+            log::warn!("scan lock failed, scanning without it: {error}");
+            None
+        }
+    }
+}
+
 /// Runs at most one filesystem scan for a database at a time. Concurrent
 /// scheduler and UI refreshes wait for and reuse the same result.
 pub fn run_scan_singleflight(
@@ -104,6 +134,7 @@ pub fn run_scan_singleflight(
     options: &ScanOptions,
 ) -> std::result::Result<CoordinatedScanOutcome, String> {
     let (outcome, is_leader) = run_scan_singleflight_with(db_path, || {
+        let _cross_process = lock_scan_across_processes(db_path);
         run_scan_with_options(db_path, options).map_err(|error| error.to_string())
     });
     Ok(CoordinatedScanOutcome {
@@ -142,6 +173,11 @@ pub(crate) fn model_discovery_key(model: &str) -> Option<String> {
         "gemini-unknown",
         "antigravity-unknown",
         "pi-unknown",
+        "qwen-unknown",
+        "copilot-unknown",
+        "cline-unknown",
+        "roo-unknown",
+        "kilocode-unknown",
     ];
     if PLACEHOLDERS.contains(&key.as_str())
         || key == "auto"
@@ -228,6 +264,9 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         kimi_checkpoints,
         kimidesktop_checkpoints,
         pi_checkpoints,
+        qwen_checkpoints,
+        copilot_checkpoints,
+        cline_checkpoints,
     ) = {
         let conn = crate::db::get_connection(db_path)?;
         (
@@ -242,6 +281,9 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
             crate::db::load_scan_checkpoints(&conn, KIMI_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, KIMI_DESKTOP_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, PI_CHECKPOINT_SOURCE_KIND)?,
+            crate::db::load_scan_checkpoints(&conn, QWEN_CODE_CHECKPOINT_SOURCE_KIND)?,
+            crate::db::load_scan_checkpoints(&conn, COPILOT_CLI_CHECKPOINT_SOURCE_KIND)?,
+            crate::db::load_scan_checkpoints(&conn, CLINE_FAMILY_CHECKPOINT_SOURCE_KIND)?,
         )
     };
     let mut pending_cursors = Vec::new();
@@ -279,7 +321,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         scan_opencode_like(
             &mut logs,
             "opencode",
-            ".local/share/opencode/opencode.db",
+            &opencode_like_db_path("opencode"),
             &scan_cursors,
             &mut pending_cursors,
         )
@@ -289,7 +331,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         scan_opencode_like(
             &mut logs,
             "kilo",
-            ".local/share/kilo/kilo.db",
+            &opencode_like_db_path("kilo"),
             &scan_cursors,
             &mut pending_cursors,
         )
@@ -301,10 +343,8 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     // Framework-backed rows in ~/.mavis mirror requests that the native
     // opencode/kilo scanners already cover. Skip them iff the native DB file
     // exists — a stable rule that cannot flip between scan passes.
-    let opencode_db_exists = get_home_dir()
-        .join(".local/share/opencode/opencode.db")
-        .exists();
-    let kilo_db_exists = get_home_dir().join(".local/share/kilo/kilo.db").exists();
+    let opencode_db_exists = opencode_like_db_path("opencode").exists();
+    let kilo_db_exists = opencode_like_db_path("kilo").exists();
     timed_scan_step!(
         "minimax",
         scan_minimax_marvis_incremental(
@@ -366,6 +406,18 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     timed_scan_step!(
         "pi",
         scan_pi(&mut logs, &pi_checkpoints, &mut pending_checkpoints)
+    );
+    timed_scan_step!(
+        "qwen",
+        scan_qwen(&mut logs, &qwen_checkpoints, &mut pending_checkpoints)
+    );
+    timed_scan_step!(
+        "copilot",
+        scan_copilot(&mut logs, &copilot_checkpoints, &mut pending_checkpoints)
+    );
+    timed_scan_step!(
+        "cline",
+        scan_cline_family(&mut logs, &cline_checkpoints, &mut pending_checkpoints)
     );
 
     let mut outcome = timed_scan_step!(

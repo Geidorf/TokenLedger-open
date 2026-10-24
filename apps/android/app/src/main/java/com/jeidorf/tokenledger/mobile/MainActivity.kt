@@ -70,6 +70,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.jeidorf.tokenledger.mobile.budget.BudgetAlertScheduler
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2Palette
 import com.jeidorf.tokenledger.mobile.ui.onboarding.V2LoginIntro
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        BudgetAlertScheduler.sync(this)
         setContent {
             val eInkDisplay = remember {
                 isLikelyEInkDisplay(readAndroidDisplayIdentity(applicationContext))
@@ -219,6 +221,8 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         dashboardViewModel.onForeground()
+        // 每次回到前台都读一次预算状态，不只是冷启动（budget-snapshot-v1 §5）。
+        BudgetAlertScheduler.runNow(this)
         if (!clockReceiverRegistered) {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_DATE_CHANGED)
