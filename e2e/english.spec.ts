@@ -84,6 +84,24 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('供应商页与 Agent 页：列表、编辑表单与健康度是英文', async ({ page }) => {
+    await openEnglish(page, 'providers');
+    await expect(page.getByText(/^3 enabled · 1 without a key/)).toBeVisible();
+    await page.getByRole('button', { name: /^DeepSeek/ }).first().click();
+    const sheet = page.getByRole('dialog', { name: /DeepSeek/ });
+    await expect(sheet.getByText('Upstream protocol')).toBeVisible();
+    await expect(sheet.getByRole('region', { name: 'DeepSeek health' })).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Delete provider' })).toBeVisible();
+    await sheet.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Add provider' }).click();
+    await expect(page.getByText('Pick a preset and paste a key')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'China vendors' })).toBeVisible();
+    await openEnglish(page, 'agents');
+    await expect(page.getByText(/models and routing groups · agent configs get only the gateway URL/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Setup steps' }).first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('网关页：接入说明、模型目录与最近请求是英文', async ({ page }) => {
     await openEnglish(page, 'gateway');
     await expect(page.getByRole('heading', { name: /^Connect/ })).toBeVisible();
