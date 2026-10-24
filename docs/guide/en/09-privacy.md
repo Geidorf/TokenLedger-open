@@ -34,6 +34,8 @@ Everything goes to the Supabase project you entered in **Settings › Cloud acco
 
 The device ID is kept in the `device-id` file in the app data folder, next to the local ledger. Older versions told devices apart by the computer's host name. After you update, the first sync of each cloud account moves the rows this computer uploaded under its host name to the device ID as they are, then deletes the rows under the host name, so no history is lost or counted twice and the computer's name no longer appears in the cloud. In device pickers this computer shows as **This device (tl-…)**.
 
+If several computers share a host name, older versions mixed their rows under that one name. After the update, that shared history goes to whichever computer syncs first; from then on each computer is counted separately.
+
 If you delete the app data folder (with the ledger), this computer gets a new device ID. Rows already synced under the old ID stay in the cloud and count as another device.
 
 ## Addresses TokenLedger connects to
