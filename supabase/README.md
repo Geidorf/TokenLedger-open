@@ -4,7 +4,7 @@
 
 ## 迁移清单
 
-`supabase/migrations/` 共 25 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
+`supabase/migrations/` 共 26 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
 
 | 迁移 | 内容 |
 |---|---|
@@ -33,6 +33,35 @@
 | `20261010170540_quota_recovery_metadata_and_write_guards` | 额度清空恢复元数据与写入防护 |
 | `20261024010000_routing_snapshot_sync` | 实时路由快照中转（Android 动态壁纸） |
 | `20261024030000_cloud_heatmap_metrics_and_activity_rhythm` | 云端热力图逐日记录数与费用、活动节律 RPC |
+| `20261024050000_usage_dimensions_cloud_v1` | 云端用量维度：会话、账号白名单、Context 构成（保留 90 天） |
+
+## 2026-10-24 云端用量维度：会话、账号、Context 构成（usage-dimensions-cloud-v1）
+
+迁移 `migrations/20261024050000_usage_dimensions_cloud_v1.sql`，契约 `docs/contracts/usage-dimensions-cloud-v1.md` §2–§4：
+- 新表（`private`，客户端无表权限，RLS 开启并强制，仅 select-own 策略作纵深防御，`user_id` 级联删除到 `auth.users`）：`usage_session_days`、`usage_provider_days`、`usage_context_days`，每用户每设备每本地日一组行。
+- 新 RPC（仅 `authenticated`，所有者为 `auth.uid()`）：`sync_usage_dimensions_v1(jsonb)` 按「设备 × 日 × 维度」整体替换（严格校验、账号名白名单、日期窗口为 UTC 今天 −90 到 +1 天，失败为 22023 `usage_dimensions_<原因>`，顺带删除本人过期行）；`clear_usage_dimension_v1(text)` 删除本人某一维度在所有设备上的行；`get_usage_dimensions_v1(jsonb)` 复用 Stats v2 查询校验，返回会话前 100、账号拆分与 Context 构成，带模型筛选或搜索时三项为 `filtered`，带工具筛选时账号与 Context 为 `filtered`。
+- 保留：读取只看最近 90 天；`pg_cron` 任务 `tokenledger-usage-dimensions-daily-purge`（每天 03:23 UTC）调用 `private.purge_expired_usage_dimensions_v1()` 删除所有用户的过期行。
+- 回归：`tests/usage_dimensions_cloud_regression.sql`（已接入 `supabase:verify:release`），`release_readiness_regression.sql` 登记新签名。
+- 部署：`supabase db push`。桌面三个开关默认关闭，旧客户端不调用这些 RPC，不受影响；桌面在 RPC 缺失（PGRST202）时标为「云端未部署」。
+- 回滚（会删除已上传的三个维度数据；桌面开关保持关闭即停止上传）：
+
+  ```sql
+  select cron.unschedule('tokenledger-usage-dimensions-daily-purge');
+  drop function public.sync_usage_dimensions_v1(jsonb),
+    public.clear_usage_dimension_v1(text),
+    public.get_usage_dimensions_v1(jsonb),
+    private.purge_expired_usage_dimensions_v1(),
+    private.validate_usage_dimension_v1(text, jsonb, date),
+    private.usage_dimensions_day_date_v1(jsonb, date),
+    private.usage_dimensions_clock_ok_v1(jsonb),
+    private.usage_dimensions_text_ok_v1(jsonb, integer, boolean),
+    private.usage_dimensions_cost_ok_v1(jsonb),
+    private.usage_dimensions_count_ok_v1(jsonb, bigint),
+    private.usage_dimensions_coverage_start_v1(),
+    private.usage_dimensions_identity_v1(),
+    private.usage_dimensions_fail_v1(text);
+  drop table private.usage_session_days, private.usage_provider_days, private.usage_context_days;
+  ```
 
 ## 2026-10-24 云端热力图逐日记录数与费用、活动节律（activity-rhythm-cloud-v1）
 

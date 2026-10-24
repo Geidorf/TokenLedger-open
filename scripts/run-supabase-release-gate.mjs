@@ -356,6 +356,10 @@ psql(container, {
   label: 'Cloud heatmap record counts/costs and activity rhythm RPC, filters and grants regression',
 });
 psql(container, {
+  file: 'supabase/tests/usage_dimensions_cloud_regression.sql',
+  label: 'Cloud usage dimensions (sessions, providers, context) sync, retention, reads and RLS regression',
+});
+psql(container, {
   file: 'supabase/tests/release_readiness_regression.sql',
   label: 'Release security, signature compatibility and EXPLAIN regression',
 });
