@@ -148,7 +148,13 @@ impl Prober {
             return;
         }
         let list = results.by_provider.entry(provider.to_string()).or_default();
-        list.push_front(result);
+        // Overlapping rounds (a click during a timed one) can finish out of
+        // order; keep newest first by probe time, not by arrival.
+        let at = list
+            .iter()
+            .position(|kept| kept.ts <= result.ts)
+            .unwrap_or(list.len());
+        list.insert(at, result);
         list.truncate(KEEP);
     }
 
@@ -228,7 +234,7 @@ pub async fn probe(
     url: Url,
 ) -> ProbeResult {
     let started = Instant::now();
-    let ts = chrono::Utc::now().to_rfc3339();
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let done = |status: Option<u16>, code: &'static str, error: Option<String>| ProbeResult {
         ts: ts.clone(),
         ok: code == "answered",
@@ -367,7 +373,21 @@ mod tests {
             prober.results().is_empty(),
             "a round started before turning off cannot write back"
         );
-        prober.record(prober.generation(), "a", result(true));
+        let at = |ts: &str| ProbeResult {
+            ts: ts.into(),
+            ..result(true)
+        };
+        let generation = prober.generation();
+        prober.record(generation, "a", at("2026-10-24T05:00:02.000Z"));
+        prober.record(generation, "a", at("2026-10-24T05:00:01.000Z"));
+        assert_eq!(
+            prober.results()["a"]
+                .iter()
+                .map(|r| r.ts.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2026-10-24T05:00:02.000Z", "2026-10-24T05:00:01.000Z"],
+            "a late older result goes behind a newer one"
+        );
         prober.forget("a");
         assert!(prober.results().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
