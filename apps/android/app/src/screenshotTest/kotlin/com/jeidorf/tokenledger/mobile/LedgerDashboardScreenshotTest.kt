@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
+import com.jeidorf.tokenledger.mobile.ui.me.V2MePage
 import java.time.Instant
 
 /**
@@ -1293,7 +1294,8 @@ fun LedgerDashboardEInkWidgetScreenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.EInk,
         destination = MobileDestination.Me,
-        ambientMode = AmbientMode.Ledger
+        ambientMode = AmbientMode.Ledger,
+        mePage = V2MePage.Standby
     )
 }
 
@@ -1311,7 +1313,57 @@ fun LedgerDashboardWidgetFontScale200Screenshot() {
     LedgerDashboardPreviewHost(
         appearance = LedgerAppearance.Dark,
         destination = MobileDestination.Me,
-        ambientMode = AmbientMode.Console
+        ambientMode = AmbientMode.Console,
+        mePage = V2MePage.Standby
+    )
+}
+
+@PreviewTest
+@Preview(
+    name = "Me 390x844",
+    device = "spec:width=390dp,height=844dp,dpi=160",
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true,
+    backgroundColor = 0xFF08090C
+)
+@Composable
+fun LedgerDashboardMeScreenshot() {
+    LedgerDashboardPreviewHost(
+        appearance = LedgerAppearance.Dark,
+        destination = MobileDestination.Me
+    )
+}
+
+@PreviewTest
+@Preview(
+    name = "Me light 390x1100",
+    device = "spec:width=390dp,height=1100dp,dpi=160",
+    uiMode = Configuration.UI_MODE_NIGHT_NO,
+    showBackground = true,
+    backgroundColor = 0xFFFFFFFF
+)
+@Composable
+fun LedgerDashboardMeLightScreenshot() {
+    LedgerDashboardPreviewHost(
+        appearance = LedgerAppearance.Light,
+        destination = MobileDestination.Me
+    )
+}
+
+@PreviewTest
+@Preview(
+    name = "Me large text 390x844",
+    device = "spec:width=390dp,height=844dp,dpi=160",
+    fontScale = 2.0f,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true,
+    backgroundColor = 0xFF080A0F
+)
+@Composable
+fun LedgerDashboardMeFontScale200Screenshot() {
+    LedgerDashboardPreviewHost(
+        appearance = LedgerAppearance.Dark,
+        destination = MobileDestination.Me
     )
 }
 
