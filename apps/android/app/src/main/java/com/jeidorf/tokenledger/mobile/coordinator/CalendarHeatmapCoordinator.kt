@@ -346,7 +346,9 @@ internal class CalendarHeatmapCoordinator(
             generatedAt = metadata.generatedAt,
             coverageStart = coverage.first,
             coverageEnd = coverage.second,
-            showingCachedData = showingCachedData
+            showingCachedData = showingCachedData,
+            heatmapRequests = heatmapRequests,
+            heatmapCost = heatmapCost
         )
     }
 

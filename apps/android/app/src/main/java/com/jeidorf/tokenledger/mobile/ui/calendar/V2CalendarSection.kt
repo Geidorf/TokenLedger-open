@@ -43,12 +43,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.jeidorf.tokenledger.mobile.CalendarHeatmapUiState
 import com.jeidorf.tokenledger.mobile.DashboardQuery
+import com.jeidorf.tokenledger.mobile.HeatmapMetric
+import com.jeidorf.tokenledger.mobile.HeatmapValueFormat
 import com.jeidorf.tokenledger.mobile.InsightCalendarAxis
 import com.jeidorf.tokenledger.mobile.InsightCalendarCell
 import com.jeidorf.tokenledger.mobile.InsightCalendarCellAvailability
 import com.jeidorf.tokenledger.mobile.LedgerAppearance
 import com.jeidorf.tokenledger.mobile.LedgerFont
+import com.jeidorf.tokenledger.mobile.LocalCostMaskEnabled
+import com.jeidorf.tokenledger.mobile.LocalDashboardCurrency
 import com.jeidorf.tokenledger.mobile.MonthPanelDay
 import com.jeidorf.tokenledger.mobile.ProvideLedgerPalette
 import com.jeidorf.tokenledger.mobile.RangeKey
@@ -66,9 +71,10 @@ import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerSpace
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
+import com.jeidorf.tokenledger.mobile.ui.foundation.V2Segment
+import com.jeidorf.tokenledger.mobile.ui.foundation.V2SegmentedToggle
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2Palette
 import com.jeidorf.tokenledger.mobile.ui.navigation.V2IconAction
-import com.jeidorf.tokenledger.mobile.v2FormatTokens
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -80,9 +86,26 @@ internal fun V2InsightCalendarCard(
     query: DashboardQuery,
     initialSelectedDate: String? = null,
     globalAxis: InsightCalendarAxis? = null,
-    calendarNotice: String? = null
+    calendarNotice: String? = null,
+    calendarState: CalendarHeatmapUiState? = null,
+    initialMetric: HeatmapMetric = HeatmapMetric.Tokens
 ) {
-    val axis = globalAxis ?: remember(stats, query) { buildInsightCalendarAxis(stats, query) }
+    val costMasked = LocalCostMaskEnabled.current
+    val currency = LocalDashboardCurrency.current
+    var metric by rememberSaveable { mutableStateOf(initialMetric) }
+    // 隐藏费用时连费用色阶也不画：颜色深浅本身就泄露相对金额。
+    val metricOptions = remember(costMasked) {
+        HeatmapMetric.entries.filter { it != HeatmapMetric.Cost || !costMasked }.map { V2Segment(it, it.label, "按${it.label}着色") }
+    }
+    val activeMetric = metric.takeIf { option -> metricOptions.any { it.value == option } } ?: HeatmapMetric.Tokens
+    val format = HeatmapValueFormat(activeMetric, currency)
+    val axis = remember(stats, query, globalAxis, calendarState, format) {
+        when {
+            activeMetric == HeatmapMetric.Tokens && globalAxis != null -> globalAxis
+            calendarState != null -> buildInsightCalendarAxis(calendarState, format)
+            else -> buildInsightCalendarAxis(stats, query, format)
+        }
+    }
     var showDayPicker by rememberSaveable { mutableStateOf(false) }
     var pickerDate by rememberSaveable(initialSelectedDate) { mutableStateOf(initialSelectedDate) }
     // 月面板：点年度小格里的月份打开，月内可信日期点入单日复盘（T10.173 §7.4）；
@@ -92,6 +115,7 @@ internal fun V2InsightCalendarCard(
         Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
             Text("全局用量日历", color = palette.text, fontSize = LedgerFont.body, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
         }
+        V2SegmentedToggle(palette, metricOptions, activeMetric, { metric = it }, Modifier.padding(bottom = 8.dp))
         if (!axis.isTrusted || axis.cells.none(InsightCalendarCell::selectable)) {
             Text(
                 axis.unavailableReason ?: "当前范围没有可信的日期覆盖",
@@ -103,7 +127,7 @@ internal fun V2InsightCalendarCard(
         val covered = axis.cells.filter(InsightCalendarCell::selectable)
         val total = covered.fold(0L) { sum, cell -> safeTokenAdd(sum, cell.tokens) }
         Text(
-            v2FormatTokens(total),
+            format.format(total),
             color = palette.text,
             fontSize = LedgerFont.displaySmall,
             fontWeight = FontWeight.SemiBold,
@@ -111,7 +135,7 @@ internal fun V2InsightCalendarCard(
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "年度累计有效 Token · ${covered.count { it.tokens > 0 }} 天活跃\n${axis.selectableStart} 至 ${axis.selectableEnd} · ${axis.timezone}",
+                "年度累计${activeMetric.label} · ${covered.count { it.tokens > 0 }} 天活跃\n${axis.selectableStart} 至 ${axis.selectableEnd} · ${axis.timezone}",
                 color = palette.muted,
                 fontSize = LedgerFont.caption,
                 modifier = Modifier.weight(1f)
@@ -123,7 +147,7 @@ internal fun V2InsightCalendarCard(
         Spacer(Modifier.height(8.dp))
         V2CalendarMonthGrid(palette, axis) { month -> openMonth = month.toString() }
         Text(
-            "峰值 ${v2FormatTokens(covered.maxOfOrNull { it.tokens } ?: 0L)}",
+            "峰值 ${format.format(covered.maxOfOrNull { it.tokens } ?: 0L)}",
             color = palette.muted,
             fontSize = LedgerFont.caption,
             modifier = Modifier.padding(vertical = 10.dp)
@@ -220,7 +244,7 @@ internal fun V2CalendarMonthPanelContent(
         days.chunked(7).filter { week -> week.any { it != null } }.forEach { week ->
             Row(Modifier.fillMaxWidth()) {
                 week.forEach { day ->
-                    V2CalendarDayCell(Modifier.weight(1f), palette, day, onSelectDay)
+                    V2CalendarDayCell(Modifier.weight(1f), palette, day, onSelectDay, axis.valueFormat)
                 }
             }
         }
@@ -239,7 +263,8 @@ internal fun V2CalendarDayCell(
     modifier: Modifier,
     palette: MobileV2Palette,
     day: MonthPanelDay?,
-    onSelectDay: (String) -> Unit
+    onSelectDay: (String) -> Unit,
+    format: HeatmapValueFormat = HeatmapValueFormat()
 ) {
     if (day == null) {
         Spacer(modifier.aspectRatio(1f))
@@ -248,7 +273,7 @@ internal fun V2CalendarDayCell(
     val cell = day.cell
     // 级别由 monthPanelDays 统一给出（全局分位尺子）；这里不再自己分级。未来 / 覆盖外为 null。
     val level = day.level
-    val label = remember(cell) { dayAccessibilityLabel(cell) }
+    val label = remember(cell, format) { dayAccessibilityLabel(cell, format) }
     val clickModifier = if (cell.selectable) {
         Modifier.clickable(role = Role.Button) { onSelectDay(cell.date.toString()) }
     } else {
@@ -316,7 +341,8 @@ internal fun V2CalendarDayCell(
 internal fun V2InsightCalendarPreviewContent(
     appearance: LedgerAppearance,
     stats: StatsData,
-    initialSelectedDate: String
+    initialSelectedDate: String,
+    initialMetric: HeatmapMetric = HeatmapMetric.Tokens
 ) {
     val palette = remember(appearance) { v2Palette(appearance) }
     TokenLedgerTheme(appearance) {
@@ -328,7 +354,8 @@ internal fun V2InsightCalendarPreviewContent(
                         range = RangeKey.entries.firstOrNull { it.rpcValue == stats.meta?.query?.range } ?: RangeKey.Today,
                         start = stats.meta?.query?.start, end = stats.meta?.query?.end
                     ),
-                    initialSelectedDate = initialSelectedDate
+                    initialSelectedDate = initialSelectedDate,
+                    initialMetric = initialMetric
                 )
             }
         }

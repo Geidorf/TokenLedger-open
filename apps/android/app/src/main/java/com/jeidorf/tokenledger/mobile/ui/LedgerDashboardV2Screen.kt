@@ -872,7 +872,8 @@ internal fun LazyListScope.v2InsightsItems(
                     globalAxis = calendarAxis,
                     calendarNotice = (state.calendarHeatmap as? CalendarHeatmapUiState.Available)?.let {
                         it.warning ?: if (it.showingCachedData) "当前显示缓存日历" else null
-                    }
+                    },
+                    calendarState = state.calendarHeatmap
                 )
             }
         }

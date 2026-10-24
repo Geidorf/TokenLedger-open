@@ -68,7 +68,8 @@ internal fun LedgerDashboardPreviewHost(
                             CalendarHeatmapUiState.Unavailable(state.query, axis.unavailableReason ?: "预览日历不可得")
                         } else CalendarHeatmapUiState.Available(data.heatmap, state.query, state.query,
                             axis.timezone.orEmpty(), data.meta?.generatedAt, axis.selectableStart.toString(),
-                            axis.selectableEnd.toString(), false)
+                            axis.selectableEnd.toString(), false,
+                            heatmapRequests = data.heatmapRequests, heatmapCost = data.heatmapCost)
                     } ?: CalendarHeatmapUiState.Idle),
                     appearance = appearance,
                     forceLandscape = forceLandscape,

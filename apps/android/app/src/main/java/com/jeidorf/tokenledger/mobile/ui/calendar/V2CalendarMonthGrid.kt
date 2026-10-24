@@ -79,7 +79,7 @@ internal fun V2CalendarMonthGrid(palette: MobileV2Palette, axis: InsightCalendar
                 )
             ) {
                 row.forEach { month ->
-                    val summary = remember(month) { monthAccessibilitySummary(month.yearMonth, month.cells) }
+                    val summary = remember(month, axis.valueFormat) { monthAccessibilitySummary(month.yearMonth, month.cells, axis.valueFormat) }
                     Column(
                         Modifier
                             .clickable(role = Role.Button) { onOpenMonth(month.yearMonth) }
