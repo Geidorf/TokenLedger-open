@@ -31,6 +31,8 @@ const MAX_BACKOFF: Duration = Duration::from_secs(30 * 60);
 const NOT_DEPLOYED_RETRY: Duration = Duration::from_secs(30 * 60);
 const MAX_BUDGETS: usize = 32;
 const MAX_PERCENT: f64 = 99_999.0;
+/// Contract §2.1: the server refuses `p_snapshot::text` above this.
+const MAX_SNAPSHOT_BYTES: usize = 8192;
 const CLEAR_MARKER: &str = "budget-publish-clear-pending";
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -124,8 +126,22 @@ pub(crate) fn build_snapshot(
     statuses: &[BudgetStatus],
     now: DateTime<Utc>,
 ) -> Value {
-    let budgets: Vec<Value> = statuses
-        .iter()
+    // Over first, then the fullest, so the cap and the byte trim below only ever
+    // drop the budgets that matter least.
+    let mut ordered: Vec<&BudgetStatus> = statuses.iter().collect();
+    ordered.sort_by(|a, b| {
+        (b.level == BudgetLevel::Over)
+            .cmp(&(a.level == BudgetLevel::Over))
+            .then_with(|| (b.level == BudgetLevel::Warn).cmp(&(a.level == BudgetLevel::Warn)))
+            .then_with(|| {
+                b.percent
+                    .unwrap_or(0.0)
+                    .partial_cmp(&a.percent.unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+    let mut budgets: Vec<Value> = ordered
+        .into_iter()
         .filter_map(|status| {
             let level = match status.level {
                 BudgetLevel::Ok => "ok",
@@ -153,11 +169,21 @@ pub(crate) fn build_snapshot(
         })
         .take(MAX_BUDGETS)
         .collect();
-    json!({
-        "v": 1,
-        "generatedAt": now.to_rfc3339_opts(SecondsFormat::Millis, true),
-        "budgets": budgets,
-    })
+    // Labels are capped in characters, not bytes: 32 budgets of four-byte labels
+    // can pass the server's byte limit, which would refuse every publish.
+    loop {
+        let snapshot = json!({
+            "v": 1,
+            "generatedAt": now.to_rfc3339_opts(SecondsFormat::Millis, true),
+            "budgets": budgets,
+        });
+        if budgets.is_empty()
+            || crate::routing_publish::server_text_len(&snapshot) <= MAX_SNAPSHOT_BYTES
+        {
+            return snapshot;
+        }
+        budgets.pop();
+    }
 }
 
 fn content_key(snapshot: &Value) -> String {
@@ -180,6 +206,10 @@ struct Publisher {
     machine: String,
     published: Option<Published>,
     backoff: Duration,
+    /// The last pass is waiting out a retry delay; budget-check wakeups must
+    /// not cut it short, only a flipped switch may.
+    hold: bool,
+    acted_on: bool,
 }
 
 impl Publisher {
@@ -195,6 +225,7 @@ impl Publisher {
     }
 
     fn back_off(&mut self) -> Duration {
+        self.hold = true;
         let delay = self.backoff;
         self.backoff = (self.backoff * 2).min(MAX_BACKOFF);
         delay
@@ -202,6 +233,8 @@ impl Publisher {
 
     async fn tick(&mut self) -> Duration {
         let settings = crate::budget::load_settings(self.app.app_data_dir());
+        self.hold = false;
+        self.acted_on = settings.sync_to_phone;
         if settings.sync_to_phone {
             self.publish(settings).await
         } else {
@@ -368,6 +401,7 @@ impl Publisher {
                     status.state = "not-deployed";
                     status.error = None;
                 });
+                self.hold = true;
                 NOT_DEPLOYED_RETRY
             }
             Err(RpcError::Failed(error)) => {
@@ -390,10 +424,22 @@ pub fn start(app: Arc<AppContext>) {
             app,
             published: None,
             backoff: MIN_BACKOFF,
+            hold: false,
+            acted_on: false,
         };
         loop {
-            let delay = publisher.tick().await;
-            let _ = tokio::time::timeout(delay, WAKE.notified()).await;
+            let deadline = Instant::now() + publisher.tick().await;
+            loop {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() || tokio::time::timeout(left, WAKE.notified()).await.is_err() {
+                    break;
+                }
+                let switch =
+                    crate::budget::load_settings(publisher.app.app_data_dir()).sync_to_phone;
+                if !publisher.hold || switch != publisher.acted_on {
+                    break;
+                }
+            }
         }
     });
 }
@@ -468,14 +514,14 @@ mod tests {
             2,
             "unavailable and disabled budgets stay home"
         );
-        assert_eq!(budgets[0]["label"], "Codex");
-        assert_eq!(budgets[0]["percent"], 85);
-        assert_eq!(budgets[0]["level"], "warn");
-        assert_eq!(budgets[0]["period"], "month");
-        assert_eq!(budgets[0]["metric"], "cost");
-        assert_eq!(budgets[0]["periodStart"], "2026-10-01");
-        assert_eq!(budgets[1]["label"], "账号", "unsafe scope names fall back");
-        assert_eq!(budgets[1]["level"], "over");
+        assert_eq!(budgets[0]["label"], "账号", "unsafe scope names fall back");
+        assert_eq!(budgets[0]["level"], "over");
+        assert_eq!(budgets[1]["label"], "Codex");
+        assert_eq!(budgets[1]["percent"], 85);
+        assert_eq!(budgets[1]["level"], "warn");
+        assert_eq!(budgets[1]["period"], "month");
+        assert_eq!(budgets[1]["metric"], "cost");
+        assert_eq!(budgets[1]["periodStart"], "2026-10-01");
         let text = snapshot.to_string();
         for leaked in [
             "42.5",
@@ -538,7 +584,7 @@ mod tests {
                 let mut rule = rule(
                     &format!("rule{index:02}{}", "x".repeat(56)),
                     BudgetScopeKind::Model,
-                    &"长".repeat(32),
+                    &"𝄞".repeat(32),
                 );
                 rule.metric = BudgetMetric::Tokens;
                 rule
@@ -554,7 +600,42 @@ mod tests {
             rules,
         };
         let snapshot = build_snapshot(&"f".repeat(32), &settings, &statuses, at());
-        assert_eq!(snapshot["budgets"].as_array().unwrap().len(), MAX_BUDGETS);
-        assert!(crate::routing_publish::server_text_len(&snapshot) <= 8192);
+        let kept = snapshot["budgets"].as_array().unwrap().len();
+        assert!(kept > 0 && kept < MAX_BUDGETS, "kept {kept}");
+        assert!(crate::routing_publish::server_text_len(&snapshot) <= MAX_SNAPSHOT_BYTES);
+
+        // Three-byte labels at the same counts fit whole (contract §2.1).
+        let mut cjk = settings.clone();
+        for rule in &mut cjk.rules {
+            rule.scope_id = "长".repeat(32);
+        }
+        let whole = build_snapshot(&"f".repeat(32), &cjk, &statuses, at());
+        assert_eq!(whole["budgets"].as_array().unwrap().len(), MAX_BUDGETS);
+    }
+
+    #[test]
+    fn over_and_fuller_budgets_come_first() {
+        let settings = BudgetSettings {
+            notify: false,
+            sync_to_phone: true,
+            rules: vec![
+                rule("a", BudgetScopeKind::All, ""),
+                rule("b", BudgetScopeKind::Tool, "codex"),
+                rule("c", BudgetScopeKind::Model, "gpt-5"),
+            ],
+        };
+        let statuses = vec![
+            status("a", Some(1.0), Some(2.0), BudgetLevel::Ok),
+            status("b", Some(45.0), Some(90.0), BudgetLevel::Warn),
+            status("c", Some(60.0), Some(120.0), BudgetLevel::Over),
+        ];
+        let snapshot = build_snapshot("d", &settings, &statuses, at());
+        let levels: Vec<&str> = snapshot["budgets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|budget| budget["level"].as_str().unwrap())
+            .collect();
+        assert_eq!(levels, ["over", "warn", "ok"]);
     }
 }
