@@ -190,6 +190,16 @@ pub struct Exclusion {
     pub detail: Option<String>,
 }
 
+/// A member that recently failed and is tried after the others for now.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CoolingMember {
+    pub member: String,
+    pub remaining_secs: u64,
+    /// Consecutive failures behind the current cooldown.
+    pub failures: u32,
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Features {
     pub has_image: bool,
@@ -1046,6 +1056,26 @@ impl Router {
         decisions.push_back(decision);
     }
 
+    /// Members cooling down right now, longest remaining first.
+    pub fn cooling(&self) -> Vec<CoolingMember> {
+        let now = Instant::now();
+        let mut members: Vec<CoolingMember> = lock(&self.cooldown)
+            .iter()
+            .filter(|(_, (until, _))| *until > now)
+            .map(|(member, (until, strikes))| CoolingMember {
+                member: member.clone(),
+                remaining_secs: until.saturating_duration_since(now).as_secs() + 1,
+                failures: *strikes,
+            })
+            .collect();
+        members.sort_by(|a, b| {
+            b.remaining_secs
+                .cmp(&a.remaining_secs)
+                .then_with(|| a.member.cmp(&b.member))
+        });
+        members
+    }
+
     pub fn recent(&self, limit: usize) -> Vec<RouteDecision> {
         lock(&self.decisions)
             .iter()
@@ -1612,8 +1642,18 @@ mod tests {
             ["a/m1", "b/m2", "c/m3"],
             "all cooling: order kept"
         );
+        let cooling = router.cooling();
+        assert_eq!(
+            cooling
+                .iter()
+                .map(|c| c.member.as_str())
+                .collect::<Vec<_>>(),
+            ["a/m1", "b/m2", "c/m3"]
+        );
+        assert_eq!((cooling[0].remaining_secs, cooling[0].failures), (300, 12));
         router.recover("a/m1");
         router.recover("c/m3");
+        assert_eq!(router.cooling().len(), 1);
         assert_eq!(
             router.plan(&g, &none, None).candidates,
             ["a/m1", "c/m3", "b/m2"]

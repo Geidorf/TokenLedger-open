@@ -98,6 +98,22 @@ function renderPopulated(overrides: Partial<ComponentProps<typeof DashboardTab>>
 }
 
 describe('DashboardTab model cost reports (audit P0-2)', () => {
+  it('shows the average Context composition only when the stats carry it', () => {
+    const { unmount } = renderPopulated({ stats: POPULATED_STATS });
+    expect(screen.queryByRole('region', { name: '平均 Context 构成' })).not.toBeInTheDocument();
+    unmount();
+    renderPopulated({
+      stats: {
+        ...POPULATED_STATS,
+        contextComposition: {
+          requests: 2, promptTokens: 2_000, systemBytes: 100, toolsBytes: 300, historyBytes: 600,
+          toolResultsBytes: 0, attachmentsBytes: 0, messages: 4, toolResults: 0, attachments: 0,
+        },
+      },
+    });
+    expect(screen.getByRole('region', { name: '平均 Context 构成' })).toHaveTextContent('基于 2 次经网关的请求');
+  });
+
   it('在看板顶部展示与当前 stats 同一份的来源、范围、时区与快照状态', () => {
     const stats: StatsData = {
       ...POPULATED_STATS,
@@ -224,6 +240,27 @@ describe('DashboardTab day drill-down (audit P0-1)', () => {
       fireEvent.click(within(split).getAllByRole('button', { pressed: false }).find((button) => button.classList.contains('usage-split-pick'))!);
       fireEvent.click(screen.getByRole('button', { name: new RegExp(`${heatmapDay}.*点击查看当日明细`) }));
       expect(onSelectDate).toHaveBeenCalledWith(heatmapDay, { tools: ['codex'], models: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('carries the focused account into the day drill when the calendar shows only that account', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HEATMAP_NOW);
+    try {
+      const stats = {
+        ...POPULATED_STATS,
+        heatmap: { [heatmapDay]: 5_000 },
+        providers: { relay: { ...POPULATED_STATS.tools.codex, name: 'relay', heatmap: { [heatmapDay]: 3_000 } } },
+      };
+      const onSelectDate = vi.fn();
+      renderPopulated({ stats, range: 'year', onSelectDate });
+      const split = document.querySelector('section.usage-split') as HTMLElement;
+      fireEvent.click(within(within(split).getByRole('group', { name: '拆分维度' })).getByRole('button', { name: '账号' }));
+      fireEvent.click(within(split).getAllByRole('button', { pressed: false }).find((button) => button.classList.contains('usage-split-pick'))!);
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`${heatmapDay}.*点击查看当日明细`) }));
+      expect(onSelectDate).toHaveBeenCalledWith(heatmapDay, { tools: [], models: [], providers: ['relay'] });
     } finally {
       vi.useRealTimers();
     }

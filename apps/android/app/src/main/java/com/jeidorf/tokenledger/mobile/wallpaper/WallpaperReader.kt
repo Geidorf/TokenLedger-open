@@ -22,17 +22,18 @@ internal class WallpaperReader(
 ) {
     suspend fun read(): WallpaperRead {
         if (!repository.isConfigured) return WallpaperRead.NotConfigured
+        var account: String? = null
         return try {
-            val result = source.fetchWithStoredSession(repository) ?: return WallpaperRead.SignedOut
-            WallpaperRead.Ok(result, SystemClock.elapsedRealtime())
+            val result = source.fetchWithStoredSession(repository) { account = it } ?: return WallpaperRead.SignedOut
+            WallpaperRead.Ok(result, SystemClock.elapsedRealtime(), checkNotNull(account))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: SessionRevokedException) {
             WallpaperRead.SignedOut
         } catch (_: DashboardAuthExpiredException) {
-            WallpaperRead.Failed(RoutingReadFailure.Unauthorized)
+            WallpaperRead.Failed(RoutingReadFailure.Unauthorized, account)
         } catch (error: Exception) {
-            WallpaperRead.Failed(RoutingReadFailure.classify(error))
+            WallpaperRead.Failed(RoutingReadFailure.classify(error), account)
         }
     }
 }

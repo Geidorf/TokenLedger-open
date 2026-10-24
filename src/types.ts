@@ -177,6 +177,16 @@ export interface RequestContext {
   attachments: number;
 }
 
+/**
+ * Stats contract §2.8 (local only): sums over the gateway requests in the
+ * window that carry a measured composition. Readers divide by `requests` for
+ * the average; `promptTokens` is input + cached tokens of those same rows.
+ */
+export interface ContextCompositionTotals extends RequestContext {
+  requests: number;
+  promptTokens: number;
+}
+
 export interface FacetOption {
   value: string;
   count: number;
@@ -203,6 +213,8 @@ export interface UsageDetailsQuery extends StatsQueryContext {
   scope: DataScope;
   cursor?: string | null;
   limit?: number;
+  /** 契约 §2.7 的账号（供应商 ID），仅本机明细；不按账号时省略。 */
+  providers?: string[];
 }
 
 export interface EntitySelector {
@@ -442,6 +454,8 @@ export interface StatsData {
    * not in any entry; absent on cloud and when no gateway ledger exists.
    */
   providers?: Record<string, ToolStat>;
+  /** Contract §2.8: average Context composition inputs; absent on cloud and without measured gateway rows. */
+  contextComposition?: ContextCompositionTotals;
   historyPage?: UsageDetailsResponse;
   comparison?: UsageComparison | null;
   machines?: string[];

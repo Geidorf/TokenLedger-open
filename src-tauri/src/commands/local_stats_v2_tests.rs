@@ -167,6 +167,7 @@ fn details_query(
         end: None,
         cursor,
         limit: Some(limit),
+        providers: None,
     }
 }
 
@@ -598,6 +599,7 @@ fn multi_filters_search_cursor_and_entity_share_one_local_query() {
         end: None,
         cursor: None,
         limit: Some(1),
+        providers: None,
     };
     let first = get_usage_details_impl_at(&app, detail_query.clone(), now)
         .expect("first canonical detail page");

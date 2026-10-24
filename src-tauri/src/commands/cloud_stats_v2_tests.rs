@@ -75,6 +75,7 @@ fn details_query() -> UsageDetailsQuery {
         end: None,
         cursor: Some(format!("v1.{}.9", encode_hex(b"2026-07-15 10:00:00"))),
         limit: Some(1_000),
+        providers: None,
     }
 }
 

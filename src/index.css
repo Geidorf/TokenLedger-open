@@ -6462,6 +6462,50 @@
     min-height: 14px;
   }
 
+  .detail-account-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    color: var(--color-text-tertiary);
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+
+  .detail-account-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    background: var(--color-bg-elevated);
+    padding: 3px 4px 3px 9px;
+    color: var(--color-text-primary);
+    font-size: 11.5px;
+  }
+
+  .detail-account-chip button {
+    display: inline-grid;
+    position: relative;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: var(--radius-full);
+    color: var(--color-text-secondary);
+  }
+
+  /* The visible circle stays 20px; a transparent layer extends the hit area to 44px (GLB-03). */
+  .detail-account-chip button::after { content: ""; position: absolute; inset: -12px; }
+
+  .detail-account-chip button:hover:not(:disabled) {
+    background: var(--color-bg-subtle);
+    color: var(--color-text-primary);
+  }
+
+  .detail-account-note {
+    font-weight: 500;
+  }
+
   .detail-filter-control select {
     width: 100%;
     min-width: 0;
@@ -7017,6 +7061,9 @@
   .log-context-legend li > i { width: 8px; height: 8px; border-radius: 2px; }
   .log-context-legend b { color: var(--color-text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
   .log-context-legend small, .log-context-counts { color: var(--color-text-tertiary); font-size: 10px; }
+
+  .average-context-panel .log-detail-context { display: grid; gap: 8px; }
+  .average-context-panel .log-detail-context > span { color: var(--color-text-tertiary); font-size: 11px; }
 
   .log-detail-context .is-systemBytes { background: var(--chart-1); }
   .log-detail-context .is-toolsBytes { background: var(--chart-2); }

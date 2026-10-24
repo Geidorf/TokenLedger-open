@@ -207,11 +207,11 @@ function queryFailure(code: string, message: string): never {
   throw new QueryContractError(code, message);
 }
 
-function trimAsciiQueryEdges(value: string): string {
+export function trimAsciiQueryEdges(value: string): string {
   return value.replace(ASCII_EDGE_WHITESPACE, '');
 }
 
-function compareUnsignedUtf8(left: string, right: string): number {
+export function compareUnsignedUtf8(left: string, right: string): number {
   const leftBytes = utf8Encoder.encode(left);
   const rightBytes = utf8Encoder.encode(right);
   const commonLength = Math.min(leftBytes.length, rightBytes.length);

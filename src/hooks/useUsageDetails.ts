@@ -10,6 +10,7 @@ import {
   normalizeStatsQuery,
   queryEchoMatches,
 } from '../utils/frontendContracts';
+import { compareUnsignedUtf8, trimAsciiQueryEdges } from '../utils/contracts/statsQuery';
 import { collectAllDetails, REQUESTS_CSV_MAX_ROWS, requestsToCsv } from '../utils/requestsCsv';
 import {
   CustomDateRange,
@@ -22,6 +23,19 @@ import {
 } from '../types';
 
 export const EMPTY_DETAIL_FILTERS: DetailFilters = { tools: [], models: [], machines: [], search: '' };
+
+/** 与后端相同的规范形：去掉首尾空白与空值，去重并排序。 */
+export function canonicalProviders(values: readonly string[] | undefined): string[] {
+  return [...new Set((values ?? []).map(trimAsciiQueryEdges).filter(Boolean))].sort(compareUnsignedUtf8);
+}
+
+/** 按账号筛选时，回显必须带同一组账号；不按账号时回显不得带账号（旧后端不认这个键时会悄悄放宽结果）。 */
+export function providersEchoMatches(echo: unknown, expected: readonly string[]): boolean {
+  const echoed = isRecord(echo) && Array.isArray(echo.providers)
+    ? canonicalProviders(echo.providers.filter((value): value is string => typeof value === 'string'))
+    : [];
+  return echoed.length === expected.length && echoed.every((value, index) => value === expected[index]);
+}
 
 const BACKEND_REASON_LABELS: Record<string, string> = {
   cloud_stats_v2_unavailable: '云端尚未部署 Stats v2 RPC，请联系部署负责人发布最新迁移。',
@@ -92,20 +106,24 @@ export function useUsageDetails({
       search: detailFilters.search,
       tokenMode: 'effective',
     });
+    // 账号筛选只有本机支持；不按账号时不发这个键，请求与旧版一致。
+    const providers = dataScope === 'local' ? canonicalProviders(detailFilters.providers) : [];
     const query: UsageDetailsQuery = {
       scope: dataScope,
       ...canonicalQuery,
+      ...(providers.length > 0 ? { providers } : {}),
       cursor,
       limit,
     };
     const response = await invoke<UsageDetailsEnvelope>('get_usage_details', { query });
     const unavailable = unavailableMessage(response, '当前数据源不支持完整消耗明细。');
     if (isUnavailableEnvelope(response)) throw new Error(unavailable || '当前数据源不支持完整消耗明细。');
-    if (!queryEchoMatches(response.meta?.query, canonicalQuery, response.meta?.entity)) {
+    if (!queryEchoMatches(response.meta?.query, canonicalQuery, response.meta?.entity)
+      || !providersEchoMatches(response.meta?.query, providers)) {
       throw new Error('明细响应与当前筛选不一致，请重试。');
     }
     return response;
-  }, [currentTimezone, customRange, dataScope, detailFilters.machines, detailFilters.models, detailFilters.search, detailFilters.tools, deviceFilter, range]);
+  }, [currentTimezone, customRange, dataScope, detailFilters.machines, detailFilters.models, detailFilters.providers, detailFilters.search, detailFilters.tools, deviceFilter, range]);
 
   const loadDetails = useCallback(async (cursor: string | null = null, append = false) => {
     const requestId = beginRequest(detailRequestId);
