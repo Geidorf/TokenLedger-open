@@ -6253,7 +6253,7 @@ test('弹窗与模态遮罩使用 Portal 挂载至根节点并保持最高层级
 // T10.115 replaces the long-page scrollspy with one visible settings destination.
 // Rendering, focus, history and retained form state are exercised in SettingsTab.test.tsx.
 test('settings destinations stay reachable through user language and unique stable hashes', () => {
-  assert.equal(new Set(SETTINGS_DESTINATIONS.map((item) => item.id)).size, 8);
+  assert.equal(new Set(SETTINGS_DESTINATIONS.map((item) => item.id)).size, 9);
   assert.equal(findSettingsDestinations('')[0].id, 'settings-scan');
   assert.equal(findSettingsDestinations('壁纸')[0].id, 'settings-wallpaper');
   assert.equal(findSettingsDestinations('不存在的设置关键词').length, 0);
@@ -6263,6 +6263,9 @@ test('settings destinations stay reachable through user language and unique stab
   assert.equal(findSettingsDestinations('小组件')[0].id, 'settings-widget');
   // U-112：模型接入总开关有独立分区，搜「网关」直达。
   assert.equal(findSettingsDestinations('网关')[0].id, 'settings-model-access');
+  // 预算与超支提醒有独立分区，搜「预算」「超支」直达。
+  assert.equal(findSettingsDestinations('预算')[0].id, 'settings-budget');
+  assert.equal(findSettingsDestinations('超支')[0].id, 'settings-budget');
   // T10.272（U-99）：旧「API 配置」分区已下线，由侧栏模型接入四页取代。
   assert.equal(findSettingsDestinations('API endpoint').length, 0);
   assert.ok(!SETTINGS_DESTINATIONS.some((item) => item.id === 'settings-api-profiles'));

@@ -1575,7 +1575,7 @@ fn capitalize_first(value: &str) -> String {
 /// (`src/utils/toolDisplayName.ts`). Both read
 /// `fixtures/tool-display-names-v1/names.json` (TOKE-12). Trim matches
 /// ECMAScript `trim()` via `is_ecmascript_trimmable`, not Rust's Unicode trim.
-fn tool_display_name(name: &str) -> String {
+pub(crate) fn tool_display_name(name: &str) -> String {
     let table = tool_display_name_table();
     let trimmed = name.trim_matches(is_ecmascript_trimmable);
     let key = trimmed.to_lowercase();
