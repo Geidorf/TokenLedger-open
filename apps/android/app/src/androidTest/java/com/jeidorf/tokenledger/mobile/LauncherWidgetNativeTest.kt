@@ -112,7 +112,8 @@ class LauncherWidgetNativeTest {
             email = "fixture@example.invalid",
             expiresAtEpochSeconds = expiresAtEpochSeconds
         )
-        SessionStore(context).save(session)
+        val sessionStore = SessionStore(context)
+        check(sessionStore.activate(sessionStore.generation(), session))
 
         val now = System.currentTimeMillis()
         val timezoneId = TimeZone.getDefault().id.ifBlank { "UTC" }
