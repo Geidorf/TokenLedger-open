@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { builtInIpc, expect, openPage, test, type IpcFixture } from './fixtures';
+import { builtInIpc, expect, openPage, reloadSettled, test, type IpcFixture } from './fixtures';
 import type { StatsData, UsageDetailsResponse } from '../src/types';
 
 // 用量分析今晚新增的两处：拆分的「账号」维度（按网关供应商汇总本机用量）与
@@ -28,8 +28,7 @@ async function withAccounts(page: Page, ipc: IpcFixture) {
     ...stats,
     providers: { 'deepseek-main': account('deepseek-main', 90_000, 30_000, 120, 0.42), 'openai-team': account('openai-team', 40_000, 10_000, 30, 1.25) },
   } });
-  await page.reload();
-  await expect(page.locator('main').first()).toBeVisible();
+  await reloadSettled(page);
   if (await yearButton(page).getAttribute('aria-pressed') !== 'true') await yearButton(page).click();
 }
 
@@ -82,8 +81,7 @@ test.describe('请求展开行：Context 构成', () => {
     const details = await builtInIpc<UsageDetailsResponse>(page, 'get_usage_details', call.args as Record<string, unknown>);
     const [first, ...rest] = details.items;
     await ipc.override('get_usage_details', { value: { ...details, items: [{ ...first, provider: 'deepseek-main', context }, ...rest] } });
-    await page.reload();
-    await expect(page.locator('main').first()).toBeVisible();
+    await reloadSettled(page);
     return first;
   }
 

@@ -98,6 +98,16 @@ export async function openPage(page: Page, hash: string) {
   await expect(page.locator('main').first()).toBeVisible();
 }
 
+/**
+ * 等懒加载的分区模块都取完再重新加载。WebKit 在动态 import 进行中被 reload 打断时会抛
+ * 「Importing a module script failed」，被守卫当成页面异常。
+ */
+export async function reloadSettled(page: Page) {
+  await page.waitForLoadState('networkidle');
+  await page.reload();
+  await expect(page.locator('main').first()).toBeVisible();
+}
+
 /** 断言页面在当前视口宽度下没有横向滚动。 */
 export async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

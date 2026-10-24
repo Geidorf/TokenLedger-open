@@ -1,5 +1,5 @@
 import type { AppSettings } from '../src/types';
-import { builtInIpc, expect, openPage, test } from './fixtures';
+import { builtInIpc, expect, openPage, reloadSettled, test } from './fixtures';
 
 // 设置页今晚新增的两张卡片：「桌面挂件」里的手机动态壁纸开关（把实时路由同步到手机），
 // 「数据与帮助」里的其他电脑共享用量（按电脑勾选，默认一台都不统计）。
@@ -30,14 +30,14 @@ test.describe('设置：手机动态壁纸', () => {
     await openPage(page, 'settings-widget');
     const settings = await builtInIpc<AppSettings>(page, 'get_settings');
     await ipc.override('get_settings', { value: { ...settings, routing_publish_enabled: true } });
-    await page.reload();
+    await reloadSettled(page);
     const toggle = page.getByRole('switch', { name: /^把实时路由同步到手机/ });
     await toggle.scrollIntoViewIfNeeded();
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByText('云端尚未部署实时路由同步（需要执行一次数据库迁移），其他同步不受影响。')).toBeVisible();
 
     await ipc.override('routing_publish_status', { value: { state: 'signed-out', lastPublishedAt: null, flows: 0, error: null } });
-    await page.reload();
+    await reloadSettled(page);
     await expect(page.getByText('需要先在「云端同步」登录账户，手机端登录同一个账户才能看到。')).toBeVisible();
   });
 });
