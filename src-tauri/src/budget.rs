@@ -25,7 +25,9 @@ use crate::quota::alerts::AlertNotifier;
 const SETTINGS_FILE: &str = "budget_settings.json";
 const STATE_FILE: &str = "budget_alert_state.json";
 const MAX_SETTINGS_BYTES: usize = 32 * 1024;
-const MAX_STATE_BYTES: usize = 64 * 1024;
+/// Room for `MAX_FIRED_ENTRIES` entries at the longest id and scope id, so a
+/// full state written here is never rejected on the next read.
+const MAX_STATE_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_RULES: usize = 32;
 const MAX_ID_CHARS: usize = 64;
 const MAX_SCOPE_ID_CHARS: usize = 128;
@@ -36,7 +38,7 @@ const MAX_WARN_PERCENT: u8 = 99;
 const GLOBAL_WINDOW_SECONDS: i64 = 60 * 60;
 const GLOBAL_LIMIT: usize = 4;
 const FIRED_RETENTION_DAYS: i64 = 40;
-const MAX_FIRED_ENTRIES: usize = 512;
+const MAX_FIRED_ENTRIES: usize = 256;
 
 static EVALUATION_LOCK: Mutex<()> = Mutex::new(());
 
@@ -241,8 +243,9 @@ struct FiredEntry {
     rule_id: String,
     period_start: String,
     level: BudgetLevel,
-    /// A changed limit is a new budget: raising it re-arms both tiers.
-    limit: f64,
+    /// What the rule measured when it fired. Editing the scope, metric,
+    /// period or limit makes a new budget that re-arms both tiers.
+    definition: String,
     fired_at: DateTime<Utc>,
 }
 
@@ -260,8 +263,10 @@ pub fn get_budget_settings(
     Ok(load_settings(app_state.inner().app_data_dir()))
 }
 
+// Stats aggregation reads the whole period from the ledger, so both commands
+// run off the UI thread (async + spawn_blocking, like `save_prices`).
 #[tauri::command]
-pub fn set_budget_settings(
+pub async fn set_budget_settings(
     app_state: tauri::State<'_, std::sync::Arc<AppContext>>,
     app_handle: tauri::AppHandle,
     settings: BudgetSettings,
@@ -269,17 +274,23 @@ pub fn set_budget_settings(
     let settings = settings.sanitized();
     save_settings(app_state.inner().app_data_dir(), &settings)?;
     // Apply right away: a lowered limit should show on the tray without
-    // waiting for the next scan.
-    crate::refresh_tray_status(app_state.inner(), &app_handle);
+    // waiting for the next scan. The saved settings do not wait for it.
+    let app = app_state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crate::refresh_tray_status(&app, &app_handle));
     Ok(settings)
 }
 
 #[tauri::command]
-pub fn get_budget_status(
+pub async fn get_budget_status(
     app_state: tauri::State<'_, std::sync::Arc<AppContext>>,
 ) -> Result<BudgetStatusReport, String> {
-    let settings = load_settings(app_state.inner().app_data_dir());
-    Ok(evaluate_report(app_state.inner(), &settings))
+    let app = app_state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_settings(app.app_data_dir());
+        evaluate_report(&app, &settings)
+    })
+    .await
+    .map_err(|error| format!("get_budget_status task panicked: {error}"))
 }
 
 pub(crate) fn load_settings(app_data_dir: &Path) -> BudgetSettings {
@@ -497,12 +508,13 @@ pub(crate) fn plan_alerts(
 
     let mut planned = Vec::new();
     for (rule, status) in candidates {
+        let definition = rule_definition(rule);
         let fired = |level: BudgetLevel| {
             state.fired.iter().any(|entry| {
                 entry.rule_id == rule.id
                     && entry.period_start == status.period_start
                     && entry.level == level
-                    && entry.limit == rule.limit
+                    && entry.definition == definition
             })
         };
         if fired(status.level) {
@@ -522,7 +534,7 @@ pub(crate) fn plan_alerts(
                 rule_id: rule.id.clone(),
                 period_start: status.period_start.clone(),
                 level,
-                limit: rule.limit,
+                definition: definition.clone(),
                 fired_at: now,
             });
         }
@@ -540,6 +552,17 @@ pub(crate) fn plan_alerts(
         state.fired.drain(..excess);
     }
     planned
+}
+
+fn rule_definition(rule: &BudgetRule) -> String {
+    serde_json::to_string(&(
+        rule.period,
+        rule.metric,
+        rule.scope_kind,
+        &rule.scope_id,
+        rule.limit,
+    ))
+    .unwrap_or_default()
 }
 
 fn notification_text(rule: &BudgetRule, status: &BudgetStatus) -> (String, String) {
@@ -863,6 +886,59 @@ mod tests {
             plan_alerts(&settings, &mut state, &warn_again, now).len(),
             1
         );
+    }
+
+    #[test]
+    fn editing_the_scope_with_the_same_limit_rearms_the_rule() {
+        let budget = scoped(
+            rule("a", BudgetPeriod::Month, BudgetMetric::Cost, 10.0),
+            BudgetScopeKind::Provider,
+            "relay-a",
+        );
+        let mut settings = BudgetSettings {
+            notify: true,
+            rules: vec![budget.clone()],
+        };
+        let mut state = AlertState::default();
+        let now = at("2026-10-24T08:00:00Z");
+        let over = statuses_for(std::slice::from_ref(&budget), &[12.0], "2026-10-01");
+        assert_eq!(plan_alerts(&settings, &mut state, &over, now).len(), 1);
+        let moved = scoped(budget, BudgetScopeKind::Provider, "relay-b");
+        settings.rules = vec![moved.clone()];
+        let over = statuses_for(std::slice::from_ref(&moved), &[12.0], "2026-10-01");
+        assert_eq!(plan_alerts(&settings, &mut state, &over, now).len(), 1);
+    }
+
+    #[test]
+    fn a_full_alert_state_fits_the_read_limit() {
+        let now = at("2026-10-24T08:00:00Z");
+        let long_id = "x".repeat(MAX_ID_CHARS);
+        let long_scope = "账".repeat(MAX_SCOPE_ID_CHARS);
+        let mut budget = scoped(
+            rule(
+                &long_id,
+                BudgetPeriod::Month,
+                BudgetMetric::Cost,
+                123_456.789_012,
+            ),
+            BudgetScopeKind::Provider,
+            &long_scope,
+        );
+        budget.limit = f64::MAX;
+        let state = AlertState {
+            fired: (0..MAX_FIRED_ENTRIES)
+                .map(|_| FiredEntry {
+                    rule_id: long_id.clone(),
+                    period_start: "2026-10-01".to_string(),
+                    level: BudgetLevel::Unavailable,
+                    definition: rule_definition(&budget),
+                    fired_at: now,
+                })
+                .collect(),
+            sent: vec![now; GLOBAL_LIMIT],
+        };
+        let bytes = serde_json::to_vec(&state).unwrap();
+        assert!(bytes.len() < MAX_STATE_BYTES, "{} bytes", bytes.len());
     }
 
     #[test]

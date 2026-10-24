@@ -353,6 +353,11 @@ fn start_background_scheduler(
                         tauri::async_runtime::block_on(quota::get_local_quota_providers_impl(&ctx));
                 }
                 sync_quota_and_notify(&ctx, &app_handle);
+                // Gateway requests land in the ledger without a scan, so
+                // budgets get their own five-minute check.
+                if !budget::load_settings(ctx.app_data_dir()).rules.is_empty() {
+                    refresh_tray_status(&ctx, &app_handle);
+                }
                 next_quota_sync = now + Duration::from_secs(5 * 60);
             }
 
