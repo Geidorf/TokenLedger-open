@@ -114,6 +114,26 @@ describe('RequestLogPage', () => {
     expect(screen.getByRole('button', { name: '尾随中' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('上一次读取还没返回时，尾随不再发起新的读取', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<RequestLogPage />);
+    await screen.findByRole('table', { name: '网关请求日志' });
+    let release: (() => void) | undefined;
+    vi.mocked(api.requestLog).mockImplementationOnce((query: RequestLogQuery) => new Promise((resolve) => {
+      release = () => resolve(mockRequestLog(records, decisions, { ...query, since: null }));
+    }));
+    fireEvent.click(screen.getByRole('button', { name: '实时尾随' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(TAIL_INTERVAL_MS); });
+    expect(release).toBeDefined();
+    const pending = vi.mocked(api.requestLog).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(TAIL_INTERVAL_MS * 3); });
+    expect(vi.mocked(api.requestLog).mock.calls.length).toBe(pending);
+    await act(async () => { release?.(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(TAIL_INTERVAL_MS); });
+    expect(vi.mocked(api.requestLog).mock.calls.length).toBeGreaterThan(pending);
+    expect(within(screen.getByRole('table', { name: '网关请求日志' })).getAllByRole('row')).toHaveLength(3);
+  });
+
   it('导出用当前筛选、不带分页，并提示文件位置', async () => {
     const onNotify = vi.fn();
     render(<RequestLogPage onNotify={onNotify} />);

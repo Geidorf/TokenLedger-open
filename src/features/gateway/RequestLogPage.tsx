@@ -202,6 +202,8 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
   // Only the latest load may apply its result: an older, slower query must not
   // overwrite the page after the filters changed.
   const generation = useRef(0);
+  // 尾随轮询时上一次读取还没回来就跳过这一拍，避免慢读取被不断作废。
+  const inFlight = useRef(false);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -214,6 +216,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
+    inFlight.current = true;
     setLoading(true);
     try {
       const next = await requestLog(toQuery(filters, offset));
@@ -233,7 +236,10 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
     } catch (reason) {
       if (mine === generation.current) setError(errorText(reason));
     } finally {
-      if (mine === generation.current) setLoading(false);
+      if (mine === generation.current) {
+        inFlight.current = false;
+        setLoading(false);
+      }
     }
   }, [filters, offset]);
 
@@ -242,7 +248,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
   useEffect(() => {
     if (!tail) return undefined;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'hidden') return;
+      if (document.visibilityState === 'hidden' || inFlight.current) return;
       void load();
     }, TAIL_INTERVAL_MS);
     return () => window.clearInterval(timer);

@@ -276,17 +276,14 @@ pub fn group_records(
         .collect();
     // A group request whose every member was unusable (provider deleted or
     // disabled) never reached an upstream, so it has no ledger line: show it
-    // from its decision alone so the failure is not invisible.
-    let oldest = records.first().and_then(|record| parse_ts(&record.ts));
+    // from its decision alone so the failure is not invisible. It follows the
+    // decision log's own retention: the ledger never held it, so the oldest
+    // ledger line says nothing about whether it expired.
     entries.extend(
         decisions
             .values()
             .filter(|decision| !groups.contains_key(&decision.request_id))
             .filter(|decision| decision.attempts.iter().all(unrecorded))
-            .filter(|decision| match (oldest, parse_ts(&decision.ts)) {
-                (Some(oldest), Some(ts)) => ts >= oldest,
-                _ => true,
-            })
             .map(decision_only_entry),
     );
     entries.sort_by(|a, b| b.ts.cmp(&a.ts).then_with(|| b.id.cmp(&a.id)));
@@ -822,8 +819,9 @@ mod tests {
         let decisions = HashMap::from([("L3".to_string(), skipped), ("L0".to_string(), stale)]);
         let entries = group_records(&sample(), &decisions);
         let ids: Vec<_> = entries.iter().map(|e| e.id.as_str()).collect();
-        // L0 predates every ledger line still on disk: it rotated out.
-        assert_eq!(ids, vec!["L3", "L2", "L1"]);
+        // L0 predates every ledger line, but only the decision log could have
+        // held it, so it stays as long as that log keeps it.
+        assert_eq!(ids, vec!["L3", "L2", "L1", "L0"]);
         let l3 = &entries[0];
         assert_eq!(
             (l3.ok, l3.status, l3.provider.as_str()),
