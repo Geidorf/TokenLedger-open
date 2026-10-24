@@ -11241,15 +11241,65 @@ fn csv_field(s: &str) -> String {
 }
 
 fn ledger_csv(conn: &Connection, prices: &Value) -> Result<(String, usize), String> {
-    let mut stmt = conn
-        .prepare("SELECT id, tool, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status, cloud_user_id, synced_at, cache_write_known, usage_provenance FROM token_logs ORDER BY timestamp DESC")
-        .map_err(|e| e.to_string())?;
+    ledger_csv_window(conn, prices, None)
+}
 
-    let mut csv_content = String::new();
-    csv_content.push_str("id,tool,model,input_tokens,output_tokens,cached_tokens,cache_write_tokens,timestamp,session_id,unique_key,cost_usd,estimated_cost_usd,machine_id,sync_status,cloud_user_id,synced_at\n");
+/// 导出列（CSV 表头与 JSON 键同名）。桌面「导出 CSV」与命令行导出共用这一份。
+const LEDGER_EXPORT_COLUMNS: [&str; 16] = [
+    "id",
+    "tool",
+    "model",
+    "input_tokens",
+    "output_tokens",
+    "cached_tokens",
+    "cache_write_tokens",
+    "timestamp",
+    "session_id",
+    "unique_key",
+    "cost_usd",
+    "estimated_cost_usd",
+    "machine_id",
+    "sync_status",
+    "cloud_user_id",
+    "synced_at",
+];
+
+/// 账本导出的一行，CSV 与 JSON 从同一份取值生成。
+struct LedgerExportRow {
+    log: StatRow,
+    unique_key: String,
+    sync_status: i32,
+    cloud_user_id: String,
+    synced_at: String,
+    estimated_cost_usd: Option<f64>,
+}
+
+/// 账本时间闭区间（存储格式的本地时间）；`None` 起点表示不设下限。
+type LedgerWindow = (Option<String>, String);
+
+fn for_each_ledger_row(
+    conn: &Connection,
+    prices: &Value,
+    window: Option<&LedgerWindow>,
+    mut visit: impl FnMut(LedgerExportRow),
+) -> Result<usize, String> {
+    let mut sql = String::from("SELECT id, tool, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status, cloud_user_id, synced_at, cache_write_known, usage_provenance FROM token_logs WHERE 1 = 1");
+    let mut values: Vec<SqlValue> = Vec::new();
+    if let Some((start, end)) = window {
+        if let Some(start) = start {
+            sql.push_str(" AND timestamp >= ?");
+            values.push(SqlValue::Text(start.clone()));
+        }
+        sql.push_str(" AND timestamp <= ?");
+        values.push(SqlValue::Text(end.clone()));
+    }
+    sql.push_str(" ORDER BY timestamp DESC");
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let mut estimator = CsvCostEstimator::new(prices);
-    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query(rusqlite::params_from_iter(values))
+        .map_err(|e| e.to_string())?;
     let mut count = 0;
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
         // 看板汇总用的行结构，逐行估价才能直接复用 `PriceMemo::row_price`。
@@ -11270,16 +11320,32 @@ fn ledger_csv(conn: &Connection, prices: &Value) -> Result<(String, usize), Stri
             cost_usd: row.get(10).ok().flatten(),
             machine_id: row.get(11).unwrap_or_default(),
         };
-        let unique_key: String = row.get(9).unwrap_or_default();
-        let sync_status: i32 = row.get(12).unwrap_or(0);
-        let cloud_user_id: String = row.get(13).unwrap_or_default();
-        let synced_at: String = row.get(14).unwrap_or_default();
         let estimated_cost_usd = estimator.estimate(&log);
+        visit(LedgerExportRow {
+            log,
+            unique_key: row.get(9).unwrap_or_default(),
+            sync_status: row.get(12).unwrap_or(0),
+            cloud_user_id: row.get(13).unwrap_or_default(),
+            synced_at: row.get(14).unwrap_or_default(),
+            estimated_cost_usd,
+        });
+        count += 1;
+    }
+    Ok(count)
+}
 
-        let esc = csv_field;
-        // 两个费用列同一数字格式；None 写空。
-        let usd = |cost: Option<f64>| cost.map(|cost| cost.to_string()).unwrap_or_default();
-
+fn ledger_csv_window(
+    conn: &Connection,
+    prices: &Value,
+    window: Option<&LedgerWindow>,
+) -> Result<(String, usize), String> {
+    let mut csv_content = LEDGER_EXPORT_COLUMNS.join(",");
+    csv_content.push('\n');
+    let esc = csv_field;
+    // 两个费用列同一数字格式；None 写空。
+    let usd = |cost: Option<f64>| cost.map(|cost| cost.to_string()).unwrap_or_default();
+    let count = for_each_ledger_row(conn, prices, window, |row| {
+        let log = &row.log;
         csv_content.push_str(&format!(
             "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
             log.id,
@@ -11291,18 +11357,94 @@ fn ledger_csv(conn: &Connection, prices: &Value) -> Result<(String, usize), Stri
             log.cache_write_tokens,
             esc(&log.timestamp),
             esc(&log.session_id),
-            esc(&unique_key),
+            esc(&row.unique_key),
             usd(log.cost_usd),
-            usd(estimated_cost_usd),
+            usd(row.estimated_cost_usd),
             esc(&log.machine_id),
-            sync_status,
-            esc(&cloud_user_id),
-            esc(&synced_at)
+            row.sync_status,
+            esc(&row.cloud_user_id),
+            esc(&row.synced_at)
         ));
-        count += 1;
-    }
-
+    })?;
     Ok((csv_content, count))
+}
+
+/// JSON 导出：与 CSV 同列同值，费用不可得写 `null`；字符串原样输出，不加 CSV 的公式防护前缀。
+fn ledger_json_window(
+    conn: &Connection,
+    prices: &Value,
+    window: Option<&LedgerWindow>,
+) -> Result<(Value, usize), String> {
+    let mut items = Vec::new();
+    let count = for_each_ledger_row(conn, prices, window, |row| {
+        let log = row.log;
+        let values = [
+            json!(log.id),
+            json!(log.tool),
+            json!(log.model),
+            json!(log.input_tokens),
+            json!(log.output_tokens),
+            json!(log.cached_tokens),
+            json!(log.cache_write_tokens),
+            json!(log.timestamp),
+            json!(log.session_id),
+            json!(row.unique_key),
+            json!(log.cost_usd),
+            json!(row.estimated_cost_usd),
+            json!(log.machine_id),
+            json!(row.sync_status),
+            json!(row.cloud_user_id),
+            json!(row.synced_at),
+        ];
+        let item: serde_json::Map<String, Value> = LEDGER_EXPORT_COLUMNS
+            .iter()
+            .map(|column| column.to_string())
+            .zip(values)
+            .collect();
+        items.push(Value::Object(item));
+    })?;
+    Ok((Value::Array(items), count))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LedgerExportFormat {
+    Csv,
+    Json,
+}
+
+/// 命令行导出：`range` 为空时导出整本账本（与桌面「导出 CSV」相同），否则按看板同一套
+/// 时间窗（同一时区规则与闭区间）筛选。返回正文与记录数，写到哪里由调用方决定。
+pub(crate) fn export_ledger_impl(
+    app: &AppContext,
+    range: Option<LocalStatsQuery>,
+    format: LedgerExportFormat,
+) -> Result<(String, usize), String> {
+    let window = match range {
+        Some(query) => {
+            let query = NormalizedStatsQuery::from_query(query)?;
+            let bounds = query_bounds(query.range, Local::now().with_timezone(&query.tz))?;
+            Some((
+                bounds
+                    .current_start
+                    .as_ref()
+                    .map(|start| storage_timestamp(storage_boundary(start))),
+                storage_timestamp(storage_boundary(&bounds.current_end)),
+            ))
+        }
+        None => None,
+    };
+    let db_path = db::get_db_path(app);
+    db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let prices = load_prices(app);
+    match format {
+        LedgerExportFormat::Csv => ledger_csv_window(&conn, &prices, window.as_ref()),
+        LedgerExportFormat::Json => {
+            let (items, count) = ledger_json_window(&conn, &prices, window.as_ref())?;
+            let text = serde_json::to_string_pretty(&items).map_err(|e| e.to_string())?;
+            Ok((text, count))
+        }
+    }
 }
 
 /// CSV `estimated_cost_usd` 的逐行取值（用户决定 U-11，T10.196）：本机看板汇总逐行计入
@@ -12071,6 +12213,15 @@ pub fn reset_local_sync_impl(app: &AppContext) -> Result<Value, String> {
 }
 
 pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
+    refresh_scan_with(app, true)
+}
+
+/// `post_scan_cloud_sync` 为假时只扫描入库，不在后台线程里推云端：命令行进程扫完就退出，
+/// 带不走那条线程，也不该为了扫描去读系统安全存储里的云端会话；新记录由桌面端下一轮同步带上。
+pub(crate) fn refresh_scan_with(
+    app: &AppContext,
+    post_scan_cloud_sync: bool,
+) -> Result<Value, String> {
     let db_path = db::get_db_path(app);
     db::init_db(&db_path).map_err(|e| e.to_string())?;
     let prices_before = auto_discovered_price_keys(app);
@@ -12110,16 +12261,18 @@ pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
                 .cloned()
                 .collect::<Vec<_>>();
             discovered_price_models.sort();
-            let handle = app.clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
-                if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
-                    log::debug!("Post-scan cloud sync skipped/failed: {}", e);
-                }
-            });
+            if post_scan_cloud_sync {
+                let handle = app.clone();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
+                        log::debug!("Post-scan cloud sync skipped/failed: {}", e);
+                    }
+                });
+            }
             let price_message = if discovered_price_models.is_empty() {
                 String::new()
             } else {
