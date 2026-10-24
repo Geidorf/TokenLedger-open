@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BehaviorAnalysisResponse, StatsData } from '../types';
 import type { BudgetRule } from '../hooks/useBudget';
-import { buildPeriodReport, budgetUsed, compareValues, describeDelta, reportPeriod, reportPeriodOptions, weekStart } from './periodReport';
+import { budgetSummary, buildPeriodReport, budgetUsed, compareValues, describeDelta, reportPeriod, reportPeriodOptions, weekStart } from './periodReport';
 import { budgetPercentText, generatePeriodReportHtml } from './periodReportExport';
 
 function stats(input: number, output: number, extra: Partial<StatsData> = {}): StatsData {
@@ -135,6 +135,11 @@ describe('buildPeriodReport', () => {
     });
     expect(report.budgets.map((budget) => [budget.id, budget.level])).toEqual([['over', 'over'], ['tool', 'ok']]);
     expect(budgetUsed(rule({ scopeKind: 'provider', scopeId: 'x' }), current)).toBeNull();
+    const unknown = buildPeriodReport({ period, scope: 'local', current, previous: null, budgetRules: [rule({ id: 'tool', metric: 'tokens', scopeKind: 'tool', scopeId: 'claude', limit: 1000 }), rule({ id: 'acct', scopeKind: 'provider', scopeId: 'x' })] });
+    expect(unknown.budgets.map((budget) => budget.level)).toEqual(['ok', 'unavailable']);
+    expect(budgetSummary(unknown.budgets)).toBe('1 项无法核对');
+    expect(unknown.highlights.join()).not.toContain('预算全部');
+    expect(budgetSummary(unknown.budgets.slice(0, 1))).toBe('全部在上限内');
     expect(budgetUsed(rule({ scopeKind: 'model', scopeId: 'missing' }), current)).toBe(0);
   });
 });

@@ -6,6 +6,7 @@ import { budgetScopeName } from '../components/settings/BudgetSection';
 import { BUDGET_METRIC_LABELS } from '../hooks/useBudget';
 import { ensureShareCardAssetsReady, SHARE_FONT_FAMILIES } from './shareCardRenderer';
 import {
+  budgetSummary,
   describeDelta,
   reportFileSlug,
   reportTitle,
@@ -351,7 +352,7 @@ export function renderPeriodReportImage(report: PeriodReport, options: PeriodRep
   const tiles: Array<[string, string, string]> = [
     ['预估费用', costText(totals.cost, hideCosts), hideCosts ? '已隐藏' : deltaText(deltas.cost)],
     ['缓存复用率', percentText(totals.cacheReuse), deltas.cacheReusePoints === null ? '缓存另列' : `${deltas.cacheReusePoints >= 0 ? '+' : '−'}${Math.abs(deltas.cacheReusePoints).toFixed(1)} pt`],
-    ['预算', report.budgets.length === 0 ? '未设置' : `${report.budgets.filter((b) => b.level === 'ok').length}/${report.budgets.length} 达成`, report.budgets.some((b) => b.level === 'over') ? '有超出' : ' '],
+    ['预算', report.budgets.length === 0 ? '未设置' : `${report.budgets.filter((b) => b.level === 'ok').length}/${report.budgets.length} 达成`, report.budgets.length === 0 ? ' ' : budgetSummary(report.budgets)],
   ];
   const tileW = (W - M * 2 - 32) / 3;
   tiles.forEach(([label, value, sub], index) => {

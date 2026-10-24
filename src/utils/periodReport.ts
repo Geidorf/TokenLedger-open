@@ -388,6 +388,15 @@ function quotaRows(providers: readonly QuotaProviderEnvelope[] | undefined, now:
 }
 
 /** 与 `budget.rs::used_for` 同一套取数：缺少该行是 0，缺少账号维度或费用不可得是不可得。 */
+/** 预算达成一句话：只有每条都可核对且未超出时才说「全部在上限内」。 */
+export function budgetSummary(budgets: readonly ReportBudget[]): string {
+  if (budgets.some((budget) => budget.level === 'over')) return '有预算超出';
+  const unknown = budgets.filter((budget) => budget.level === 'unavailable').length;
+  if (unknown > 0) return `${unknown} 项无法核对`;
+  if (budgets.some((budget) => budget.level === 'warn')) return '有预算接近上限';
+  return '全部在上限内';
+}
+
 export function budgetUsed(rule: BudgetRule, stats: StatsData): number | null {
   let row: { tokens: unknown; cost: unknown };
   if (rule.scopeKind === 'all') {

@@ -151,17 +151,25 @@ export function usePeriodReportSettings() {
   const [settings, setSettings] = useState<PeriodReportSettings>({ weekly: false, monthly: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // 没读到已存设置前不许保存：后端整份替换，按默认值写会关掉另一个已开的提醒。
+  const [loaded, setLoaded] = useState(false);
   const saveId = useRef(0);
 
   useEffect(() => {
     let active = true;
     invoke<unknown>('get_period_report_settings')
-      .then((value) => { if (active) setSettings(parsePeriodReportSettings(value)); })
+      .then((value) => {
+        // 已经保存过就以保存结果为准，迟到的初读不覆盖。
+        if (!active || saveId.current !== 0) return;
+        setSettings(parsePeriodReportSettings(value));
+        setLoaded(true);
+      })
       .catch(() => { if (active) setError('读取报告提醒设置失败'); });
     return () => { active = false; };
   }, []);
 
   const save = useCallback(async (next: PeriodReportSettings) => {
+    if (!loaded) return;
     const id = beginRequest(saveId);
     const previous = settings;
     setSettings(next);
@@ -177,7 +185,7 @@ export function usePeriodReportSettings() {
     } finally {
       if (isCurrentRequest(saveId, id)) setSaving(false);
     }
-  }, [settings]);
+  }, [loaded, settings]);
 
-  return { settings, saving, error, save };
+  return { settings, loaded, saving, error, save };
 }

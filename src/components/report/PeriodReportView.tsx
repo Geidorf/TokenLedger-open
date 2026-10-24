@@ -7,6 +7,7 @@ import { useSegmentedIndicator } from '../../hooks/useSegmentedIndicator';
 import { BUDGET_METRIC_LABELS } from '../../hooks/useBudget';
 import { formatEstimatedUsd, formatNum, formatTokens } from '../../utils/format';
 import {
+  budgetSummary,
   buildPeriodReport,
   DEFAULT_REPORT_OFFSET,
   describeDelta,
@@ -226,7 +227,7 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
             <div className="panel report-kpi">
               <span className="report-label">预算达成</span>
               <strong>{report.budgets.length === 0 ? '未设置' : `${report.budgets.filter((budget) => budget.level === 'ok').length} / ${report.budgets.length}`}</strong>
-              <span className="report-delta">{report.budgets.length === 0 ? (scope === 'cloud' ? '预算只看本机账本' : `设置里可加${kind === 'week' ? '每周' : '每月'}预算`) : report.budgets.some((budget) => budget.level === 'over') ? '有预算超出' : '全部在上限内'}</span>
+              <span className="report-delta">{report.budgets.length === 0 ? (scope === 'cloud' ? '预算只看本机账本' : `设置里可加${kind === 'week' ? '每周' : '每月'}预算`) : budgetSummary(report.budgets)}</span>
             </div>
           </div>
 
@@ -306,7 +307,8 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
               aria-label={kind === 'week' ? '每周一提醒' : '每月 1 日提醒'}
               aria-checked={remindOn}
               aria-busy={reminder.saving || undefined}
-              disabled={reminder.saving}
+              disabled={reminder.saving || !reminder.loaded}
+              title={reminder.loaded ? undefined : '提醒设置还没读到，暂不能修改'}
               onClick={() => void reminder.save(kind === 'week' ? { ...reminder.settings, weekly: !remindOn } : { ...reminder.settings, monthly: !remindOn })}
             />
           </section>
