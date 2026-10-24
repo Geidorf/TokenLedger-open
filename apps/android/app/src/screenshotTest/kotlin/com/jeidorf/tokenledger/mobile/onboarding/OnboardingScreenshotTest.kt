@@ -27,6 +27,7 @@ import com.jeidorf.tokenledger.mobile.ui.onboarding.V2LoginIntro
 
 // 首次启动引导与新账户空状态：已登录、桌面还没同步过任何数据的那一帧。
 // 系统事实（壁纸、小组件）用 LocalV2DeviceFactsOverride 钉死，不读真机状态。
+// 新账户的用量页顶栏不带分享：只有接入说明，没有可分享的统计。
 
 private val FRESH_DEVICE = V2DeviceFacts(
     wallpaper = V2MeWallpaperState.Available,
