@@ -1,0 +1,657 @@
+/* ==========================================================================
+   Settings pages: compact layout on the shared desktop tokens.
+
+   Covers the settings directory and every section behind the top-bar gear
+   (scan and startup, widget, wallpaper, cloud sync, quota, pricing, data),
+   plus the report-card dialog opened from the top bar.
+   Loaded after surfaces.css and left unlayered so it wins over index.css and
+   the lazily loaded settings-navigation.css / wallpaper-settings.css.
+
+   Every control keeps its 44px target (GLB-03); fills and outlines are drawn
+   inside it, so rows read at 32px while the hit area stays the same.
+   ========================================================================== */
+
+/* ----- Page frame ----------------------------------------------------------
+   The page lines up with the page title instead of floating in the middle of
+   a wide window; the content column grows with the window up to a readable
+   measure. */
+.app-shell .settings-navigation-page {
+  gap: 24px;
+  width: min(100%, 1120px);
+  margin: 0;
+}
+
+.app-shell .settings-navigation-main {
+  max-width: 860px;
+}
+
+/* ----- Directory ----------------------------------------------------------- */
+.app-shell .settings-directory {
+  top: 8px;
+  flex-basis: 216px;
+  padding: 0;
+}
+
+.app-shell .settings-directory-search {
+  position: relative;
+  isolation: isolate;
+  height: 44px;
+  margin: 0 0 6px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .settings-directory-search::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px 0;
+  border-radius: 8px;
+  background: var(--shell-track);
+  pointer-events: none;
+  transition: box-shadow var(--motion-hover) var(--easing-standard);
+}
+
+.app-shell .settings-directory-search:focus-within {
+  box-shadow: none;
+}
+
+.app-shell .settings-directory-search:focus-within::before {
+  box-shadow: inset 0 0 0 1px var(--color-primary-focus);
+}
+
+.app-shell .settings-directory-search input {
+  height: 100%;
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.app-shell .settings-directory-list {
+  gap: 0;
+}
+
+.app-shell .settings-directory-list > button {
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+@media (min-width: 761px) {
+  .app-shell .settings-directory-list > button {
+    row-gap: 0;
+  }
+}
+
+.app-shell .settings-directory-list > button > svg {
+  color: var(--color-text-tertiary);
+}
+
+.app-shell .settings-directory-list > button.is-active > svg {
+  color: var(--color-text-primary);
+}
+
+.app-shell .settings-directory-list strong {
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-label);
+  line-height: 1.35;
+}
+
+.app-shell .settings-directory-list small {
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.app-shell .settings-nav-status {
+  font-size: 11px;
+}
+
+.app-shell .settings-save-note {
+  margin-top: 8px;
+  padding-top: 10px;
+  font-size: 11.5px;
+  color: var(--color-text-tertiary);
+}
+
+/* ----- Sections and groups -------------------------------------------------
+   The section title is the page heading; card titles are quiet group labels
+   above a single bordered list, like a system preferences pane. */
+.app-shell .settings-navigation-main .settings-section {
+  gap: 14px;
+}
+
+.app-shell .settings-navigation-main .settings-section-title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: var(--weight-title);
+  line-height: 1.4;
+}
+
+.app-shell .settings-navigation-main .settings-card {
+  gap: 6px;
+}
+
+.app-shell .settings-navigation-main .settings-card-title {
+  margin: 0 0 0 2px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  font-weight: var(--weight-label);
+  line-height: 1.4;
+}
+
+.app-shell .settings-navigation-main .settings-card-description {
+  margin-left: 2px;
+  font-size: 12px;
+}
+
+.app-shell .settings-navigation-main .settings-group {
+  border-color: var(--color-border);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.app-shell .settings-navigation-main .settings-row {
+  min-height: 48px;
+  gap: 12px;
+  padding: 2px 14px;
+}
+
+.app-shell .settings-navigation-main .settings-row-wide-control {
+  padding-block: 10px;
+}
+
+.app-shell .settings-navigation-main .settings-row-main {
+  gap: 10px;
+  padding-block: 6px;
+}
+
+.app-shell .settings-navigation-main .settings-row-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.app-shell .settings-navigation-main .settings-row-label {
+  font-size: var(--font-size-base);
+}
+
+.app-shell .settings-navigation-main .settings-row-hint {
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.app-shell .settings-navigation-main .settings-action-row {
+  padding: 2px 14px;
+}
+
+.app-shell .settings-navigation-main .settings-action-hint,
+.app-shell .settings-navigation-main .settings-action-note {
+  font-size: 12px;
+}
+
+/* ----- Fields --------------------------------------------------------------
+   A transparent border pads the 44px field down to a 32px box; the outline is
+   an inset shadow so it follows the inner box, not the hit area. */
+.app-shell .settings-navigation-main :is(.settings-input, .settings-number, .settings-select) {
+  min-height: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border: 6px solid transparent;
+  border-inline-width: 0;
+  /* Vertical radius includes the 6px band so the visible box keeps 7px corners. */
+  border-radius: 7px / 13px;
+  background-clip: padding-box;
+  background-color: var(--shell-field);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  font-size: var(--font-size-base);
+}
+
+.app-shell .settings-navigation-main :is(.settings-input, .settings-number, .settings-select):focus {
+  border-color: transparent;
+  background-color: var(--color-bg-panel);
+  box-shadow: inset 0 0 0 1px var(--color-primary), inset 0 0 0 3px var(--color-primary-soft-bg);
+}
+
+.app-shell .settings-navigation-main .settings-number {
+  width: 96px;
+}
+
+.app-shell .settings-navigation-main .settings-input-affix {
+  position: relative;
+  isolation: isolate;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  margin-left: -6px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .settings-navigation-main .settings-input-affix::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px;
+  border-radius: 7px;
+  transition: background-color var(--motion-hover) var(--easing-standard);
+}
+
+.app-shell .settings-navigation-main .settings-input-affix:hover {
+  border: 0;
+  background: transparent;
+}
+
+.app-shell .settings-navigation-main .settings-input-affix:hover::before {
+  background: var(--shell-hover);
+}
+
+.app-shell .settings-navigation-main .settings-input-affix:focus-visible {
+  border: 0;
+  box-shadow: none;
+  outline: 2px solid var(--color-primary);
+  outline-offset: -6px;
+}
+
+/* ----- Buttons -------------------------------------------------------------
+   Same idea as the model pages: the fill and outline sit inside the target. */
+.app-shell .settings-navigation-main :is(.primary-inline, .secondary-inline, .ghost-inline, .danger-inline) {
+  position: relative;
+  isolation: isolate;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--font-size-base);
+}
+
+.app-shell .settings-navigation-main :is(.primary-inline, .secondary-inline, .ghost-inline, .danger-inline)::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px 0;
+  border-radius: 7px;
+  pointer-events: none;
+  transition: background-color var(--motion-hover) var(--easing-standard), box-shadow var(--motion-hover) var(--easing-standard);
+}
+
+.app-shell .settings-navigation-main :is(.primary-inline, .secondary-inline, .ghost-inline, .danger-inline):hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .settings-navigation-main .primary-inline::before {
+  background: var(--color-primary-fill);
+}
+
+.app-shell .settings-navigation-main .primary-inline:hover:not(:disabled)::before {
+  background: var(--color-primary-fill-hover);
+}
+
+.app-shell .settings-navigation-main .primary-inline:disabled {
+  border: 0;
+  background: transparent;
+}
+
+.app-shell .settings-navigation-main .primary-inline:disabled::before {
+  background: var(--shell-track);
+}
+
+.app-shell .settings-navigation-main .secondary-inline::before {
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.app-shell .settings-navigation-main .secondary-inline:hover:not(:disabled)::before,
+.app-shell .settings-navigation-main .ghost-inline:hover:not(:disabled)::before {
+  background: var(--shell-hover);
+}
+
+.app-shell .settings-navigation-main .danger-inline::before {
+  box-shadow: inset 0 0 0 1px var(--color-danger-soft-border);
+}
+
+.app-shell .settings-navigation-main .danger-inline:hover:not(:disabled)::before {
+  background: var(--color-danger-soft-bg);
+}
+
+.app-shell .settings-navigation-main :is(.primary-inline, .secondary-inline, .ghost-inline, .danger-inline):focus-visible {
+  outline-offset: -6px;
+}
+
+/* ----- Data overview -------------------------------------------------------
+   The database facts read as one stat strip with hairline dividers instead of
+   a grid of separate cards; cells grow so a row never leaves a hole. */
+.app-shell .settings-navigation-main .settings-info-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-border-faint);
+}
+
+.app-shell .settings-navigation-main .settings-info-grid > .settings-info-card {
+  flex: 1 1 150px;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The label already names each fact; the glyph column only pushed the
+   numbers off the strip's left edge. */
+.app-shell .settings-navigation-main .settings-info-grid .settings-info-icon {
+  display: none;
+}
+
+.app-shell .settings-navigation-main .settings-info-label {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.app-shell .settings-navigation-main .settings-info-value {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell .settings-navigation-main .settings-sync-gate {
+  padding: 6px 6px 6px 14px;
+  border-radius: 10px;
+}
+
+.app-shell .settings-navigation-main .settings-sync-gate-copy strong {
+  font-size: var(--font-size-base);
+}
+
+.app-shell .settings-navigation-main .settings-sync-gate-copy span {
+  font-size: 12px;
+}
+
+/* ----- Disclosures --------------------------------------------------------- */
+.app-shell .settings-navigation-main .settings-disclosure-trigger {
+  min-height: 44px;
+  padding-inline: 14px;
+  font-size: var(--font-size-base);
+}
+
+.app-shell .settings-navigation-main .settings-disclosure-body {
+  font-size: 12px;
+}
+
+/* ----- Quota overview ------------------------------------------------------
+   Flat card: no tinted wash, and the three counts share one divided strip. */
+.app-shell .settings-navigation-main .quota-overview {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  border-color: var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-panel);
+}
+
+.app-shell .settings-navigation-main .quota-overview-head {
+  padding: 12px 14px;
+}
+
+.app-shell .settings-navigation-main .quota-overview-head h3 {
+  font-size: 15px;
+}
+
+.app-shell .settings-navigation-main .quota-overview-kicker {
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.app-shell .settings-navigation-main .quota-overview-badge {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.app-shell .settings-navigation-main .quota-overview-grid {
+  gap: 0;
+  border-top: 1px solid var(--color-border-faint);
+}
+
+.app-shell .settings-navigation-main .quota-overview-item {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-shell .settings-navigation-main .quota-overview-item + .quota-overview-item {
+  border-left: 1px solid var(--color-border-faint);
+}
+
+@media (max-width: 760px) {
+  .app-shell .settings-navigation-main .quota-overview-item + .quota-overview-item {
+    border-left: 0;
+    border-top: 1px solid var(--color-border-faint);
+  }
+}
+
+/* ----- Wallpaper -----------------------------------------------------------
+   The status card shrinks to a header strip; the mode picker and preview use
+   the same row rhythm as the rest of the page. */
+.app-shell .settings-navigation-main .wallpaper-status {
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.app-shell .settings-navigation-main .wallpaper-status h3 {
+  margin: 2px 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.app-shell .settings-navigation-main .wallpaper-status p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.app-shell .settings-navigation-main .wallpaper-state-badge {
+  padding: 3px 8px;
+  font-size: 11px;
+  background: var(--shell-track);
+}
+
+.app-shell .settings-navigation-main .wallpaper-mode-options {
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.app-shell .settings-navigation-main .wallpaper-mode-options legend {
+  padding-top: 10px;
+  font-size: 12px;
+  font-weight: var(--weight-label);
+  color: var(--color-text-tertiary);
+}
+
+.app-shell .settings-navigation-main .wallpaper-mode-options label {
+  min-height: 56px;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.app-shell .settings-navigation-main .wallpaper-mode-options strong {
+  font-size: var(--font-size-base);
+}
+
+.app-shell .settings-navigation-main .wallpaper-mode-options small {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.app-shell .settings-navigation-main .wallpaper-preview {
+  margin: 6px 14px 8px;
+}
+
+.app-shell .settings-navigation-main .wallpaper-preview-frame {
+  max-width: 440px;
+  border-radius: 8px;
+}
+
+.app-shell .settings-navigation-main .wallpaper-note {
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.app-shell .settings-navigation-main .wallpaper-actions {
+  gap: 6px;
+  padding: 2px 14px 8px;
+}
+
+/* ----- Report card dialog --------------------------------------------------
+   The poster stays the hero; the chrome around it is a neutral, tighter frame
+   with the same selection language as the settings directory. */
+.share-modal-surface {
+  border-color: var(--color-border);
+  border-radius: 14px;
+}
+
+.share-modal-surface .share-modal-header {
+  padding: 4px 6px 4px 16px;
+  border-bottom-color: var(--color-border-faint);
+}
+
+.share-modal-surface .share-modal-icon {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+
+.share-modal-surface .share-modal-title {
+  font-size: 15px;
+}
+
+.share-modal-surface .share-modal-close {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.share-modal-surface .share-modal-close:hover {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+@media (min-width: 769px) {
+  .share-modal-surface .share-modal-body {
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .share-modal-surface .share-modal-footer {
+    padding: 6px 16px;
+  }
+}
+
+.share-modal-surface .share-modal-preview-wrapper {
+  border: 0;
+  border-radius: 10px;
+  background: var(--shell-track);
+}
+
+.share-modal-surface .share-modal-controls {
+  gap: 14px;
+}
+
+.share-modal-surface .share-modal-section {
+  gap: 6px;
+}
+
+.share-modal-surface .share-modal-label {
+  color: var(--color-text-tertiary);
+  font-weight: var(--weight-label);
+}
+
+.share-modal-surface .share-layout-selector {
+  gap: 6px;
+}
+
+.share-modal-surface .share-layout-btn {
+  min-height: 48px;
+  padding: 6px 10px;
+  border-color: var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-panel);
+  transition: border-color var(--motion-hover) var(--easing-standard), background-color var(--motion-hover) var(--easing-standard);
+}
+
+.share-modal-surface .share-layout-btn:hover {
+  border-color: var(--color-border-strong);
+  background: var(--shell-hover);
+}
+
+.share-modal-surface .share-layout-btn.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-bg-panel);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.share-modal-surface .share-layout-index {
+  width: 22px;
+  height: 32px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.share-modal-surface .share-privacy-toggle {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-color: var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-panel);
+}
+
+.share-modal-surface .share-privacy-toggle.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft-bg);
+}
+
+.share-modal-surface .share-privacy-state {
+  color: var(--color-primary);
+}
+
+.share-modal-surface .share-modal-tip {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--shell-track);
+  font-size: 12px;
+}
+
+.share-modal-surface .share-modal-actions {
+  gap: 6px;
+}
+
+@media (forced-colors: active) {
+  .app-shell .settings-directory-search::before,
+  .app-shell .settings-navigation-main :is(.primary-inline, .secondary-inline, .ghost-inline, .danger-inline)::before {
+    border: 1px solid ButtonText;
+  }
+
+  .app-shell .settings-navigation-main :is(.settings-input, .settings-number, .settings-select) {
+    border-color: Canvas;
+    outline: 1px solid ButtonText;
+    outline-offset: -6px;
+  }
+}
