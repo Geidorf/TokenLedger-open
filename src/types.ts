@@ -306,9 +306,6 @@ export interface EntityDashboard {
     machines: CompositionItem[];
   };
   heatmap: Record<string, number>;
-  /** Local stats only (contract §2.6): per-day record count and estimated cost; absent on cloud. */
-  heatmapRequests?: Record<string, number>;
-  heatmapCost?: Record<string, number>;
   peak?: {
     bucket?: string;
     tokens?: number;
@@ -417,11 +414,20 @@ export interface StatsData {
   models: Record<string, ModelStat>;
   trends: TrendPoint[];
   heatmap: Record<string, number>;
+  /** Local stats only (contract §2.6): per-day record count and estimated cost; absent on cloud and old caches. */
+  heatmapRequests?: Record<string, number>;
+  heatmapCost?: Record<string, number>;
   history: LogHistoryItem[];
   /** Query-bound recorded estimates; absent means this capability is unavailable. */
   dailyCosts?: DailyCosts;
   /** Query-bound device aggregate; absent on clouds that predate T6.3. */
   machineDistribution?: CompositionItem[];
+  /**
+   * Local stats only (contract §2.7): this period's gateway/imported usage split by
+   * provider account, same shape as `tools[*]`. Scan rows carry no account and are
+   * not in any entry; absent on cloud and when no gateway ledger exists.
+   */
+  providers?: Record<string, ToolStat>;
   historyPage?: UsageDetailsResponse;
   comparison?: UsageComparison | null;
   machines?: string[];
