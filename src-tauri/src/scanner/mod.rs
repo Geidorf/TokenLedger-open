@@ -11,6 +11,7 @@ pub mod kimi;
 pub mod minimax;
 pub mod other_tools;
 pub mod pi;
+pub mod qwen;
 pub mod reasonix;
 pub mod runner;
 pub mod types;

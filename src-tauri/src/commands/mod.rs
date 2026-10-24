@@ -2155,7 +2155,7 @@ fn fail_closed_cloud_session_after_load_error(
     });
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct CloudConfig {
     pub supabase_url: String,
     pub supabase_key: String,
@@ -2163,7 +2163,17 @@ pub struct CloudConfig {
     pub session: Option<CloudSession>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+impl std::fmt::Debug for CloudConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CloudConfig")
+            .field("supabase_url", &self.supabase_url)
+            .field("supabase_key", &crate::redact::Hidden(&self.supabase_key))
+            .field("session", &self.session)
+            .finish()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct CloudSession {
     pub access_token: String,
     pub refresh_token: String,
@@ -2172,10 +2182,31 @@ pub struct CloudSession {
     pub expires_at: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl std::fmt::Debug for CloudSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CloudSession")
+            .field("access_token", &crate::redact::Hidden(&self.access_token))
+            .field("refresh_token", &crate::redact::Hidden(&self.refresh_token))
+            .field("user_id", &self.user_id)
+            .field("email", &crate::redact::Hidden(&self.email))
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct AuthRequest {
     pub email: String,
     pub password: String,
+}
+
+impl std::fmt::Debug for AuthRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthRequest")
+            .field("email", &crate::redact::Hidden(&self.email))
+            .field("password", &crate::redact::Hidden(&self.password))
+            .finish()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
