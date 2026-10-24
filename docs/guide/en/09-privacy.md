@@ -26,13 +26,15 @@ Everything goes to the Supabase project you entered in **Settings › Cloud acco
 
 | When | What is uploaded | What is not |
 | --- | --- | --- |
-| Cloud sync (after sign-in) | Rows aggregated by device × tool × model × hour: device name (the computer's host name), tool, model, hour, input / output / cache tokens, request count, estimated cost and how many of those requests went through the gateway | Session IDs, prompts, replies, file paths, project names, provider keys |
+| Cloud sync (after sign-in) | Rows aggregated by device × tool × model × hour: device ID (a random number starting with `tl-`, generated the first time the app runs; it does not contain the computer's name), tool, model, hour, input / output / cache tokens, request count, estimated cost and how many of those requests went through the gateway | Session IDs, prompts, replies, file paths, project names, provider keys |
 | Account | The email you registered with, kept by Supabase Auth | — |
 | Quota sync across devices (separate switch, off by default) | Available share, reset time, observation time and source name for each quota window; for provider balances you turned on, only the amount and currency | Subscription credentials, cookies, account emails or organization names |
-| Budget sync to phone (separate switch, off by default) | For each budget: the scope name (the same as in system notifications: the agent, model or account display name, or "All usage"), period, used percentage (rounded) and level. The device is a one-way hashed ID, not the host name | Amounts, limits, budgets without a reading; deleted when you turn the switch off, and snapshots not updated for 3 days are removed by the cloud |
+| Budget sync to phone (separate switch, off by default) | For each budget: the scope name (the same as in system notifications: the agent, model or account display name, or "All usage"), period, used percentage (rounded) and level. The device is a one-way hashed ID, not the computer's name | Amounts, limits, budgets without a reading; deleted when you turn the switch off, and snapshots not updated for 3 days are removed by the cloud |
 | Phone live wallpaper (separate switch, off by default) | A routing snapshot of the last few minutes: agent names, `provider/model`, status codes and times | Sessions, accounts, keys, error bodies, request content; deleted when you turn the switch off, and old snapshots are cleaned up daily |
 
-If you don't want your computer's host name in the cloud, rename the computer to something without personal details before turning on sync.
+The device ID is kept in the `device-id` file in the app data folder, next to the local ledger. Older versions told devices apart by the computer's host name. After you update, the first sync of each cloud account moves the rows this computer uploaded under its host name to the device ID as they are, then deletes the rows under the host name, so no history is lost or counted twice and the computer's name no longer appears in the cloud. In device pickers this computer shows as **This device (tl-…)**.
+
+If you delete the app data folder (with the ledger), this computer gets a new device ID. Rows already synced under the old ID stay in the cloud and count as another device.
 
 ## Addresses TokenLedger connects to
 
