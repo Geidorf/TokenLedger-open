@@ -1515,7 +1515,10 @@ mod scanner_codex_tests {
         copy.extend([first, second]);
         write_rollout_values(&rollout_path(&cindy_sessions, ROOT_ID), &copy);
 
-        let roots = discover_codex_log_roots_in(&home);
+        let roots = discover_codex_log_roots_in(&home)
+            .into_iter()
+            .filter(|root| root.starts_with(&home))
+            .collect::<Vec<_>>();
         let batch = scan_codex_roots_checkpointed(&roots, &HashMap::new(), false);
 
         assert!(batch.complete);

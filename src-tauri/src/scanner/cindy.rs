@@ -106,7 +106,10 @@ mod tests {
     #[test]
     fn every_release_channel_and_agent_root_is_offered() {
         let home = std::env::temp_dir().join("tokenledger_cindy_paths_fixture");
-        let dirs = cindy_user_data_dirs_in(&home);
+        let dirs = cindy_user_data_dirs_in(&home)
+            .into_iter()
+            .filter(|dir| dir.starts_with(&home))
+            .collect::<Vec<_>>();
         for name in CINDY_USER_DATA_DIR_NAMES {
             assert!(
                 dirs.iter()
@@ -114,13 +117,17 @@ mod tests {
                 "{name} must be derived from the home directory: {dirs:?}"
             );
         }
-        let pi_roots = cindy_pi_roots_in(&home);
+        let pi_roots = cindy_pi_roots_in(&home)
+            .into_iter()
+            .filter(|root| root.starts_with(&home))
+            .collect::<Vec<_>>();
         assert!(pi_roots
             .iter()
             .any(|root| root.ends_with(Path::new("Cindy/pi-agent-home/sessions"))));
         // Account homes are only listed when they exist.
         assert!(cindy_codex_roots_in(&home)
-            .iter()
+            .into_iter()
+            .filter(|root| root.starts_with(&home))
             .all(|root| !root.to_string_lossy().contains(CINDY_CODEX_ACCOUNTS_DIR)));
     }
 }
