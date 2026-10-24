@@ -863,6 +863,7 @@ pub fn run() {
             );
             commands::start_price_table_updates(app_ctx_for_setup.clone(), app.handle().clone());
             gateway_for_setup.set_enabled(model_access_at_launch);
+            gateway_for_setup.spawn_probe_loop();
             routing_publish::start(
                 app_ctx_for_setup.clone(),
                 settings_state_for_setup.clone(),
@@ -927,6 +928,8 @@ pub fn run() {
             gateway::gateway_recent_route_decisions,
             gateway::gateway_routing_cooldowns,
             gateway::gateway_provider_health,
+            gateway::gateway_set_health_probe,
+            gateway::gateway_probe_providers,
             commands::gateway_request_log::gateway_request_log,
             commands::gateway_request_log::gateway_request_log_export,
             gateway::gateway_routing_feed,

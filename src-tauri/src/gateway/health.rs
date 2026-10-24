@@ -5,12 +5,13 @@
 //! Failure codes reuse the routing trace table
 //! (`docs/design/routing-decision-trace-v1.md`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 
 use super::ledger::LedgerRecord;
+use super::probe::{ProbeResult, ProbeSettings};
 use super::routing::{mentions_quota, CoolingMember};
 
 /// Hours covered by a report and by its trend buckets.
@@ -117,6 +118,8 @@ pub struct ProviderHealth {
     pub recent_failures: Vec<FailureSample>,
     /// Members of this provider cooling down in routing groups right now.
     pub cooling: Vec<CoolingMember>,
+    /// Active probes when enabled, newest first; empty otherwise.
+    pub probes: Vec<ProbeResult>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -124,6 +127,7 @@ pub struct ProviderHealth {
 pub struct HealthReport {
     pub generated_at: String,
     pub window_hours: i64,
+    pub probe: ProbeSettings,
     pub providers: Vec<ProviderHealth>,
 }
 
@@ -266,6 +270,46 @@ fn level(
     }
 }
 
+/// Folds the newest active probe into a passive verdict: a failed probe
+/// newer than the last good call degrades (or, with no upstream calls,
+/// takes down) the provider; a good probe makes an idle one healthy.
+fn with_probe(
+    status: &'static str,
+    mut reasons: Vec<&'static str>,
+    stats: &HealthStats,
+    latest: Option<&ProbeResult>,
+) -> (&'static str, Vec<&'static str>) {
+    let Some(latest) = latest else {
+        return (status, reasons);
+    };
+    if latest.ok {
+        let status = if status == "idle" { "healthy" } else { status };
+        return (status, reasons);
+    }
+    if !latest.failed() {
+        return (status, reasons);
+    }
+    let newer = match (
+        parse_ts(&latest.ts),
+        stats.last_ok_at.as_deref().and_then(parse_ts),
+    ) {
+        (Some(probe), Some(ok)) => probe > ok,
+        _ => true,
+    };
+    if !newer {
+        return (status, reasons);
+    }
+    if !reasons.contains(&latest.code) {
+        reasons.push(latest.code);
+    }
+    let status = match status {
+        "down" => "down",
+        _ if stats.requests == 0 => "down",
+        _ => "degraded",
+    };
+    (status, reasons)
+}
+
 fn parse_ts(ts: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(ts)
         .ok()
@@ -359,6 +403,8 @@ pub fn summarize(
     records: &[LedgerRecord],
     known: &[String],
     cooling: &[CoolingMember],
+    probes: &HashMap<String, Vec<ProbeResult>>,
+    probe: ProbeSettings,
     now: DateTime<Utc>,
 ) -> HealthReport {
     let since = now - Duration::hours(WINDOW_HOURS);
@@ -429,6 +475,8 @@ pub fn summarize(
                 .collect();
             let stats = stats(&rows);
             let (status, reasons) = level(&stats, failure_streak(&rows), &mine);
+            let probes = probes.get(provider).cloned().unwrap_or_default();
+            let (status, reasons) = with_probe(status, reasons, &stats, probes.first());
             ProviderHealth {
                 provider: provider.to_string(),
                 status,
@@ -438,6 +486,7 @@ pub fn summarize(
                 buckets: buckets(&rows, now),
                 recent_failures,
                 cooling: mine,
+                probes,
             }
         })
         .collect();
@@ -455,6 +504,7 @@ pub fn summarize(
     HealthReport {
         generated_at: now.to_rfc3339(),
         window_hours: WINDOW_HOURS,
+        probe,
         providers,
     }
 }
@@ -634,7 +684,14 @@ mod tests {
         // Outside the window and from the future: ignored.
         records.push(row(60 * 25, "a", "m1", 500, 5, Some("上游返回 500：x")));
         records.push(row(-5, "a", "m1", 500, 5, Some("上游返回 500：x")));
-        let report = summarize(&records, &["a".into(), "idle".into()], &[], now());
+        let report = summarize(
+            &records,
+            &["a".into(), "idle".into()],
+            &[],
+            &HashMap::new(),
+            ProbeSettings::default(),
+            now(),
+        );
         assert_eq!(report.window_hours, 24);
         let a = &report.providers[0];
         assert_eq!(a.provider, "a");
@@ -716,7 +773,14 @@ mod tests {
             remaining_secs: 20,
             failures: 1,
         }];
-        let report = summarize(&records, &[], &cooling, now());
+        let report = summarize(
+            &records,
+            &[],
+            &cooling,
+            &HashMap::new(),
+            ProbeSettings::default(),
+            now(),
+        );
         let status: Vec<_> = report
             .providers
             .iter()
@@ -750,12 +814,74 @@ mod tests {
         for m in [3, 2, 1] {
             records.push(row(m, "a", "m1", 503, 5, Some("上游返回 503：busy")));
         }
-        let report = summarize(&records, &[], &[], now());
+        let report = summarize(
+            &records,
+            &[],
+            &[],
+            &HashMap::new(),
+            ProbeSettings::default(),
+            now(),
+        );
         let a = &report.providers[0];
         assert_eq!(a.stats.codes[0].code, "key_missing");
         assert_eq!(
             (a.status, a.reasons.clone()),
             ("down", vec!["upstream_failed"])
+        );
+    }
+
+    #[test]
+    fn probes_fill_in_for_missing_traffic() {
+        let probe = |minutes_ago: i64, ok: bool, code: &'static str| ProbeResult {
+            ts: (now() - Duration::minutes(minutes_ago)).to_rfc3339(),
+            ok,
+            status: Some(if ok { 200 } else { 401 }),
+            latency_ms: 300,
+            code,
+            error: None,
+        };
+        let probes = HashMap::from([
+            ("idle-ok".to_string(), vec![probe(1, true, "answered")]),
+            ("idle-bad".to_string(), vec![probe(1, false, "auth_failed")]),
+            ("busy".to_string(), vec![probe(1, false, "connect_failed")]),
+            (
+                "stale".to_string(),
+                vec![probe(30, false, "connect_failed")],
+            ),
+            (
+                "no-list".to_string(),
+                vec![probe(1, false, "probe_unsupported")],
+            ),
+        ]);
+        let records = vec![ok(10, "busy", 100), ok(10, "stale", 100)];
+        let known: Vec<String> = ["idle-ok", "idle-bad", "no-list"]
+            .map(String::from)
+            .to_vec();
+        let settings = ProbeSettings {
+            enabled: true,
+            interval_mins: 15,
+        };
+        let report = summarize(&records, &known, &[], &probes, settings, now());
+        assert_eq!(report.probe, settings);
+        let status = |id: &str| {
+            let item = report.providers.iter().find(|p| p.provider == id).unwrap();
+            (item.status, item.reasons.clone())
+        };
+        assert_eq!(status("idle-ok"), ("healthy", vec![]));
+        assert_eq!(status("idle-bad"), ("down", vec!["auth_failed"]));
+        assert_eq!(status("busy"), ("degraded", vec!["connect_failed"]));
+        // The last real call is newer than the failed probe.
+        assert_eq!(status("stale"), ("healthy", vec![]));
+        assert_eq!(status("no-list"), ("idle", vec![]));
+        assert_eq!(
+            report
+                .providers
+                .iter()
+                .find(|p| p.provider == "busy")
+                .unwrap()
+                .probes
+                .len(),
+            1
         );
     }
 
@@ -769,9 +895,42 @@ mod tests {
             0,
             Some("供应商「K」还没有设置 API key。"),
         )];
-        let report = summarize(&records, &[], &[], now());
+        let report = summarize(
+            &records,
+            &[],
+            &[],
+            &HashMap::new(),
+            ProbeSettings::default(),
+            now(),
+        );
         let k = &report.providers[0];
         assert_eq!((k.status, k.reasons.clone()), ("down", vec!["key_missing"]));
         assert_eq!((k.stats.requests, k.stats.success_rate), (0, None));
+    }
+
+    #[test]
+    fn hour_edges_land_in_one_bucket_and_the_window_start_is_open() {
+        // 60 min ago opens the newest bucket; 61 min falls in the one before;
+        // exactly 24 h ago is outside the window, 24 h minus a minute is in.
+        let records = vec![
+            ok(0, "h", 100),
+            ok(60, "h", 100),
+            ok(61, "h", 100),
+            ok(24 * 60 - 1, "h", 100),
+            ok(24 * 60, "h", 100),
+        ];
+        let report = summarize(
+            &records,
+            &[],
+            &[],
+            &HashMap::new(),
+            ProbeSettings::default(),
+            now(),
+        );
+        let h = &report.providers[0];
+        assert_eq!(h.stats.requests, 4);
+        let counts: Vec<u64> = h.buckets.iter().map(|b| b.requests).collect();
+        assert_eq!((counts[0], counts[22], counts[23]), (1, 1, 2));
+        assert_eq!(counts.iter().sum::<u64>(), 4);
     }
 }
