@@ -22,7 +22,8 @@ import {
   ttlLabel,
   weightShare,
 } from './helpers';
-import type { CoolingMember, ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
+import { HealthBadge, useProviderHealth } from './ProviderHealth';
+import type { CoolingMember, ProviderHealth, ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
 import { Sheet } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 import { RoutingStage, RoutingStageEmpty } from './RoutingStage';
@@ -189,7 +190,13 @@ function coolingLabel(item: CoolingMember): string {
   return `冷却中 · 约 ${time}`;
 }
 
-function GroupCard({ group, busy, cooling, onEdit, onToggle, onDelete }: { group: RoutingGroup; busy: boolean; cooling: Map<string, CoolingMember>; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
+/** Health of the provider behind a `provider/model` member; groups have none. */
+function memberHealth(health: Map<string, ProviderHealth>, member: string): ProviderHealth | undefined {
+  if (member.startsWith('group/')) return undefined;
+  return health.get(member.split('/')[0]);
+}
+
+function GroupCard({ group, busy, cooling, health, onEdit, onToggle, onDelete }: { group: RoutingGroup; busy: boolean; cooling: Map<string, CoolingMember>; health: Map<string, ProviderHealth>; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
   return (
     <div className={`mw-card mw-group ${group.enabled ? '' : 'is-off'}`}>
       <div className="mw-group-head">
@@ -205,6 +212,7 @@ function GroupCard({ group, busy, cooling, onEdit, onToggle, onDelete }: { group
         {group.members.map((member, index) => (
           <li key={member}>
             <span className="mw-member-n">{index + 1}</span>
+            <HealthBadge health={memberHealth(health, member)} compact />
             <div className="mw-member-main"><strong className="mw-mono-text">{member}</strong></div>
             {group.strategy === 'manual' && group.manualMember === member && <span className="mw-chip is-success">固定使用</span>}
             {group.strategy === 'weighted' && <span className="mw-chip">权重 {memberWeight(group, member)} · {weightShare(group, member)}%</span>}
@@ -321,6 +329,7 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
     }, cooling.length > 0 ? 10_000 : 30_000);
     return () => window.clearInterval(timer);
   }, [cooling.length]);
+  const health = useProviderHealth();
   const coolingByMember = useMemo(() => new Map(cooling.map((item) => [item.member, item])), [cooling]);
 
   const options = useMemo(() => modelOptions(providers, groups ?? []), [providers, groups]);
@@ -390,6 +399,7 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
             group={group}
             busy={busy}
             cooling={coolingByMember}
+            health={health}
             onEdit={() => setEditing({ group, isNew: false })}
             onToggle={() => void save({ ...group, enabled: !group.enabled }, group.enabled ? `${group.name} 已停用` : `${group.name} 已启用`)}
             onDelete={() => void remove(group)}

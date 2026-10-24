@@ -128,9 +128,9 @@ function validatePolicy(policy) {
   }
 }
 
-test('all 110 registered commands have generated permissions and exact per-window grants', () => {
+test('all 111 registered commands have generated permissions and exact per-window grants', () => {
   const policy = productionPolicy();
-  assert.equal(policy.registered.length, 110, 'review the surface matrix when adding or removing an application command');
+  assert.equal(policy.registered.length, 111, 'review the surface matrix when adding or removing an application command');
   validatePolicy(policy);
 });
 
@@ -180,7 +180,7 @@ const gatewayCommands = [
   'gateway_codex_inspect', 'gateway_codex_preview', 'gateway_codex_apply', 'gateway_codex_restore',
   'gateway_agent_inspect', 'gateway_agent_preview', 'gateway_agent_apply', 'gateway_agent_restore',
   'gateway_list_routing_groups', 'gateway_upsert_routing_group', 'gateway_delete_routing_group',
-  'gateway_recent_route_decisions', 'gateway_routing_cooldowns', 'gateway_reveal_local_token',
+  'gateway_recent_route_decisions', 'gateway_routing_cooldowns', 'gateway_provider_health', 'gateway_reveal_local_token',
 ];
 
 test('gateway provider and key management stays main-only', () => {

@@ -1,0 +1,31 @@
+/* 供应商健康度：徽标、24 小时趋势条与供应商详情里的统计区。只用设计令牌。 */
+.mw-health-chip i { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.mw-health-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 999px; background: var(--color-text-faint); }
+.mw-health-dot.is-success { background: var(--color-success); }
+.mw-health-dot.is-warning { background: var(--color-warning); }
+.mw-health-dot.is-danger { background: var(--color-danger); }
+.mw-health-spark { flex: none; display: block; }
+.mw-health-spark .is-ok { fill: color-mix(in srgb, var(--color-success) 55%, transparent); }
+.mw-health-spark .is-empty { fill: var(--color-border-faint); }
+.mw-health-spark .is-failed { fill: var(--color-danger); }
+.mw-health { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-faint); }
+.mw-health-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mw-health-head h4 { margin: 0; font-size: var(--font-size-sm); }
+.mw-health-note { margin: 0; color: var(--color-text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; }
+.mw-health-note.is-warning { color: var(--color-warning-text); }
+.mw-health-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.mw-health-stats div { min-width: 0; padding: 6px 8px; border-radius: var(--radius-md); background: var(--color-bg-subtle); }
+.mw-health-stats dt { color: var(--color-text-tertiary); font-size: var(--font-size-2xs); }
+.mw-health-stats dd { margin: 2px 0 0; color: var(--color-text-primary); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.mw-health-codes { display: flex; flex-wrap: wrap; gap: 6px; }
+.mw-health-models td, .mw-health-models th { font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.mw-health-failures h5 { margin: 0 0 4px; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.mw-health-failures ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.mw-health-failures li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; font-size: var(--font-size-xs); }
+.mw-health-failures small { flex-basis: 100%; min-width: 0; color: var(--color-text-tertiary); overflow-wrap: anywhere; }
+.mw-health-when { color: var(--color-text-faint); font-variant-numeric: tabular-nums; }
+.mw-row-meta .mw-health-spark { margin-right: 4px; }
+@media (max-width: 640px) {
+  .mw-health-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mw-row-meta .mw-health-spark { display: none; }
+}

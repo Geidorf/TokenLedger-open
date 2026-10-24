@@ -8,7 +8,8 @@ import type { ToastType } from '../../types';
 import { deleteProvider, errorText, listProviders, setProviderKey, upsertProvider } from './api';
 import { parseModels, slugId } from './helpers';
 import { hostOf, PROVIDER_PRESET_GROUPS, type ProviderPreset } from './presets';
-import type { ProviderRecord, ProviderView, WireApi } from './types';
+import { HealthBadge, HealthDetail, HealthSpark, useProviderHealth } from './ProviderHealth';
+import type { ProviderHealth, ProviderRecord, ProviderView, WireApi } from './types';
 import { beginProviderSave, clearProviderDraft, endProviderSave, readProviderDraft, useProviderSaving, writeProviderDraft } from './providerDrafts';
 import { ProviderIcon, Sheet } from './ui';
 
@@ -57,7 +58,7 @@ function BalanceEntry({ provider }: { provider: ProviderView }) {
   );
 }
 
-function ProviderRow({ provider, onOpen, onToggle, busy }: { provider: ProviderView; onOpen: () => void; onToggle: () => void; busy: boolean }) {
+function ProviderRow({ provider, health, onOpen, onToggle, busy }: { provider: ProviderView; health?: ProviderHealth; onOpen: () => void; onToggle: () => void; busy: boolean }) {
   return (
     <div className={`mw-row ${provider.enabled ? '' : 'is-off'}`}>
       <button type="button" className="mw-row-main" onClick={onOpen}>
@@ -66,7 +67,11 @@ function ProviderRow({ provider, onOpen, onToggle, busy }: { provider: ProviderV
           <strong>{provider.name}</strong>
           <small>{hostOf(provider.baseUrl)} · {provider.models.length} 个模型 · {WIRE_SHORT[provider.wire] ?? provider.wire}</small>
         </span>
-        <span className="mw-row-meta"><KeyState provider={provider} /></span>
+        <span className="mw-row-meta">
+          {health && health.stats.requests > 0 && <HealthSpark buckets={health.buckets} label={provider.name} />}
+          {provider.enabled && <HealthBadge health={health} />}
+          <KeyState provider={provider} />
+        </span>
       </button>
       <button type="button" role="switch" aria-checked={provider.enabled} aria-label={`启用 ${provider.name}`} disabled={busy} className={`mw-switch ${provider.enabled ? 'is-on' : ''}`} onClick={onToggle}><span /></button>
       <ChevronRight className="mw-row-arrow" aria-hidden="true" />
@@ -187,6 +192,7 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
   const [showOff, setShowOff] = useState(false);
   const [adding, setAdding] = useState<ProviderPreset | 'pick' | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const health = useProviderHealth();
 
   const load = useCallback(async () => {
     try {
@@ -287,7 +293,7 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
       )}
       {on.length > 0 && (
         <div className="mw-card mw-rows">
-          {on.map((provider) => <ProviderRow key={provider.id} provider={provider} busy={busy || saving} onOpen={() => { editSession.current++; setEditingId(provider.id); }} onToggle={() => toggle(provider)} />)}
+          {on.map((provider) => <ProviderRow key={provider.id} provider={provider} health={health.get(provider.id)} busy={busy || saving} onOpen={() => { editSession.current++; setEditingId(provider.id); }} onToggle={() => toggle(provider)} />)}
         </div>
       )}
       {off.length > 0 && (
@@ -334,6 +340,7 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
             onDeleteKey={() => void removeKey(editing)}
           />
           {editing.authMode !== 'none' && <BalanceEntry provider={editing} />}
+          <HealthDetail health={health.get(editing.id)} name={editing.name} />
           <footer className="mw-sheet-foot"><button type="button" className="mw-btn is-danger-ghost" disabled={busy || saving} onClick={() => void remove(editing)}>删除供应商</button></footer>
         </Sheet>
       )}
