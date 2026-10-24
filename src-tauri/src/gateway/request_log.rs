@@ -269,7 +269,9 @@ pub fn group_records(
         .iter()
         .filter_map(|id| {
             let attempts = groups.get(id)?;
-            Some(entry_of(id.clone(), attempts, decisions))
+            let mut entry = entry_of(id.clone(), attempts, decisions);
+            reconcile_skipped_tail(&mut entry);
+            Some(entry)
         })
         .collect();
     // A group request whose every member was unusable (provider deleted or
@@ -352,6 +354,28 @@ fn entry_of(
         decision: decisions.get(&id).cloned(),
         id,
     }
+}
+
+/// A skipped member (provider deleted or disabled) writes no ledger line, yet
+/// when it was tried last the client got its 404. Take the final outcome from
+/// the decision then, not from the last upstream that answered.
+fn reconcile_skipped_tail(entry: &mut RequestLogEntry) {
+    let Some(last) = entry.decision.as_ref().and_then(|d| d.attempts.last()) else {
+        return;
+    };
+    if last.outcome != "skipped" {
+        return;
+    }
+    let (provider, upstream_model) = last.member.split_once('/').unwrap_or((&last.member, ""));
+    entry.provider = provider.to_string();
+    entry.upstream_model = upstream_model.to_string();
+    entry.status = 404;
+    entry.ok = false;
+    entry.error = last.error.clone();
+    entry.output_tps = None;
+    let tried = entry.decision.as_ref().map_or(0, |d| d.attempts.len());
+    entry.retries = entry.retries.max(tried.saturating_sub(1));
+    entry.switched = true;
 }
 
 fn decision_only_entry(decision: &StoredDecision) -> RequestLogEntry {
@@ -752,5 +776,48 @@ mod tests {
         )
         .iter()
         .any(|e| e.id == "L3"));
+    }
+
+    #[test]
+    fn a_skipped_last_member_decides_the_final_outcome() {
+        let decision = StoredDecision {
+            ts: "2026-10-24T01:00:02Z".into(),
+            request_id: "L1".into(),
+            group: "fast".into(),
+            reason: "failover".into(),
+            detail: String::new(),
+            chosen: None,
+            attempts: vec![
+                StoredDecisionAttempt {
+                    member: "p1/m".into(),
+                    outcome: "failed".into(),
+                    status: Some(429),
+                    error: None,
+                },
+                StoredDecisionAttempt {
+                    member: "p2/m".into(),
+                    outcome: "failed".into(),
+                    status: Some(503),
+                    error: None,
+                },
+                StoredDecisionAttempt {
+                    member: "gone/m".into(),
+                    outcome: "skipped".into(),
+                    status: None,
+                    error: Some("没有启用的供应商「gone」。".into()),
+                },
+            ],
+            trace: vec![],
+        };
+        let mut rows = sample();
+        rows[1].status = 503;
+        rows[1].ok = false;
+        let entries = group_records(&rows, &HashMap::from([("L1".to_string(), decision)]));
+        let l1 = entries.iter().find(|e| e.id == "L1").unwrap();
+        assert_eq!(
+            (l1.provider.as_str(), l1.status, l1.ok, l1.retries),
+            ("gone", 404, false, 2)
+        );
+        assert_eq!(l1.attempts.len(), 2, "ledger attempts stay as recorded");
     }
 }
