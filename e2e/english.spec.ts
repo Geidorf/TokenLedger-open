@@ -118,6 +118,8 @@ test.describe('英文界面', () => {
     await openEnglish(page, 'settings-data');
     await expect(page.getByText('Shared usage from other computers')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Show computers sharing usage' })).toBeVisible();
+    // 重复计数警示在英文下也要保留。
+    await expect(page.getByText(/Only tick computers without TokenLedger installed/)).toBeVisible();
   });
 
   test('设置：预算提醒、外部网关同步与按项目统计是英文', async ({ page }) => {
