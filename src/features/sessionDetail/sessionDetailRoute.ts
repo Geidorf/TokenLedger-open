@@ -3,8 +3,8 @@ import type { Tab } from '../../types';
 
 /**
  * 会话详情的入口地址：`#session/<工具>/<会话 ID>`，工具未知时写 `-`。
- * 会话按（工具，会话 ID）区分；请求日志等只知道会话 ID 的入口传空工具，
- * 详情页再按会话 ID 精确匹配所有工具的记录。
+ * 会话按（工具，会话 ID）区分；请求日志按 agent 映射出工具键，只有工具确实
+ * 未知时才传空工具，详情页再按会话 ID 精确匹配所有工具的记录。
  */
 export interface SessionDetailRef {
   sessionId: string;

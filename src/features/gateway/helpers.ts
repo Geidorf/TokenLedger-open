@@ -1,5 +1,6 @@
 import type { LedgerRecord, ProviderView, RoutingGroup, RuleCondition, RuleKind } from './types';
 import { formatCount, localized, MESSAGES, t } from '../../i18n';
+import { isRealSessionId, type SessionDetailRef } from '../sessionDetail/sessionDetailRoute';
 
 export const GATEWAY_PORT = 3462;
 export const DEFAULT_BASE_URL = `http://127.0.0.1:${GATEWAY_PORT}/v1`;
@@ -253,4 +254,20 @@ export function shortTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+/** 与后端 `tool_for_agent` 一致，把网关记录的 agent 映射为会话工具键。 */
+function sessionToolForAgent(agent: string | null | undefined): string {
+  const normalized = (agent ?? '').trim();
+  if (!normalized) return 'gateway';
+  if (normalized === 'claude-code') return 'claude';
+  if (normalized === 'gemini-cli') return 'gemini';
+  return normalized;
+}
+
+/** 请求日志只带会话 ID 与 agent；占位或空 ID 不构成可打开的会话。 */
+export function requestLogSessionRef(entry: { session?: string | null; agent?: string | null }): SessionDetailRef | null {
+  const sessionId = (entry.session ?? '').trim();
+  if (!isRealSessionId(sessionId)) return null;
+  return { sessionId, tool: sessionToolForAgent(entry.agent) };
 }

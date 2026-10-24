@@ -433,6 +433,7 @@ export const zh = {
   'sessionDetail.timeline.more': '再显示 {count} 条',
   'sessionDetail.open': '会话详情',
   'sessionDetail.openAria': '打开会话 {id} 的详情',
+  'sessionDetail.fullHistoryHint': '打开后查看本机完整会话，范围可能超出当前报告或请求。',
 
   // 顶栏与模型接入页头（Sidebar、ModelWorkspace）
   'shell.cloud.unknown': '本地就绪 · 云端状态待检查',

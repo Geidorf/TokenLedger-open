@@ -6,6 +6,8 @@ import { usePeriodReport, usePeriodReportSettings } from '../../hooks/usePeriodR
 import { useSegmentedIndicator } from '../../hooks/useSegmentedIndicator';
 import { BUDGET_METRIC_LABELS } from '../../hooks/useBudget';
 import { formatEstimatedUsd, formatNum, formatTokens } from '../../utils/format';
+import { t, useLang } from '../../i18n';
+import { isRealSessionId, openSessionDetail } from '../../features/sessionDetail/sessionDetailRoute';
 import {
   budgetSummary,
   buildPeriodReport,
@@ -109,6 +111,7 @@ function DayBars({ report }: { report: PeriodReport }) {
  * 用量 · 报告：周报 / 月报。数据管线见 `utils/periodReport.ts`；导出见 `utils/periodReportExport.ts`。
  */
 export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, onNotify, today: fixedToday }: PeriodReportViewProps) {
+  useLang();
   const [kind, setKind] = useState<ReportKind>('week');
   const [offset, setOffset] = useState(DEFAULT_REPORT_OFFSET);
   const [hideCosts, setHideCosts] = useState(false);
@@ -151,6 +154,7 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
   };
 
   const remindOn = kind === 'week' ? reminder.settings.weekly : reminder.settings.monthly;
+  const hasOpenableSessions = report?.sessions?.some((session) => isRealSessionId(session.id) && session.toolId.trim().length > 0) ?? false;
 
   return (
     <div className="content-stack period-report" aria-busy={loading || undefined}>
@@ -242,19 +246,35 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
           <div className="report-grid report-grid-2">
             <section className="panel report-card" aria-label="最贵的会话">
               <header className="report-card-header"><h2>最贵的会话</h2>{report.sessionsNote && <span>{report.sessionsNote}</span>}</header>
+              {hasOpenableSessions && <p className="report-session-hint">{t('sessionDetail.fullHistoryHint')}</p>}
               {!report.sessions ? <p className="report-empty">{scope === 'cloud' ? '切到本机账本可查看会话排行' : '会话分析暂不可读'}</p>
                 : report.sessions.length === 0 ? <p className="report-empty">本期没有带会话 ID 的记录</p> : (
                   <ol className="report-sessions">
-                    {report.sessions.map((session, index) => (
-                      <li key={session.id}>
-                        <span className="report-session-rank">{index + 1}</span>
-                        <div className="report-session-main">
-                          <strong>{session.tool}{session.model ? ` · ${session.model}` : ''}</strong>
-                          <span>{session.firstAt ? session.firstAt.slice(5, 16) : '时间未知'} · {formatNum(session.requests)} 条 · {formatTokens(session.tokens)}</span>
-                        </div>
-                        <span className="report-session-cost">{cost(session.cost, hideCosts)}</span>
-                      </li>
-                    ))}
+                    {report.sessions.map((session, index) => {
+                      const canOpen = isRealSessionId(session.id) && session.toolId.trim().length > 0;
+                      return (
+                        <li key={`${session.toolId}\u0000${session.id}`}>
+                          <span className="report-session-rank">{index + 1}</span>
+                          <div className="report-session-main">
+                            <strong>{session.tool}{session.model ? ` · ${session.model}` : ''}</strong>
+                            <span>{session.firstAt ? session.firstAt.slice(5, 16) : '时间未知'} · {formatNum(session.requests)} 条 · {formatTokens(session.tokens)}</span>
+                            {canOpen && (
+                              <div className="report-session-entry">
+                                <button
+                                  type="button"
+                                  className="secondary-inline"
+                                  aria-label={t('sessionDetail.openAria', { id: session.id })}
+                                  onClick={() => openSessionDetail({ sessionId: session.id, tool: session.toolId })}
+                                >
+                                  {t('sessionDetail.open')}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <span className="report-session-cost">{cost(session.cost, hideCosts)}</span>
+                        </li>
+                      );
+                    })}
                   </ol>
                 )}
             </section>

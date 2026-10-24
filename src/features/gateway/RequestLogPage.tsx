@@ -9,7 +9,8 @@ import { t, useLang } from '../../i18n';
 import { errorText, exportRequestLog, requestLog } from './api';
 import { DecisionTrace } from './DecisionTrace';
 import { HealthBadge, useProviderHealth } from './ProviderHealth';
-import { ATTEMPT_OUTCOME_LABEL, DECISION_REASON_LABEL, effectiveTokens, shortTime, traceHeadline } from './helpers';
+import { ATTEMPT_OUTCOME_LABEL, DECISION_REASON_LABEL, effectiveTokens, requestLogSessionRef, shortTime, traceHeadline } from './helpers';
+import { openSessionDetail } from '../sessionDetail/sessionDetailRoute';
 import type { ProviderHealth, RequestLogAttempt, RequestLogEntry, RequestLogPage as LogPage, RequestLogQuery } from './types';
 import './requestLog.css';
 
@@ -133,6 +134,7 @@ function ContextBars({ entry }: { entry: RequestLogEntry }) {
 }
 
 function EntryDetail({ entry, health }: { entry: RequestLogEntry; health: Map<string, ProviderHealth> }) {
+  const sessionRef = requestLogSessionRef(entry);
   return (
     <div className="mw-log-detail">
       <section aria-label={t('requestLog.section.attempts')}>
@@ -181,7 +183,27 @@ function EntryDetail({ entry, health }: { entry: RequestLogEntry; health: Map<st
         <h3>{t('requestLog.section.request')}</h3>
         <dl className="mw-log-facts is-wide">
           <div><dt>{t('requestLog.fact.id')}</dt><dd className="mw-mono-text">{entry.id}</dd></div>
-          <div><dt>{t('requestLog.fact.session')}</dt><dd className="mw-mono-text">{entry.session ?? '—'}</dd></div>
+          <div>
+            <dt>{t('requestLog.fact.session')}</dt>
+            <dd>
+              <span className="mw-mono-text">{entry.session ?? '—'}</span>
+              {sessionRef && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="secondary-inline"
+                    aria-label={t('sessionDetail.openAria', { id: sessionRef.sessionId })}
+                    onClick={() => openSessionDetail(sessionRef)}
+                  >
+                    {t('sessionDetail.open')}
+                  </button>
+                  {' '}
+                  <span className="mw-caption">{t('sessionDetail.fullHistoryHint')}</span>
+                </>
+              )}
+            </dd>
+          </div>
           <div><dt>{t('requestLog.fact.endpoint')}</dt><dd>{entry.endpoint}{entry.stream ? ` · ${t('requestLog.fact.stream')}` : ''} → {entry.wire}</dd></div>
           <div><dt>{t('requestLog.fact.started')}</dt><dd>{new Date(entry.startedAt).toLocaleString()}</dd></div>
         </dl>

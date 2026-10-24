@@ -6,6 +6,7 @@ import {
   effectiveTokens,
   modelOptions,
   parseModels,
+  requestLogSessionRef,
   ruleSummary,
   slugId,
   TOKEN_PLACEHOLDER,
@@ -67,6 +68,17 @@ describe('gateway helpers', () => {
 
   it('有效 Token 只含输入与输出', () => {
     expect(effectiveTokens({ input: 10, output: 5 })).toBe(15);
+  });
+
+  it('请求日志按后端同一规则生成会话工具键', () => {
+    expect(requestLogSessionRef({ session: ' s/1 ', agent: 'claude-code' })).toEqual({ sessionId: 's/1', tool: 'claude' });
+    expect(requestLogSessionRef({ session: 's2', agent: 'gemini-cli' })).toEqual({ sessionId: 's2', tool: 'gemini' });
+    expect(requestLogSessionRef({ session: 's3', agent: ' custom ' })).toEqual({ sessionId: 's3', tool: 'custom' });
+    expect(requestLogSessionRef({ session: 's4', agent: ' ' })).toEqual({ sessionId: 's4', tool: 'gateway' });
+    expect(requestLogSessionRef({ session: 's5', agent: null })).toEqual({ sessionId: 's5', tool: 'gateway' });
+    expect(requestLogSessionRef({ agent: 'codex' })).toBeNull();
+    expect(requestLogSessionRef({ session: ' ', agent: 'codex' })).toBeNull();
+    expect(requestLogSessionRef({ session: 'unknown_session', agent: 'codex' })).toBeNull();
   });
 
   it('规则摘要与 diff 行着色', () => {

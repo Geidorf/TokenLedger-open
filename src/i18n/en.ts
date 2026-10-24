@@ -425,6 +425,7 @@ export const en: Record<MessageKey, string> = {
   'sessionDetail.timeline.more': 'Show {count} more',
   'sessionDetail.open': 'Session detail',
   'sessionDetail.openAria': 'Open details of session {id}',
+  'sessionDetail.fullHistoryHint': 'Opens the full local session, which may extend beyond this report or request.',
 
   'shell.cloud.unknown': 'Local ready · cloud status not checked',
   'shell.cloud.unknownShort': 'Unchecked',
