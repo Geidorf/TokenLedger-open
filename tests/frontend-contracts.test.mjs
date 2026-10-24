@@ -1326,6 +1326,9 @@ test('CI runs every main commit to completion and reports main failures', () => 
   const alert = readSource(path.join(workflows, 'main-ci-alert.yml'));
   assert.match(alert, /workflows: \[ TokenLedger CI \]/);
   assert.match(alert, /branches: \[ main \]/);
+  // 告警串行写 Issue，排队不能被后来的 run 顶掉。
+  assert.match(alert, /group: main-ci-alert\n  cancel-in-progress: false\n  queue: max/);
+  assert.match(alert, /grep -qF "\$RUN_URL"/);
   assert.match(alert, /github\.event\.workflow_run\.event == 'push'/);
   // 提交消息只经文件交给 gh，不拼进 shell。
   assert.doesNotMatch(alert, /\$\{\{ github\.event\.workflow_run\.(head_commit|display_title)/);

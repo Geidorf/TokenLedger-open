@@ -14,9 +14,12 @@ permissions:
   contents: read
   issues: write
 
+# 串行写同一个 Issue（建 Issue、判断上一条记录不并发）。默认只留 1 个 pending，
+# 后来的会顶掉前一个导致漏记，所以显式 queue: max（最多排 100 个，远超 main 的提交节奏）。
 concurrency:
   group: main-ci-alert
   cancel-in-progress: false
+  queue: max
 
 jobs:
   alert:
@@ -44,6 +47,12 @@ jobs:
           # 「上一条记录」只看本工作流（github-actions[bot]）写的评论，翻完所有页取最后一条的首行。
           last=''
           if [ -n "$issue" ]; then
+            gh api --paginate "repos/$REPO/issues/$issue/comments?per_page=100" \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | .body' > bot-comments.txt
+            # 同一个 run 重跑或重复投递时已记过就不再写。
+            if grep -qF "$RUN_URL" bot-comments.txt; then
+              exit 0
+            fi
             last=$(gh api --paginate "repos/$REPO/issues/$issue/comments?per_page=100" \
               --jq '.[] | select(.user.login == "github-actions[bot]") | .body | split("\n")[0]' | tail -n 1)
           fi
