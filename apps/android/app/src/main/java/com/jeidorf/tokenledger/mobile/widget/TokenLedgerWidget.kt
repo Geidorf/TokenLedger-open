@@ -575,11 +575,13 @@ private fun QuotaBarsCard(
                 formatHiddenQuotaWindows(plan.hiddenCount)?.let { "$title · $it" } ?: title,
                 colors.muted, 11.sp, FontWeight.Medium, modifier = GlanceModifier.defaultWeight()
             )
-            WidgetText(
-                usage?.let { "${it.range.label} ${formatCompactTokens(it.effectiveTokens)} · ${formatCny(it.costCny, costMasked)}" }
-                    ?: "用量未同步",
-                colors.text, 11.sp, FontWeight.Bold, align = TextAlign.End
-            )
+            if (plan.showUsage) {
+                WidgetText(
+                    usage?.let { "${it.range.label} ${formatCompactTokens(it.effectiveTokens)} · ${formatCny(it.costCny, costMasked)}" }
+                        ?: "用量未同步",
+                    colors.text, 11.sp, FontWeight.Bold, align = TextAlign.End
+                )
+            }
         }
         when {
             rows.isEmpty() && allRows.isNotEmpty() ->

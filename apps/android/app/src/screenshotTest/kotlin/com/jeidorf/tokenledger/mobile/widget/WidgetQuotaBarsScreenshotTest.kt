@@ -128,8 +128,10 @@ private fun QuotaBarsFixture(
                 val title = formatHiddenQuotaWindows(plan.hiddenCount)?.let { "订阅额度 · $it" } ?: "订阅额度"
                 Text(title, color = palette.mutedColor, fontSize = 11.sp, fontWeight = FontWeight.Medium,
                     maxLines = 1, modifier = Modifier.weight(1f))
-                Text("今日 12.4M · ¥38.62", color = palette.textColor, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 1)
+                if (plan.showUsage) {
+                    Text("今日 12.4M · ¥38.62", color = palette.textColor, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1)
+                }
             }
             plan.visible.forEach { row ->
                 Column(Modifier.fillMaxWidth().height(plan.rowHeightDp.dp), verticalArrangement = Arrangement.Center) {

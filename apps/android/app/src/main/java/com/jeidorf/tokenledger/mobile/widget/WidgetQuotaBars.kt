@@ -212,7 +212,11 @@ internal data class WidgetQuotaBarsLayout(
     /** 宽度够时右侧同时写重置倒计时；窄卡只留百分比，倒计时仍在读屏里。 */
     val showReset: Boolean,
     val showRouting: Boolean,
-    val rowHeightDp: Float
+    val rowHeightDp: Float,
+    /**
+     * 卡头右侧是否写用量。大字或窄卡时让出位置，保证「+N 个窗口」不被挤掉（用量仍在读屏里）。
+     */
+    val showUsage: Boolean = true
 )
 
 internal object WidgetQuotaBarsMetrics {
@@ -221,6 +225,8 @@ internal object WidgetQuotaBarsMetrics {
     const val ROUTING_DP = 20f
     /** 内容宽度不足这个值（× 字号）时不写倒计时。 */
     const val RESET_MIN_WIDTH_DP = 220f
+    /** 内容宽度不足这个值（× 字号）时卡头不写用量。 */
+    const val USAGE_MIN_WIDTH_DP = 170f
 }
 
 internal fun widgetQuotaBarsLayout(
@@ -261,7 +267,8 @@ internal fun widgetQuotaBarsLayout(
         hiddenCount = rows.size - visible.size,
         showReset = innerWidth >= WidgetQuotaBarsMetrics.RESET_MIN_WIDTH_DP * scale,
         showRouting = showRouting,
-        rowHeightDp = rowHeight
+        rowHeightDp = rowHeight,
+        showUsage = innerWidth >= WidgetQuotaBarsMetrics.USAGE_MIN_WIDTH_DP * scale
     )
 }
 

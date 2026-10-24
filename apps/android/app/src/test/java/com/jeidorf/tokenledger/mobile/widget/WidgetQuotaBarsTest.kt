@@ -194,6 +194,9 @@ class WidgetQuotaBarsTest {
         val normal = widgetQuotaBarsLayout(280f, 200f, 1f, rows, routingRequested = false)
         val large = widgetQuotaBarsLayout(280f, 200f, 2f, rows, routingRequested = false)
         assertTrue(large.visible.size < normal.visible.size)
+        // 大字时卡头让出用量，保证「+N 个窗口」看得见。
+        assertTrue(normal.showUsage)
+        assertFalse(large.showUsage)
         assertEquals(rows.size - large.visible.size, large.hiddenCount)
     }
 }
