@@ -656,6 +656,39 @@ fn salvage_reads_on_when_the_last_rowid_is_unreadable() {
 }
 
 #[test]
+fn a_rebuilt_ledger_queues_no_cloud_purge_the_damaged_one_did_not() {
+    let purges = |path: &Path| -> i64 {
+        Connection::open(path)
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM pending_cloud_purges", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    };
+    let pc = Computer::new("pc");
+    pc.insert("synced", 100);
+    pc.conn()
+        .execute("DELETE FROM pending_cloud_purges", [])
+        .unwrap();
+    let db_path = db::get_db_path(&pc.app);
+    let target = pc.root.join("rebuilt.db");
+    health::salvage(&db_path, &target).unwrap();
+    assert_eq!(purges(&target), 0);
+    let rows: i64 = Connection::open(&target)
+        .unwrap()
+        .query_row("SELECT COUNT(*) FROM token_logs", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(rows, 1);
+    // A file that does not open at all leaves an empty ledger, without
+    // migration-made purges either.
+    let garbage = pc.root.join("garbage.db");
+    fs::write(&garbage, b"not a database at all").unwrap();
+    let empty = pc.root.join("empty.db");
+    health::salvage(&garbage, &empty).unwrap();
+    assert_eq!(purges(&empty), 0);
+}
+
+#[test]
 fn cumulative_scan_state_travels_with_the_ledger() {
     let state = |pc: &Computer, key: &str| -> Option<(i64, i64)> {
         pc.conn()

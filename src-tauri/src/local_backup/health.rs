@@ -348,6 +348,16 @@ pub fn salvage(damaged: &Path, target: &Path) -> Result<SalvageReport, String> {
     }
     db::init_fresh_db(&target.to_path_buf()).map_err(|error| error.to_string())?;
     let fresh = db::get_connection(target).map_err(|error| error.to_string())?;
+    // Migrations run against the empty database queue work of their own,
+    // such as a cloud purge for every tool: carried into the rebuilt ledger,
+    // the next sync would delete cloud history the recovered rows (already
+    // uploaded) never send again. The salvaged tables hold only what the
+    // damaged file held.
+    for table in SALVAGED_TABLES {
+        fresh
+            .execute(&format!("DELETE FROM {table}"), [])
+            .map_err(|error| error.to_string())?;
+    }
     let mut report = SalvageReport::default();
     // A file that does not open at all leaves an empty, healthy ledger.
     if let Ok(source) = Connection::open_with_flags(damaged, OpenFlags::SQLITE_OPEN_READ_ONLY) {
