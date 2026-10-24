@@ -284,13 +284,17 @@ internal object RoutingLiveCadence {
 /**
  * 下一次单独读路由快照的延迟；null 表示停下近实时链，交回 30 分钟的共用周期刷新
  * （桌面离线、没开同步、未部署、需重新登录时，频繁读也读不出新东西）。
+ *
+ * 年龄一律按 [nowEpochMs] 往后推：读失败时保留的是上一帧，它离读到时已过去至少一个间隔，
+ * 快照年龄随之超过 90 秒，链就停下，不会拿一份不再更新的「在线」帧一直 3 分钟续排。
  */
-internal fun routingLiveNextDelayMs(snapshot: RoutingLiveSnapshot?): Long? {
+internal fun routingLiveNextDelayMs(snapshot: RoutingLiveSnapshot?, nowEpochMs: Long): Long? {
     if (snapshot == null || snapshot.state != WidgetRoutingState.Ok) return null
-    val age = snapshot.snapshotAgeMs ?: return null
+    val elapsed = (nowEpochMs - snapshot.capturedAtEpochMs).coerceAtLeast(0L)
+    val age = (snapshot.snapshotAgeMs ?: return null) + elapsed
     if (age > RoutingSnapshots.OFFLINE_AFTER_MS) return null
     val recent = snapshot.inflight > 0 ||
-        snapshot.flows.any { it.ageMs < RoutingSnapshots.PLAYABLE_WITHIN_MS }
+        snapshot.flows.any { it.ageMs + elapsed < RoutingSnapshots.PLAYABLE_WITHIN_MS }
     return if (recent) RoutingLiveCadence.ACTIVE_MS else RoutingLiveCadence.IDLE_MS
 }
 

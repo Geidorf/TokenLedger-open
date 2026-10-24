@@ -139,13 +139,28 @@ class RoutingLiveWidgetTest {
     @Test
     fun cadenceSpeedsUpOnlyWhileTheDesktopIsLive() {
         val active = routingLiveSnapshot("u1", busy, captured)
-        assertEquals(RoutingLiveCadence.ACTIVE_MS, routingLiveNextDelayMs(active))
+        assertEquals(RoutingLiveCadence.ACTIVE_MS, routingLiveNextDelayMs(active, captured))
         val idle = routingLiveSnapshot("u1", result(3_000, flow("a", "Codex", 30 * 60_000L, RoutingFlowPhase.Done)), captured)
-        assertEquals(RoutingLiveCadence.IDLE_MS, routingLiveNextDelayMs(idle))
-        assertNull(routingLiveNextDelayMs(routingLiveSnapshot("u1", result(5 * 60_000L), captured)))
-        assertNull(routingLiveNextDelayMs(routingLiveSnapshot("u1", RoutingSnapshotsResult(server, emptyList()), captured)))
-        assertNull(routingLiveNextDelayMs(routingLiveFailureSnapshot("u1", RoutingReadFailure.Unauthorized, captured)))
-        assertNull(routingLiveNextDelayMs(null))
+        assertEquals(RoutingLiveCadence.IDLE_MS, routingLiveNextDelayMs(idle, captured))
+        assertNull(routingLiveNextDelayMs(routingLiveSnapshot("u1", result(5 * 60_000L), captured), captured))
+        assertNull(routingLiveNextDelayMs(routingLiveSnapshot("u1", RoutingSnapshotsResult(server, emptyList()), captured), captured))
+        assertNull(routingLiveNextDelayMs(routingLiveFailureSnapshot("u1", RoutingReadFailure.Unauthorized, captured), captured))
+        assertNull(routingLiveNextDelayMs(null, captured))
+    }
+
+    @Test
+    fun keptFrameAfterFailedReadsStopsTheChain() {
+        // 成功读到一次在线活跃帧，之后连续网络/格式错误：保留的仍是这一帧。
+        val kept = routingLiveSnapshot("u1", busy, captured)
+        assertNull(routingLiveFailureSnapshot("u1", RoutingReadFailure.Unavailable, captured + 60_000L))
+        // 下一次链上读取时（3 分钟后）它已不能算在线，链停下，交回周期刷新。
+        assertNull(routingLiveNextDelayMs(kept, captured + RoutingLiveCadence.ACTIVE_MS))
+        // 刚读到时 80 秒内仍算在线；在线但最近的调用随时间超过 10 分钟就降到空闲节奏。
+        val quiet = routingLiveSnapshot(
+            "u1", result(1_000, flow("a", "Codex", 9 * 60_000L + 30_000L, RoutingFlowPhase.Done)), captured
+        )
+        assertEquals(RoutingLiveCadence.ACTIVE_MS, routingLiveNextDelayMs(quiet, captured))
+        assertEquals(RoutingLiveCadence.IDLE_MS, routingLiveNextDelayMs(quiet, captured + 60_000L))
     }
 
     @Test

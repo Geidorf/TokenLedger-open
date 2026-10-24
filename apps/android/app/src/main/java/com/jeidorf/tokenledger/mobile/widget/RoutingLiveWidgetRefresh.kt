@@ -134,7 +134,7 @@ internal class RoutingLiveRefreshWorker(
         if (runCatching { WidgetConfigStore.quotaRoutingRequested(context) }.getOrDefault(false)) {
             runCatching { TokenLedgerWidget().updateAll(context) }
         }
-        routingLiveNextDelayMs(RoutingLiveStore.load(context, session.userId))?.let { delay ->
+        routingLiveNextDelayMs(RoutingLiveStore.load(context, session.userId), System.currentTimeMillis())?.let { delay ->
             runCatching { RoutingLiveScheduler.scheduleNext(context, delay) }
         }
         return Result.success()

@@ -84,7 +84,7 @@ internal object WidgetRefreshWriter {
             // 桌面在线时接上实时路由小组件的近实时读取链（已有排队的不动）。
             lease.session?.userId?.let { userId ->
                 if (RoutingLiveWidgets.installed(appContext)) {
-                    routingLiveNextDelayMs(RoutingLiveStore.load(appContext, userId))?.let { delay ->
+                    routingLiveNextDelayMs(RoutingLiveStore.load(appContext, userId), System.currentTimeMillis())?.let { delay ->
                         runCatching { RoutingLiveScheduler.kick(appContext, delay) }
                     }
                 }
