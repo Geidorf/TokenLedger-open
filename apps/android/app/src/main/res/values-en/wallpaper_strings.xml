@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_wallpaper_label">TokenLedger · Live routing</string>
+    <string name="routing_wallpaper_description">Show your desktop gateway routes on the lock screen: requests flow from agent to provider, with failovers visible hop by hop. Enable Sync live routing to phone on your desktop; updates may take seconds to a minute.</string>
+</resources>
