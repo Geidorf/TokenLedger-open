@@ -16,7 +16,7 @@ const RECEIPTS_SQL: &str = "CREATE TABLE IF NOT EXISTS price_repricing_receipts 
 // zero as unavailable and its ledger costs already come from price estimates.
 const REPRICE_SQL: &str = "UPDATE token_logs SET cost_usd=NULL,sync_status=0
     WHERE tool IN ('claude','codex','trae','zcode','gemini','antigravity',
-      'grok','kimi','kimidesktop','pi','dsh','deepseek','marvis','minimax','qwen')";
+      'grok','kimi','kimidesktop','pi','dsh','deepseek','marvis','minimax','qwen','copilot')";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct Intent {

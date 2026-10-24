@@ -1,0 +1,58 @@
+/* 概览 › 消费洞察 › 用量异常。卡片沿用突增侦测的 .anomaly-item-card，
+   这里只补标题右侧的通知开关、比较行与规则说明。 */
+.usage-anomaly-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.usage-anomaly-panel .badge-warning {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+  border: 1px solid var(--color-border);
+}
+.usage-anomaly-notify {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.usage-anomaly-when {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.usage-anomaly-card .anomaly-date {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-anomaly-card .anomaly-item-head { gap: 8px; }
+.usage-anomaly-comparison,
+.usage-anomaly-subject {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.usage-anomaly-subject {
+  color: var(--color-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-anomaly-note {
+  margin-top: var(--space-3);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.usage-anomaly-note.is-error { color: var(--color-danger-text); }
+.usage-anomaly-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
