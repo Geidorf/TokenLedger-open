@@ -250,7 +250,7 @@ internal fun V2CalendarMonthPanelContent(
         days.chunked(7).filter { week -> week.any { it != null } }.forEach { week ->
             Row(Modifier.fillMaxWidth()) {
                 week.forEach { day ->
-                    V2CalendarDayCell(Modifier.weight(1f), palette, day, onSelectDay, axis.valueFormat)
+                    V2CalendarDayCell(Modifier.weight(1f), palette, day, axis.valueFormat, onSelectDay)
                 }
             }
         }
@@ -269,8 +269,8 @@ internal fun V2CalendarDayCell(
     modifier: Modifier,
     palette: MobileV2Palette,
     day: MonthPanelDay?,
-    onSelectDay: (String) -> Unit,
-    format: HeatmapValueFormat = HeatmapValueFormat()
+    format: HeatmapValueFormat = HeatmapValueFormat(),
+    onSelectDay: (String) -> Unit
 ) {
     if (day == null) {
         Spacer(modifier.aspectRatio(1f))
