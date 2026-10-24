@@ -38,6 +38,9 @@ import com.jeidorf.tokenledger.mobile.routing.RoutingScene
 import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshots
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
+import com.jeidorf.tokenledger.mobile.ui.onboarding.LocalOpenFirstRunGuide
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2EmptyAction
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2EmptySecondaryButton
 
 /** 「最近调用」最多列几条（快照本身最多 24 条）。 */
 private const val RECENT_ROWS = 12
@@ -61,9 +64,19 @@ private fun V2RoutingPage(palette: MobileV2Palette, feed: RoutingFeed) {
         V2RoutingEyebrow(palette, feed, scene)
         val blocker = routingBlocker(feed, scene)
         if (blocker != null) {
+            // 桌面还没开路由同步时给接入步骤的入口；外壳没提供引导（单独预览）时不画。
+            val openGuide = LocalOpenFirstRunGuide.current
+                ?.takeIf { scene?.empty == RoutingEmptyReason.NoSnapshot }
             V2Card(palette) {
                 Text(blocker.first, color = palette.text, style = LedgerType.titleM)
                 Text(blocker.second, color = palette.muted, fontSize = LedgerFont.label, modifier = Modifier.padding(top = 4.dp))
+                if (openGuide != null) {
+                    V2EmptySecondaryButton(
+                        palette,
+                        V2EmptyAction("查看接入步骤", onClick = openGuide),
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
             }
         }
         if (scene != null && scene.empty == null) {

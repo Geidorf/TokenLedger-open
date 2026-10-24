@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
@@ -42,6 +43,8 @@ import com.jeidorf.tokenledger.mobile.quotaRecoveryActionLabel
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2_TOUCH_TARGET
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2ShortDateTime
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2EmptyAction
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2EmptyState
 import java.time.Instant
 
 internal fun LazyListScope.v2QuotaItems(
@@ -92,10 +95,17 @@ internal fun LazyListScope.v2QuotaItems(
             val providers = quota.snapshot.providers.orderedQuotaProvidersForFullDisplay()
             if (providers.isEmpty()) {
                 item(key = "quota-empty", contentType = "status") {
-                    V2QuotaStateCard(
-                        palette,
-                        "暂无额度来源",
-                        "桌面端尚未同步任何可展示的额度来源。"
+                    V2EmptyState(
+                        palette = palette,
+                        icon = Icons.Default.Speed,
+                        title = "还没有额度来源",
+                        body = "额度由桌面端读取后经云端同步过来。在电脑「设置 › 订阅额度」里选择要读取的来源，" +
+                            "桌面读到后这里会显示各窗口的剩余额度。手机不读取订阅凭据。",
+                        secondary = V2EmptyAction(
+                            if (dashboardLoading) "刷新中…" else "刷新",
+                            enabled = !dashboardLoading,
+                            onClick = onRefresh
+                        )
                     )
                 }
             } else {
