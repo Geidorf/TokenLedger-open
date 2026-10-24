@@ -16,6 +16,7 @@ import { recordSourceLabel } from './usage/usageSummary';
 import SessionAnalysisDrawer from './SessionAnalysisDrawer';
 import type { SessionAnalysisRecord } from '../types/sessionAnalysis';
 import { ContextComposition } from './usage/ContextComposition';
+import { isRealSessionId, openSessionDetail } from '../features/sessionDetail/sessionDetailRoute';
 import '../styles/overviewDrill.css';
 import { getLang, t, useLang, type Lang } from '../i18n';
 
@@ -273,9 +274,14 @@ const LogRow = memo(function LogRow({
               <ContextComposition log={log} />
             </div>
             <div className="log-detail-actions">
-              {scope === 'local' && log.sessionId && Number.isSafeInteger(log.id) && log.id > 0 && ['claude', 'codex'].includes(log.tool.toLowerCase()) && (
-                <button className="ghost-inline" type="button" onClick={() => actions.analyze({ id: log.id, sessionId: log.sessionId, tool: log.tool })}>{t('logs.analyze')}</button>
-              )}
+              <span className="flex flex-wrap items-center gap-2">
+                {scope === 'local' && isRealSessionId(log.sessionId) && (
+                  <button className="ghost-inline" type="button" aria-label={t('sessionDetail.openAria', { id: log.sessionId })} onClick={() => openSessionDetail({ sessionId: log.sessionId, tool: log.tool })}>{t('sessionDetail.open')}</button>
+                )}
+                {scope === 'local' && log.sessionId && Number.isSafeInteger(log.id) && log.id > 0 && ['claude', 'codex'].includes(log.tool.toLowerCase()) && (
+                  <button className="ghost-inline" type="button" onClick={() => actions.analyze({ id: log.id, sessionId: log.sessionId, tool: log.tool })}>{t('logs.analyze')}</button>
+                )}
+              </span>
               {scope !== 'local' && log.sessionId && <span className="text-xs text-muted">{t('logs.analyzeElsewhere')}</span>}
               {isEstimatedLogItem(log) && <span className="estimated-badge">{t('logs.estimated')}</span>}
               {log.sessionId && (

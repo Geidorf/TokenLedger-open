@@ -44,18 +44,23 @@ pub fn opencode_like_db_path(tool_name: &str) -> PathBuf {
 
 /// Normalizes timestamp to "YYYY-MM-DD HH:MM:SS" local time.
 pub fn normalize_timestamp(ts_val: &Value) -> String {
-    let now_str = || Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    parse_timestamp(ts_val).unwrap_or_else(|| Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
+}
 
+/// Same parse as [`normalize_timestamp`] without the wall-clock fallback.
+/// Use it wherever the timestamp feeds a unique key: a key built from "now"
+/// changes on every scan and re-inserts the same record each time.
+pub(crate) fn parse_timestamp(ts_val: &Value) -> Option<String> {
     match ts_val {
         Value::Number(num) => {
             if let Some(val) = num.as_f64() {
                 // If it looks like milliseconds, scale down to seconds
                 let secs = if val > 1e11 { val / 1000.0 } else { val };
                 if let Some(dt) = Local.timestamp_opt(secs as i64, 0).single() {
-                    return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+                    return Some(dt.format("%Y-%m-%d %H:%M:%S").to_string());
                 }
             }
-            now_str()
+            None
         }
         Value::String(s) => {
             let s = s.trim();
@@ -64,7 +69,7 @@ pub fn normalize_timestamp(ts_val: &Value) -> String {
                 if let Ok(val) = s.parse::<f64>() {
                     let secs = if val > 1e11 { val / 1000.0 } else { val };
                     if let Some(dt) = Local.timestamp_opt(secs as i64, 0).single() {
-                        return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+                        return Some(dt.format("%Y-%m-%d %H:%M:%S").to_string());
                     }
                 }
             }
@@ -73,7 +78,7 @@ pub fn normalize_timestamp(ts_val: &Value) -> String {
             // Try parsing with timezone offset first (e.g. 2026-04-13T10:30:26.211Z -> RFC 3339)
             if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
                 let local_dt: DateTime<Local> = dt.with_timezone(&Local);
-                return local_dt.format("%Y-%m-%d %H:%M:%S").to_string();
+                return Some(local_dt.format("%Y-%m-%d %H:%M:%S").to_string());
             }
 
             // Try parsing as ISO format without offset or custom format
@@ -82,12 +87,12 @@ pub fn normalize_timestamp(ts_val: &Value) -> String {
 
             // Try naive datetime parse
             if let Ok(dt) = NaiveDateTime::parse_from_str(s_no_frac, "%Y-%m-%d %H:%M:%S") {
-                return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+                return Some(dt.format("%Y-%m-%d %H:%M:%S").to_string());
             }
 
-            now_str()
+            None
         }
-        _ => now_str(),
+        _ => None,
     }
 }
 

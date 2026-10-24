@@ -8,7 +8,7 @@
 //!
 //! 每个命令都支持 `--json`，输出带 `schemaVersion`，字段说明见 docs/cli.md。
 
-mod args;
+pub(crate) mod args;
 mod render;
 
 use std::io::Write;
@@ -30,6 +30,10 @@ const EXIT_USAGE: i32 = 2;
 
 /// 命令行入口：解析 `args`（不含程序名），把结果写到标准输出，返回进程退出码。
 pub fn run_cli(args: Vec<String>) -> i32 {
+    // MCP 服务独占标准输入输出，不走下面的一次性命令流程。
+    if args.first().map(String::as_str) == Some("mcp") {
+        return crate::mcp::run_stdio();
+    }
     let invocation = match args::parse(&args) {
         Ok(invocation) => invocation,
         Err(error) => {
@@ -346,7 +350,7 @@ fn render_usage(value: &Value) -> String {
 
 // ---------------------------------------------------------------- quota
 
-fn quota_json(app: &AppContext) -> Value {
+pub(crate) fn quota_json(app: &AppContext) -> Value {
     let providers =
         tauri::async_runtime::block_on(crate::quota::get_local_quota_providers_impl(app));
     json!({
@@ -357,7 +361,7 @@ fn quota_json(app: &AppContext) -> Value {
 }
 
 /// 百分比窗口的剩余百分比；其他单位返回 `None`。
-fn window_remaining_percent(window: &Value) -> Option<f64> {
+pub(crate) fn window_remaining_percent(window: &Value) -> Option<f64> {
     if window["unit"] != json!("percent") {
         return None;
     }
@@ -460,7 +464,7 @@ fn render_quota(value: &Value) -> String {
 
 // ---------------------------------------------------------------- budget
 
-fn budget_json(app: &AppContext) -> Result<Value, String> {
+pub(crate) fn budget_json(app: &AppContext) -> Result<Value, String> {
     let settings = crate::budget::load_settings(app.app_data_dir());
     let report = crate::budget::evaluate_report(app, &settings);
     let rules: Map<String, Value> = settings
@@ -578,7 +582,7 @@ impl crate::gateway::SecretStore for NoSecrets {
 }
 
 /// 探测本机网关是否在监听：只请求不需要 token 的 `/health`。
-fn probe_gateway(port: u16) -> bool {
+pub(crate) fn probe_gateway(port: u16) -> bool {
     use std::io::Read;
     use std::net::{SocketAddr, TcpStream};
 
@@ -778,10 +782,49 @@ fn run_export(app: &AppContext, export: &ExportArgs, json_mode: bool) -> Result<
     })
 }
 
+/// 剩余百分比最低的正常额度窗口（状态栏摘要、MCP 节制提示共用）。
+pub(crate) fn tightest_quota_window(quota: &Value) -> Option<Value> {
+    quota["providers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|provider| {
+            let name = provider["displayName"].clone();
+            provider["windows"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|window| window["status"] == json!("ok"))
+                .filter_map(move |window| {
+                    window_remaining_percent(&window).map(|remaining| {
+                        json!({
+                            "provider": name.clone(),
+                            "window": window["windowLabel"].clone(),
+                            "remainingPercent": remaining,
+                            "resetsAt": window.get("resetsAt").cloned().unwrap_or(Value::Null),
+                        })
+                    })
+                })
+        })
+        .min_by(|a, b| {
+            a["remainingPercent"]
+                .as_f64()
+                .partial_cmp(&b["remainingPercent"].as_f64())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
 // ---------------------------------------------------------------- status
 
 /// 一行摘要，给状态栏插件：今日 Token 与费用、最紧的预算、最紧的额度窗口。
 pub(crate) fn status_json(app: &AppContext, with_quota: bool) -> Result<Value, String> {
+    let quota = with_quota.then(|| quota_json(app));
+    status_from(app, quota.as_ref())
+}
+
+/// 同 `status_json`，额度由调用方给（`None` 表示不看额度）；MCP 服务借此替换额度来源。
+pub(crate) fn status_from(app: &AppContext, quota: Option<&Value>) -> Result<Value, String> {
     let today = local_stats(app, stats_query(&RangeArg::Named("today".into()), &[], &[]))?;
     let summary = summary_json(&today);
     let budget = budget_json(app)?;
@@ -798,40 +841,7 @@ pub(crate) fn status_json(app: &AppContext, with_quota: bool) -> Result<Value, S
         })
         .cloned();
 
-    let tightest_quota = if with_quota {
-        let quota = quota_json(app);
-        quota["providers"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .flat_map(|provider| {
-                let name = provider["displayName"].clone();
-                provider["windows"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|window| window["status"] == json!("ok"))
-                    .filter_map(move |window| {
-                        window_remaining_percent(&window).map(|remaining| {
-                            json!({
-                                "provider": name.clone(),
-                                "window": window["windowLabel"].clone(),
-                                "remainingPercent": remaining,
-                                "resetsAt": window.get("resetsAt").cloned().unwrap_or(Value::Null),
-                            })
-                        })
-                    })
-            })
-            .min_by(|a, b| {
-                a["remainingPercent"]
-                    .as_f64()
-                    .partial_cmp(&b["remainingPercent"].as_f64())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-    } else {
-        None
-    };
+    let tightest_quota = quota.and_then(tightest_quota_window);
 
     let mut parts = vec![format!(
         "今日 {} · {}",

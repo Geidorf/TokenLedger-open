@@ -27,7 +27,7 @@ npm run tauri build      # 桌面安装包
 
 ## 核心功能
 
-- **本地日志扫描**：内置多种 AI 工具解析器，当前主线覆盖 Claude、Codex、OpenCode、Kilo、AntGravity、MiniMax/Marvis、腾讯 Marvis、WorkBuddy、Qclaw、Hermes、ReasoniX、Trae、DeepSeek GUI、DeepSeek 官方 DSH、Zcode、Grok CLI、Gemini CLI、Kimi Code/Desktop、Pi（含 Multica Desktop 托管实例）、Cindy 内置的 Codex 与 Pi、Qwen Code、GitHub Copilot CLI、Cline / Roo Code / Kilo Code 扩展等工具。
+- **本地日志扫描**：内置多种 AI 工具解析器，当前主线覆盖 Claude、Codex、OpenCode、Kilo、AntGravity、MiniMax/Marvis、腾讯 Marvis、WorkBuddy、Qclaw、Hermes、ReasoniX、Trae、DeepSeek GUI、DeepSeek 官方 DSH、Zcode、Grok CLI、Gemini CLI、Kimi Code/Desktop、Pi（含 Multica Desktop 托管实例）、Cindy 内置的 Codex 与 Pi、Qwen Code、GitHub Copilot CLI、Cline / Roo Code / Kilo Code 扩展、goose 等工具。
 - **本地 SQLite 存储**：扫描结果写入应用数据目录下的 `tokenboard.db`，本地查询响应快，也可离线使用。
 - **可解释数据看板**：React 19 + ECharts + Tailwind 4，展示有效 Token、预估费用、缓存、工具/模型分布、年度热力图和逐条记录明细；今日/本周/本月按同一进度自动对比上一周期。
 - **筛选与专属看板**：明细可按工具、模型、设备组合筛选并稳定分页；工具/模型排行可下钻到专属趋势、构成、设备、活跃度和相关明细。
@@ -36,6 +36,7 @@ npm run tauri build      # 桌面安装包
 - **现代 Android 看板**：原生 Compose + Material 3 的 Ledger Snapshot，支持同期趋势、筛选、实体下钻、离线快照和深色/浅色/E-ink 骨架；手机使用底部导航，`>=600dp` 宽屏使用 NavigationRail，320/390/430dp、字体 200%、E-ink 与 840dp 平板六状态有主机截图回归。
 - **桌面/锁屏壁纸**：基于本地或云端统计生成动态壁纸；Windows 支持桌面和锁屏，macOS/Linux 当前仅提供桌面相关能力或占位实现。
 - **命令行工具**：`tokenledger-cli` 查看今日/本周/本月用量（可按 Agent、模型、账号拆分）、额度剩余、预算状态、网关状态与最近路由，触发扫描，导出 CSV/JSON；每个命令都有表格与 `--json` 输出，便于脚本和状态栏插件调用。数字与桌面端同一套 Rust 实现，见 [命令行文档](docs/cli.md)。
+- **本机 MCP 服务**：`tokenledger-cli mcp` 以 stdio 方式给 Claude Code、Codex 等 Agent 提供只读工具（今日/本周用量与拆分、额度剩余、预算、网关健康与最近路由、用量异常）和额度紧张时自我节制的提示词；不监听端口，不输出密钥与请求内容，见 [MCP 文档](docs/mcp.md)。
 - **系统托盘**：支持最小化到托盘、托盘显示主窗口、安全退出，以及启动时最小化；当启动配置使窗口默认驻留托盘时，可用 `--show` 显式恢复主窗口。
 - **VS Code 状态栏插件**：`extensions/vscode/` 在编辑器状态栏显示今日预估费用或最紧额度的可用%，悬停看额度条、今日拆分、预算与网关健康；数字全部来自本机命令行 `tokenledger-cli`，不读密钥、不联网。打成 .vsix 手动安装，不上架市场，见 [插件说明](extensions/vscode/README.md)。
 - **价格配置**：可在设置页维护模型输入/输出 Token 单价，保存后后续扫描立即使用。
@@ -60,6 +61,7 @@ npm run tauri build      # 桌面安装包
 - Claude JSONL、Codex rollout、Antigravity transcript、WorkBuddy project、Trae、DeepSeek GUI、DSH zstd 会话、Kimi wire 和 Pi 会话使用版本化持久检查点跳过指纹完全一致的历史文件；任何追加、截断、替换或 mtime 变化都会安全重扫该文件，并让 Token 行与检查点在同一个 SQLite transaction 提交。进程内会复用已经验证且大小/mtime 未变的文件身份，避免 Windows 每轮为大量历史文件重复打开句柄。
 - OpenCode/Kilo 按有索引的文本主键增量读取，并保留最近 512 行可变尾部以捕获流式原位更新；MiniMaxCode v2/旧库和腾讯 Marvis 按整数主键增量读取。Provider 游标与 Token 行原子提交，数据库替换或解析器版本变化会使旧游标失效。
 - 正在使用的来源 SQLite 必须由桌面端当前平台的原生 SQLite 以普通只读事务读取，使查询自动合并已提交但尚未 checkpoint 的 WAL 帧；禁止对实时库使用 `immutable=1`，因为它会忽略 `-wal` 中的新记录。MiniMaxCode v2 使用该路径并设置 5 秒 busy timeout。
+- **来源文件的大小与数值边界（所有扫描器共用）**：JSONL 逐行读取时，坏 UTF-8 字节按替换字符保留整行，首行 BOM 和崩溃留下的行首、行尾 NUL 填充会去掉；单行超过 32 MiB 时整行跳过且不读进内存（这种行只会是内嵌附件或失控的工具输出，不带用量），行号照常计数，按行号拼的去重键不会错位；读到 IO 错误即停止读这个文件。整份读取的旧版 Gemini 单 JSON 会话超过 256 MiB 时不扫描；Grok `summary.json`、ReasoniX meta 与配置、DeepSeek GUI 设置等附属文件超过 4 MiB 时忽略。写库前统一清洗：负数计数记为 0；任一计数超过 1 万亿（10¹²）的行视为损坏，整行丢弃，否则会让看板的 `SUM()` 整数溢出；非有限、为负或超过 100 万美元的来源费用记为 NULL，交给价格表重算。时间戳会进入去重键的来源（如 Grok），时间戳无法解析时跳过该行，不用扫描时刻兜底，否则每次扫描都会重复入账。
 - **累计型来源（Hermes、ReasoniX）** 的会话行会原地增长。这类记录标记为 `cumulative`，落库时通过独立累计状态表以 O(1) 求增量后写入带 `#t...` 后缀的增量行；旧数据库首次遇到该来源时只做一次历史聚合用于迁移，之后不再扫描整表。来源回退（总量变小）时不写入增量行，但会把累计基线重置到新值——否则来源重置后的所有增长都会被旧高水位吞掉。累计费用同理只采信真实增长：来源费用持平或回退时该增量行的 `cost_usd` 记为 NULL 交给价格表重算，而不是记成 0（0 是非 NULL，永远不会再被重算）。
 - 自动扫描默认每 900 秒执行一次，旧版恰为 60 秒的默认配置会一次性迁移到 900 秒，用户可配置下限为 60 秒。无新增记录时不启动常规云同步；失败重试最多每 15 分钟一次，成本回填只更新受影响行，不再重置整张 `token_logs`。
 - `machine_id` 写入当前主机名，`sync_status` 初始为 `0`，后续云同步再更新状态。
@@ -108,6 +110,7 @@ npm run tauri build      # 桌面安装包
 21. Qwen Code
 22. GitHub Copilot CLI
 23. Cline / Roo Code / Kilo Code
+24. goose
 
 ### 数据源与去重边界
 
@@ -138,6 +141,7 @@ npm run tauri build      # 桌面安装包
 | Qwen Code | `${QWEN_RUNTIME_DIR 或 QWEN_HOME，缺省 ~/.qwen}/projects/<编码后的 cwd>/chats/**/*.jsonl`（每会话一份 JSONL，三个根去重后都扫描）；只读 `chats` 目录下的 `.jsonl`，不打开设置、账号或 OAuth 文件 | `type == "assistant"` 且带 `usageMetadata` 的逐请求记录；计数器须为非负整数、时间戳可解析，全零跳过；坏 JSONL 中间行跳过、尾行坏或读失败不推进 `qwen-code-chats-jsonl-v1` 检查点 | 记录内 `sessionId`，缺失用文件名 stem | `qwen_{sessionIdSha96}_{uuidSha96}`；续聊或分叉把同一记录（同 `uuid`）带进另一个文件时只记一次，不暴露本地路径 |
 | GitHub Copilot CLI | `${COPILOT_HOME:-~/.copilot}/session-state/<sessionId>/events.jsonl`；只解析 `session.start` 与 `session.shutdown` 两类事件，不打开配置、登录或插件文件 | 逐请求的 `assistant.usage` 事件不落盘，能读到的只有 `session.shutdown` 的 `data.modelMetrics.<模型>.usage`（每个模型的会话合计）。每个 shutdown 每个模型一行；续聊后同一文件里的下一个 shutdown 若四个计数都不小于上一个，就只记增量，有计数变小则视为新进程重新计数、按原值记；四个计数缺一或非法整条跳过；未变文件按 `copilot-cli-events-jsonl-v1` 检查点跳过 | `session.start` 的 `data.sessionId`，缺失用会话目录名 | `copilot_{sessionIdSha96}_{shutdown事件idSha96}_{模型Sha96}`，重扫幂等，不暴露本地路径 |
 | Cline / Roo Code / Kilo Code | 编辑器用户目录 `<Code、Code - Insiders、VSCodium、Cursor、Windsurf、Kiro>/User/globalStorage/<扩展 id>/tasks/<任务>/ui_messages.json`（扩展 id 依次为 `saoudrizwan.claude-dev`、`rooveterinaryinc.roo-cline`、`kilocode.kilo-code`；Windows 在 `%APPDATA%`、macOS 在 `~/Library/Application Support`、Linux 在 `$XDG_CONFIG_HOME` 或 `~/.config`），另读 Cline CLI 的 `~/.cline/data/tasks`；Cline 另读同目录 `task_metadata.json` 取模型；对话历史、设置与密钥不打开 | `say == "api_req_started"` 且 `text` 里带 `tokensIn` 的逐请求消息；`partial` 中的流式消息、没拿到用量的失败请求跳过；整文件改写，读到半截 JSON 时不推进 `cline-family-ui-messages-v1` 检查点 | 任务目录名 | `{cline|roo|kilocode}_{任务目录名Sha96}_{消息ts}` |
+| goose | `<数据目录>/sessions/sessions.db`：设置了绝对路径 `GOOSE_PATH_ROOT` 时数据目录为 `$GOOSE_PATH_ROOT/data`，否则 Linux `${XDG_DATA_HOME:-~/.local/share}/goose`、macOS `~/Library/Application Support/Block.goose`、Windows `%APPDATA%/Block/goose/data`；只读方式打开，只查 `usage_ledger` 表 | `usage_ledger` 每行一次模型调用（含上下文压缩调用）；负数计数或全零行跳过；没有这张表的旧版数据库不入账；`sessions` 表里的会话合计是这些行的汇总，不读 | `usage_ledger.session_id` | `goose_{sessionIdSha96}_{ledger行id}` |
 
 ### Token 字段映射
 
@@ -167,6 +171,7 @@ npm run tauri build      # 桌面安装包
 | Qwen Code | `promptTokenCount - cachedContentTokenCount`（`promptTokenCount` 含缓存读；缓存大于 prompt 的记录整条跳过） | `candidatesTokenCount`；仅当 `totalTokenCount ≥ prompt + candidates + thoughts`（Gemini 原生响应，思考 Token 单列）时再加 `thoughtsTokenCount`，OpenAI/Anthropic 兼容响应的思考 Token 已含在 candidates 里，不重复相加 | `cachedContentTokenCount`；无缓存写字段，`cache_write_tokens = 0` | 记录内 `model`（经 `clean_model_name`），缺失为 `qwen-unknown` | 不落库 |
 | GitHub Copilot CLI | `inputTokens - cacheReadTokens - cacheWriteTokens`（OpenAI 风格，`inputTokens` 含缓存）；缓存合计大于 `inputTokens` 时视为已是净输入，原样记 | `outputTokens`；`reasoningTokens` 是其中的细分，不另行相加 | `cacheReadTokens + cacheWriteTokens`（其中 `cacheWriteTokens` 计入 `cache_write_tokens`） | `modelMetrics` 的键（经 `clean_model_name`） | 不落库（`requests.cost` 是高级请求倍数，不是美元） |
 | Cline / Roo Code / Kilo Code | `tokensIn`；请求标了 `apiProtocol == "openai"`，或未标注但 `cacheWrites == 0` 且 `tokensIn ≥ cacheReads` 时视为含缓存，记 `tokensIn - cacheReads` | `tokensOut` | `cacheReads + cacheWrites`（其中 `cacheWrites` 计入 `cache_write_tokens`） | Cline 按 `task_metadata.json` 的 `model_usage` 取请求时刻生效的 `model_id`（经 `clean_model_name`）；Roo / Kilo 不记模型，为 `roo-unknown` / `kilocode-unknown` | `cost` 大于 0 时落库，为 0 或缺失时按估算 |
+| goose | `input_tokens - cache_read_tokens - cache_write_tokens`（goose 记的是含缓存的完整 prompt）；缓存合计大于输入时原样记 | `output_tokens` | `cache_read_tokens + cache_write_tokens`（其中 `cache_write_tokens` 计入 `cache_write_tokens`） | `model`（经 `clean_model_name`），缺失为 `goose-unknown` | `cost_source == "provider_reported"` 且大于 0 时落库；goose 自己估的价不采用，按估算重算 |
 
 ### 容易漂移的约束
 

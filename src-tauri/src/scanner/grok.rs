@@ -1,16 +1,19 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::{bounded_lines, read_text_capped, MAX_SIDECAR_BYTES};
 use super::types::LogRecord;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs::File;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 #[cfg(test)]
 use super::runner::persist_scan_batch;
+#[cfg(test)]
+use std::fs;
 #[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -89,7 +92,7 @@ fn grok_session_models(sessions_root: &Path) -> HashMap<String, String> {
         if !entry.file_type().is_file() || entry.file_name() != "summary.json" {
             continue;
         }
-        let Ok(content) = fs::read_to_string(entry.path()) else {
+        let Ok(content) = read_text_capped(entry.path(), MAX_SIDECAR_BYTES) else {
             continue;
         };
         let Ok(summary) = serde_json::from_str::<Value>(&content) else {
@@ -126,7 +129,7 @@ fn grok_parse_unified_log(
     };
     let reader = BufReader::new(file);
     let mut file_logs = Vec::new();
-    for (line_index, line) in reader.lines().enumerate() {
+    for (line_index, line) in bounded_lines(reader).enumerate() {
         let Ok(line) = line else {
             break;
         };
@@ -160,11 +163,7 @@ fn grok_parse_unified_log(
             .unwrap_or(0)
             .min(prompt_tokens);
         let output_tokens = grok_nonnegative(ctx, "completion_tokens").unwrap_or(0);
-        let Some(timestamp) = event
-            .get("ts")
-            .map(normalize_timestamp)
-            .filter(|ts| !ts.is_empty())
-        else {
+        let Some(timestamp) = event.get("ts").and_then(parse_timestamp) else {
             continue;
         };
         // `prompt_tokens` is inclusive of cache hits (OpenAI-style), so the
@@ -404,6 +403,38 @@ mod scanner_grok_tests {
         let keys: Vec<&str> = logs.iter().map(|r| r.unique_key.as_str()).collect();
         let unique_keys: std::collections::HashSet<&str> = keys.iter().copied().collect();
         assert_eq!(unique_keys.len(), 2);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unparseable_timestamps_are_skipped_instead_of_keyed_by_now() {
+        // A wall-clock fallback would feed "now" into the unique key and
+        // re-insert the record on every scan.
+        let root = temp_root();
+        write_fixture(
+            &root,
+            &[
+                inference_done("not-a-time", 100, 10, 5, 0),
+                inference_done("2026-08-18T12:00:00.000Z", 200, 20, 7, 1),
+            ],
+            false,
+            "",
+        );
+        let scan = || {
+            let mut logs = Vec::new();
+            scan_grok_root(
+                &root.join(".grok"),
+                &mut logs,
+                &StdHashMap::new(),
+                &mut Vec::new(),
+            );
+            logs.into_iter()
+                .map(|log| log.unique_key)
+                .collect::<Vec<_>>()
+        };
+        let first = scan();
+        assert_eq!(first.len(), 1);
+        assert_eq!(scan(), first);
         let _ = fs::remove_dir_all(&root);
     }
 
