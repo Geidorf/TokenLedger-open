@@ -41,7 +41,10 @@ jobs:
       - name: Allow long paths on the Windows runner
         run: git config --system core.longpaths true
 
+      # 构建步骤不需要 git 凭据；不把可写 token 留在工作区里。
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -61,6 +64,8 @@ jobs:
 
       - name: Stage the installers and record hashes
         shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           STAGE=release-stage/windows
@@ -74,8 +79,13 @@ jobs:
           test -n "$MSI_PATH"
 
           VERSION="$(node -p "require('./package.json').version")"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # 要上传的 tag（push 的 v* tag，或手动 dispatch 指定的 tag）必须与包版本一致。
+          RELEASE_TAG="${INPUT_TAG:-}"
+          if [[ -z "$RELEASE_TAG" && "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          fi
+          if [ -n "$RELEASE_TAG" ]; then
+            TAG_VERSION="${RELEASE_TAG#v}"
             if [ "$VERSION" != "$TAG_VERSION" ]; then
               echo "package version $VERSION != tag version $TAG_VERSION" >&2
               exit 1
@@ -117,8 +127,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-stage/windows/*-setup.exe release-stage/windows/*.msi --clobber
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # 未签名产物只能挂在 pre-release 上，不能混进正式发行版。
+            IS_PRERELEASE="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)"
+            if [ "$IS_PRERELEASE" != "true" ]; then
+              echo "release $RELEASE_TAG is not a pre-release; refusing to attach unsigned installers" >&2
+              exit 1
+            fi
+            gh release upload --repo "$GITHUB_REPOSITORY" "$RELEASE_TAG" release-stage/windows/*-setup.exe release-stage/windows/*.msi --clobber
             echo "uploaded to existing release $RELEASE_TAG"
           else
             echo "release $RELEASE_TAG does not exist; artifacts stay in this run only" >&2
