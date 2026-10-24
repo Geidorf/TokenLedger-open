@@ -98,6 +98,22 @@ function renderPopulated(overrides: Partial<ComponentProps<typeof DashboardTab>>
 }
 
 describe('DashboardTab model cost reports (audit P0-2)', () => {
+  it('shows the average Context composition only when the stats carry it', () => {
+    const { unmount } = renderPopulated({ stats: POPULATED_STATS });
+    expect(screen.queryByRole('region', { name: '平均 Context 构成' })).not.toBeInTheDocument();
+    unmount();
+    renderPopulated({
+      stats: {
+        ...POPULATED_STATS,
+        contextComposition: {
+          requests: 2, promptTokens: 2_000, systemBytes: 100, toolsBytes: 300, historyBytes: 600,
+          toolResultsBytes: 0, attachmentsBytes: 0, messages: 4, toolResults: 0, attachments: 0,
+        },
+      },
+    });
+    expect(screen.getByRole('region', { name: '平均 Context 构成' })).toHaveTextContent('基于 2 次经网关的请求');
+  });
+
   it('在看板顶部展示与当前 stats 同一份的来源、范围、时区与快照状态', () => {
     const stats: StatsData = {
       ...POPULATED_STATS,

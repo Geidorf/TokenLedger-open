@@ -209,6 +209,10 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 
 本机全局统计（不带实体筛选）在存在网关账本时可带顶层 `providers`：键为网关记录的 `provider`（供应商名，即「账号」），值与 `tools[*]` 同形（`name`、`input`、`output`、`cached`、可证明时的 `cacheRead`/`cacheWrite`、`total`、`cost`、`requests`、`heatmap` 及 §2.6 的 `heatmapRequests`/`heatmapCost`），不带 `models`。只统计时间窗内、`provider` 非空且经 §2.5 去重后仍保留的网关与导入记录；扫描记录没有账号，不计入，所以各账号合计可以小于 `summary`。不读取任何订阅凭据，也不调用未公开接口，`provider` 只来自网关自己记下的转发目标。云端 RPC、实体看板与旧缓存不带；读者遇到缺失或空对象时把账号维度标为不可用，不从其他字段推断。
 
+### 2.8 平均 Context 构成（2026-10-24，可选，仅本机）
+
+本机全局统计（不带实体筛选）在本期至少有一条带 §2.5 `context` 的网关记录时，可带顶层 `contextComposition`：`{ requests, promptTokens, systemBytes, toolsBytes, historyBytes, toolResultsBytes, attachmentsBytes, messages, toolResults, attachments }`，全部为非负整数。`requests` 是时间窗内、经 §2.5 去重后仍保留且带构成的网关记录数；其余字段是这些记录 `context` 各字段之和；`promptTokens` 是同一批记录的输入与缓存 Token 之和（与明细展开行估算所用的口径相同）。读者用各项除以 `requests` 得到每次请求的平均构成，估算 Token 按字节占比分摊平均 `promptTokens`，并标「估算」。只记大小，不含任何请求内容。没有这样的记录时不输出该字段，不输出空对象或 0。云端 RPC、实体看板与旧缓存不带；读者遇到缺失时不显示，不从其他字段推算。
+
 ## 3. comparison
 
 ```json
@@ -418,3 +422,4 @@ v2 内的只增扩展逐条记在这里；`meta.contractVersion` 只在 §7 第 
 - 2026-10-23（热力图指标）：新增 §2.6 本机可选 `heatmapRequests` / `heatmapCost`（顶层与工具、模型）；云端不带；`contractVersion` 仍为 2。
 - 2026-10-23（Context 构成）：§2.5 本机明细的网关行增加可选 `context`（各部分字节数与条数）；其他来源与云端不带；旧读者忽略；`contractVersion` 仍为 2。
 - 2026-10-23（账号维度）：新增 §2.7 本机可选顶层 `providers`（按网关供应商汇总，只含网关与导入记录）；§2.6 `heatmapCost` 输出保留 6 位小数；云端不带；`contractVersion` 仍为 2。
+- 2026-10-24（平均 Context 构成）：新增 §2.8 本机可选顶层 `contextComposition`（带构成的网关记录的构成与输入合计）；云端不带；旧读者忽略；`contractVersion` 仍为 2。
