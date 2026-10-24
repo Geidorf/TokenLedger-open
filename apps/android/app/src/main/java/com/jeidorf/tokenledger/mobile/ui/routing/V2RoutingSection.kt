@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -142,34 +143,67 @@ internal fun ago(ageMs: Long): String {
     }
 }
 
+/** 舞台下方那句说明：最新一条流 + 多久之前；「N 秒前」每秒都变。 */
+internal fun routingFooterCaption(latest: RoutingFlow?, now: Long): String = latest?.let { flow ->
+    val age = now - flow.atServerMs
+    val prefix = if (flow.phase != RoutingFlowPhase.Inflight && age >= RECENT_LIT_MS) "最近：" else ""
+    "$prefix${RoutingSnapshots.describe(flow)}" + if (flow.phase == RoutingFlowPhase.Inflight) "" else " · ${ago(age)}"
+}.orEmpty()
+
+/**
+ * 读屏礼貌播报的内容：只说流本身，不带「N 秒前」与「最近：」。
+ * 播报区的文字一变 TalkBack 就念一遍；带上每秒都变的时间，一条流在第一分钟里会被念五十多次。
+ * 时间仍能在「最近调用」列表里逐行读到。
+ */
+internal fun routingLiveAnnouncement(latest: RoutingFlow?): String =
+    latest?.let { RoutingSnapshots.describe(it) }.orEmpty()
+
 /** 舞台下方：最新一条流的一句话说明（读屏礼貌播报）+ 请求 / 转路 / 报错。 */
 @Composable
 private fun V2RoutingFooter(palette: MobileV2Palette, scene: RoutingScene, now: Long) {
     val latest = scene.flows.firstOrNull()
-    val caption = latest?.let { flow ->
-        val age = now - flow.atServerMs
-        val prefix = if (flow.phase != RoutingFlowPhase.Inflight && age >= RECENT_LIT_MS) "最近：" else ""
-        "$prefix${RoutingSnapshots.describe(flow)}" + if (flow.phase == RoutingFlowPhase.Inflight) "" else " · ${ago(age)}"
-    }.orEmpty()
+    val caption = routingFooterCaption(latest, now)
+    val announcement = routingLiveAnnouncement(latest)
     HorizontalDivider(color = palette.divider, modifier = Modifier.padding(top = 12.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    val captionText = @Composable { modifier: Modifier ->
         Text(
             caption,
             color = palette.text,
             style = LedgerType.meta,
-            modifier = Modifier
-                .weight(1f)
-                .semantics { liveRegion = LiveRegionMode.Polite }
+            modifier = modifier.clearAndSetSemantics {
+                contentDescription = announcement
+                liveRegion = LiveRegionMode.Polite
+            }
         )
+    }
+    val stats = @Composable {
         V2RoutingStat(palette, scene.stats.requests + scene.stats.inflight, "请求")
         V2RoutingStat(palette, scene.stats.rerouted, "转路")
         V2RoutingStat(palette, scene.stats.failed, "报错")
     }
+    if (routingFooterStacks(LocalDensity.current.fontScale)) {
+        // 大字号时三个数字会把说明挤成一列窄条（200% 下一句话折成九行），改成说明在上、数字在下。
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            captionText(Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) { stats() }
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            captionText(Modifier.weight(1f))
+            stats()
+        }
+    }
 }
+
+/** 字号放大到 150% 及以上时，舞台下方的说明与三个数字改成上下排。 */
+internal fun routingFooterStacks(fontScale: Float): Boolean = fontScale >= 1.5f
 
 @Composable
 private fun V2RoutingStat(palette: MobileV2Palette, value: Int, label: String) {

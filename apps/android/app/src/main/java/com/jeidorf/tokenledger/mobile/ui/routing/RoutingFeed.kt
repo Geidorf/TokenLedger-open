@@ -76,16 +76,22 @@ internal fun rememberRoutingFeed(
     return feed
 }
 
-/** 手机此刻对应的服务器时间；页面可见时每秒走一次，让「N 秒前」与离线判断跟上。 */
+/**
+ * 手机此刻对应的服务器时间；页面可见时每秒走一次，让「N 秒前」与离线判断跟上。
+ * 应用退到后台就不走（此前在后台也每秒唤醒一次），回到前台立刻对一次表。
+ */
 @Composable
 internal fun rememberRoutingServerNow(feed: RoutingFeed): Long {
     feed.fixedNowServerMs?.let { return it }
     val result = feed.result ?: return 0L
     var elapsed by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(feed.fetchedAtElapsedMs) {
-        while (true) {
-            elapsed = SystemClock.elapsedRealtime()
-            delay(1_000L)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(feed.fetchedAtElapsedMs, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                elapsed = SystemClock.elapsedRealtime()
+                delay(1_000L)
+            }
         }
     }
     return result.serverTimeMs + (elapsed - feed.fetchedAtElapsedMs).coerceAtLeast(0L)
