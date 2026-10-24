@@ -733,10 +733,9 @@ impl Gateway {
         let key = if provider.auth_mode == AuthMode::None {
             None
         } else {
-            let secrets = self.shared.secrets.clone();
             let account = provider_account(&provider.id);
-            match tauri::async_runtime::spawn_blocking(move || secrets.get(&account)).await {
-                Ok(Ok(Some(key))) => Some(key),
+            match server::read_key_bounded(self.shared.secrets.clone(), account).await {
+                Ok(Some(key)) => Some(key),
                 // No key: the passive report already says so; never probe keyless.
                 _ => return (provider.id, None),
             }
