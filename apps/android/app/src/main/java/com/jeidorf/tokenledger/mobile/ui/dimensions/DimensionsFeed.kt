@@ -15,7 +15,7 @@ import com.jeidorf.tokenledger.mobile.dimensions.DimensionsReadFailure
 import com.jeidorf.tokenledger.mobile.dimensions.UsageDimensions
 import com.jeidorf.tokenledger.mobile.dimensions.UsageDimensionsRepository
 import com.jeidorf.tokenledger.mobile.dimensions.UsageDimensionsSource
-import java.time.ZoneId
+import com.jeidorf.tokenledger.mobile.ui.rhythm.cloudFeedRequestKey
 import kotlinx.coroutines.CancellationException
 
 /** 云端用量维度（会话、账号、Context 构成）；[dimensions] 与 [failure] 互斥，都为空表示正在读。 */
@@ -40,17 +40,20 @@ internal fun rememberDimensionsFeed(
     session: MobileSession?,
     query: DashboardQuery,
     active: Boolean,
+    refreshKey: Any? = null,
     source: UsageDimensionsSource = remember { UsageDimensionsRepository() }
 ): DimensionsFeed {
     LocalDimensionsFeedOverride.current?.let { return it }
     val userId = session?.userId
     var attempt by remember { mutableIntStateOf(0) }
     var feed by remember(userId, query) { mutableStateOf(DimensionsFeed(signedIn = session != null)) }
-    LaunchedEffect(active, userId, query, attempt) {
+    // 与节律同一把请求键：看板刷新、跨日、换时区都会重读。
+    val key = cloudFeedRequestKey(userId, query, refreshKey, attempt)
+    LaunchedEffect(active, key) {
         if (!active || session == null) return@LaunchedEffect
         feed = DimensionsFeed(signedIn = true)
         feed = try {
-            val canonical = DashboardQueryContract.canonical(query, ZoneId.systemDefault().id.ifBlank { "UTC" })
+            val canonical = DashboardQueryContract.canonical(query, key.timezone)
             DimensionsFeed(signedIn = true, dimensions = source.fetch(session, canonical))
         } catch (cancel: CancellationException) {
             throw cancel

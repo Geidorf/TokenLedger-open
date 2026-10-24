@@ -594,7 +594,8 @@ internal fun V2DestinationContent(
     val dimensionsFeed = rememberDimensionsFeed(
         state.session,
         state.query,
-        active = destination == MobileDestination.Usage && insightPane == InsightPane.Sessions
+        active = destination == MobileDestination.Usage && insightPane == InsightPane.Sessions,
+        refreshKey = state.visibleData?.meta?.generatedAt
     )
     val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
     var mePage by rememberSaveable { mutableStateOf(initialMePage) }
