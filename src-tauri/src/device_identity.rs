@@ -9,9 +9,8 @@
 //! Moving off the hostname happens in two steps:
 //! - `migrate_local` (from `db::init_db`) re-stamps the ledger rows and the
 //!   local sync bookkeeping from the hostname to the id, once per ledger.
-//! - `cloud_moves_pending` / `mark_cloud_moved` let the cloud sync copy each
-//!   account's rows that were uploaded under the hostname to the id, before
-//!   it uploads anything (see `commands::move_legacy_cloud_rows`). The copy
+//! - `legacy_machine_ids` tells the cloud sync which old ids to copy to the
+//!   id before it uploads anything (see `commands::device_cloud_move`). The copy
 //!   keeps the cloud history even for hours the local ledger no longer has.
 
 use std::collections::HashMap;
@@ -36,12 +35,6 @@ const IDENTITY_SCHEMA_SQL: &str = "
         legacy_machine_id TEXT PRIMARY KEY,
         device_id TEXT NOT NULL,
         migrated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS device_identity_cloud_moves (
-        user_id TEXT NOT NULL,
-        legacy_machine_id TEXT NOT NULL,
-        moved_at TEXT NOT NULL DEFAULT (datetime('now')),
-        PRIMARY KEY (user_id, legacy_machine_id)
     );
 ";
 
@@ -208,31 +201,17 @@ pub fn migrate_local(conn: &Connection, legacy: &str, device_id: &str) -> rusqli
     tx.commit()
 }
 
-/// Old machine ids whose cloud rows `user_id` still has to move to `device_id`.
-pub fn cloud_moves_pending(
-    conn: &Connection,
-    user_id: &str,
-    device_id: &str,
-) -> rusqlite::Result<Vec<String>> {
+/// Old machine ids whose cloud rows are moved to `device_id`. Every sync
+/// checks them (one empty read once moved): an old version on a computer
+/// with the same name, or an old CLI, can still upload under them.
+pub fn legacy_machine_ids(conn: &Connection, device_id: &str) -> rusqlite::Result<Vec<String>> {
     conn.execute_batch(IDENTITY_SCHEMA_SQL)?;
     let mut statement = conn.prepare(
-        "SELECT m.legacy_machine_id FROM device_identity_migrations m
-         WHERE m.device_id = ?2
-           AND NOT EXISTS(SELECT 1 FROM device_identity_cloud_moves c
-                          WHERE c.user_id = ?1 AND c.legacy_machine_id = m.legacy_machine_id)
-         ORDER BY m.legacy_machine_id",
+        "SELECT legacy_machine_id FROM device_identity_migrations
+         WHERE device_id = ?1 ORDER BY legacy_machine_id",
     )?;
-    let rows = statement.query_map(params![user_id, device_id], |row| row.get(0))?;
+    let rows = statement.query_map([device_id], |row| row.get(0))?;
     rows.collect()
-}
-
-pub fn mark_cloud_moved(conn: &Connection, user_id: &str, legacy: &str) -> rusqlite::Result<()> {
-    conn.execute(
-        "INSERT OR IGNORE INTO device_identity_cloud_moves (user_id, legacy_machine_id)
-         VALUES (?1, ?2)",
-        params![user_id, legacy],
-    )?;
-    Ok(())
 }
 
 /// The cloud unique key of a row moved from `legacy` to `device_id`. Hourly

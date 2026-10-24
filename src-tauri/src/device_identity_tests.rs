@@ -61,20 +61,10 @@ fn init_db_stamps_new_ledgers_with_the_device_id() {
     let (path, conn) = test_db("init");
     let id = for_db(&path).expect("device id");
     assert!(is_valid(&id));
-    // Every account still checks the cloud once for rows under the hostname.
+    // The sync still checks the cloud for rows under the hostname.
     assert_eq!(
-        cloud_moves_pending(&conn, "user-1", &id).expect("pending"),
+        legacy_machine_ids(&conn, &id).expect("legacy ids"),
         vec![legacy_machine_id()]
-    );
-    mark_cloud_moved(&conn, "user-1", &legacy_machine_id()).expect("mark");
-    assert!(cloud_moves_pending(&conn, "user-1", &id)
-        .expect("pending")
-        .is_empty());
-    assert_eq!(
-        cloud_moves_pending(&conn, "user-2", &id)
-            .expect("pending")
-            .len(),
-        1
     );
 }
 
@@ -170,8 +160,8 @@ fn local_rows_and_sync_bookkeeping_move_without_being_re_uploaded() {
         .expect("purge");
     assert_eq!(purge, (id.clone(), 0), "a staged rebuild keeps waiting");
     assert!(crate::db::codex_rebuild_pending(&conn, &id).expect("rebuild gate"));
-    assert!(cloud_moves_pending(&conn, "u", &id)
-        .expect("pending")
+    assert!(legacy_machine_ids(&conn, &id)
+        .expect("legacy ids")
         .contains(&"OLD-PC".to_string()));
 
     // Once per ledger: rows an old version adds later are not touched again.

@@ -1,12 +1,14 @@
 //! Moves this computer's cloud rows from the hostname old versions uploaded
 //! them under to the device id (`crate::device_identity`).
 //!
-//! Runs at the start of a sync, once per account, before anything is
-//! uploaded: the upload aggregates under the device id, so rows still under
-//! the hostname would be counted twice. Every row is copied with its values
-//! as they are, including hours the local ledger no longer has, and only then
-//! are the originals deleted. A failure in between leaves both; the retry
-//! copies again (an upsert of the same keys) and then deletes.
+//! Runs at the start of every sync, before anything is uploaded: the upload
+//! aggregates under the device id, so rows still under the hostname would be
+//! counted twice. Every row is copied with its values as they are, including
+//! hours the local ledger no longer has, and only then are the copied
+//! originals deleted (by id, so a row written under the hostname meanwhile
+//! waits for the next sync instead of being lost). A failure in between
+//! leaves both; the retry copies again (an upsert of the same keys) and then
+//! deletes. Once moved, a sync costs one empty read per old id.
 
 use std::path::Path;
 
@@ -45,8 +47,7 @@ pub(super) async fn move_legacy_cloud_rows(
     let device_id = device_identity::for_db(db_path)?;
     let pending = {
         let conn = db::get_connection(db_path).map_err(|e| e.to_string())?;
-        device_identity::cloud_moves_pending(&conn, &session.user_id, &device_id)
-            .map_err(|e| e.to_string())?
+        device_identity::legacy_machine_ids(&conn, &device_id).map_err(|e| e.to_string())?
     };
     if pending.is_empty() {
         return Ok(0);
@@ -74,13 +75,11 @@ pub(super) async fn move_legacy_cloud_rows(
             {
                 gateway_cloud::save_state(db_path, &next)?;
             }
-            let conn = db::get_connection(db_path).map_err(|e| e.to_string())?;
-            device_identity::mark_cloud_moved(&conn, &session.user_id, &legacy)
-                .map_err(|e| e.to_string())
+            Ok(())
         })?;
-        log::info!("moved {moved} cloud rows to this computer's device id");
     }
     if moved > 0 {
+        log::info!("moved {moved} cloud rows to this computer's device id");
         session_lease.commit_if_current(app, || {
             cache::invalidate_cloud(db_path);
             Ok(())
@@ -173,7 +172,11 @@ async fn move_one(
     session_lease.ensure_current(app)?;
     let res = client
         .delete(&url)
-        .query(&[("user_id", owner), ("machine_id", machine)])
+        .query(&[
+            ("user_id", owner),
+            ("machine_id", machine),
+            ("id", format!("lte.{after}")),
+        ])
         .header("apikey", &config.supabase_key)
         .header("Authorization", format!("Bearer {}", session.access_token))
         .header("Prefer", "return=minimal")
