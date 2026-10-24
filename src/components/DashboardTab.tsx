@@ -3,6 +3,7 @@ import { Cloud, FolderSearch, RefreshCw, Settings, SlidersHorizontal, TriangleAl
 import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
+import { AverageContextPanel } from './usage/AverageContextPanel';
 import { UsageSplitPanel } from './usage/UsageSplitPanel';
 import { accountSplitAvailable, effectiveSplitMetric, splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
 import { LoadingSkeleton, MetricsSkeleton } from './LoadingSkeleton';
@@ -896,6 +897,7 @@ export function DashboardTab({
         return <section key={module} className="dashboard-preference-module" aria-labelledby="dashboard-insights-title">
           <h2 id="dashboard-insights-title" className="insight-group-title">消费洞察 · 缓存与模型经济</h2>
           <CacheFlowPanel summary={stats.summary} />
+          <AverageContextPanel totals={stats.contextComposition} />
           <ModelCostDistributionPanel models={allModelsList} totalCost={stats.summary.totalCost} onModelClick={onModelClick} />
           {allModelsList.length > 1 && <CostEfficiencyQuadrantPanel models={allModelsList} onModelClick={onModelClick} toolColors={toolColors} />}
           <TemporalInsightsSection trends={stats.trends} context={insightTimeContext} comparison={stats.comparison ?? null} onSelectDate={onSelectDate} dateDrillUnavailable={dateDrillUnavailable} />

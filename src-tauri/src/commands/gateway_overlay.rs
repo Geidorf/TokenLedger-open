@@ -590,6 +590,18 @@ pub(super) fn row_providers(
         .collect())
 }
 
+/// 带 Context 构成的网关行（行 id → 构成），供概览汇总平均构成。读已缓存的网关行；
+/// 被暂缓的行不在合并视图里，多出的 id 不会匹配到任何统计行。
+pub(super) fn row_contexts(
+    db_path: &Path,
+    signature: &str,
+) -> Result<HashMap<i64, ContextSize>, String> {
+    Ok(gateway_rows_cached(db_path, signature)?
+        .iter()
+        .filter_map(|row| row.context.map(|context| (row.id, context)))
+        .collect())
+}
+
 #[derive(Debug, PartialEq)]
 pub(super) struct GatewayDetail {
     pub source: String,
