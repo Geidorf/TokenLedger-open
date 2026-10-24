@@ -35,7 +35,7 @@ Theme (system, light, dark), default range (today, this week, this month) and qu
 
 ## Android home-screen widgets
 
-Long-press an empty spot on your home screen › Widgets › TokenLedger. There are four:
+Long-press an empty spot on your home screen › Widgets › TokenLedger to add one of these cards:
 
 | Widget | Main size | Content |
 | --- | --- | --- |
@@ -43,6 +43,7 @@ Long-press an empty spot on your home screen › Widgets › TokenLedger. There 
 | One-line usage | 4×1 | Effective tokens, estimated cost and data time |
 | Combined | 4×2 | Quota rings plus tokens and cost |
 | Quota bars | 4×3 | One row per quota window with the available percentage and time to reset; can add the latest gateway route |
+| Live routing | 4×3, minimum 4×2 | A static routing snapshot and the latest 3 calls, with the data time in the header |
 
 <p>
   <img src="../images/android/widget-ring.png" alt="Quota rings widget" width="300">
@@ -50,6 +51,10 @@ Long-press an empty spot on your home screen › Widgets › TokenLedger. There 
 </p>
 
 Widget percentages are always the **available** quota. Stale data is marked as waiting for refresh, with the observation date. Turning on **Hide cost** in the app hides amounts in widgets too.
+
+When adding a **Live routing** card, choose System, Light or Dark for that instance, then save to refresh it. Cancel or Back leaves the theme unchanged. If your launcher offers a configure or edit action, long-press an existing card to change its theme. Each instance keeps its own choice; older instances without a saved choice continue to follow the system.
+
+The routing card uses the cloud snapshot for the account signed in on the phone. First enable desktop routing sync as described in the next section. It updates a static frame every few minutes; an offline desktop, no new data or system background limits can delay updates. Its configuration page only changes the theme, with no quota-source or date-range controls.
 
 ## Phone lock-screen live wallpaper
 
