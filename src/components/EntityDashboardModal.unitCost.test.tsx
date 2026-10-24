@@ -13,7 +13,6 @@ vi.mock('../utils/unitCost', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/unitCost')>();
   return {
     ...actual,
-    UNIT_COST_LABEL: '单位费用',
     formatUnitCost: (value: number | null | undefined) => `SENTINEL:${value}`,
   };
 });

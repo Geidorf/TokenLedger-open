@@ -13,6 +13,7 @@ import type {
   UsageDetailsResponse,
 } from '../../types';
 import { isRecord } from './internal';
+import { t } from '../../i18n';
 
 type GenerationRef = { current: number };
 
@@ -127,16 +128,14 @@ export function describeTrendPeakShift(
 ): string {
   if (!peak) return '';
   const position = (point: DerivedTrendPeakPoint) => (
-    bucket === 'hour' ? point.bucket : `周期第${point.index + 1}日`
+    bucket === 'hour' ? point.bucket : t('peak.dayOfPeriod', { n: point.index + 1 })
   );
   const currentPosition = position(peak.current);
   const previousPosition = position(peak.previous);
   if (peak.movement === 'same') {
-    return bucket === 'hour'
-      ? `峰值时段保持在${currentPosition}`
-      : `峰值位置保持在${currentPosition}`;
+    return t(bucket === 'hour' ? 'peak.sameHour' : 'peak.sameDay', { position: currentPosition });
   }
-  return `峰值从${previousPosition}${peak.movement === 'earlier' ? '提前' : '延后'}到${currentPosition}`;
+  return t(peak.movement === 'earlier' ? 'peak.earlier' : 'peak.later', { from: previousPosition, to: currentPosition });
 }
 
 const REQUIRED_SUMMARY_FIELDS = [

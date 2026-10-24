@@ -13,6 +13,7 @@ import {
   validateCloudCredentials,
 } from '../utils/frontendContracts';
 import { CloudConfig, CloudStatus, ToastType } from '../types';
+import { t } from '../i18n';
 
 const INITIAL_CLOUD: CloudStatus = { configured: false, authenticated: false, email: '', userId: '' };
 
@@ -21,28 +22,28 @@ const CLOUD_SETUP_STORAGE_KEY_PREFIX = 'tokenledger:cloud-setup:';
 function safeAuthError(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error ?? '');
   if (text === 'Supabase authentication timed out. Please retry.') {
-    return '登录服务响应超时，请检查网络后重试。';
+    return t('cloudMsg.timeout');
   }
   if (text === 'Supabase authentication network connection failed. Please retry.') {
-    return '暂时无法连接登录服务，请检查网络后重试。';
+    return t('cloudMsg.network');
   }
   const status = /^Supabase authentication failed \(HTTP (\d{3})\)\.$/.exec(text)?.[1];
   if (status === '400' || status === '401' || status === '422') {
-    return '邮箱、密码或账户状态未通过验证，请检查后重试。';
+    return t('cloudMsg.badCredentials');
   }
-  if (status === '429') return '登录或注册操作过于频繁，请稍后重试。';
+  if (status === '429') return t('cloudMsg.tooMany');
   if (text === 'Please configure Supabase URL and publishable key first.') {
-    return '请先保存有效的云端连接配置。';
+    return t('cloudMsg.configFirst');
   }
   if (/^Please sign out before (signing in to another account|creating or switching accounts)\.$/.test(text)) {
-    return '请先退出当前账户，再登录或注册。';
+    return t('cloudMsg.signOutFirst');
   }
   if (classifyCloudFailure(error).kind === 'session-expired') {
-    return '本机登录状态或安全存储暂不可用，请检查系统安全存储后重试。';
+    return t('cloudMsg.sessionStore');
   }
   // Backend errors may originate in local storage as well as a remote service.
   // Authentication never renders untrusted body text, URLs, keys, or credentials.
-  return '登录服务暂时不可用，请稍后重试。';
+  return t('cloudMsg.unavailable');
 }
 
 export interface PersistedCloudSetup {
@@ -225,8 +226,8 @@ export function useCloud({ showMessage, onClearCloudScopedState, currentTimezone
       const failure = classifyCloudFailure(err);
       const raw = String(err ?? '').toLowerCase();
       const message = raw.includes('keyring') || raw.includes('keychain') || raw.includes('secure store')
-        ? '系统安全存储暂时无法访问。当前授权周期内不会重复读取本机钥匙串；请确认登录钥匙串已解锁后，主动重试。'
-        : `${failure.label}：${failure.message || '请稍后重试'}`;
+        ? t('cloudMsg.keychain')
+        : t('cloudMsg.failure', { label: failure.label, message: failure.message || t('cloudMsg.retryLater') });
       setCloudStatusError(message);
       if (!silent) showMessage('error', message);
       return cloudStatus;
@@ -272,7 +273,7 @@ export function useCloud({ showMessage, onClearCloudScopedState, currentTimezone
     } catch (err) {
       const failure = classifyCloudFailure(err);
       setCloudConfigError(failure.message || failure.label);
-      showMessage('error', `保存配置失败: ${failure.message || failure.label}`);
+      showMessage('error', t('cloudMsg.saveFailed', { message: failure.message || failure.label }));
     } finally {
       setBusy((p: any) => ({ ...p, config: false }));
     }
@@ -305,7 +306,7 @@ export function useCloud({ showMessage, onClearCloudScopedState, currentTimezone
       if (!isCurrentRequest(authRequestId, requestId)) return;
       const message = safeAuthError(err);
       setCloudAuthError(message);
-      showMessage('error', mode === 'signIn' ? `登录失败: ${message}` : `注册失败: ${message}`);
+      showMessage('error', mode === 'signIn' ? t('cloudMsg.signInFailed', { message }) : t('cloudMsg.signUpFailed', { message }));
     } finally {
       if (isCurrentRequest(authRequestId, requestId)) {
         clearAuthPassword();
@@ -317,8 +318,8 @@ export function useCloud({ showMessage, onClearCloudScopedState, currentTimezone
 
   const verifyCloudCapability = useCallback(async () => {
     if (!cloudStatus.authenticated) {
-      setCloudSetup((previous) => ({ ...previous, lastError: '请先登录云端账户' }));
-      showMessage('info', '请先登录云端账户');
+      setCloudSetup((previous) => ({ ...previous, lastError: t('cloudMsg.signInFirst') }));
+      showMessage('info', t('cloudMsg.signInFirst'));
       return;
     }
     const requestId = beginRequest(cloudRequestId);
@@ -347,18 +348,18 @@ export function useCloud({ showMessage, onClearCloudScopedState, currentTimezone
       });
       if (!isCurrentRequest(cloudRequestId, requestId)) return;
       const parsed = parseStatsDataContract(response);
-      if (!isStatsV2Capable(parsed)) throw new Error('Stats v2 RPC 尚未部署');
+      if (!isStatsV2Capable(parsed)) throw new Error(t('cloudMsg.v2Missing'));
       setCloudSetup((previous) => ({
         ...previous,
         capabilityVerified: true,
         validating: false,
         lastError: '',
       }));
-      showMessage('success', 'Stats v2 能力验证通过');
+      showMessage('success', t('cloudMsg.v2Ok'));
     } catch (error) {
       if (!isCurrentRequest(cloudRequestId, requestId)) return;
       const failure = classifyCloudFailure(error);
-      const text = `${failure.label}：${failure.message || '验证失败'}`;
+      const text = t('cloudMsg.failure', { label: failure.label, message: failure.message || t('cloudMsg.verifyFailed') });
       setCloudSetup((previous) => ({
         ...previous,
         capabilityVerified: false,

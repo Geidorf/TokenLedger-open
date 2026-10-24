@@ -6,6 +6,7 @@
 import type { ComparisonDeltaMetric, ComparisonSeriesPoint, DataScope, RangeKey, StatsData, TrendPoint, UsageComparison } from '../types';
 import { isoCalendarDayValue } from './contracts/statsQuery';
 import { formatTokens, formatUsdApprox } from './format';
+import { t } from '../i18n';
 import { isDrillableDateBucket, trendBucketKind, trendBucketTokens, weekdayOfDateBucket } from './trendsAggregate';
 
 /** 单个时段格子的悬浮详情（T10.111）。字段为 null 表示该来源没有数据，UI 不渲染那一行、不写 0。 */
@@ -439,7 +440,7 @@ export function comparisonClip(
     : generated.cutoffDate;
   if (context.cutoffDate >= periodEnd) return null;
   const [, month, day] = context.cutoffDate.split('-').map(Number);
-  return { date: context.cutoffDate, note: `截至 ${month}月${day}日` };
+  return { date: context.cutoffDate, note: t('insight.clipNote', { date: t('forecast.monthDay', { month, day }) }) };
 }
 
 /**

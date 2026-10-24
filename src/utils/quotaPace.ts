@@ -27,6 +27,7 @@ import {
   validateQuotaWindowValues,
 } from './contracts/quota';
 import { quotaLevel, readQuotaWindow, type QuotaLevel } from './quotaOverview';
+import { t } from '../i18n';
 
 export type QuotaPaceStatus = 'ok' | 'tight' | 'critical' | 'insufficient' | 'stale' | 'unsupported';
 
@@ -299,7 +300,7 @@ export function computeQuotaPace(
 // 文案：「预测」标签、方法与区间一起给出（D2）。
 
 export interface QuotaPaceCopy {
-  tag: '预测';
+  tag: string;
   /** 语气只辅助着色，文字本身必须能独立表达状态。 */
   tone: 'neutral' | 'warning' | 'danger';
   text: string;
@@ -313,12 +314,12 @@ export interface QuotaPaceCopy {
 
 function paceCopy(tone: QuotaPaceCopy['tone'], text: string, method: string, interval: string | null): QuotaPaceCopy {
   return {
-    tag: '预测',
+    tag: t('pace.tag'),
     tone,
     text,
     method,
     interval,
-    ariaLabel: `${[`预测：${text}`, method, ...(interval ? [interval] : [])].join('。')}。`,
+    ariaLabel: `${[t('pace.aria', { text }), method, ...(interval ? [interval] : [])].join(t('pace.ariaJoin'))}${t('pace.ariaEnd')}`,
   };
 }
 
@@ -329,11 +330,11 @@ function trimNumber(value: number): string {
 /** 粗粒度中文时长：不足 1 小时按 5 分钟、不足 10 小时按半小时、不足 1 天按小时、其余按半天。 */
 export function formatPaceDuration(ms: number): string {
   const minutes = Math.max(0, ms) / MINUTE_MS;
-  if (minutes < 60) return `${Math.max(5, Math.round(minutes / 5) * 5)} 分钟`;
+  if (minutes < 60) return t('pace.minutes', { n: Math.max(5, Math.round(minutes / 5) * 5) });
   const hours = minutes / 60;
-  if (hours < 10) return `${trimNumber(Math.round(hours * 2) / 2)} 小时`;
-  if (hours < 24) return `${Math.round(hours)} 小时`;
-  return `${trimNumber(Math.round((hours / 24) * 2) / 2)} 天`;
+  if (hours < 10) return t('pace.hours', { n: trimNumber(Math.round(hours * 2) / 2) });
+  if (hours < 24) return t('pace.hours', { n: Math.round(hours) });
+  return t('pace.days', { n: trimNumber(Math.round((hours / 24) * 2) / 2) });
 }
 
 function percentText(value: number): string {
@@ -347,12 +348,12 @@ function exhaustionInterval(span: QuotaPace['exhaustsAtRange'], now: number): st
     // 端点已经过去时不再写“约 5 分钟后”：两端都过去就省略区间，主文案已说明可能用完。
     if (latestPassed) return null;
     return span.latest === null
-      ? '区间：加快一半时应已用完；放慢一半可撑到重置'
-      : `区间：加快一半时应已用完；放慢一半约 ${formatPaceDuration(span.latest - now)}后用完`;
+      ? t('pace.interval.fastOutSlowReset')
+      : t('pace.interval.fastOutSlowIn', { slow: formatPaceDuration(span.latest - now) });
   }
   return span.latest === null
-    ? `区间：加快一半约 ${formatPaceDuration(span.earliest - now)}后用完；放慢一半可撑到重置`
-    : `区间：约 ${formatPaceDuration(span.earliest - now)}–${formatPaceDuration(span.latest - now)}后用完`;
+    ? t('pace.interval.fastInSlowReset', { fast: formatPaceDuration(span.earliest - now) })
+    : t('pace.interval.span', { fast: formatPaceDuration(span.earliest - now), slow: formatPaceDuration(span.latest - now) });
 }
 
 /**
@@ -367,30 +368,30 @@ export function describeQuotaPace(pace: QuotaPace, now: number): QuotaPaceCopy |
     if (pace.currentLevel === 'critical') return null;
     return paceCopy(
       'neutral',
-      '窗口刚开始，暂不计算速度',
-      `窗口过去 ${formatPaceDuration(pace.minElapsedMs ?? 0)}后才按平均速度预测`,
+      t('pace.insufficient'),
+      t('pace.insufficientMethod', { d: formatPaceDuration(pace.minElapsedMs ?? 0) }),
       null,
     );
   }
   const used = pace.usedPercent as number;
   const elapsed = pace.elapsedFraction as number;
-  const method = `按窗口开始以来的平均速度外推（已过 ${percentText(elapsed * 100)} 时间，已用 ${percentText(used)}）`;
+  const method = t('pace.method', { elapsed: percentText(elapsed * 100), used: percentText(used) });
   const range = pace.projectedRange as { low: number; high: number };
   if (pace.status === 'critical') {
     const exhaustsAt = pace.exhaustsAt as number;
     const text = exhaustsAt > now
-      ? `照此速度约 ${formatPaceDuration(exhaustsAt - now)}后用完，早于重置`
-      : '照此速度可能已经用完，等待来源刷新';
+      ? t('pace.critical', { d: formatPaceDuration(exhaustsAt - now) })
+      : t('pace.criticalNow');
     return paceCopy('danger', text, method, exhaustionInterval(pace.exhaustsAtRange, now));
   }
-  const interval = `区间：放慢一半到加快一半，重置时约用 ${percentText(range.low)}–${percentText(range.high)}`;
+  const interval = t('pace.interval.reset', { low: percentText(range.low), high: percentText(range.high) });
   if (pace.status === 'tight') {
     return paceCopy(
       'warning',
-      `照此速度，重置时约剩 ${percentText(100 - (pace.projectedUsedAtReset as number))}`,
+      t('pace.tight', { left: percentText(100 - (pace.projectedUsedAtReset as number)) }),
       method,
       interval,
     );
   }
-  return paceCopy('neutral', `照此速度，重置时约用 ${percentText(pace.projectedUsedAtReset as number)}`, method, interval);
+  return paceCopy('neutral', t('pace.neutral', { used: percentText(pace.projectedUsedAtReset as number) }), method, interval);
 }

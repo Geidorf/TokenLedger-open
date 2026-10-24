@@ -22,7 +22,7 @@ import { BehaviorProjectPanel, SessionProjectChip, behaviorProjectAliases, behav
 import { useHideProjectNames } from '../utils/projectNamePrivacy';
 import { InfoTip } from './InfoTip';
 import '../styles/workbuddyAnalytics.css';
-import { useT } from '../i18n';
+import { localized, t, useLang, type MessageKey } from '../i18n';
 
 // The per-turn drawer is also used by the details page; load it on demand here.
 const SessionAnalysisDrawer = lazy(() => import('./SessionAnalysisDrawer'));
@@ -68,14 +68,14 @@ interface Props {
 
 type QuickRange = 'today' | 'threeDays' | 'sevenDays' | 'thirtyDays';
 
-const RANGE_OPTIONS: Array<[QuickRange, string]> = [['today', '今日'], ['threeDays', '近 3 天'], ['sevenDays', '近 7 天'], ['thirtyDays', '近 30 天']];
+const RANGE_OPTION_KEYS: Array<[QuickRange, MessageKey]> = [['today', 'behavior.range.today'], ['threeDays', 'behavior.range.threeDays'], ['sevenDays', 'behavior.range.sevenDays'], ['thirtyDays', 'behavior.range.thirtyDays']];
+const rangeOptions = (): Array<[QuickRange, string]> => RANGE_OPTION_KEYS.map(([id, key]) => [id, t(key)]);
 
 // Presets follow the dashboard's calendar meaning (contract v1.1): this week
 // from Monday, this month from the 1st, this year from January 1st. They are
 // named, never described as "近 7/30/365 天".
-const PRESET_NAMES: Record<Exclude<RangeKey, 'custom'>, string> = { today: '今日', week: '本周', month: '本月', year: '今年', all: '全部' };
+const PRESET_NAMES = localized<Exclude<RangeKey, 'custom'>>({ today: 'behavior.range.today', week: 'behavior.preset.week', month: 'behavior.preset.month', year: 'behavior.preset.year', all: 'behavior.preset.all' });
 
-const REFRESH_PENDING = '正在刷新…';
 
 /** Host-local calendar day `YYYY-MM-DD`: the quick picks are host-local day counts. */
 function hostDay(date: Date): string {
@@ -85,7 +85,7 @@ function hostDay(date: Date): string {
 /** The page's name for the current selection; dates come from `meta.start/end`. */
 function behaviorRangeName(range: RangeKey, preset: string): string {
   if (range !== 'custom') return PRESET_NAMES[range];
-  return RANGE_OPTIONS.find(([id]) => id === preset)?.[1] ?? '自定义区间';
+  return rangeOptions().find(([id]) => id === preset)?.[1] ?? t('behavior.customRange');
 }
 
 function sameCustomRange(left: CustomDateRange | null, right: CustomDateRange | null): boolean {
@@ -100,7 +100,7 @@ function sameCustomRange(left: CustomDateRange | null, right: CustomDateRange | 
  */
 function behaviorRangeSwitchLabel(range: RangeKey, customRange: CustomDateRange | null): string {
   if (range !== 'custom') return PRESET_NAMES[range];
-  return customRange ? `${customRange.start} 至 ${customRange.end}` : '自定义区间';
+  return customRange ? t('behavior.rangeSpan', { start: customRange.start, end: customRange.end }) : t('behavior.customRange');
 }
 
 /** A held frame: the last result shown, and the query it answers (T10.201). */
@@ -140,7 +140,7 @@ export function formatBehaviorSessionSpan(firstAt: string | null | undefined, la
  * zero stays ≈$0.00 (GLB-01, T10.154 §4.1).
  */
 export function formatBehaviorSessionCost(cost: number | null | undefined): string {
-  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) return '不可得';
+  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) return t('behavior.unavailable');
   if (cost === 0) return '≈$0.00';
   if (cost < 0.01) return '<$0.01';
   return formatUsdApprox(cost);
@@ -165,15 +165,15 @@ function formatReceivedAt(value: string | null | undefined, now = new Date()): s
  */
 export function formatBehaviorToolSessions(tool: { requests: number; sessionCount: number; unknownSessionRecords?: number | null }): string {
   const unknown = typeof tool.unknownSessionRecords === 'number' && tool.unknownSessionRecords > 0 ? tool.unknownSessionRecords : 0;
-  if (tool.sessionCount === 0 && (unknown > 0 || tool.requests > 0)) return '会话未知';
-  if (unknown > 0) return `${formatNum(tool.sessionCount)} 会话 · 另 ${formatNum(unknown)} 条缺少会话 ID`;
-  return `${formatNum(tool.sessionCount)} 会话`;
+  if (tool.sessionCount === 0 && (unknown > 0 || tool.requests > 0)) return t('behavior.sessionsUnknown');
+  if (unknown > 0) return t('behavior.sessionsPartial', { count: formatNum(tool.sessionCount), unknown: formatNum(unknown) });
+  return t('behavior.sessions', { count: formatNum(tool.sessionCount) });
 }
 
 /** A session's top model; an explicit null (or empty name) is 「不可得」, an absent field (older backend) says nothing. */
 export function formatBehaviorTopModel(topModel: string | null | undefined): string | null {
   if (topModel === undefined) return null;
-  return topModel && topModel.trim() ? topModel : '主模型不可得';
+  return topModel && topModel.trim() ? topModel : t('behavior.topModelUnavailable');
 }
 
 type LegendChart = 'modelDay' | 'modelHour';
@@ -189,7 +189,7 @@ function RankRowMain({ onActivate, title, action, children }: { onActivate?: () 
   return <button type="button" className="behavior-rank-main" title={title} onClick={onActivate}>
     {children}
     <ChevronRight className="behavior-rank-go" size={16} aria-hidden="true" />
-    <span className="sr-only">，{action}</span>
+    <span className="sr-only">{t('behavior.actionSr', { action })}</span>
   </button>;
 }
 
@@ -234,8 +234,21 @@ function valueAxis(theme: ChartThemeTokens, formatter: (value: number) => string
   };
 }
 
+type RefreshAnnouncement =
+  | { kind: 'refreshing' }
+  | { kind: 'failed'; time: string | null }
+  | { kind: 'refreshed'; time: string | null }
+  | null;
+
+function refreshAnnouncementText(note: RefreshAnnouncement): string {
+  if (!note) return '';
+  if (note.kind === 'refreshing') return t('behavior.refreshing');
+  if (note.kind === 'failed') return note.time ? t('behavior.refreshFailedAt', { time: note.time }) : t('behavior.refreshFailedLast');
+  return t('behavior.refreshedAt', { time: note.time ?? t('behavior.justNow') });
+}
+
 export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loading, refreshing = false, updatedAt = null, error, scope, range, customRange, onRangeChange, onRetry, onViewLocal, onSelectDate, onOpenTool, onOpenSession, projectFilter = [], onProjectFilterChange, onOpenProjectSettings, onRebuildProjectIndex, projectBackfill = null, ledgerEmpty = false, onScan, scanBusy = false }: Props) {
-  const t = useT();
+  const lang = useLang();
   const { effective } = useTheme(); // Tool-ranking/session-ranking colours below must recompute on theme toggle (T10.178 review P2-1).
   const { hidden: hideProjectNames, setHidden: setHideProjectNames } = useHideProjectNames();
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
@@ -350,7 +363,7 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
   }), [chartTheme, hours, palette]);
   const heatValues = useMemo(() => new Map((data?.dayHours || []).map(row => [`${row.date}|${row.hour}`, row.tokens])), [data]);
   const heatPeak = useMemo(() => Math.max(1, ...(data?.dayHours || []).map(row => row.tokens)), [data]);
-  // data.tools arrives ranked by effective tokens desc ("按有效 Token 排序");
+  // data.tools arrives ranked by effective tokens desc (t('behavior.toolRankInfo'));
   // resolve same-slot collisions once by that rank, and share the one
   // resulting map with the session-ranking list below so the same tool reads
   // the same colour in both lists on this page (T10.178 review P1-1). `effective`
@@ -360,12 +373,14 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
     () => toolColorMap((data?.tools || []).map((item) => item.id), effective),
     [data, effective],
   );
+  // 「其他模型」既是图例名也是序列键，随界面语言换。
+  const otherModels = t('behavior.otherModels', undefined, lang);
   const modelDayOption = useMemo(() => {
     const totals = sumBy(data?.modelDays || [], row => row.model, row => row.tokens);
     const topModels = [...totals.keys()].sort((a, b) => (totals.get(b) || 0) - (totals.get(a) || 0)).slice(0, 6);
     const topSet = new Set(topModels);
-    const byDateModel = sumBy(data?.modelDays || [], row => `${row.date}|${topSet.has(row.model) ? row.model : '其他模型'}`, row => row.tokens);
-    const models = totals.size > topModels.length ? [...topModels, '其他模型'] : topModels;
+    const byDateModel = sumBy(data?.modelDays || [], row => `${row.date}|${topSet.has(row.model) ? row.model : otherModels}`, row => row.tokens);
+    const models = totals.size > topModels.length ? [...topModels, otherModels] : topModels;
     return {
       color: palette,
       ...getChartAnimation(chartTheme.reduceMotion),
@@ -382,13 +397,13 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
         data: visibleDates.map(date => byDateModel.get(`${date}|${model}`) || 0),
       })),
     };
-  }, [chartTheme, data, visibleDates, palette, windowKey]);
+  }, [chartTheme, data, visibleDates, palette, windowKey, otherModels]);
   const modelHourOption = useMemo(() => {
     const totals = sumBy(data?.modelHours || [], row => row.model, row => row.tokens);
     const topModels = [...totals.keys()].sort((a, b) => (totals.get(b) || 0) - (totals.get(a) || 0)).slice(0, 6);
     const topSet = new Set(topModels);
-    const byHourModel = sumBy(data?.modelHours || [], row => `${row.hour}|${topSet.has(row.model) ? row.model : '其他模型'}`, row => row.tokens);
-    const models = totals.size > topModels.length ? [...topModels, '其他模型'] : topModels;
+    const byHourModel = sumBy(data?.modelHours || [], row => `${row.hour}|${topSet.has(row.model) ? row.model : otherModels}`, row => row.tokens);
+    const models = totals.size > topModels.length ? [...topModels, otherModels] : topModels;
     return {
       color: palette,
       ...getChartAnimation(chartTheme.reduceMotion),
@@ -403,7 +418,7 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
         data: Array.from({ length: 24 }, (_, hour) => byHourModel.get(`${hour}|${model}`) || 0),
       })),
     };
-  }, [chartTheme, data, palette, windowKey]);
+  }, [chartTheme, data, palette, windowKey, otherModels]);
   const currentRequestModel = data?.requestSizes.find(item => item.model === selectedModel) || data?.requestSizes[0];
   const selectedDateValue = selectedDate && dates.includes(selectedDate) ? selectedDate : '';
   const requestSizeOption = useMemo(() => ({
@@ -422,11 +437,11 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
   const rangeDayLimit = data?.meta.rangeDayLimit ?? 731;
   const coverage = data?.meta
     ? [
-      rangeTruncated ? `${rangeName} · 最近 ${formatNum(rangeDayLimit)} 天` : rangeName,
-      data.meta.start === data.meta.end ? data.meta.start : `${data.meta.start} 至 ${data.meta.end}`,
-      `${data.meta.recordCount.toLocaleString()} 条本机账本记录`,
+      rangeTruncated ? t('behavior.coverage.truncated', { name: rangeName, days: formatNum(rangeDayLimit) }) : rangeName,
+      data.meta.start === data.meta.end ? data.meta.start : t('behavior.rangeSpan', { start: data.meta.start, end: data.meta.end }),
+      t('behavior.coverage.records', { count: data.meta.recordCount.toLocaleString() }),
     ].join(' · ')
-    : `${rangeName} · 本机当前账本覆盖`;
+    : t('behavior.coverage.default', { name: rangeName });
   // Records whose source carries no session ID are real usage but not a
   // session (contract v1.1). A missing field means an older backend: no note.
   const unknownSessionRecords = data?.summary.unknownSessionRecords ?? 0;
@@ -435,16 +450,17 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
   // The same rule as a tool row: an older backend without the unknown count
   // still reports records but no session.
   const sessionsUnknown = Boolean(data && data.summary.sessionCount === 0 && (unknownSessionRecords > 0 || data.summary.requests > 0));
-  const sessionCountLabel = sessionsUnknown ? '不可得' : formatNum(data?.summary.sessionCount ?? 0);
+  const sessionCountLabel = sessionsUnknown ? t('behavior.unavailable') : formatNum(data?.summary.sessionCount ?? 0);
   const sessionCountNote = unknownSessionRecords > 0
-    ? `${sessionsUnknown ? '' : '另有 '}${formatNum(unknownSessionRecords)} 条记录缺少会话 ID`
-    : sessionsUnknown ? '记录缺少会话 ID' : null;
+    ? t(sessionsUnknown ? 'behavior.sessionNote.all' : 'behavior.sessionNote.more', { count: formatNum(unknownSessionRecords) })
+    : sessionsUnknown ? t('behavior.sessionNote.unknown') : null;
   const busy = loading || refreshing || rangeSwitchPending;
   const receivedAt = formatReceivedAt(updatedAt);
   // Only a refresh the user asked for is announced (review F4). Background
   // refreshes after a scan or sync change the visible status text quietly, and
   // a first failure is announced by the alert banner instead.
-  const [refreshAnnouncement, setRefreshAnnouncement] = useState('');
+  // Kept as a state, not a sentence, so a language switch mid-refresh still compares and re-renders correctly.
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState<RefreshAnnouncement>(null);
   const wasBusy = useRef(busy);
   // The hook keeps `error` until a retry settles (T10.164 review N1): whether
   // the banner stayed up from the start of this refresh decides what its end says.
@@ -462,20 +478,22 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
     if (!error) failedBefore.current = false;
     if (started) {
       failedBefore.current = Boolean(error);
-      setRefreshAnnouncement(current => (current === REFRESH_PENDING ? current : ''));
+      setRefreshAnnouncement(current => (current?.kind === 'refreshing' ? current : null));
     } else if (finished && error) {
       // Cleared only when this refresh ends in failure. A first failure is told
       // by the new banner; a manual retry that fails again leaves the banner
       // unchanged, so role="alert" says nothing and this region has to.
-      setRefreshAnnouncement(current => (current === REFRESH_PENDING && failedBefore.current && hasResult ? `刷新失败，仍显示${receivedAt ? ` ${receivedAt} ` : '上一次'}的结果` : ''));
-    } else if (finished) setRefreshAnnouncement(current => (current === REFRESH_PENDING ? `已刷新，更新于 ${receivedAt ?? '刚才'}` : current));
+      setRefreshAnnouncement(current => (current?.kind === 'refreshing' && failedBefore.current && hasResult ? { kind: 'failed', time: receivedAt ?? null } : null));
+    } else if (finished) setRefreshAnnouncement(current => (current?.kind === 'refreshing' ? { kind: 'refreshed', time: receivedAt ?? null } : current));
   }, [busy, error, receivedAt, hasResult]);
   const referenceYear = data ? Number(data.meta.end.slice(0, 4)) : undefined;
   const sessionActions = Boolean(data?.sessions.some(session => supportsBehaviorSessionAnalysis(session.tool)));
   const showSessionProject = behaviorShowsSessionProject(data);
   const projectAliases = useMemo(
     () => behaviorProjectAliases(data, hideProjectNames),
-    [data, hideProjectNames],
+    // 代称文案随界面语言变化，lang 只用来触发重算。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, hideProjectNames, lang],
   );
   // Drill-downs decide at press time whether the current range still covers
   // the analysed window (for example after midnight it no longer does).
@@ -485,7 +503,7 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
   const openSession = onOpenSession && analysedWindow
     ? (session: BehaviorSessionRef) => onOpenSession({ session, filters: behaviorSessionDetailFilters(session), range: behaviorDrillRange(analysedWindow) })
     : undefined;
-  if (scope === 'cloud') return <section className="content-stack behavior-analysis-view"><div className="panel empty-panel"><Database className="h-5 w-5" /><div>{hasPageTitle ? <h2>行为分析仅支持本机</h2> : <h1>行为分析仅支持本机</h1>}<p>云端看板不提供完整行为聚合，也不会从有限历史样本推断全量行为。项目维度仅在本机视图可用。</p><button className="primary-inline" type="button" onClick={onViewLocal}>切换到本机查看</button></div></div></section>;
+  if (scope === 'cloud') return <section className="content-stack behavior-analysis-view"><div className="panel empty-panel"><Database className="h-5 w-5" /><div>{hasPageTitle ? <h2>{t('behavior.cloud.title')}</h2> : <h1>{t('behavior.cloud.title')}</h1>}<p>{t('behavior.cloud.body')}</p><button className="primary-inline" type="button" onClick={onViewLocal}>{t('behavior.cloud.viewLocal')}</button></div></div></section>;
   const choosePreset = (id: QuickRange) => {
     setCustomExpanded(false);
     setPreset(id);
@@ -499,42 +517,42 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
   return <section className="content-stack behavior-analysis-view" aria-busy={busy || undefined}>
     {/* 范围栏是第一行，与概览/记录的页内工具行同一位置；页名由侧栏与子标签给出，这里不再写可见大标题（T10.276）。 */}
     <div className="behavior-range-bar">
-      <div className="segmented tl-seg behavior-range-segmented" role="group" aria-label="行为分析时间范围" ref={rangeSegRef}>
-        {RANGE_OPTIONS.map(([id, label]) => <button key={id} type="button" className={!showCustomRange && preset === id ? 'active' : ''} aria-pressed={!showCustomRange && preset === id} onClick={() => choosePreset(id)}>{label}</button>)}
-        <button type="button" className={showCustomRange ? 'active' : ''} aria-pressed={showCustomRange} onClick={() => setCustomExpanded(true)}>自定义</button>
+      <div className="segmented tl-seg behavior-range-segmented" role="group" aria-label={t('behavior.rangeAria')} ref={rangeSegRef}>
+        {rangeOptions().map(([id, label]) => <button key={id} type="button" className={!showCustomRange && preset === id ? 'active' : ''} aria-pressed={!showCustomRange && preset === id} onClick={() => choosePreset(id)}>{label}</button>)}
+        <button type="button" className={showCustomRange ? 'active' : ''} aria-pressed={showCustomRange} onClick={() => setCustomExpanded(true)}>{t('behavior.custom')}</button>
       </div>
-      {showCustomRange && <form className="behavior-custom-range" aria-label="自定义行为分析区间" onSubmit={event => { event.preventDefault(); if (draftStart && draftEnd && !invalidDraftRange) onRangeChange('custom', { start: draftStart, end: draftEnd }); }}>
+      {showCustomRange && <form className="behavior-custom-range" aria-label={t('behavior.customFormAria')} onSubmit={event => { event.preventDefault(); if (draftStart && draftEnd && !invalidDraftRange) onRangeChange('custom', { start: draftStart, end: draftEnd }); }}>
         <CalendarDays className="h-4 w-4" aria-hidden="true" />
-        <input aria-label="自定义起始日期" type="date" required aria-invalid={invalidDraftRange || undefined} aria-describedby={invalidDraftRange ? rangeErrorId : undefined} value={draftStart} onChange={event => setDraftStart(event.target.value)} />
-        <span>至</span>
-        <input aria-label="自定义结束日期" type="date" required aria-invalid={invalidDraftRange || undefined} aria-describedby={invalidDraftRange ? rangeErrorId : undefined} value={draftEnd} onChange={event => setDraftEnd(event.target.value)} />
-        <button type="submit" className="behavior-apply-range" disabled={!draftStart || !draftEnd || invalidDraftRange}>分析区间</button>
+        <input aria-label={t('behavior.customStart')} type="date" required aria-invalid={invalidDraftRange || undefined} aria-describedby={invalidDraftRange ? rangeErrorId : undefined} value={draftStart} onChange={event => setDraftStart(event.target.value)} />
+        <span>{t('behavior.to')}</span>
+        <input aria-label={t('behavior.customEnd')} type="date" required aria-invalid={invalidDraftRange || undefined} aria-describedby={invalidDraftRange ? rangeErrorId : undefined} value={draftEnd} onChange={event => setDraftEnd(event.target.value)} />
+        <button type="submit" className="behavior-apply-range" disabled={!draftStart || !draftEnd || invalidDraftRange}>{t('behavior.applyRange')}</button>
       </form>}
     </div>
     <div className="page-heading behavior-analysis-heading">
       {/* U-102：范围与记录数已在范围栏和指标卡里，口径行收进 ⓘ。 */}
-      <div className="behavior-heading-info">{!hasPageTitle && <h1 className="sr-only">行为分析</h1>}{data && <span className="behavior-applied-range">已应用 {data.meta.start} 至 {data.meta.end}</span>}<InfoTip label="统计范围与口径"><span>{coverage}</span><span>有效 Token = 输入 + 输出</span></InfoTip>{heldRangeNotice && <p className="page-subtitle" role="status">{heldRangeNotice}</p>}</div>
+      <div className="behavior-heading-info">{!hasPageTitle && <h1 className="sr-only">{t('behavior.title')}</h1>}{data && <span className="behavior-applied-range">{t('behavior.applied', { start: data.meta.start, end: data.meta.end })}</span>}<InfoTip label={t('behavior.scopeInfo')}><span>{coverage}</span><span>{t('behavior.tokenDef')}</span></InfoTip>{heldRangeNotice && <p className="page-subtitle" role="status">{heldRangeNotice}</p>}</div>
       <div className="behavior-refresh">
         {/* Text, not only the spinner, carries the state: reduced motion stops the spin. */}
         {/* 刷新中的文字要看得见（reduced motion 下不转圈）；完成后的「更新于」与顶栏重复，只留给读屏（U-102）。 */}
-        <span className="behavior-refresh-status">{refreshing ? REFRESH_PENDING : !loading && receivedAt ? <time className="sr-only" dateTime={updatedAt ?? undefined}>更新于 {receivedAt}</time> : null}</span>
-        <span className="sr-only" role="status">{refreshAnnouncement}</span>
+        <span className="behavior-refresh-status">{refreshing ? t('behavior.refreshing') : !loading && receivedAt ? <time className="sr-only" dateTime={updatedAt ?? undefined}>{t('behavior.updatedAt', { time: receivedAt })}</time> : null}</span>
+        <span className="sr-only" role="status">{refreshAnnouncementText(refreshAnnouncement)}</span>
         {/* aria-disabled keeps keyboard focus on the button while it works; a
             repeated press is ignored and the shown result stays on screen. */}
-        <button className="ghost-inline behavior-refresh-button" type="button" aria-disabled={busy || undefined} onClick={() => { if (!busy) { setRefreshAnnouncement(REFRESH_PENDING); onRetry(); } }}><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} aria-hidden="true" />刷新</button>
+        <button className="ghost-inline behavior-refresh-button" type="button" aria-disabled={busy || undefined} onClick={() => { if (!busy) { setRefreshAnnouncement({ kind: 'refreshing' }); onRetry(); } }}><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} aria-hidden="true" />{t('behavior.refresh')}</button>
       </div>
     </div>
-    {showCustomRange && invalidDraftRange && <p id={rangeErrorId} className="behavior-range-error" role="alert">结束日期不能早于开始日期。</p>}
-    {rangeTruncated && data && <p className="behavior-range-note"><Info className="h-4 w-4" aria-hidden="true" /><span>「全部」在行为分析中只统计最近 {formatNum(rangeDayLimit)} 天（{data.meta.start} 起）；更早的本机记录未计入本页，从排行打开的专属看板与明细仍按完整「全部」统计。</span></p>}
+    {showCustomRange && invalidDraftRange && <p id={rangeErrorId} className="behavior-range-error" role="alert">{t('behavior.rangeError')}</p>}
+    {rangeTruncated && data && <p className="behavior-range-note"><Info className="h-4 w-4" aria-hidden="true" /><span>{t('behavior.allTruncated', { days: formatNum(rangeDayLimit), start: data.meta.start })}</span></p>}
     {/* A failed refresh keeps the previous result on screen; say it is not the latest. */}
     {/* One text column (review F5): the banner spreads its direct children apart. */}
-    {error && <div className="cloud-recovery-banner" role="alert"><div><strong>读取失败</strong><span>{error}</span>{data && <span>下方仍是{receivedAt ? ` ${receivedAt} ` : '上一次'}取得的结果，不是最新。</span>}</div></div>}
-    {loading && !data ? <div className="panel behavior-loading" role="status">正在聚合本机账本…</div> : data && <>
+    {error && <div className="cloud-recovery-banner" role="alert"><div><strong>{t('behavior.readFailed')}</strong><span>{error}</span>{data && <span>{receivedAt ? t('behavior.staleAt', { time: receivedAt }) : t('behavior.staleLast')}</span>}</div></div>}
+    {loading && !data ? <div className="panel behavior-loading" role="status">{t('behavior.loading')}</div> : data && <>
       <div className="behavior-summary-grid">{([
-        ['有效 Token', formatTokens(data.summary.tokens), Activity, null],
-        ['账本记录数', formatNum(data.summary.requests), Server, null],
-        ['活跃天数', formatNum(data.summary.activeDays), CalendarDays, null],
-        ['会话数', sessionCountLabel, Users, sessionCountNote],
+        [t('behavior.stat.tokens'), formatTokens(data.summary.tokens), Activity, null],
+        [t('behavior.stat.records'), formatNum(data.summary.requests), Server, null],
+        [t('behavior.stat.activeDays'), formatNum(data.summary.activeDays), CalendarDays, null],
+        [t('behavior.stat.sessions'), sessionCountLabel, Users, sessionCountNote],
       ] as Array<[string, string, LucideIcon, string | null]>).map(([label, value, Icon, note]) => <div className="panel behavior-stat" key={label}><span className="behavior-stat-icon" aria-hidden="true"><Icon className="h-4 w-4" /></span><span className="behavior-stat-text"><span className="behavior-stat-label">{label}</span><strong>{value}</strong>{note && <small className="behavior-stat-note">{note}</small>}</span></div>)}</div>
       <BehaviorProjectPanel
         data={data}
@@ -555,30 +573,30 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
           {onScan && <button type="button" className="primary-inline" onClick={onScan} disabled={scanBusy} aria-busy={scanBusy || undefined}><RefreshCw className={`h-4 w-4 ${scanBusy ? 'animate-spin' : ''}`} />{t('empty.sessions.action')}</button>}
         </EmptyState>
       )) : <>
-        <div className="behavior-day-pager" aria-label="分析日期窗口">
-          <span>当前显示 {visibleDates[0]} 至 {visibleDates[visibleDates.length - 1]} · 全区间 {dates.length} 天</span>
-          <button type="button" disabled={dayOffset + 14 >= dates.length} onClick={() => setDayOffset(offset => Math.min(dates.length - 14, offset + 14))}>较早日期</button>
-          <button type="button" disabled={dayOffset === 0} onClick={() => setDayOffset(offset => Math.max(0, offset - 14))}>较近日期</button>
+        <div className="behavior-day-pager" aria-label={t('behavior.dayPagerAria')}>
+          <span>{t('behavior.dayPager', { first: visibleDates[0], last: visibleDates[visibleDates.length - 1], days: dates.length })}</span>
+          <button type="button" disabled={dayOffset + 14 >= dates.length} onClick={() => setDayOffset(offset => Math.min(dates.length - 14, offset + 14))}>{t('behavior.earlier')}</button>
+          <button type="button" disabled={dayOffset === 0} onClick={() => setDayOffset(offset => Math.max(0, offset - 14))}>{t('behavior.later')}</button>
         </div>
         <div className="behavior-chart-grid">
           <div className="panel behavior-chart-card">
-            <div className="workbuddy-card-header"><h2>{selectedHour === null ? '每日活动' : `每日活动 · ${selectedHour}:00`}<InfoTip label="每日活动说明">有效 Token · 点击柱形选择日期</InfoTip></h2></div>
-            <div className="behavior-chart"><EChart option={dayOption} ariaLabel="每日行为活动" onEvents={{ click: (params: { name?: string }) => { if (params.name) setSelectedDate(params.name); } }} /></div>
+            <div className="workbuddy-card-header"><h2>{selectedHour === null ? t('behavior.daily') : t('behavior.dailyAt', { hour: selectedHour })}<InfoTip label={t('behavior.dailyInfoLabel')}>{t('behavior.dailyInfo')}</InfoTip></h2></div>
+            <div className="behavior-chart"><EChart option={dayOption} ariaLabel={t('behavior.dailyAria')} onEvents={{ click: (params: { name?: string }) => { if (params.name) setSelectedDate(params.name); } }} /></div>
           </div>
           <div className="panel behavior-chart-card">
-            <div className="workbuddy-card-header"><h2>小时节奏<InfoTip label="小时节奏说明">跨日合计 · 点击时柱联动每日图</InfoTip></h2>{selectedHour !== null && <span>{selectedHour}:00 已选择</span>}</div>
-            <div className="behavior-chart"><EChart option={hourOption} ariaLabel="小时行为活动" onEvents={{ click: (params: { dataIndex?: number }) => setSelectedHour(typeof params.dataIndex === 'number' ? params.dataIndex : null) }} /></div>
+            <div className="workbuddy-card-header"><h2>{t('behavior.hourly')}<InfoTip label={t('behavior.hourlyInfoLabel')}>{t('behavior.hourlyInfo')}</InfoTip></h2>{selectedHour !== null && <span>{t('behavior.hourSelected', { hour: selectedHour })}</span>}</div>
+            <div className="behavior-chart"><EChart option={hourOption} ariaLabel={t('behavior.hourlyAria')} onEvents={{ click: (params: { dataIndex?: number }) => setSelectedHour(typeof params.dataIndex === 'number' ? params.dataIndex : null) }} /></div>
           </div>
         </div>
         <div className="behavior-selection-bar">
-          <label>查看日期 <select aria-label="选择下钻日期" value={selectedDateValue} onChange={event => setSelectedDate(event.target.value || null)}><option value="">请选择</option>{dates.map(date => <option key={date} value={date}>{date}</option>)}</select></label>
-          <button type="button" disabled={!selectedDateValue} onClick={() => selectedDateValue && onSelectDate?.(selectedDateValue)}>查看当日明细</button>
-          {selectedHour !== null && <button type="button" onClick={() => setSelectedHour(null)}>清除小时筛选</button>}
+          <label>{t('behavior.pickDate')} <select aria-label={t('behavior.pickDateAria')} value={selectedDateValue} onChange={event => setSelectedDate(event.target.value || null)}><option value="">{t('behavior.pickDatePlaceholder')}</option>{dates.map(date => <option key={date} value={date}>{date}</option>)}</select></label>
+          <button type="button" disabled={!selectedDateValue} onClick={() => selectedDateValue && onSelectDate?.(selectedDateValue)}>{t('behavior.viewDay')}</button>
+          {selectedHour !== null && <button type="button" onClick={() => setSelectedHour(null)}>{t('behavior.clearHour')}</button>}
         </div>
         <div className="behavior-chart-grid">
           <div className="panel behavior-chart-card">
-            <div className="workbuddy-card-header"><h2>日期 × 小时热力<InfoTip label="热力说明">选择格子联动 · 窗口较窄时可横向滚动</InfoTip></h2></div>
-            <div className="behavior-heatmap-scroll" role="region" aria-label="日期小时矩阵，可横向滚动" tabIndex={0}>
+            <div className="workbuddy-card-header"><h2>{t('behavior.heatmap')}<InfoTip label={t('behavior.heatmapInfoLabel')}>{t('behavior.heatmapInfo')}</InfoTip></h2></div>
+            <div className="behavior-heatmap-scroll" role="region" aria-label={t('behavior.heatmapAria')} tabIndex={0}>
               <div className="behavior-heatmap-grid">
                 <div className="behavior-heatmap-corner" aria-hidden="true" />
                 {Array.from({ length: 24 }, (_, hour) => <span className="behavior-heatmap-hour" key={hour}>{hour % 3 === 0 ? hour : ''}</span>)}
@@ -588,52 +606,52 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
                     const tokens = heatValues.get(`${date}|${hour}`) || 0;
                     const level = tokens === 0 ? 0 : Math.max(1, Math.ceil(tokens / heatPeak * 5));
                     const selected = selectedDate === date && selectedHour === hour;
-                    return <button key={hour} type="button" className="behavior-heatmap-cell" data-level={level} aria-pressed={selected} aria-label={`${date} ${hour}:00，有效 Token ${formatTokens(tokens)}`} title={`${date} ${hour}:00 · ${formatTokens(tokens)}`} onClick={() => { setSelectedDate(date); setSelectedHour(hour); }} />;
+                    return <button key={hour} type="button" className="behavior-heatmap-cell" data-level={level} aria-pressed={selected} aria-label={t('behavior.cellAria', { date, hour, tokens: formatTokens(tokens) })} title={`${date} ${hour}:00 · ${formatTokens(tokens)}`} onClick={() => { setSelectedDate(date); setSelectedHour(hour); }} />;
                   })}
                 </div>)}
               </div>
             </div>
           </div>
-          <div className="panel behavior-chart-card"><div className="workbuddy-card-header"><h2>每日模型用量<InfoTip label="每日模型用量说明">前 6 模型 + 其他 · 点击日期选择</InfoTip></h2></div><div className="behavior-chart"><EChart option={modelDayOption} ariaLabel="每日模型用量" onEvents={{ click: (params: { name?: string }) => { if (params.name) setSelectedDate(params.name); }, legendselectchanged: (params: { selected?: unknown }) => rememberLegend('modelDay', params.selected) }} /></div></div>
+          <div className="panel behavior-chart-card"><div className="workbuddy-card-header"><h2>{t('behavior.modelDaily')}<InfoTip label={t('behavior.modelDailyInfoLabel')}>{t('behavior.modelDailyInfo')}</InfoTip></h2></div><div className="behavior-chart"><EChart option={modelDayOption} ariaLabel={t('behavior.modelDaily')} onEvents={{ click: (params: { name?: string }) => { if (params.name) setSelectedDate(params.name); }, legendselectchanged: (params: { selected?: unknown }) => rememberLegend('modelDay', params.selected) }} /></div></div>
         </div>
-        <div className="panel behavior-chart-card"><div className="workbuddy-card-header"><h2>模型时段分布<InfoTip label="模型时段分布说明">前 6 模型 + 其他 · 跨日合计</InfoTip></h2></div><div className="behavior-chart"><EChart option={modelHourOption} ariaLabel="模型时段分布" onEvents={{ click: (params: { dataIndex?: number }) => setSelectedHour(typeof params.dataIndex === 'number' ? params.dataIndex : null), legendselectchanged: (params: { selected?: unknown }) => rememberLegend('modelHour', params.selected) }} /></div></div>
+        <div className="panel behavior-chart-card"><div className="workbuddy-card-header"><h2>{t('behavior.modelHourly')}<InfoTip label={t('behavior.modelHourlyInfoLabel')}>{t('behavior.modelHourlyInfo')}</InfoTip></h2></div><div className="behavior-chart"><EChart option={modelHourOption} ariaLabel={t('behavior.modelHourly')} onEvents={{ click: (params: { dataIndex?: number }) => setSelectedHour(typeof params.dataIndex === 'number' ? params.dataIndex : null), legendselectchanged: (params: { selected?: unknown }) => rememberLegend('modelHour', params.selected) }} /></div></div>
         <div className="behavior-detail-grid">
           <div className="panel behavior-rank-panel">
             <div className="behavior-rank-head">
-              <h2 id={toolRankTitleId}>工具排行 <small>（{data.tools.length} 种）</small></h2>
-              <InfoTip label="工具排行说明">按有效 Token 排序{openTool ? ' · 点击工具打开专属看板' : ''}</InfoTip>
+              <h2 id={toolRankTitleId}>{t('behavior.toolRank')} <small>{t('behavior.toolCount', { count: data.tools.length })}</small></h2>
+              <InfoTip label={t('behavior.toolRankInfoLabel')}>{t('behavior.toolRankInfo')}{openTool ? t('behavior.toolRankInfoOpen') : ''}</InfoTip>
             </div>
             <ol className="behavior-rank-list tl-scrollbar" role="list" aria-labelledby={toolRankTitleId}>{data.tools.map((item) => <li className="behavior-rank-row" key={item.id}>
-              <RankRowMain onActivate={openTool ? () => openTool(item.id) : undefined} title={openTool ? `打开 ${item.id} 专属看板` : undefined} action="打开专属看板">
+              <RankRowMain onActivate={openTool ? () => openTool(item.id) : undefined} title={openTool ? t('behavior.openToolTitle', { tool: item.id }) : undefined} action={t('behavior.openTool')}>
                 <span className="behavior-rank-name"><span className="entity-dot" style={{ color: toolColorAssignment.get(item.id.toLowerCase()) ?? colorForTool(item.id, 0, effective) }} aria-hidden="true" /><span>{item.id}</span></span>
-                <strong className="behavior-rank-value">{formatTokens(item.tokens)}<span className="sr-only"> 有效 Token</span></strong>
-                <span className="behavior-rank-meta">{formatNum(item.requests)} 条记录 · {formatBehaviorToolSessions(item)}</span>
+                <strong className="behavior-rank-value">{formatTokens(item.tokens)}<span className="sr-only">{t('behavior.tokensSr')}</span></strong>
+                <span className="behavior-rank-meta">{t('behavior.recordCount', { count: formatNum(item.requests) })} · {formatBehaviorToolSessions(item)}</span>
               </RankRowMain>
             </li>)}</ol>
           </div>
           <div className="panel behavior-rank-panel">
             <div className="behavior-rank-head">
-              <h2 id={sessionRankTitleId}>会话排行 <small>（{data.meta.sessionsTruncated ? `前 ${formatNum(data.meta.sessionLimit)} 条` : `${data.sessions.length} 条`}）</small></h2>
-              <InfoTip label="会话排行说明">按有效 Token 排序 · 起止为区间内首末记录 · 会话预估费用按价格表估算，非账单{openSession ? ' · 点击会话查看明细' : ''}</InfoTip>
-              {unknownSessionRecords > 0 && <p className="behavior-rank-note">另有 {formatNum(unknownSessionRecords)} 条记录{typeof unknownSessionTokens === 'number' ? `（${formatTokens(unknownSessionTokens)} 有效 Token）` : ''}缺少会话 ID，未计入会话数与本排行；这些记录仍计入上方 Token、记录数与各图表。</p>}
+              <h2 id={sessionRankTitleId}>{t('behavior.sessionRank')} <small>{data.meta.sessionsTruncated ? t('behavior.sessionTop', { count: formatNum(data.meta.sessionLimit) }) : t('behavior.sessionCount', { count: data.sessions.length })}</small></h2>
+              <InfoTip label={t('behavior.sessionRankInfoLabel')}>{t('behavior.sessionRankInfo')}{openSession ? t('behavior.sessionRankInfoOpen') : ''}</InfoTip>
+              {unknownSessionRecords > 0 && <p className="behavior-rank-note">{typeof unknownSessionTokens === 'number' ? t('behavior.unknownSessionsTokens', { count: formatNum(unknownSessionRecords), tokens: formatTokens(unknownSessionTokens) }) : t('behavior.unknownSessions', { count: formatNum(unknownSessionRecords) })}</p>}
             </div>
             {/* The live region exists before its text (review F3): a region inserted
                 together with its text is announced unreliably, and focus stays on
                 the pressed 逐轮分析 button. Empty, it takes no space. */}
             <div className="behavior-rank-live" role="status">{sessionAnalysis.failure && <p className="behavior-rank-note is-attention">{sessionAnalysis.failure}</p>}</div>
             {data.sessions.length === 0
-              ? <p className="behavior-rank-empty">该区间没有带会话 ID 的记录。</p>
+              ? <p className="behavior-rank-empty">{t('behavior.noSessions')}</p>
               : <ol className={`behavior-rank-list tl-scrollbar${sessionActions ? ' has-actions' : ''}${showSessionProject ? ' has-projects' : ''}`} role="list" aria-labelledby={sessionRankTitleId}>{data.sessions.map(session => {
                 const key = behaviorSessionKey(session);
                 const span = formatBehaviorSessionSpan(session.firstAt, session.lastAt, referenceYear);
                 const cost = formatBehaviorSessionCost(session.cost);
                 const locating = sessionAnalysis.locatingKey === key;
                 return <li className="behavior-rank-row" key={key}>
-                  <RankRowMain onActivate={openSession ? () => openSession({ id: session.id, tool: session.tool }) : undefined} title={session.id} action="查看该会话明细">
+                  <RankRowMain onActivate={openSession ? () => openSession({ id: session.id, tool: session.tool }) : undefined} title={session.id} action={t('behavior.viewSession')}>
                     <span className="behavior-rank-name"><span className="entity-dot" style={{ color: toolColorAssignment.get(session.tool.toLowerCase()) ?? colorForTool(session.tool, 0, effective) }} aria-hidden="true" /><span>{session.id}</span></span>
-                    <strong className="behavior-rank-value">{formatTokens(session.tokens)}<span className="sr-only"> 有效 Token</span></strong>
-                    <span className="behavior-rank-meta">{[session.tool, formatBehaviorTopModel(session.topModel), span, `${formatNum(session.requests)} 条记录`].filter(Boolean).join(' · ')}</span>
-                    <span className={`behavior-rank-aside${cost === '不可得' ? ' is-unavailable' : ''}`}><span className="sr-only">会话预估费用</span>{cost}</span>
+                    <strong className="behavior-rank-value">{formatTokens(session.tokens)}<span className="sr-only">{t('behavior.tokensSr')}</span></strong>
+                    <span className="behavior-rank-meta">{[session.tool, formatBehaviorTopModel(session.topModel), span, t('behavior.recordCount', { count: formatNum(session.requests) })].filter(Boolean).join(' · ')}</span>
+                    <span className={`behavior-rank-aside${cost === t('behavior.unavailable') ? ' is-unavailable' : ''}`}><span className="sr-only">{t('behavior.sessionCostSr')}</span>{cost}</span>
                   </RankRowMain>
                   {showSessionProject && (
                     <SessionProjectChip
@@ -645,18 +663,18 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
                     />
                   )}
                   {supportsBehaviorSessionAnalysis(session.tool)
-                    ? <button type="button" className="behavior-rank-action" aria-busy={locating || undefined} onClick={() => { if (!locating) void sessionAnalysis.open(session); }}><ListTree size={15} aria-hidden="true" />{locating ? '定位中…' : '逐轮分析'}<span className="sr-only">：会话 {session.id}</span></button>
+                    ? <button type="button" className="behavior-rank-action" aria-busy={locating || undefined} onClick={() => { if (!locating) void sessionAnalysis.open(session); }}><ListTree size={15} aria-hidden="true" />{t(locating ? 'behavior.locating' : 'behavior.turns')}<span className="sr-only">{t('behavior.turnsSr', { id: session.id })}</span></button>
                     : sessionActions ? <span className="behavior-rank-action-slot" aria-hidden="true" /> : null}
                 </li>;
               })}</ol>}
           </div>
         </div>
         <div className="panel behavior-request-sizes">
-          <div className="workbuddy-card-header"><h2>账本记录大小分布</h2><label>模型 <select aria-label="记录大小模型" value={currentRequestModel?.model || ''} onChange={event => setSelectedModel(event.target.value)}>{data.requestSizes.map(item => <option key={item.model} value={item.model}>{item.model}</option>)}</select></label></div>
-          {currentRequestModel && <><p className="behavior-percentile-copy">{formatNum(currentRequestModel.requests)} 条记录 · P50 {formatTokens(currentRequestModel.p50)} · P90 {formatTokens(currentRequestModel.p90)} · 最大 {formatTokens(currentRequestModel.max)}<InfoTip label="记录大小说明">部分来源按会话记录，一条记录可能对应一个会话。</InfoTip></p><div className="behavior-chart"><EChart option={requestSizeOption} ariaLabel="所选模型账本记录大小分布" /></div></>}
+          <div className="workbuddy-card-header"><h2>{t('behavior.sizes')}</h2><label>{t('behavior.sizesModel')} <select aria-label={t('behavior.sizesModelAria')} value={currentRequestModel?.model || ''} onChange={event => setSelectedModel(event.target.value)}>{data.requestSizes.map(item => <option key={item.model} value={item.model}>{item.model}</option>)}</select></label></div>
+          {currentRequestModel && <><p className="behavior-percentile-copy">{t('behavior.sizesCopy', { count: formatNum(currentRequestModel.requests), p50: formatTokens(currentRequestModel.p50), p90: formatTokens(currentRequestModel.p90), max: formatTokens(currentRequestModel.max) })}<InfoTip label={t('behavior.sizesInfoLabel')}>{t('behavior.sizesInfo')}</InfoTip></p><div className="behavior-chart"><EChart option={requestSizeOption} ariaLabel={t('behavior.sizesAria')} /></div></>}
         </div>
       </>}
-      <p className="behavior-coverage-note">本机覆盖：{data.meta.firstRecordAt || '暂无记录'} 至 {data.meta.lastRecordAt || '暂无记录'}<InfoTip label="覆盖范围说明">云端能力边界：行为分析不会从云端有限 history 推断全量。</InfoTip></p>
+      <p className="behavior-coverage-note">{t('behavior.coverageNote', { first: data.meta.firstRecordAt || t('behavior.noRecords'), last: data.meta.lastRecordAt || t('behavior.noRecords') })}<InfoTip label={t('behavior.coverageInfoLabel')}>{t('behavior.coverageInfo')}</InfoTip></p>
     </>}
     {sessionAnalysis.record && <Suspense fallback={null}><SessionAnalysisDrawer record={sessionAnalysis.record} onClose={sessionAnalysis.close} /></Suspense>}
   </section>;

@@ -6,6 +6,7 @@ import { formatEstimatedUsd, formatNum, formatTokens } from '../../utils/format'
 import {
   accountSplitAvailable,
   SPLIT_DIMENSIONS,
+  SPLIT_DIMENSION_LABELS,
   SPLIT_METRICS,
   splitUsage,
   type SplitDimension,
@@ -13,6 +14,7 @@ import {
   type SplitMetric,
 } from '../../utils/usageSplit';
 import { BrandIcon } from '../brand/BrandIcon';
+import { localized, t, useLang } from '../../i18n';
 
 export interface UsageSplitPanelProps {
   stats: StatsData;
@@ -30,17 +32,17 @@ export interface UsageSplitPanelProps {
   onOpenEntity?: (kind: 'tool' | 'model', id: string) => void;
 }
 
-const DIMENSION_LABEL: Record<SplitDimension, string> = { agent: 'Agent', model: '模型', device: '设备', account: '账号' };
+const DIMENSION_LABEL = SPLIT_DIMENSION_LABELS;
 
-const UNAVAILABLE_TITLE: Partial<Record<SplitDimension, string>> = {
-  device: '设备构成只在云端汇总、未按设备筛选且不止一台设备时可用',
-  account: '账号来自网关供应商：本机有网关记录时可用，云端与纯扫描记录没有账号',
-};
+const UNAVAILABLE_TITLE: Partial<Record<SplitDimension, string>> = localized({
+  device: 'split.unavailable.device',
+  account: 'split.unavailable.account',
+});
 
 function formatMetric(metric: SplitMetric, value: number | null): string {
-  if (value === null) return '不可得';
+  if (value === null) return t('split.na');
   if (metric === 'tokens') return formatTokens(value);
-  if (metric === 'requests') return `${formatNum(value)} 条`;
+  if (metric === 'requests') return t('split.records', { n: formatNum(value) });
   return formatEstimatedUsd(value);
 }
 
@@ -62,6 +64,7 @@ export function UsageSplitPanel({
   onFocusChange,
   onOpenEntity,
 }: UsageSplitPanelProps) {
+  useLang();
   const titleId = useId();
   const dimensionRef = useSegmentedIndicator<HTMLDivElement>();
   const metricRef = useSegmentedIndicator<HTMLDivElement>();
@@ -75,9 +78,9 @@ export function UsageSplitPanel({
       <div className="usage-split-head">
         <div className="panel-title" id={titleId}>
           <span className="panel-icon tone-primary" aria-hidden="true"><Layers className="h-4 w-4" /></span>
-          用量拆分
+          {t('split.title')}
         </div>
-        <div ref={dimensionRef} className="segmented tl-seg" role="group" aria-label="拆分维度">
+        <div ref={dimensionRef} className="segmented tl-seg" role="group" aria-label={t('split.dimAria')}>
           {SPLIT_DIMENSIONS.map(({ id, label }) => {
             const available = id === 'device' ? deviceAvailable : id === 'account' ? accountAvailable : true;
             return (
@@ -87,7 +90,7 @@ export function UsageSplitPanel({
                 className={dimension === id ? 'active' : ''}
                 aria-pressed={dimension === id}
                 disabled={!available}
-                title={available ? `按${label}拆分` : UNAVAILABLE_TITLE[id]}
+                title={available ? t('split.byDim', { label }) : UNAVAILABLE_TITLE[id]}
                 onClick={() => onDimensionChange(id)}
               >
                 {label}
@@ -95,7 +98,7 @@ export function UsageSplitPanel({
             );
           })}
         </div>
-        <div ref={metricRef} className="segmented tl-seg" role="group" aria-label="拆分指标">
+        <div ref={metricRef} className="segmented tl-seg" role="group" aria-label={t('split.metricAria')}>
           {SPLIT_METRICS.map(({ id, label }) => {
             const available = result.metrics.includes(id);
             return (
@@ -105,7 +108,7 @@ export function UsageSplitPanel({
                 className={shownMetric === id ? 'active' : ''}
                 aria-pressed={shownMetric === id}
                 disabled={!available}
-                title={available ? `按${label}排序` : 'Agent 与模型交叉时来源只给出有效 Token，记录数与费用不可得'}
+                title={available ? t('split.sortBy', { label }) : t('split.crossOnlyTokens')}
                 onClick={() => onMetricChange(id)}
               >
                 {label}
@@ -117,32 +120,32 @@ export function UsageSplitPanel({
 
       {focus && (
         <div className="usage-split-focus" role="status">
-          <span>只看{DIMENSION_LABEL[focus.dimension]} <b>{focus.id}</b></span>
+          <span>{t('split.focusOnly', { dim: DIMENSION_LABEL[focus.dimension] })} <b>{focus.id}</b></span>
           <button type="button" className="usage-btn" onClick={() => onFocusChange(null)}>
             <X className="h-3.5 w-3.5" aria-hidden="true" />
-            显示全部
+            {t('split.showAll')}
           </button>
         </div>
       )}
       {result.focusIgnored && (
-        <p className="usage-split-note">{crossFocus?.dimension === 'account' || dimension === 'account' ? '账号不能与其他维度交叉' : '设备构成不能与 Agent、模型交叉'}，这里仍显示全部{DIMENSION_LABEL[dimension]}。</p>
+        <p className="usage-split-note">{t('split.stillAll', { reason: crossFocus?.dimension === 'account' || dimension === 'account' ? t('split.noCrossAccount') : t('split.noCrossDevice'), dim: DIMENSION_LABEL[dimension] })}</p>
       )}
       {dimension === 'account' && (
-        <p className="usage-split-note">账号即网关供应商，只含经网关转发与导入的记录；扫描到的记录没有账号，不计入。</p>
+        <p className="usage-split-note">{t('split.accountNote')}</p>
       )}
       {crossFocus && !result.focusIgnored && (
-        <p className="usage-split-note">{focus!.id} 下各{DIMENSION_LABEL[dimension]}的有效 Token；缓存单列，不计入。</p>
+        <p className="usage-split-note">{t('split.crossNote', { id: focus!.id, dim: DIMENSION_LABEL[dimension] })}</p>
       )}
 
       {result.rows.length === 0 ? (
-        <p className="usage-split-note">当前范围没有可拆分的用量。</p>
+        <p className="usage-split-note">{t('split.empty')}</p>
       ) : (
-        <ol className="usage-split-list" aria-label={`按${DIMENSION_LABEL[dimension]}拆分的${SPLIT_METRICS.find((m) => m.id === shownMetric)!.label}排行`}>
+        <ol className="usage-split-list" aria-label={t('split.listAria', { dim: DIMENSION_LABEL[dimension], metric: SPLIT_METRICS.find((m) => m.id === shownMetric)!.label })}>
           {result.rows.map((row) => {
             const selected = focus?.dimension === dimension && focus.id === row.id;
             const details = [
               percent(row.share),
-              row.cacheHit !== null ? `缓存命中 ${(row.cacheHit * 100).toFixed(0)}%` : '',
+              row.cacheHit !== null ? t('split.cacheHit', { pct: (row.cacheHit * 100).toFixed(0) }) : '',
             ].filter(Boolean).join(' · ');
             return (
               <li key={row.id} className="usage-split-row">
@@ -150,7 +153,7 @@ export function UsageSplitPanel({
                   type="button"
                   className="usage-split-pick"
                   aria-pressed={selected}
-                  title={selected ? '再点一次显示全部' : `只看 ${row.id}`}
+                  title={selected ? t('split.clickAgain') : t('split.onlyId', { id: row.id })}
                   onClick={() => onFocusChange(selected ? null : { dimension, id: row.id })}
                 >
                   <span className="usage-split-name">
@@ -169,8 +172,8 @@ export function UsageSplitPanel({
                   <button
                     type="button"
                     className="usage-btn usage-split-open"
-                    aria-label={`打开 ${row.id} 专属看板`}
-                    title={`打开 ${row.id} 专属看板`}
+                    aria-label={t('split.openDashboard', { id: row.id })}
+                    title={t('split.openDashboard', { id: row.id })}
                     onClick={() => onOpenEntity(dimension === 'agent' ? 'tool' : 'model', row.id)}
                   >
                     <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
