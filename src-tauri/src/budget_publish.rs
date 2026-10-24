@@ -201,97 +201,51 @@ struct Published {
     at: Instant,
 }
 
-struct Publisher {
-    app: Arc<AppContext>,
-    machine: String,
-    published: Option<Published>,
-    backoff: Duration,
-    /// The last pass is waiting out a retry delay; budget-check wakeups must
-    /// not cut it short, only a flipped switch may.
-    hold: bool,
-    acted_on: bool,
+/// Everything a pass touches outside its own state, so the pass order can be
+/// tested without a cloud session or an app data directory.
+trait PublishIo {
+    fn settings(&self) -> BudgetSettings;
+    fn marker_exists(&self) -> bool;
+    fn write_marker(&self);
+    fn remove_marker(&self);
+    /// `None` when the store could not be read, `Some("")` when signed out.
+    fn stored_user(&self) -> Option<String>;
+    async fn statuses(&self, settings: &BudgetSettings) -> Vec<BudgetStatus>;
+    /// Sends one RPC; `Cancelled` when the saved switch is no longer `switch_on`
+    /// right before the request leaves.
+    async fn rpc(
+        &self,
+        user: &str,
+        function: &str,
+        body: Value,
+        switch_on: bool,
+    ) -> Result<Value, RpcError>;
+    fn set_status(&self, update: impl FnOnce(&mut PhoneSyncStatus));
 }
 
-impl Publisher {
-    fn marker(&self) -> std::path::PathBuf {
-        self.app.app_data_dir().join(CLEAR_MARKER)
+struct AppIo {
+    app: Arc<AppContext>,
+}
+
+impl PublishIo for AppIo {
+    fn settings(&self) -> BudgetSettings {
+        crate::budget::load_settings(self.app.app_data_dir())
     }
 
-    /// Asked again right before a request leaves (see `call_rpc`): the saved
-    /// switch must still be where this pass found it.
-    fn switch_is(&self, on: bool) -> impl Fn() -> bool + Send + Sync {
-        let dir = self.app.app_data_dir().to_path_buf();
-        move || crate::budget::load_settings(&dir).sync_to_phone == on
+    fn marker_exists(&self) -> bool {
+        self.app.app_data_dir().join(CLEAR_MARKER).exists()
     }
 
-    fn back_off(&mut self) -> Duration {
-        self.hold = true;
-        let delay = self.backoff;
-        self.backoff = (self.backoff * 2).min(MAX_BACKOFF);
-        delay
+    fn write_marker(&self) {
+        let _ = std::fs::write(self.app.app_data_dir().join(CLEAR_MARKER), b"");
     }
 
-    async fn tick(&mut self) -> Duration {
-        let settings = crate::budget::load_settings(self.app.app_data_dir());
-        self.hold = false;
-        self.acted_on = settings.sync_to_phone;
-        if settings.sync_to_phone {
-            self.publish(settings).await
-        } else {
-            self.clear().await
-        }
+    fn remove_marker(&self) {
+        let _ = std::fs::remove_file(self.app.app_data_dir().join(CLEAR_MARKER));
     }
 
-    async fn clear(&mut self) -> Duration {
-        let marker = self.marker();
-        let published = self.published.take();
-        if !marker.exists() {
-            set_status(|status| *status = PhoneSyncStatus::default());
-            return TICK;
-        }
-        let user = match stored_user(&self.app) {
-            Some(user) if !user.is_empty() => user,
-            // Signed out: the row is not this session's to delete any more;
-            // reads hide it after two days and the purge drops it.
-            Some(_) => {
-                let _ = std::fs::remove_file(&marker);
-                set_status(|status| *status = PhoneSyncStatus::default());
-                return TICK;
-            }
-            // The store could not be read: keep the marker and try again.
-            None => {
-                set_status(|status| *status = PhoneSyncStatus::default());
-                return self.back_off();
-            }
-        };
-        let device = published
-            .filter(|previous| previous.user == user)
-            .map(|previous| previous.device)
-            .unwrap_or_else(|| device_id(&user, &self.machine));
-        // Turned back on while the session refreshed: publishing overwrites the row anyway.
-        let still_off = self.switch_is(false);
-        let delay = match call_rpc(
-            &self.app,
-            &user,
-            "clear_budget_snapshot_v1",
-            json!({ "p_device": device }),
-            &still_off,
-        )
-        .await
-        {
-            Ok(_) | Err(RpcError::NotDeployed | RpcError::AccountChanged) => {
-                let _ = std::fs::remove_file(&marker);
-                self.backoff = MIN_BACKOFF;
-                TICK
-            }
-            Err(RpcError::Cancelled) => Duration::ZERO,
-            Err(RpcError::Failed(error)) => {
-                log::warn!("budget snapshot clear failed: {error}");
-                self.back_off()
-            }
-        };
-        set_status(|status| *status = PhoneSyncStatus::default());
-        delay
+    fn stored_user(&self) -> Option<String> {
+        stored_user(&self.app)
     }
 
     async fn statuses(&self, settings: &BudgetSettings) -> Vec<BudgetStatus> {
@@ -313,16 +267,136 @@ impl Publisher {
         .unwrap_or_default()
     }
 
-    async fn publish(&mut self, settings: BudgetSettings) -> Duration {
-        let marker = self.marker();
-        if !marker.exists() {
-            let _ = std::fs::write(&marker, b"");
+    async fn rpc(
+        &self,
+        user: &str,
+        function: &str,
+        body: Value,
+        switch_on: bool,
+    ) -> Result<Value, RpcError> {
+        // Asked again right before the request leaves (see `call_rpc`): the saved
+        // switch must still be where this pass found it.
+        let dir = self.app.app_data_dir().to_path_buf();
+        let still = move || crate::budget::load_settings(&dir).sync_to_phone == switch_on;
+        call_rpc(&self.app, user, function, body, &still).await
+    }
+
+    fn set_status(&self, update: impl FnOnce(&mut PhoneSyncStatus)) {
+        set_status(update);
+    }
+}
+
+struct Publisher<I: PublishIo> {
+    io: I,
+    machine: String,
+    published: Option<Published>,
+    backoff: Duration,
+    /// The last pass is waiting out a retry delay; budget-check wakeups must
+    /// not cut it short, only a flipped switch may.
+    hold: bool,
+    acted_on: bool,
+}
+
+impl<I: PublishIo> Publisher<I> {
+    fn new(io: I, machine: String) -> Self {
+        Self {
+            io,
+            machine,
+            published: None,
+            backoff: MIN_BACKOFF,
+            hold: false,
+            acted_on: false,
         }
-        let user = match stored_user(&self.app) {
+    }
+
+    fn back_off(&mut self) -> Duration {
+        self.hold = true;
+        let delay = self.backoff;
+        self.backoff = (self.backoff * 2).min(MAX_BACKOFF);
+        delay
+    }
+
+    /// Whether a wakeup should end the current wait: always, unless the pass is
+    /// holding a retry delay and the switch has not moved.
+    fn wakeup_ends_wait(&self) -> bool {
+        !self.hold || self.io.settings().sync_to_phone != self.acted_on
+    }
+
+    async fn tick(&mut self) -> Duration {
+        let settings = self.io.settings();
+        self.hold = false;
+        self.acted_on = settings.sync_to_phone;
+        if settings.sync_to_phone {
+            self.publish(settings).await
+        } else {
+            self.clear().await
+        }
+    }
+
+    async fn clear(&mut self) -> Duration {
+        let published = self.published.take();
+        if !self.io.marker_exists() {
+            self.io
+                .set_status(|status| *status = PhoneSyncStatus::default());
+            return TICK;
+        }
+        let user = match self.io.stored_user() {
+            Some(user) if !user.is_empty() => user,
+            // Signed out: the row is not this session's to delete any more;
+            // reads hide it after two days and the purge drops it.
+            Some(_) => {
+                self.io.remove_marker();
+                self.io
+                    .set_status(|status| *status = PhoneSyncStatus::default());
+                return TICK;
+            }
+            // The store could not be read: keep the marker and try again.
+            None => {
+                self.io
+                    .set_status(|status| *status = PhoneSyncStatus::default());
+                return self.back_off();
+            }
+        };
+        let device = published
+            .filter(|previous| previous.user == user)
+            .map(|previous| previous.device)
+            .unwrap_or_else(|| device_id(&user, &self.machine));
+        // Turned back on while the session refreshed: publishing overwrites the row anyway.
+        let delay = match self
+            .io
+            .rpc(
+                &user,
+                "clear_budget_snapshot_v1",
+                json!({ "p_device": device }),
+                false,
+            )
+            .await
+        {
+            Ok(_) | Err(RpcError::NotDeployed | RpcError::AccountChanged) => {
+                self.io.remove_marker();
+                self.backoff = MIN_BACKOFF;
+                TICK
+            }
+            Err(RpcError::Cancelled) => Duration::ZERO,
+            Err(RpcError::Failed(error)) => {
+                log::warn!("budget snapshot clear failed: {error}");
+                self.back_off()
+            }
+        };
+        self.io
+            .set_status(|status| *status = PhoneSyncStatus::default());
+        delay
+    }
+
+    async fn publish(&mut self, settings: BudgetSettings) -> Duration {
+        if !self.io.marker_exists() {
+            self.io.write_marker();
+        }
+        let user = match self.io.stored_user() {
             Some(user) if !user.is_empty() => user,
             Some(_) => {
                 self.published = None;
-                set_status(|status| {
+                self.io.set_status(|status| {
                     *status = PhoneSyncStatus {
                         state: "signed-out",
                         ..Default::default()
@@ -331,7 +405,7 @@ impl Publisher {
                 return TICK;
             }
             None => {
-                set_status(|status| {
+                self.io.set_status(|status| {
                     status.state = "error";
                     status.error = Some("读取云端登录信息失败".to_string());
                 });
@@ -346,7 +420,7 @@ impl Publisher {
             self.published = None;
         }
         let device = device_id(&user, &self.machine);
-        let statuses = self.statuses(&settings).await;
+        let statuses = self.io.statuses(&settings).await;
         let snapshot = build_snapshot(&device, &settings, &statuses, Utc::now());
         let key = content_key(&snapshot);
         if self
@@ -358,18 +432,18 @@ impl Publisher {
         }
         // Evaluating and refreshing the session both await: the switch may have gone
         // off meanwhile, and nothing may upload after that.
-        let still_on = self.switch_is(true);
-        match call_rpc(
-            &self.app,
-            &user,
-            "publish_budget_snapshot_v1",
-            json!({ "p_device": device, "p_snapshot": snapshot }),
-            &still_on,
-        )
-        .await
+        match self
+            .io
+            .rpc(
+                &user,
+                "publish_budget_snapshot_v1",
+                json!({ "p_device": device, "p_snapshot": snapshot }),
+                true,
+            )
+            .await
         {
             Ok(reply) if reply.get("stored") == Some(&Value::Bool(false)) => {
-                set_status(|status| {
+                self.io.set_status(|status| {
                     status.state = "error";
                     status.error =
                         Some("本机时钟早于上次发布的时间，时钟追上后自动恢复".to_string());
@@ -384,7 +458,7 @@ impl Publisher {
                     at: Instant::now(),
                 });
                 self.backoff = MIN_BACKOFF;
-                set_status(|status| {
+                self.io.set_status(|status| {
                     *status = PhoneSyncStatus {
                         state: "ok",
                         last_published_at: Some(
@@ -402,7 +476,7 @@ impl Publisher {
                 MIN_BACKOFF
             }
             Err(RpcError::NotDeployed) => {
-                set_status(|status| {
+                self.io.set_status(|status| {
                     status.state = "not-deployed";
                     status.error = None;
                 });
@@ -411,7 +485,7 @@ impl Publisher {
             }
             Err(RpcError::Failed(error)) => {
                 log::warn!("budget snapshot publish failed: {error}");
-                set_status(|status| {
+                self.io.set_status(|status| {
                     status.state = "error";
                     status.error = Some(error);
                 });
@@ -424,14 +498,7 @@ impl Publisher {
 /// Runs for the life of the process; a pass is a settings read when the switch is off.
 pub fn start(app: Arc<AppContext>) {
     tauri::async_runtime::spawn(async move {
-        let mut publisher = Publisher {
-            machine: crate::commands::local_machine_id(),
-            app,
-            published: None,
-            backoff: MIN_BACKOFF,
-            hold: false,
-            acted_on: false,
-        };
+        let mut publisher = Publisher::new(AppIo { app }, crate::commands::local_machine_id());
         loop {
             let deadline = Instant::now() + publisher.tick().await;
             loop {
@@ -439,9 +506,7 @@ pub fn start(app: Arc<AppContext>) {
                 if left.is_zero() || tokio::time::timeout(left, WAKE.notified()).await.is_err() {
                     break;
                 }
-                let switch =
-                    crate::budget::load_settings(publisher.app.app_data_dir()).sync_to_phone;
-                if !publisher.hold || switch != publisher.acted_on {
+                if publisher.wakeup_ends_wait() {
                     break;
                 }
             }
@@ -642,5 +707,249 @@ mod tests {
             .map(|budget| budget["level"].as_str().unwrap())
             .collect();
         assert_eq!(levels, ["over", "warn", "ok"]);
+    }
+
+    mod pass {
+        use super::*;
+        use std::cell::{Cell, RefCell};
+        use std::collections::VecDeque;
+
+        struct FakeIo {
+            switch: Cell<bool>,
+            marker: Cell<bool>,
+            user: RefCell<Option<String>>,
+            replies: RefCell<VecDeque<Result<Value, RpcError>>>,
+            /// Flips the saved switch while the next request is being prepared.
+            flip_before_send: Cell<bool>,
+            calls: RefCell<Vec<(String, String, bool)>>,
+            status: RefCell<PhoneSyncStatus>,
+        }
+
+        impl FakeIo {
+            fn new(switch: bool) -> Self {
+                Self {
+                    switch: Cell::new(switch),
+                    marker: Cell::new(false),
+                    user: RefCell::new(Some("user-1".to_string())),
+                    replies: RefCell::new(VecDeque::new()),
+                    flip_before_send: Cell::new(false),
+                    calls: RefCell::new(Vec::new()),
+                    status: RefCell::new(PhoneSyncStatus::default()),
+                }
+            }
+
+            fn reply(&self, reply: Result<Value, RpcError>) {
+                self.replies.borrow_mut().push_back(reply);
+            }
+
+            fn functions(&self) -> Vec<String> {
+                self.calls
+                    .borrow()
+                    .iter()
+                    .map(|call| call.0.clone())
+                    .collect()
+            }
+
+            fn state(&self) -> &'static str {
+                self.status.borrow().state
+            }
+        }
+
+        impl PublishIo for FakeIo {
+            fn settings(&self) -> BudgetSettings {
+                BudgetSettings {
+                    rules: vec![rule("all", BudgetScopeKind::All, "")],
+                    sync_to_phone: self.switch.get(),
+                    ..Default::default()
+                }
+            }
+
+            fn marker_exists(&self) -> bool {
+                self.marker.get()
+            }
+
+            fn write_marker(&self) {
+                self.marker.set(true);
+            }
+
+            fn remove_marker(&self) {
+                self.marker.set(false);
+            }
+
+            fn stored_user(&self) -> Option<String> {
+                self.user.borrow().clone()
+            }
+
+            async fn statuses(&self, _settings: &BudgetSettings) -> Vec<BudgetStatus> {
+                vec![status("all", Some(10.0), Some(20.0), BudgetLevel::Ok)]
+            }
+
+            async fn rpc(
+                &self,
+                _user: &str,
+                function: &str,
+                body: Value,
+                switch_on: bool,
+            ) -> Result<Value, RpcError> {
+                if self.flip_before_send.replace(false) {
+                    self.switch.set(!self.switch.get());
+                }
+                if self.switch.get() != switch_on {
+                    return Err(RpcError::Cancelled);
+                }
+                let device = body["p_device"].as_str().unwrap_or_default().to_string();
+                self.calls
+                    .borrow_mut()
+                    .push((function.to_string(), device, switch_on));
+                self.replies
+                    .borrow_mut()
+                    .pop_front()
+                    .unwrap_or_else(|| Ok(json!({ "stored": true })))
+            }
+
+            fn set_status(&self, update: impl FnOnce(&mut PhoneSyncStatus)) {
+                update(&mut self.status.borrow_mut());
+            }
+        }
+
+        fn run<T>(future: impl std::future::Future<Output = T>) -> T {
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap()
+                .block_on(future)
+        }
+
+        fn publisher(io: FakeIo) -> Publisher<FakeIo> {
+            Publisher::new(io, "machine-1".to_string())
+        }
+
+        #[test]
+        fn off_without_a_pending_delete_sends_nothing() {
+            let mut publisher = publisher(FakeIo::new(false));
+            assert_eq!(run(publisher.tick()), TICK);
+            assert!(publisher.io.functions().is_empty());
+            assert_eq!(publisher.io.state(), "off");
+        }
+
+        #[test]
+        fn publishes_once_then_skips_unchanged_content() {
+            let mut publisher = publisher(FakeIo::new(true));
+            assert_eq!(run(publisher.tick()), TICK);
+            assert!(publisher.io.marker.get(), "a pending delete is armed first");
+            assert_eq!(publisher.io.state(), "ok");
+            assert_eq!(run(publisher.tick()), TICK);
+            assert_eq!(publisher.io.functions(), ["publish_budget_snapshot_v1"]);
+            let device = &publisher.io.calls.borrow()[0].1;
+            assert_eq!(device, &device_id("user-1", "machine-1"));
+        }
+
+        #[test]
+        fn switching_off_before_send_cancels_then_clears_the_same_row() {
+            let mut publisher = publisher(FakeIo::new(true));
+            run(publisher.tick());
+            publisher.io.flip_before_send.set(true);
+            // Content changes so the pass does send.
+            publisher.published.as_mut().unwrap().key = "stale".to_string();
+            assert_eq!(run(publisher.tick()), Duration::ZERO);
+            assert_eq!(publisher.io.functions(), ["publish_budget_snapshot_v1"]);
+            assert_eq!(run(publisher.tick()), TICK);
+            let calls = publisher.io.calls.borrow();
+            assert_eq!(calls[1].0, "clear_budget_snapshot_v1");
+            assert_eq!(calls[1].1, calls[0].1);
+            assert!(!calls[1].2, "the clear only leaves while the switch is off");
+            assert!(!publisher.io.marker.get());
+            assert_eq!(publisher.io.state(), "off");
+        }
+
+        #[test]
+        fn switching_on_before_a_clear_leaves_cancels_it_and_keeps_the_marker() {
+            let io = FakeIo::new(false);
+            io.marker.set(true);
+            io.flip_before_send.set(true);
+            let mut publisher = publisher(io);
+            assert_eq!(run(publisher.tick()), Duration::ZERO);
+            assert!(publisher.io.functions().is_empty());
+            assert!(publisher.io.marker.get());
+        }
+
+        #[test]
+        fn failures_double_the_delay_and_hold_off_budget_wakeups() {
+            let io = FakeIo::new(true);
+            for _ in 0..7 {
+                io.reply(Err(RpcError::Failed("boom".to_string())));
+            }
+            let mut publisher = publisher(io);
+            let delays: Vec<u64> = (0..7).map(|_| run(publisher.tick()).as_secs()).collect();
+            assert_eq!(delays, [60, 120, 240, 480, 960, 1800, 1800]);
+            assert_eq!(publisher.io.state(), "error");
+            assert!(
+                !publisher.wakeup_ends_wait(),
+                "a budget check must not cut the wait"
+            );
+            publisher.io.switch.set(false);
+            assert!(publisher.wakeup_ends_wait(), "a flipped switch does");
+            publisher.io.switch.set(true);
+            assert_eq!(run(publisher.tick()), TICK);
+            assert_eq!(publisher.backoff, MIN_BACKOFF, "success resets the delay");
+            assert!(publisher.wakeup_ends_wait());
+        }
+
+        #[test]
+        fn not_deployed_waits_long_and_holds() {
+            let io = FakeIo::new(true);
+            io.reply(Err(RpcError::NotDeployed));
+            let mut publisher = publisher(io);
+            assert_eq!(run(publisher.tick()), NOT_DEPLOYED_RETRY);
+            assert_eq!(publisher.io.state(), "not-deployed");
+            assert!(!publisher.wakeup_ends_wait());
+        }
+
+        #[test]
+        fn a_clock_behind_the_stored_row_backs_off_with_an_error() {
+            let io = FakeIo::new(true);
+            io.reply(Ok(json!({ "stored": false })));
+            let mut publisher = publisher(io);
+            assert_eq!(run(publisher.tick()), MIN_BACKOFF);
+            assert_eq!(publisher.io.state(), "error");
+            assert!(publisher.published.is_none());
+        }
+
+        #[test]
+        fn account_change_forgets_the_last_publish() {
+            let io = FakeIo::new(true);
+            let mut publisher = publisher(io);
+            run(publisher.tick());
+            publisher.published.as_mut().unwrap().key = "stale".to_string();
+            publisher.io.reply(Err(RpcError::AccountChanged));
+            assert_eq!(run(publisher.tick()), MIN_BACKOFF);
+            assert!(publisher.published.is_none());
+        }
+
+        #[test]
+        fn unreadable_login_keeps_the_pending_delete_and_backs_off() {
+            let io = FakeIo::new(false);
+            io.marker.set(true);
+            *io.user.borrow_mut() = None;
+            let mut publisher = publisher(io);
+            assert_eq!(run(publisher.tick()), MIN_BACKOFF);
+            assert!(publisher.io.marker.get());
+            *publisher.io.user.borrow_mut() = Some(String::new());
+            assert_eq!(run(publisher.tick()), TICK);
+            assert!(
+                !publisher.io.marker.get(),
+                "signed out: nothing left to delete"
+            );
+            assert!(publisher.io.functions().is_empty());
+        }
+
+        #[test]
+        fn signed_out_while_on_reports_it_without_sending() {
+            let io = FakeIo::new(true);
+            *io.user.borrow_mut() = Some(String::new());
+            let mut publisher = publisher(io);
+            assert_eq!(run(publisher.tick()), TICK);
+            assert_eq!(publisher.io.state(), "signed-out");
+            assert!(publisher.io.functions().is_empty());
+        }
     }
 }
