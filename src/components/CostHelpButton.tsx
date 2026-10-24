@@ -10,8 +10,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ESTIMATED_COST_HELP, ESTIMATED_COST_LABEL } from '../utils/costCopy';
-import type { DataScope } from '../types';
+import { invoke } from '@tauri-apps/api/core';
+import { estimatedCostHelp, estimatedCostLabel } from '../utils/costCopy';
+import { t } from '../i18n';
+import type { DataScope, PriceTableStatus } from '../types';
+import { describePriceTableSource, parsePriceTableStatus } from '../utils/priceTableStatus';
 import '../styles/costHelp.css';
 
 const EDGE = 8;
@@ -19,7 +22,6 @@ const GAP = 8;
 
 // 云端汇总把没有费用的记录按 0 计入（方案 §2.1 末条），只在云端范围出现，避免误导本机用户
 // （T10.186 评审待定点 4）。这句话只描述统计口径，不出现「金额」字样，守卫不需要额外放行。
-const CLOUD_ZERO_COALESCE_NOTE = '云端汇总把没有费用的记录按 0 计入。';
 
 interface CostHelpButtonProps {
   /** 云端范围额外补一句零值合计说明；本机范围或未传都不显示。 */
@@ -56,6 +58,18 @@ export function CostHelpButton({ scope }: CostHelpButtonProps = {}) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const focusedRef = useRef(false);
   const popoverId = useId();
+  const [priceTable, setPriceTable] = useState<PriceTableStatus | null>(null);
+
+  // 打开时读一次价格表出处；云端金额按各设备上传时的价格表冻结，不显示本机出处。
+  useEffect(() => {
+    if (!open || scope === 'cloud') return undefined;
+    let active = true;
+    Promise.resolve()
+      .then(() => invoke<unknown>('get_price_table_status'))
+      .then((value) => { if (active) setPriceTable(parsePriceTableStatus(value)); })
+      .catch(() => { if (active) setPriceTable(null); });
+    return () => { active = false; };
+  }, [open, scope]);
 
   const close = useCallback((returnFocus: boolean) => {
     setOpen(false);
@@ -166,10 +180,10 @@ export function CostHelpButton({ scope }: CostHelpButtonProps = {}) {
         ref={buttonRef}
         type="button"
         className="cost-help-button"
-        aria-label={`${ESTIMATED_COST_LABEL}说明`}
+        aria-label={t('cost.helpAria', { label: estimatedCostLabel() })}
         aria-expanded={open}
         aria-controls={open ? popoverId : undefined}
-        title={`${ESTIMATED_COST_LABEL}说明`}
+        title={t('cost.helpAria', { label: estimatedCostLabel() })}
         onClick={toggle}
       >
         <Info aria-hidden="true" />
@@ -180,13 +194,14 @@ export function CostHelpButton({ scope }: CostHelpButtonProps = {}) {
           id={popoverId}
           className="cost-help-popover"
           role="dialog"
-          aria-label={`${ESTIMATED_COST_LABEL}说明`}
+          aria-label={t('cost.helpAria', { label: estimatedCostLabel() })}
           tabIndex={-1}
           style={placement ?? { visibility: 'hidden' }}
           onKeyDown={handlePopoverKeyDown}
         >
-          <p><strong>{ESTIMATED_COST_LABEL}</strong>：{ESTIMATED_COST_HELP}</p>
-          {scope === 'cloud' && <p>{CLOUD_ZERO_COALESCE_NOTE}</p>}
+          <p><strong>{estimatedCostLabel()}</strong>{t('cost.helpSep')}{estimatedCostHelp()}</p>
+          {scope === 'cloud' && <p>{t('cost.cloudZero')}</p>}
+          {scope !== 'cloud' && priceTable && <p className="cost-help-source">{t('cost.priceSource', { source: describePriceTableSource(priceTable) })}</p>}
         </div>,
         container,
       )}

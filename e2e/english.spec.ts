@@ -105,6 +105,18 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('额度页：订阅额度面板、重置时间与待处理来源是英文', async ({ page }) => {
+    await openEnglish(page, 'allowances');
+    const panel = page.locator('section.quota-panel');
+    await expect(panel.getByRole('heading', { name: /Plan quotas/ })).toBeVisible();
+    await expect(panel.getByText('Remaining', { exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Refresh quotas' })).toBeVisible();
+    await expect(panel.getByText(/^Resets /).first()).toBeVisible();
+    await expect(panel.getByText('Sources to set up')).toBeVisible();
+    await expect(panel.getByRole('progressbar', { name: '5-hour available' })).toHaveAttribute('aria-valuetext', '80% available');
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('网关页：接入说明、模型目录与最近请求是英文', async ({ page }) => {
     await openEnglish(page, 'gateway');
     await expect(page.getByRole('heading', { name: /^Connect/ })).toBeVisible();
@@ -132,6 +144,91 @@ test.describe('英文界面', () => {
     await expect(page.getByRole('button', { name: 'Expand this record' }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Expand this record' }).first().click();
     await expect(page.getByText('Full timestamp')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('行为分析：范围栏、指标、图表与排行是英文', async ({ page }) => {
+    await openEnglish(page, 'behavior');
+    await expect(page.getByRole('group', { name: 'Behavior analysis time range' })).toContainText('Last 7 days');
+    await expect(page.getByText('Effective tokens', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Active days', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Daily activity/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Top tools/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Top sessions/ })).toBeVisible();
+    await expect(page.getByText(/^Local coverage:/)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('设置：订阅额度整页是英文', async ({ page }) => {
+    await openEnglish(page, 'settings-quota');
+    await expect(page.getByRole('heading', { name: 'Subscription quota' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Quota setup overview' })).toContainText('Local subscriptions connected');
+    await expect(page.getByText('Read Codex quota', { exact: true })).toBeVisible();
+    await expect(page.getByText('One-click setup', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Quota alerts', { exact: true })).toBeVisible();
+    await expect(page.getByText('Provider balances', { exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('概览：核心指标卡与趋势卡是英文', async ({ page }) => {
+    await openEnglish(page, 'dashboard');
+    const metrics = page.getByRole('region', { name: 'Key metrics' });
+    await expect(metrics).toContainText('Effective tokens');
+    await expect(metrics).toContainText('Estimated cost');
+    await expect(metrics).toContainText('Records');
+    await expect(page.getByRole('region', { name: 'Trends and comparison' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Switch to cost view' })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('概览：模型费用分布与模型专属看板是英文', async ({ page }) => {
+    await openEnglish(page, 'dashboard');
+    const open = page.locator('.model-cost-drilldown-btn').first();
+    await expect(open).toHaveAccessibleName(/^Open the .+ dashboard$/);
+    await open.scrollIntoViewIfNeeded();
+    await open.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('Model dashboard');
+    await expect(dialog).toContainText(/Period: /);
+    await expect(dialog).toContainText('Active days');
+    await expect(dialog.getByRole('group', { name: 'Breakdown measure' })).toBeVisible();
+    await expect(dialog).toContainText('Recent records');
+    await expect(dialog).not.toContainText(/[\u4e00-\u9fff]/);
+    await dialog.getByRole('button', { name: 'Close dashboard' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('概览：用量拆分与设置目录是英文', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await openEnglish(page, 'dashboard');
+    await page.locator('main').getByRole('button', { name: 'Year', exact: true }).click();
+    const split = page.locator('section.usage-split');
+    await split.scrollIntoViewIfNeeded();
+    await expect(split).toContainText('Usage split');
+    await split.locator('.usage-split-pick', { hasText: 'codex' }).first().click();
+    await expect(split.getByRole('status')).toContainText('Only Agent codex');
+    await split.getByRole('group', { name: 'Split by' }).getByRole('button', { name: 'Model' }).click();
+    await expect(split.getByRole('group', { name: 'Split metric' }).getByRole('button', { name: 'Cost' })).toBeDisabled();
+    await split.getByRole('button', { name: 'Show all' }).click();
+    await expect(split.getByRole('status')).toHaveCount(0);
+    await expect(split).not.toContainText(/[\u4e00-\u9fff]/);
+
+    await page.goto('/?lang=en#settings-data');
+    await expect(page.getByRole('searchbox', { name: 'Search settings' })).toBeVisible();
+    await expect(page.getByText('Switches and intervals save automatically', { exact: false })).toBeVisible();
+  });
+
+  test('设置：云端账户与壁纸是英文', async ({ page }) => {
+    await openEnglish(page, 'settings-cloud');
+    await expect(page.getByRole('heading', { name: 'Cloud account' })).toBeVisible();
+    await expect(page.getByText('Connection progress')).toBeVisible();
+    await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
+    await openEnglish(page, 'settings-wallpaper');
+    await expect(page.getByRole('heading', { name: 'Wallpaper', exact: true })).toBeVisible();
+    await expect(page.getByText('Desktop status')).toBeVisible();
+    await expect(page.getByText('Wallpaper usage source')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clean up old wallpapers' })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 

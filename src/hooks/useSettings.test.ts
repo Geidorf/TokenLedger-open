@@ -141,6 +141,24 @@ describe('useSettings 价格表保存与导入（T10.171）', () => {
     });
   }
 
+  it('编辑器载入后价格表已在线更新：保存被拒时亮出「重新读取」，草稿保留在编辑框', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'get_prices') return current;
+      if (command === 'save_prices') {
+        throw '价格表已更新到第 3 版，编辑框里还是第 2 版的价格。为了不把旧价当成你的自定义价格保存，这次没有保存；请先复制需要保留的修改，点「重新读取」后再改。';
+      }
+      return undefined;
+    });
+    const { result } = renderSettings();
+    await act(async () => { await result.current.loadPrices(); });
+    act(() => result.current.setPricesDirty(true));
+    await act(async () => { await result.current.savePrices(); });
+    expect(result.current.pricesLoadError).toContain('重新读取');
+    expect(result.current.pricesDirty).toBe(true);
+    await act(async () => { await result.current.loadPrices(); });
+    expect(result.current.pricesLoadError).toBe('');
+  });
+
   it('保存价格表整表提交，未改动的待核价行保持原标记，保存后重读后端生效价格', async () => {
     const { result } = renderSettings();
     await act(async () => { await result.current.loadPrices(); });

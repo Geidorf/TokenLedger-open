@@ -1326,6 +1326,7 @@ const MEMO_ROWS: usize = 1_500;
 
 fn stat_row(id: i64, row: &SyntheticRow) -> StatRow {
     StatRow {
+        pricing_timestamp: None,
         id,
         tool: row.tool.to_string(),
         model: row.model.to_string(),

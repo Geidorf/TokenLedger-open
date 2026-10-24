@@ -13,7 +13,8 @@ import {
 import { providerDisplayName, quotaLevel } from '../utils/quotaOverview';
 import { computeQuotaPace, describeQuotaPace, type QuotaPace, type QuotaPaceCopy } from '../utils/quotaPace';
 import { BrandIcon, resolveBrandIconKey } from './brand/BrandIcon';
-import { useT } from '../i18n';
+import { format, getLang, localized, t, useLang, type MessageKey } from '../i18n';
+import { FALLBACK_CLI_NAME } from './settings/QuotaSection';
 
 interface QuotaPanelProps {
   providers: QuotaProviderEnvelope[];
@@ -30,51 +31,51 @@ interface QuotaPanelProps {
   hiddenSourceIds?: string[];
 }
 
-const REASON_LABELS: Record<string, string> = {
-  local_authorization_required: '需要在设置中明确授权本地额度读取',
-  claude_local_authorization_required: '请在设置中选择 Claude Code status line 或内置 Claude 桌面版读取',
-  claude_statusline_snapshot_missing: '尚未收到 Claude Code status line 快照；Claude 桌面版可改用内置授权读取',
-  claude_statusline_snapshot_invalid: 'Claude Code 额度快照无效或已被拒绝',
-  claude_native_authorization_required: '请在设置中为 TokenLedger 授权 Claude 本地额度读取',
-  claude_native_cli_unavailable: '未找到 Claude 桌面版内置代理或 Claude Code',
-  claude_native_timeout: 'Claude 本地 /usage 读取超时，已保留最近有效快照',
-  claude_native_usage_unavailable: 'Claude Desktop 额度页可能正常，但本机 Claude CLI 的 /usage 通道当前加载失败；请稍后重试或在 Claude Code 中重新登录',
-  claude_native_subscription_unavailable: '当前 Claude 订阅没有返回可量化的额度窗口',
-  claude_native_response_invalid: 'Claude 本地 /usage 未返回可验证的额度窗口',
-  claude_codexbar_unavailable: '未找到 CodexBar CLI，已尝试 Claude 内置 /usage 回退',
-  claude_codexbar_timeout: 'CodexBar Claude 额度读取超时，已保留最近有效快照',
-  claude_codexbar_response_invalid: 'CodexBar 未返回可验证的 Claude 消费者额度；请在 CodexBar 中确认 Claude 来源已授权',
-  antigravity_local_authorization_required: '请在设置中明确授权 Antigravity 本地额度读取',
-  antigravity_native_authorization_required: '请先在 Antigravity 中完成登录',
-  antigravity_native_source_not_found: '未发现正在运行的 Antigravity App、IDE 或 agy 本地服务',
-  antigravity_native_port_unavailable: '未发现 Antigravity 本地额度服务端口',
-  antigravity_native_timeout: 'Antigravity 本地额度读取超时，已保留最近有效快照',
-  antigravity_native_response_invalid: 'Antigravity 本地服务未返回可验证的额度窗口',
-  antigravity_codexbar_unavailable: '内置读取失败，且未找到可用的 CodexBar CLI 兜底',
-  antigravity_codexbar_timeout: 'CodexBar 的 Antigravity 额度读取超时',
-  antigravity_codexbar_response_invalid: 'CodexBar 未返回可验证的 Antigravity 本地额度',
-  consumer_api_unavailable: '当前计划没有可用的消费者额度来源',
-  source_not_found: '未找到可读取的本地额度来源',
-  app_server_unavailable: 'Codex app-server 暂不可用，旧版客户端可回退到实验性本地快照',
-  app_server_timeout: 'Codex app-server 响应超时，已保留最近有效快照',
-  app_server_auth_required: 'Codex 当前未完成 ChatGPT 登录或账户额度不可用',
-  permission_denied: '本地额度来源没有读取权限',
-  secure_storage_unavailable: '系统安全存储暂时无法读取；后台不会重复尝试，请确认钥匙串已解锁后点击刷新额度',
-  source_schema_unsupported: '当前客户端的额度数据格式暂不兼容',
-  source_scan_truncated: '受限扫描未能证明数据完整，请稍后重试',
-  source_temporarily_unavailable: '本地数据源暂时不可读，已保留最近有效快照',
-  observation_stale: '这是最近一次有效快照，当前数据源暂未刷新',
-  reset_elapsed: '额度窗口已到重置时间，等待来源刷新',
-  provider_worker_failed: '额度读取进程暂时失败',
-  provider_cache_unavailable: '最近有效额度快照不可读取',
-  credits_unlimited: '该账户的额外用量不设固定上限',
-  admin_key_required: '需要配置对应组织额度来源的管理凭据',
-  api_key_required: '需要在设置中配置或更新这个公司额度来源的 API key',
-  rate_limited: '额度来源请求过于频繁，请稍后重试',
-  upstream_unavailable: '额度来源服务暂时不可用',
-  balance_unavailable: '供应商余额接口没有返回可验证的余额数值或币种，已保留最近有效余额',
-  experimental_consent_required: '实验性套餐的风险提示有更新，在设置中重新确认后才会读取',
-};
+const REASON_LABELS: Record<string, string> = localized({
+  local_authorization_required: 'quota.reason.localAuthorizationRequired',
+  claude_local_authorization_required: 'quota.reason.claudeLocalAuthorizationRequired',
+  claude_statusline_snapshot_missing: 'quota.reason.claudeStatuslineSnapshotMissing',
+  claude_statusline_snapshot_invalid: 'quota.reason.claudeStatuslineSnapshotInvalid',
+  claude_native_authorization_required: 'quota.reason.claudeNativeAuthorizationRequired',
+  claude_native_cli_unavailable: 'quota.reason.claudeNativeCliUnavailable',
+  claude_native_timeout: 'quota.reason.claudeNativeTimeout',
+  claude_native_usage_unavailable: 'quota.reason.claudeNativeUsageUnavailable',
+  claude_native_subscription_unavailable: 'quota.reason.claudeNativeSubscriptionUnavailable',
+  claude_native_response_invalid: 'quota.reason.claudeNativeResponseInvalid',
+  claude_codexbar_unavailable: 'quota.reason.claudeFallbackCliUnavailable',
+  claude_codexbar_timeout: 'quota.reason.claudeFallbackCliTimeout',
+  claude_codexbar_response_invalid: 'quota.reason.claudeFallbackCliResponseInvalid',
+  antigravity_local_authorization_required: 'quota.reason.antigravityLocalAuthorizationRequired',
+  antigravity_native_authorization_required: 'quota.reason.antigravityNativeAuthorizationRequired',
+  antigravity_native_source_not_found: 'quota.reason.antigravityNativeSourceNotFound',
+  antigravity_native_port_unavailable: 'quota.reason.antigravityNativePortUnavailable',
+  antigravity_native_timeout: 'quota.reason.antigravityNativeTimeout',
+  antigravity_native_response_invalid: 'quota.reason.antigravityNativeResponseInvalid',
+  antigravity_codexbar_unavailable: 'quota.reason.antigravityFallbackCliUnavailable',
+  antigravity_codexbar_timeout: 'quota.reason.antigravityFallbackCliTimeout',
+  antigravity_codexbar_response_invalid: 'quota.reason.antigravityFallbackCliResponseInvalid',
+  consumer_api_unavailable: 'quota.reason.consumerApiUnavailable',
+  source_not_found: 'quota.reason.sourceNotFound',
+  app_server_unavailable: 'quota.reason.appServerUnavailable',
+  app_server_timeout: 'quota.reason.appServerTimeout',
+  app_server_auth_required: 'quota.reason.appServerAuthRequired',
+  permission_denied: 'quota.reason.permissionDenied',
+  secure_storage_unavailable: 'quota.reason.secureStorageUnavailable',
+  source_schema_unsupported: 'quota.reason.sourceSchemaUnsupported',
+  source_scan_truncated: 'quota.reason.sourceScanTruncated',
+  source_temporarily_unavailable: 'quota.reason.sourceTemporarilyUnavailable',
+  observation_stale: 'quota.reason.observationStale',
+  reset_elapsed: 'quota.reason.resetElapsed',
+  provider_worker_failed: 'quota.reason.providerWorkerFailed',
+  provider_cache_unavailable: 'quota.reason.providerCacheUnavailable',
+  credits_unlimited: 'quota.reason.creditsUnlimited',
+  admin_key_required: 'quota.reason.adminKeyRequired',
+  api_key_required: 'quota.reason.apiKeyRequired',
+  rate_limited: 'quota.reason.rateLimited',
+  upstream_unavailable: 'quota.reason.upstreamUnavailable',
+  balance_unavailable: 'quota.reason.balanceUnavailable',
+  experimental_consent_required: 'quota.reason.experimentalConsentRequired',
+});
 
 const QUOTA_CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
   CNY: '¥', USD: '$', EUR: '€', GBP: '£', JPY: 'JP¥',
@@ -91,9 +92,9 @@ export function formatQuotaCurrencyAmount(amount: number, currency: string): str
 }
 
 const COMPANY_QUOTA_PROVIDER_PREFIX = 'company-openapi-';
-const COMPANY_QUOTA_WINDOW_LABELS = new Map([
-  ['user-daily', '今日可用额度'],
-  ['user-monthly', '本月可用额度'],
+const COMPANY_QUOTA_WINDOW_LABELS = new Map<string, MessageKey>([
+  ['user-daily', 'quota.company.daily'],
+  ['user-monthly', 'quota.company.monthly'],
 ]);
 
 export function isCompanyQuotaProvider(providerId: string): boolean {
@@ -101,7 +102,8 @@ export function isCompanyQuotaProvider(providerId: string): boolean {
 }
 
 export function companyQuotaWindowLabel(windowId: string): string | null {
-  return COMPANY_QUOTA_WINDOW_LABELS.get(windowId) ?? null;
+  const key = COMPANY_QUOTA_WINDOW_LABELS.get(windowId);
+  return key ? t(key) : null;
 }
 
 export function selectCompanyQuotaWindows(windows: readonly QuotaWindowSnapshot[]): QuotaWindowSnapshot[] {
@@ -127,11 +129,11 @@ function quotaWindowKind(windowId: string): string {
 }
 
 function localizedQuotaDuration(minutes: number): string {
-  if (minutes === 7 * 24 * 60) return '每周额度';
-  if (minutes === 24 * 60) return '每日额度';
-  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)} 天额度`;
-  if (minutes % 60 === 0) return `${minutes / 60} 小时额度`;
-  return `${minutes} 分钟额度`;
+  if (minutes === 7 * 24 * 60) return t('quota.window.weekly');
+  if (minutes === 24 * 60) return t('quota.window.daily');
+  if (minutes % (24 * 60) === 0) return t('quota.window.days', { n: minutes / (24 * 60) });
+  if (minutes % 60 === 0) return t('quota.window.hours', { n: minutes / 60 });
+  return t('quota.window.minutes', { n: minutes });
 }
 
 const GENERIC_QUOTA_WINDOW_LABELS = new Set([
@@ -164,19 +166,19 @@ export function quotaWindowDisplayLabel(
   const kind = quotaWindowKind(window.windowId);
   const credits = window.unit === 'credits' || window.reasonCode === 'credits_unlimited' || kind.includes('credits');
   const semanticLabel = credits
-    ? '额外用量余额'
+    ? t('quota.window.credits')
     : window.windowMinutes !== undefined
       ? localizedQuotaDuration(window.windowMinutes)
       : kind === 'five-hour'
-        ? '5 小时额度'
+        ? t('quota.window.fiveHour')
         : kind === 'seven-day' || kind === 'weekly'
-          ? '每周额度'
+          ? t('quota.window.weekly')
           : kind === 'primary'
-            ? '主要额度窗口'
+            ? t('quota.window.primary')
             : kind === 'secondary'
-              ? '次要额度窗口'
+              ? t('quota.window.secondary')
               : kind === 'tertiary'
-                ? '附加额度窗口'
+                ? t('quota.window.tertiary')
                 : null;
   if (!semanticLabel) return window.windowLabel;
   const separator = window.windowLabel.lastIndexOf('·');
@@ -197,69 +199,91 @@ export function quotaWindowDisplayLabel(
 }
 
 export function quotaReasonLabel(reasonCode: string | undefined, fallback: string) {
-  return reasonCode ? REASON_LABELS[reasonCode] || fallback : fallback;
+  return reasonCode && REASON_LABELS[reasonCode] ? format(REASON_LABELS[reasonCode], { cli: FALLBACK_CLI_NAME }) : fallback;
 }
 
 function providerEmptyActionLabel(
   provider: Pick<QuotaProviderEnvelope, 'providerId' | 'displayName'> & Partial<Pick<QuotaProviderEnvelope, 'scope'>>,
   action: Exclude<ReturnType<typeof validateQuotaAction>, null>,
 ): string {
-  if (action.kind === 'show-command') return `复制 ${action.value}`;
-  if (action.kind === 'open-url') return '打开服务商页面';
-  return provider.providerId === 'anthropic-claude-consumer' ? '配置读取' : '授权读取';
+  if (action.kind === 'show-command') return t('quota.action.copy', { value: action.value });
+  if (action.kind === 'open-url') return t('quota.action.openUrl');
+  return t(provider.providerId === 'anthropic-claude-consumer' ? 'quota.action.configure' : 'quota.action.authorize');
 }
 
 export function providerEmptyStateLabel(
   provider: Pick<QuotaProviderEnvelope, 'status'>,
   action: Exclude<ReturnType<typeof validateQuotaAction>, null> | null,
 ): string {
-  if (provider.status === 'auth-required') return '需要授权';
-  if (provider.status === 'unsupported') return '来源不可用';
-  if (provider.status === 'error') return '读取失败';
-  if (action?.kind === 'open-settings') return '待配置';
-  if (action?.kind === 'show-command') return '待执行';
-  if (action?.kind === 'open-url') return '查看帮助';
-  return '暂无数据';
+  if (provider.status === 'auth-required') return t('quota.state.authRequired');
+  if (provider.status === 'unsupported') return t('quota.state.unsupported');
+  if (provider.status === 'error') return t('quota.state.error');
+  if (action?.kind === 'open-settings') return t('quota.state.configure');
+  if (action?.kind === 'show-command') return t('quota.state.command');
+  if (action?.kind === 'open-url') return t('quota.state.help');
+  return t('quota.state.empty');
 }
 
-const SCOPE_LABELS: Record<QuotaWindowSnapshot['scope'], string> = {
-  'consumer-subscription': '消费者订阅',
-  'api-organization': 'API 组织',
-  'manual-budget': '手动预算',
-};
+const SCOPE_LABELS = localized<QuotaWindowSnapshot['scope']>({
+  'consumer-subscription': 'quota.scope.consumer',
+  'api-organization': 'quota.scope.apiOrg',
+  'manual-budget': 'quota.scope.manual',
+});
 
-const SOURCE_LABELS: Record<QuotaWindowSnapshot['source'], string> = {
-  'official-api': '官方 API',
-  'local-authorized': '官方客户端本地授权',
-  manual: '手动录入',
-};
+const SOURCE_LABELS = localized<QuotaWindowSnapshot['source']>({
+  'official-api': 'quota.source.officialApi',
+  'local-authorized': 'quota.source.local',
+  manual: 'quota.source.manual',
+});
 
-const CAPABILITY_LABELS: Record<QuotaProviderEnvelope['capability'], string> = {
-  stable: '稳定能力',
-  'plan-dependent': '计划相关',
-  experimental: '增强来源 · 实验',
-  manual: '手工来源',
-  unsupported: '暂不可用',
-};
+const CAPABILITY_LABELS = localized<QuotaProviderEnvelope['capability']>({
+  stable: 'quota.capability.stable',
+  'plan-dependent': 'quota.capability.planDependent',
+  experimental: 'quota.capability.experimental',
+  manual: 'quota.capability.manual',
+  unsupported: 'quota.capability.unsupported',
+});
 
 export function formatReset(value: string | undefined, now: number) {
-  if (!value) return '重置时间未知';
+  if (!value) return t('quota.reset.unknown');
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return `重置 ${value}`;
+  if (Number.isNaN(date.getTime())) return t('quota.reset.raw', { value });
   const diffMinutes = Math.round((date.getTime() - now) / 60_000);
-  if (diffMinutes <= 0) return '正在重置';
-  if (diffMinutes < 120) return `${Math.max(1, diffMinutes)} 分钟后重置`;
-  if (diffMinutes < 1_440) return `${Math.round(diffMinutes / 60)} 小时后重置`;
-  const absolute = new Intl.DateTimeFormat('zh-CN', {
+  if (diffMinutes <= 0) return t('quota.reset.now');
+  if (diffMinutes < 120) return t('quota.reset.minutes', { n: Math.max(1, diffMinutes) });
+  if (diffMinutes < 1_440) return t('quota.reset.hours', { n: Math.round(diffMinutes / 60) });
+  const absolute = new Intl.DateTimeFormat(intlLocale(), {
     weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(date).replace(/^(周.)/, '$1 ');
-  return `${absolute} 重置`;
+  return t('quota.reset.at', { time: absolute });
+}
+
+function intlLocale(): string {
+  return getLang() === 'en' ? 'en-US' : 'zh-CN';
+}
+
+function observedTime(date: Date): string {
+  return new Intl.DateTimeFormat(intlLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
+function observedTimeOf(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? t('quota.observed.unknown') : observedTime(date);
+}
+
+/** 公司额度与按时长命名的窗口在卡片里只写短名：「每周额度」→「每周」，Weekly quota → Weekly。 */
+function shortQuotaLabel(label: string): string {
+  if (label === t('quota.company.daily')) return t('quota.company.dailyShort');
+  if (label === t('quota.company.monthly')) return t('quota.company.monthlyShort');
+  return label
+    .replace(/^(每周|每日|\d+\s*(?:分钟|小时|天))额度$/, '$1')
+    .replace(/^(Weekly|Daily|\d+-(?:minute|hour|day)) quota$/, '$1');
 }
 
 function formatObserved(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '观测时间未知';
-  return `观测 ${new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date)}`;
+  if (Number.isNaN(date.getTime())) return t('quota.observed.unknown');
+  return t('quota.observed', { time: observedTime(date) });
 }
 
 function quotaWindowState(window: QuotaWindowSnapshot, now: number) {
@@ -285,29 +309,29 @@ function quotaWindowState(window: QuotaWindowSnapshot, now: number) {
   const effectiveReasonCode = valueContractRejected
     ? 'source_schema_unsupported'
     : window.reasonCode || (effectiveStatus === 'stale' ? 'observation_stale' : undefined);
-  const effectiveReasonLabel = quotaReasonLabel(effectiveReasonCode, '额度窗口状态暂不可用');
+  const effectiveReasonLabel = quotaReasonLabel(effectiveReasonCode, t('quota.windowUnavailable'));
   const hasAbsoluteValue = values?.kind === 'absolute' || values?.kind === 'unlimited';
   const absoluteUnit = window.unit === 'usd'
-    ? '美元'
+    ? t('quota.unit.usd')
     : window.unit === 'credits'
-      ? '额度点'
+      ? t('quota.unit.credits')
       : window.unit === 'requests'
-        ? '次请求'
+        ? t('quota.unit.requests')
         : window.unit === 'tokens'
           ? 'Token'
           : window.unit;
   const currency = window.unit === 'currency' ? window.currency : undefined;
   const absoluteAmount = (amount: number) => currency
     ? formatQuotaCurrencyAmount(amount, currency)
-    : `${amount.toLocaleString('zh-CN')} ${absoluteUnit}`;
+    : `${amount.toLocaleString(intlLocale())} ${absoluteUnit}`;
   const absoluteHeadline = values?.kind === 'unlimited'
-    ? '额外用量不限额'
+    ? t('quota.unlimited')
     : values?.kind === 'absolute' && values.remaining !== undefined
       ? absoluteAmount(values.remaining)
       : values?.kind === 'absolute' && values.used !== undefined
-        ? `${absoluteAmount(values.used)} 已使用`
+        ? t('quota.absUsed', { amount: absoluteAmount(values.used) })
         : values?.kind === 'absolute' && values.limit !== undefined
-          ? `${absoluteAmount(values.limit)} 上限`
+          ? t('quota.absLimit', { amount: absoluteAmount(values.limit) })
           : '';
   return { values, used, remainingDisplay, effectiveStatus, effectiveReasonCode, effectiveReasonLabel, hasAbsoluteValue, absoluteHeadline };
 }
@@ -330,7 +354,7 @@ export function quotaWindowParts(window: QuotaWindowSnapshot) {
     ? fullLabel.slice(0, separator) : '';
   const groupLabel = window.accountLabel?.trim() || prefix;
   const label = prefix && prefix === groupLabel ? fullLabel.slice(separator + 3) : fullLabel;
-  return { groupLabel, label: label.replace(/^今日可用额度$/, '今日').replace(/^本月可用额度$/, '本月').replace(/^(每周|每日|\d+\s*(?:分钟|小时|天))额度$/, '$1') };
+  return { groupLabel, label: shortQuotaLabel(label) };
 }
 
 function quotaWindowOrder(window: QuotaWindowSnapshot): number {
@@ -370,7 +394,7 @@ interface QuotaPaceView {
   reason: string | null;
 }
 
-const RESET_PRECISION_UNIT_LABELS: Readonly<Record<number, string>> = { 86_400: '天', 3_600: '小时', 60: '分钟' };
+const RESET_PRECISION_UNIT_LABELS: Readonly<Record<number, MessageKey>> = { 86_400: 'quota.precision.day', 3_600: 'quota.precision.hour', 60: 'quota.precision.minute' };
 
 /**
  * 规则层判定不预测、而额度面板别处还没说明的原因（T10.153 §3.1）。只说为什么不算，不给任何数字；
@@ -381,11 +405,11 @@ export function quotaPaceReasonLabel(pace: QuotaPace): string | null {
   switch (pace.reason) {
     case 'reset-imprecise': {
       const unit = pace.resetPrecisionSeconds === null ? undefined : RESET_PRECISION_UNIT_LABELS[pace.resetPrecisionSeconds];
-      return unit ? `重置时间只精确到${unit}，暂不计算速度` : '重置时间精度不足，暂不计算速度';
+      return unit ? t('quota.pace.precision', { unit: t(unit) }) : t('quota.pace.imprecise');
     }
-    case 'provider-experimental': return '实验性来源的窗口时长或重置时间可能不准，暂不计算速度';
-    case 'window-length-unknown': return '窗口时长未知，暂不计算速度';
-    case 'timeline-inconsistent': return '观测时间不在当前窗口内，暂不计算速度';
+    case 'provider-experimental': return t('quota.pace.experimental');
+    case 'window-length-unknown': return t('quota.pace.lengthUnknown');
+    case 'timeline-inconsistent': return t('quota.pace.timeline');
     default: return null;
   }
 }
@@ -405,7 +429,7 @@ function quotaPaceView(
 function quotaPaceDetail({ pace, copy, reason }: QuotaPaceView): string | null {
   if (!copy) return reason;
   const parts = pace.status === 'insufficient' ? [copy.text, copy.method] : [copy.method, copy.interval];
-  return parts.filter(Boolean).join('；');
+  return parts.filter(Boolean).join(t('quota.pace.join'));
 }
 
 /** 细条下方的一行速度：前置可见的“预测”标签，文字本身完整表达结论，语气只辅助着色；读屏读规则层给的整句。 */
@@ -414,7 +438,7 @@ function QuotaPaceLine({ copy }: { copy: QuotaPaceCopy }) {
   return (
     <span
       className={`quota-window-pace mt-0.5 flex flex-wrap items-center gap-x-1.5 ${tone}`}
-      title={[copy.method, copy.interval].filter(Boolean).join('；')}
+      title={[copy.method, copy.interval].filter(Boolean).join(t('quota.pace.join'))}
     >
       <span className="sr-only">{copy.ariaLabel}</span>
       <span className="badge badge-subtle" aria-hidden="true">{copy.tag}</span>
@@ -430,7 +454,7 @@ function WindowCard({ window, now, sharedStatus, providerCapability }: {
 }) {
   const windowLabel = quotaWindowParts(window).label;
   const { values, used, remainingDisplay, effectiveStatus, hasAbsoluteValue, absoluteHeadline } = quotaWindowState(window, now);
-  const statusLabel = effectiveStatus === 'stale' ? '历史数据' : '不可用';
+  const statusLabel = t(effectiveStatus === 'stale' ? 'quota.status.stale' : 'quota.status.unavailable');
   // 行内只放能给出结论的速度；窗口刚开始与不预测的原因只在行内详情里说明（T10.153 §5.2）。
   const pace = providerCapability && used !== null ? quotaPaceView(window, now, providerCapability) : null;
   const paceCopy = pace?.copy && pace.pace.status !== 'insufficient' ? pace.copy : null;
@@ -439,21 +463,21 @@ function WindowCard({ window, now, sharedStatus, providerCapability }: {
       <div className="quota-window-head">
         <strong title={windowLabel}>{windowLabel}</strong>
         {effectiveStatus !== 'ok' && effectiveStatus !== sharedStatus && <span className={`quota-status quota-status-${effectiveStatus}`}>{statusLabel}</span>}
-        {effectiveStatus === 'ok' && <span className="sr-only">数据最新，{formatObserved(window.observedAt)}</span>}
+        {effectiveStatus === 'ok' && <span className="sr-only">{t('quota.fresh', { observed: formatObserved(window.observedAt) })}</span>}
       </div>
       {used !== null ? (
         <>
           <div className="quota-value-row"><b>{remainingDisplay}%</b></div>
           <div className="quota-progress" data-level={quotaLevel(remainingDisplay ?? 0)}
-            role="progressbar" aria-label={`${windowLabel} 可用额度`} aria-valuemin={0} aria-valuemax={100}
+            role="progressbar" aria-label={t('quota.meterAria', { label: windowLabel })} aria-valuemin={0} aria-valuemax={100}
             aria-valuenow={remainingDisplay ?? undefined}
-            aria-valuetext={remainingDisplay === null ? undefined : `${remainingDisplay}% 可用`}>
+            aria-valuetext={remainingDisplay === null ? undefined : t('quota.meterText', { n: remainingDisplay })}>
             <span style={{ width: `${100 - used}%` }} />
           </div>
         </>
       ) : hasAbsoluteValue ? (
         <div className="quota-absolute-value"><strong>{absoluteHeadline}</strong></div>
-      ) : <div className="quota-unavailable-copy">暂不可用</div>}
+      ) : <div className="quota-unavailable-copy">{t('quota.unavailableShort')}</div>}
       {used !== null && window.resetsAt && <div className="quota-window-meta">
         {formatReset(window.resetsAt, now)}
         {paceCopy && <QuotaPaceLine copy={paceCopy} />}
@@ -468,7 +492,7 @@ function QuotaDetails({ windows, now, label, providerCapability }: {
   providerCapability?: QuotaProviderEnvelope['capability'];
 }) {
   return <details className="quota-details">
-    <summary aria-label={`${label}：查看额度详情`} title="查看额度详情"><ChevronDown size={16} aria-hidden="true" /><span className="sr-only">详情</span></summary>
+    <summary aria-label={t('quota.details.aria', { label })} title={t('quota.details.title')}><ChevronDown size={16} aria-hidden="true" /><span className="sr-only">{t('quota.details.sr')}</span></summary>
     <div className="quota-details-content">
       {windows.map(window => {
         const state = quotaWindowState(window, now);
@@ -477,12 +501,12 @@ function QuotaDetails({ windows, now, label, providerCapability }: {
           : null;
         return <div className="quota-detail-window" key={`${window.providerId}:${window.scope}:${window.windowId}`}>
           <strong>{quotaWindowParts(window).label}</strong>
-          <span>{state.effectiveStatus === 'ok' ? '数据最新' : state.effectiveStatus === 'stale' ? '历史快照' : '不可用'}</span>
+          <span>{t(state.effectiveStatus === 'ok' ? 'quota.details.fresh' : state.effectiveStatus === 'stale' ? 'quota.details.stale' : 'quota.status.unavailable')}</span>
           {state.effectiveReasonCode && <p>{state.effectiveReasonLabel}</p>}
-          <span>{formatObserved(window.observedAt)} · 读取 {formatObserved(window.fetchedAt).replace(/^观测 /, '')}</span>
-          {!window.resetsAt && !isCompanyQuotaProvider(window.providerId) && <span>重置时间未知</span>}
+          <span>{t('quota.details.read', { observed: formatObserved(window.observedAt), fetched: observedTimeOf(window.fetchedAt) })}</span>
+          {!window.resetsAt && !isCompanyQuotaProvider(window.providerId) && <span>{t('quota.reset.unknown')}</span>}
           <span>{SCOPE_LABELS[window.scope]} · {SOURCE_LABELS[window.source]}</span>
-          {paceDetail && <span className="quota-detail-pace">预测 · {paceDetail}</span>}
+          {paceDetail && <span className="quota-detail-pace">{t('quota.details.pace', { detail: paceDetail })}</span>}
         </div>;
       })}
     </div>
@@ -503,19 +527,19 @@ export function ProviderEmpty({
   reasonOverride?: string;
 }) {
   const [actionBusy, setActionBusy] = useState(false);
-  const reason = reasonOverride || quotaReasonLabel(provider.reasonCode, '当前没有可用额度数据');
+  const reason = reasonOverride || quotaReasonLabel(provider.reasonCode, t('quota.empty.reason'));
   const safeAction = validateQuotaAction(provider.providerId, provider.action);
   const showCommand = safeAction?.kind === 'show-command';
   const openUrl = safeAction?.kind === 'open-url';
   const actionLabel = safeAction
     ? actionBusy
-      ? '复制中…'
+      ? t('quota.empty.copying')
       : providerEmptyActionLabel(provider, safeAction)
     : null;
   const actionAriaLabel = safeAction
     ? actionBusy
-      ? `${providerDisplayName(provider)}：正在复制指令`
-      : `${providerDisplayName(provider)}：${providerEmptyActionLabel(provider, safeAction)}`
+      ? t('quota.empty.copyingAria', { name: providerDisplayName(provider) })
+      : t('quota.empty.actionAria', { name: providerDisplayName(provider), action: providerEmptyActionLabel(provider, safeAction) })
     : null;
   const performAction = async () => {
     if (actionBusy) return;
@@ -527,9 +551,9 @@ export function ProviderEmpty({
       setActionBusy(true);
       try {
         await navigator.clipboard.writeText(safeAction.value);
-        onNotify(`已复制 ${safeAction.value}`);
+        onNotify(t('quota.empty.copied', { value: safeAction.value }));
       } catch {
-        onNotify(`请在 Claude 中输入 ${safeAction.value}`);
+        onNotify(t('quota.empty.typeInClaude', { value: safeAction.value }));
       } finally {
         setActionBusy(false);
       }
@@ -537,7 +561,7 @@ export function ProviderEmpty({
     }
     if (openUrl) {
       const opened = window.open(safeAction.value, '_blank', 'noopener,noreferrer');
-      if (!opened) onNotify('请在设置中查看服务商帮助页面');
+      if (!opened) onNotify(t('quota.empty.openHelp'));
     }
   };
   return (
@@ -547,7 +571,7 @@ export function ProviderEmpty({
       </div>
       <div className="quota-provider-empty-copy">
         <div className="quota-provider-empty-heading">
-          <strong>尚无可展示额度</strong>
+          <strong>{t('quota.empty.title')}</strong>
           <span className={`quota-provider-state quota-provider-state-${provider.status}`}>{providerEmptyStateLabel(provider, safeAction)}</span>
         </div>
         <span>{reason}</span>
@@ -558,7 +582,7 @@ export function ProviderEmpty({
           type="button"
           aria-label={actionAriaLabel || undefined}
           aria-busy={actionBusy || undefined}
-          title={actionBusy ? actionAriaLabel || undefined : `${providerDisplayName(provider)}：${providerEmptyActionLabel(provider, safeAction)}`}
+          title={actionBusy ? actionAriaLabel || undefined : t('quota.empty.actionAria', { name: providerDisplayName(provider), action: providerEmptyActionLabel(provider, safeAction) })}
           onClick={performAction}
           disabled={actionBusy}
         >
@@ -607,13 +631,13 @@ function QuotaProviderCard({ view, group, pending = false, now, onOpenSettings, 
             <strong title={`${CAPABILITY_LABELS[provider.capability]} · ${SCOPE_LABELS[provider.scope]}`}>{name}</strong>
             {group?.label && <span className="quota-account-name">{group.label}</span>}
           </h3>
-          {!pending && sharedStatus && sharedStatus !== 'ok' && <span className={`quota-status quota-status-${sharedStatus}`}>{sharedStatus === 'stale' ? '历史数据' : '不可用'}</span>}
+          {!pending && sharedStatus && sharedStatus !== 'ok' && <span className={`quota-status quota-status-${sharedStatus}`}>{t(sharedStatus === 'stale' ? 'quota.status.stale' : 'quota.status.unavailable')}</span>}
           {balances.length > 0 && <div className="quota-balances">{balances.map(window => <WindowCard key={`${window.providerId}:${window.scope}:${window.windowId}`}
             window={window} now={now} sharedStatus={sharedStatus} />)}</div>}
         </div>
       </header>
       {pending ? <ProviderEmpty provider={presentationProvider} compact
-        reasonOverride={companyProvider ? '当前没有可展示的用户日额度或用户月额度。' : undefined}
+        reasonOverride={companyProvider ? t('quota.company.empty') : undefined}
         onOpenSettings={onOpenSettings} onNotify={onNotify} />
       : presentationProvider.status === 'ok' || presentationProvider.status === 'stale' ? <>
         <div className="quota-window-list">
@@ -639,7 +663,7 @@ export function QuotaPanel({
   sourceOrder = [],
   hiddenSourceIds = [],
 }: QuotaPanelProps) {
-  const t = useT();
+  useLang();
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 60_000);
@@ -654,8 +678,8 @@ export function QuotaPanel({
   };
   const quotaSyncBusy = quotaSyncStatus.state === 'syncing';
   const quotaRefreshBusy = loading || quotaSyncBusy;
-  const quotaRefreshButtonLabel = loading ? '读取中…' : quotaSyncBusy ? '同步中…' : '刷新额度';
-  const quotaRefreshAriaLabel = loading ? '正在读取额度' : quotaSyncBusy ? '正在同步额度' : '刷新额度';
+  const quotaRefreshButtonLabel = t(loading ? 'quota.refresh.loading' : quotaSyncBusy ? 'quota.refresh.syncing' : 'quota.refresh');
+  const quotaRefreshAriaLabel = t(loading ? 'quota.refresh.loadingAria' : quotaSyncBusy ? 'quota.refresh.syncingAria' : 'quota.refresh');
   const providerViews: QuotaProviderView[] = (providers || []).map((provider) => {
     const envelopeValid = validateQuotaProviderEnvelopeStructure(provider);
     const companyProvider = isCompanyQuotaProvider(provider.providerId);
@@ -702,15 +726,15 @@ export function QuotaPanel({
     <section className="panel quota-panel" aria-labelledby="quota-panel-title" aria-busy={quotaRefreshBusy}>
       <div className="quota-panel-head">
         <div>
-          <h2 id="quota-panel-title" className="panel-title" title="仅展示来源返回的真实额度，不推算未提供的余额">
+          <h2 id="quota-panel-title" className="panel-title" title={t('quota.panel.titleHint')}>
             <span className="panel-icon tone-primary" aria-hidden="true"><Gauge className="h-4 w-4" /></span>
-            订阅额度
-            {quotaSyncStatus.enabled && <span className="quota-sync-badge">跨设备同步</span>}
-            <span className="sr-only">来源快照，不推算未提供的余额。</span>
+            {t('quota.panel.title')}
+            {quotaSyncStatus.enabled && <span className="quota-sync-badge">{t('quota.panel.syncBadge')}</span>}
+            <span className="sr-only">{t('quota.panel.sr')}</span>
           </h2>
-          <p className="quota-panel-subtitle">剩余额度</p>
+          <p className="quota-panel-subtitle">{t('quota.panel.subtitle')}</p>
           {quotaSyncStatus.state === 'paused' && (
-            <p role="status">跨设备同步已暂停；请在设置中重新显式启用，不会自动恢复。</p>
+            <p role="status">{t('quota.panel.paused')}</p>
           )}
         </div>
         <div className="quota-panel-actions">
@@ -719,7 +743,7 @@ export function QuotaPanel({
               className="ghost-inline quota-refresh"
               type="button"
               aria-label={quotaRefreshAriaLabel}
-              title={quotaRefreshBusy ? quotaRefreshAriaLabel : '重新读取本机与已授权的额度来源'}
+              title={quotaRefreshBusy ? quotaRefreshAriaLabel : t('quota.refresh.title')}
               onClick={refreshQuota}
               disabled={quotaRefreshBusy}
             >
@@ -732,32 +756,32 @@ export function QuotaPanel({
       {error && (showRecoveryActions ? (
         <div className="quota-panel-error" role="alert">
           <div className="quota-panel-error-copy">
-            <strong>额度暂时无法更新</strong>
+            <strong>{t('quota.error.title')}</strong>
             <span>{error}</span>
-            <span className="quota-panel-error-detail">不会推算未提供的余额。可以重新读取额度，或检查来源配置。</span>
-            {hasProviderSnapshot && <span className="quota-panel-error-detail">仍显示上次读取到的来源结果。</span>}
+            <span className="quota-panel-error-detail">{t('quota.error.detail')}</span>
+            {hasProviderSnapshot && <span className="quota-panel-error-detail">{t('quota.error.snapshot')}</span>}
           </div>
           <div className="quota-panel-error-actions">
             <button className="ghost-inline" type="button" onClick={onOpenSettings} disabled={quotaRefreshBusy}>
-              检查额度来源
+              {t('quota.error.check')}
             </button>
           </div>
         </div>
       ) : (
-        <div className="quota-panel-error quota-panel-error-context" role="status" aria-label="额度读取状态">
+        <div className="quota-panel-error quota-panel-error-context" role="status" aria-label={t('quota.error.statusAria')}>
           <div className="quota-panel-error-copy">
-            <strong>本次读取未完成</strong>
+            <strong>{t('quota.error.incomplete')}</strong>
             <span>{error}</span>
-            {hasProviderSnapshot && <span className="quota-panel-error-detail">仍显示上次读取到的来源结果；恢复操作位于看板顶部。</span>}
+            {hasProviderSnapshot && <span className="quota-panel-error-detail">{t('quota.error.snapshotTop')}</span>}
           </div>
         </div>
       ))}
       {providers.length === 0 && loading ? (
-        <div className="quota-panel-loading">正在读取额度能力…</div>
+        <div className="quota-panel-loading">{t('quota.loading')}</div>
       ) : (
         <>
           {renderableProviders.length > 0 && (
-            <div className="quota-dashboard" aria-label="服务商额度仪表盘">
+            <div className="quota-dashboard" aria-label={t('quota.dashboardAria')}>
               {renderableProviders.flatMap(view => groupQuotaWindows(view.companyProvider ? view.companyWindows : view.presentationProvider.windows).map(group => (
                 <QuotaProviderCard key={group.key} view={view} group={group} now={clock}
                   onOpenSettings={onOpenSettings} onNotify={onNotify} />
@@ -771,7 +795,7 @@ export function QuotaPanel({
               data-expanded={pendingExpanded ? 'true' : 'false'}
             >
               <div className="quota-pending-head">
-                <h3 id="quota-pending-title">待处理来源</h3>
+                <h3 id="quota-pending-title">{t('quota.pending.title')}</h3>
                 <button
                   type="button"
                   className="link-inline quota-pending-toggle"
@@ -779,8 +803,8 @@ export function QuotaPanel({
                   aria-controls={pendingListId}
                   onClick={() => setPendingExpanded((value) => !value)}
                 >
-                  <span>{pendingProviders.length} 个来源没有可展示额度</span>
-                  {pendingExpanded ? '收起' : '展开'}
+                  <span>{t('quota.pending.count', { count: pendingProviders.length })}</span>
+                  {t(pendingExpanded ? 'quota.pending.collapse' : 'quota.pending.expand')}
                   <ChevronDown size={14} aria-hidden="true" />
                 </button>
               </div>
@@ -806,7 +830,7 @@ export function QuotaPanel({
                     {pendingProviders.map((view) => providerDisplayName(view.presentationProvider)).join(' · ')}
                   </span>
                   <div className="quota-pending-summary-actions">
-                    <button type="button" className="ghost-inline" onClick={onOpenSettings}>去设置授权</button>
+                    <button type="button" className="ghost-inline" onClick={onOpenSettings}>{t('quota.pending.authorize')}</button>
                   </div>
                 </div>
               )}

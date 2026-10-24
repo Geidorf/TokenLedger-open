@@ -6,6 +6,7 @@ import type { AppSettings } from '../../types';
 import { SettingsCard, SettingsGroup, SettingsToggleRow } from '../../components/settings/SettingsPrimitives';
 import { errorText, setModelAccess } from './api';
 import { SUPPORTED_AGENTS, type AgentAdapter } from './agents';
+import { t, useLang } from '../../i18n';
 
 export interface ModelAccessCardProps {
   /** undefined：设置还没读到，开关先禁用。 */
@@ -31,6 +32,7 @@ export async function inspectCloseAgents(agents: AgentAdapter[]): Promise<AgentC
 }
 
 export function ModelAccessCard({ enabled, onChanged, onNotify, agents = SUPPORTED_AGENTS }: ModelAccessCardProps) {
+  useLang();
   const triggerRef = useRef<HTMLElement>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<AgentCloseState[] | null>(null);
@@ -92,19 +94,19 @@ export function ModelAccessCard({ enabled, onChanged, onNotify, agents = SUPPORT
     }
     setPending(results);
     const failed = results.filter((item) => item.result === 'failed');
-    if (failed.length) onNotify(`部分配置未恢复，模型接入保持开启。${failed.map((item) => `${item.agent.name}：${item.error}`).join('；')}`);
+    if (failed.length) onNotify(t('modelAccess.partialFail', { items: failed.map((item) => t('modelAccess.itemError', { name: item.agent.name, error: item.error ?? '' })).join(t('modelAccess.itemJoin')) }));
     if (results.every((item) => item.state === 'offGateway') && failed.length === 0) {
       await apply(false);
-      onNotify('原配置已恢复，模型接入已关闭；逐项结果保留在窗口中。');
+      onNotify(t('modelAccess.restoredOff'));
     }
   });
 
   return (
-    <SettingsCard title="总开关">
+    <SettingsCard title={t('modelAccess.card')}>
       <SettingsGroup>
         <SettingsToggleRow
-          label="模型接入"
-          hint="本地网关、供应商、Agent 与路由。已用 CC Switch 等工具管理时可保持关闭。"
+          label={t('modelAccess.label')}
+          hint={t('modelAccess.hint')}
           icon={Plug}
           checked={enabled === true}
           disabled={enabled === undefined || busy}
@@ -144,6 +146,7 @@ export function ModelAccessCloseDialog({ items, triggerRef, busy, onRetry, onRes
   const dialogRef = useRef<HTMLElement>(null);
   const summaryRef = useRef<HTMLParagraphElement>(null);
   useModalFocus(dialogRef, onCancel, triggerRef);
+  useLang();
   const hasResults = items.some((item) => item.result);
   useEffect(() => { if (hasResults && !busy) summaryRef.current?.focus(); }, [hasResults, busy]);
   return createPortal(
@@ -151,23 +154,23 @@ export function ModelAccessCloseDialog({ items, triggerRef, busy, onRetry, onRes
       <section ref={dialogRef} className="modal-content confirm-dialog confirm-dialog-primary" role="alertdialog" aria-modal="true" aria-labelledby="model-access-close-title" aria-describedby="model-access-close-description" tabIndex={-1}>
         <div className="confirm-dialog-icon" aria-hidden="true"><AlertTriangle className="h-5 w-5" /></div>
         <div className="confirm-dialog-copy">
-          <h2 id="model-access-close-title" className="confirm-dialog-title">关闭模型接入</h2>
+          <h2 id="model-access-close-title" className="confirm-dialog-title">{t('modelAccess.closeTitle')}</h2>
           <p ref={summaryRef} tabIndex={-1} id="model-access-close-description" className="confirm-dialog-description" role="status" aria-live="polite">
-            {hasResults ? '恢复结果（已重新读取磁盘状态）' : '这些 Agent 仍指向本地网关，关闭后将无法使用'}：{items.filter((item) => item.state !== 'offGateway' || item.result).map((item) => item.agent.name).join('、')}
+            {hasResults ? t('modelAccess.results') : t('modelAccess.stillOn')}{t('modelAccess.listSep')}{items.filter((item) => item.state !== 'offGateway' || item.result).map((item) => item.agent.name).join(t('modelAccess.nameJoin'))}
           </p>
-          <p>检查失败时保持开启。选择「仅关闭」不会恢复配置，仍指向网关或无法检查的 Agent 可能无法使用。</p>
+          <p>{t('modelAccess.closeNote')}</p>
           <ul>{items.filter((item) => item.state !== 'offGateway' || item.result).map((item) => (
             <li key={item.agent.id}>
-              {item.agent.name} · {item.result === 'restored' ? '已恢复' : item.result === 'failed' ? '恢复失败' : item.result === 'unchanged' ? '未改变' : '未恢复'} · {item.state === 'onGateway' ? '仍指向网关' : item.state === 'offGateway' ? '已离开网关' : '检查失败'}
-              {item.error && <span role="alert">：{item.error}</span>}
-              {item.state === 'unreadable' && <button type="button" className="ghost-inline" disabled={busy} onClick={() => onRetry(item.agent.id)}>重试检查 {item.agent.name}</button>}
+              {item.agent.name} · {item.result === 'restored' ? t('modelAccess.r.restored') : item.result === 'failed' ? t('modelAccess.r.failed') : item.result === 'unchanged' ? t('modelAccess.r.unchanged') : t('modelAccess.r.notRestored')} · {item.state === 'onGateway' ? t('modelAccess.s.on') : item.state === 'offGateway' ? t('modelAccess.s.off') : t('modelAccess.s.unreadable')}
+              {item.error && <span role="alert">{t('modelAccess.listSep')}{item.error}</span>}
+              {item.state === 'unreadable' && <button type="button" className="ghost-inline" disabled={busy} onClick={() => onRetry(item.agent.id)}>{t('modelAccess.retry', { name: item.agent.name })}</button>}
             </li>
           ))}</ul>
         </div>
         <footer className="confirm-dialog-actions">
-          <button data-initial-focus className="ghost-inline" type="button" disabled={busy} onClick={onCancel}>{hasResults ? '完成' : '取消'}</button>
-          <button className="ghost-inline" type="button" disabled={busy} onClick={onCloseOnly}>仅关闭</button>
-          <button className="primary-inline" type="button" disabled={busy || items.some((item) => item.state === 'unreadable') || !items.some((item) => item.state === 'onGateway' && item.result !== 'restored')} onClick={onRestore}>{hasResults ? '重试失败项并关闭' : '恢复原配置并关闭'}</button>
+          <button data-initial-focus className="ghost-inline" type="button" disabled={busy} onClick={onCancel}>{hasResults ? t('modelAccess.done') : t('modelAccess.cancel')}</button>
+          <button className="ghost-inline" type="button" disabled={busy} onClick={onCloseOnly}>{t('modelAccess.closeOnly')}</button>
+          <button className="primary-inline" type="button" disabled={busy || items.some((item) => item.state === 'unreadable') || !items.some((item) => item.state === 'onGateway' && item.result !== 'restored')} onClick={onRestore}>{hasResults ? t('modelAccess.retryClose') : t('modelAccess.restoreClose')}</button>
         </footer>
       </section>
     </div>, document.body,

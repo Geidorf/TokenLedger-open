@@ -862,6 +862,57 @@ fn only_changed_prices_travel_and_merge_by_model() {
     );
 }
 
+#[test]
+fn restoring_prices_over_an_online_table_keeps_only_the_backed_up_overrides() {
+    let bundled: Value = serde_json::from_str(include_str!("../../prices.json")).unwrap();
+    let models: Vec<String> = bundled
+        .as_object()
+        .unwrap()
+        .keys()
+        .filter(|model| bundled[model.as_str()]["input"].is_number())
+        .take(2)
+        .cloned()
+        .collect();
+    let (edited, updated) = (&models[0], &models[1]);
+    // The online table moved one model's price away from the bundled one.
+    let mut online = bundled.clone();
+    let online_input = bundled[updated.as_str()]["input"].as_f64().unwrap() + 1.25;
+    online[updated.as_str()]["input"] = serde_json::json!(online_input);
+
+    let old = Computer::new("old");
+    crate::commands::install_test_price_feed(&old.app, online.clone());
+    let mut table = crate::commands::get_prices_impl(&old.app).unwrap();
+    table[edited.as_str()]["input"] = serde_json::json!(321.0);
+    crate::commands::save_prices_impl(&old.app, table).unwrap();
+    let bundle = sealed_roundtrip(&old.export());
+    let overrides = bundle.price_overrides.clone().unwrap();
+    assert_eq!(
+        overrides.keys().collect::<Vec<_>>(),
+        vec![edited],
+        "{overrides:?}"
+    );
+
+    let new = Computer::new("new");
+    crate::commands::install_test_price_feed(&new.app, online);
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::UseBackup,
+    )
+    .unwrap();
+    assert!(result.prices_restored);
+    let saved = crate::commands::price_overrides_for_backup(&new.app);
+    assert_eq!(saved.keys().collect::<Vec<_>>(), vec![edited], "{saved:?}");
+    let table = crate::commands::get_prices_impl(&new.app).unwrap();
+    assert_eq!(table[edited.as_str()]["input"], serde_json::json!(321.0));
+    assert_eq!(
+        table[updated.as_str()]["input"],
+        serde_json::json!(online_input)
+    );
+}
+
 fn put_state(pc: &Computer, key: &str, input: i64, generation: i64) {
     pc.conn()
         .execute(

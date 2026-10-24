@@ -604,7 +604,34 @@ fn upstream_url(provider: &ProviderRecord) -> Result<Url, String> {
     .map_err(|_| "供应商接口地址无效。".to_string())
 }
 
-async fn upstream_client(url: &Url) -> Result<reqwest::Client, String> {
+/// Keychain reads for background work get their own single slot, so they
+/// never take one the forwarding path needs.
+static BACKGROUND_SECRET_SLOTS: Semaphore = Semaphore::const_new(1);
+
+/// A provider key for background work (the health probe): waits up to 15 s
+/// for its slot and 15 s for the read; the slot stays taken until a stalled
+/// keychain call exits, so blocking threads cannot pile up.
+pub(super) async fn read_key_bounded(
+    secrets: std::sync::Arc<dyn super::store::SecretStore>,
+    account: String,
+) -> Result<Option<String>, String> {
+    let permit = tokio::time::timeout(CONNECT_TIMEOUT, BACKGROUND_SECRET_SLOTS.acquire())
+        .await
+        .map_err(|_| "凭据读取繁忙。".to_string())?
+        .map_err(|_| "凭据读取繁忙。".to_string())?;
+    tokio::time::timeout(
+        CONNECT_TIMEOUT,
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            secrets.get(&account)
+        }),
+    )
+    .await
+    .unwrap_or_else(|_| Ok(Err("读取钥匙串超过 15 秒。".into())))
+    .unwrap_or_else(|_| Err("读取钥匙串失败。".to_string()))
+}
+
+pub(super) async fn upstream_client(url: &Url) -> Result<reqwest::Client, String> {
     let upstream = policy::resolve(url).await?;
     if upstream.fake_ip {
         log::warn!(

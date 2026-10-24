@@ -37,6 +37,9 @@ pub(super) struct HourRow {
     pub cache_write_tokens: i64,
     pub cache_write_known: Option<bool>,
     pub cost_usd: Option<f64>,
+    /// The record's ledger timestamp: rows without a stored cost are priced
+    /// at the price in effect then (`estimate_cost_at`).
+    pub timestamp: String,
     /// Already resolved to the fallback machine id when empty.
     pub machine_id: String,
     /// A scanned row not yet synced for the current cloud user.
@@ -353,6 +356,7 @@ fn collect_hours_with_scan_hook(
                 Ok((
                     hour_bucket(&timestamp),
                     HourRow {
+                        timestamp: timestamp.clone(),
                         id,
                         sync_revision: row.get(12)?,
                         tool: row.get(1)?,
@@ -386,6 +390,7 @@ fn collect_hours_with_scan_hook(
             .or_default()
             .push(HourRow {
                 id: row.id,
+                timestamp: row.timestamp.clone(),
                 sync_revision: 0, // Gateway rows are not marked in the local scan ledger.
                 tool: row.tool.clone(),
                 model: row.model.clone(),

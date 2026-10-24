@@ -70,8 +70,13 @@ fn rows_in_timezone(rows: &[StatRow], timezone: Tz) -> Result<Vec<StatRow>, Stri
     rows.iter()
         .map(|row| {
             let mut row = row.clone();
-            row.timestamp =
+            let shifted =
                 storage_timestamp(timestamp_in_timezone(&row.timestamp, timezone)?.naive_local());
+            if row.pricing_timestamp.is_none() {
+                row.pricing_timestamp = Some(std::mem::replace(&mut row.timestamp, shifted));
+            } else {
+                row.timestamp = shifted;
+            }
             Ok(row)
         })
         .collect()

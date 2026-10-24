@@ -1573,6 +1573,7 @@ interface MockBudgetRule {
   warnPercent: number;
 }
 let mockBudgetSettings: { notify: boolean; syncToPhone: boolean; rules: MockBudgetRule[] } = { notify: false, syncToPhone: false, rules: [] };
+let mockPeriodReportSettings = { weekly: true, monthly: false };
 
 /** 与 `budget.rs` 同一读法：从同一份本机统计取今日 / 本周 / 本月的合计或分组行。 */
 function mockBudgetStatus() {
@@ -2062,6 +2063,25 @@ const mockPriceMigrationNotices: Record<'changed' | 'unchanged', PriceMigrationN
   },
 };
 const mockDismissedPriceMigrationNotices = new Set<string>();
+let mockPriceTableAutoUpdate = true;
+let mockPriceTableLastChecked: string | null = null;
+
+/** 开发预览里的价格表出处：内置表，与 `src-tauri/prices.meta.json` 同一修订。 */
+function mockPriceTableStatus() {
+  return {
+    source: 'bundled',
+    revision: 2,
+    verifiedAt: '2026-09-24',
+    updatedAt: '2026-10-24',
+    bundledRevision: 2,
+    bundledVerifiedAt: '2026-09-24',
+    fetchedAt: null,
+    lastCheckedAt: mockPriceTableLastChecked,
+    lastError: null,
+    autoUpdate: mockPriceTableAutoUpdate,
+    overrideModels: 0,
+  };
+}
 
 function mockPriceMigrationNotice(): PriceMigrationNotice | null {
   if (typeof window === 'undefined') return null;
@@ -2197,6 +2217,13 @@ export function installDevMockTauri() {
       }
       case 'get_budget_status':
         return mockBudgetStatus();
+      case 'get_period_report_settings':
+        return mockPeriodReportSettings;
+      case 'set_period_report_settings': {
+        const next = (payload.settings ?? {}) as { weekly?: unknown; monthly?: unknown };
+        mockPeriodReportSettings = { weekly: next.weekly === true, monthly: next.monthly === true };
+        return mockPeriodReportSettings;
+      }
       case 'get_quota_alert_settings':
         return mockQuotaAlertSettings;
       case 'set_quota_alert_settings': {
@@ -2289,6 +2316,14 @@ export function installDevMockTauri() {
       case 'reset_prices':
         prices = { ...bundledPrices };
         return { message: '已恢复默认价格', prices, repriced: 12 };
+      case 'get_price_table_status':
+        return mockPriceTableStatus();
+      case 'check_price_table_update':
+        mockPriceTableLastChecked = new Date().toISOString();
+        return mockPriceTableStatus();
+      case 'set_price_table_auto_update':
+        mockPriceTableAutoUpdate = payload.enabled !== false;
+        return mockPriceTableStatus();
       case 'get_price_migration_notice':
         return mockPriceMigrationNotice();
       case 'dismiss_price_migration_notice':

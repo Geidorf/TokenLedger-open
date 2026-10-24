@@ -89,6 +89,7 @@ const ORIGIN_TAB_LABELS: Record<Tab, string> = {
   behavior: '会话',
   logs: '请求',
   allowances: '额度',
+  reports: '报告',
   settings: '设置',
   agents: 'Agent',
   providers: '供应商',

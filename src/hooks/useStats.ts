@@ -31,6 +31,7 @@ import {
   ToastType,
   ToolStat,
 } from '../types';
+import { t } from '../i18n';
 
 export interface UseStatsProps {
   showMessage: (type: ToastType, text: string) => void;
@@ -236,7 +237,7 @@ export function useStats({
       const res = parseStatsDataContract(response);
       if (!isCurrentRequest(statsRequestId, requestId)) return;
       if (res.meta?.query && !queryEchoMatches(res.meta.query, canonicalQuery)) {
-        throw new Error('统计响应与当前筛选不一致，请重试。');
+        throw new Error(t('statsMsg.mismatch'));
       }
       setStats((previous) => (sameStatsSnapshot(previous, res) ? previous : res));
       if (statsKey) lastTrustedStats.current.set(statsKey, res);
@@ -253,8 +254,8 @@ export function useStats({
       if (!isCurrentRequest(statsRequestId, requestId)) return;
       const failure = classifyCloudFailure(err);
       const errorMessage = dataScope === 'cloud'
-        ? `${failure.label}：${failure.message || '请稍后重试'}`
-        : `加载本地数据失败: ${err}`;
+        ? t('cloudMsg.failure', { label: failure.label, message: failure.message || t('cloudMsg.retryLater') })
+        : t('statsMsg.loadLocalFailed', { error: String(err) });
       setStatsError(errorMessage);
       setStatsErrorAction('load');
       if (notifyOnError) showMessage('error', errorMessage);
@@ -288,16 +289,16 @@ export function useStats({
 
   const triggerScan = useCallback(async () => {
     setBusy((p: any) => ({ ...p, scan: true }));
-    showMessage('info', '正在扫描本地日志');
+    showMessage('info', t('statsMsg.scanning'));
     try {
       const res = await invoke<{ message: string }>('refresh_scan');
       const completedAt = new Date();
       setStatsError('');
       setStatsErrorAction(null);
-      showMessage('success', `${res.message} · 完成于 ${formatLocalDateTime(completedAt)}`);
+      showMessage('success', t('statsMsg.completedAt', { message: res.message, time: formatLocalDateTime(completedAt) }));
       setRefreshCompletedAt(completedAt.toISOString());
     } catch (err) {
-      const errorMessage = `扫描失败: ${err}`;
+      const errorMessage = t('statsMsg.scanFailed', { error: String(err) });
       setStatsError(errorMessage);
       setStatsErrorAction('scan');
       showMessage('error', errorMessage);
@@ -308,7 +309,7 @@ export function useStats({
 
   const triggerSync = useCallback(async () => {
     setBusy((p: any) => ({ ...p, sync: true }));
-    showMessage('info', '正在同步到 Supabase');
+    showMessage('info', t('statsMsg.syncing'));
     try {
       const res = await invoke<unknown>('sync_to_supabase');
       const uploadResult = res && typeof res === 'object'
@@ -326,18 +327,18 @@ export function useStats({
       ) {
         const message = res && typeof res === 'object' && 'message' in res
           ? String(res.message)
-          : '主同步未返回成功状态';
+          : t('statsMsg.syncNotOk');
         throw new Error(message);
       }
       const warning = typeof uploadResult.warning === 'string' && uploadResult.warning.trim()
         ? uploadResult.warning
         : null;
       const completedAt = new Date();
-      const completion = ` · 完成于 ${formatLocalDateTime(completedAt)}`;
+      const completion = t('statsMsg.completion', { time: formatLocalDateTime(completedAt) });
       showMessage(
         warning ? 'warning' : 'success',
         warning
-          ? `${uploadResult.message}；${warning}${completion}`
+          ? t('statsMsg.syncWarning', { message: uploadResult.message, warning, completion })
           : `${uploadResult.message}${completion}`,
       );
       setRefreshCompletedAt(completedAt.toISOString());
@@ -345,15 +346,15 @@ export function useStats({
       setCloudSetup((previous) => ({
         ...previous,
         firstSyncCompleted: previous.firstSyncCompleted || firstSyncCompleted,
-        lastError: warning ? `首次同步尚未完整确认：${warning}` : '',
+        lastError: warning ? t('statsMsg.firstSyncUnconfirmed', { warning }) : '',
       }));
       await Promise.all([refreshCloudStatus(), loadDbInfo()]);
       await loadQuotaSyncStatus();
     } catch (err) {
       const failure = classifyCloudFailure(err);
-      const text = `${failure.label}：${failure.message || '同步未完成'}`;
+      const text = t('cloudMsg.failure', { label: failure.label, message: failure.message || t('statsMsg.syncIncomplete') });
       setCloudSetup((previous) => ({ ...previous, lastError: text }));
-      showMessage('error', `同步失败: ${failure.message || failure.label}`);
+      showMessage('error', t('statsMsg.syncFailed', { message: failure.message || failure.label }));
     } finally {
       setBusy((p: any) => ({ ...p, sync: false }));
     }
@@ -363,11 +364,11 @@ export function useStats({
     if (appSettings.wallpaper_consent_version < 1) {
       setSettingsAnchor('settings-wallpaper');
       changeTab('settings');
-      showMessage('warning', '请先确认历史壁纸授权，再执行系统壁纸写入');
+      showMessage('warning', t('statsMsg.wallpaperConsent'));
       return;
     }
     setBusy((p: any) => ({ ...p, wallpaper: true }));
-    showMessage('info', '正在渲染壁纸');
+    showMessage('info', t('statsMsg.rendering'));
     try {
       const res = await invoke<{ message: string; desktop: boolean; lockscreen: boolean; path: string }>('update_wallpaper', { target });
       const applied = target === 'desktop'
@@ -375,10 +376,10 @@ export function useStats({
         : target === 'lockscreen'
           ? res.lockscreen
           : res.desktop && res.lockscreen;
-      if (!applied) throw new Error(`系统未应用 ${target} 壁纸`);
+      if (!applied) throw new Error(t('statsMsg.wallpaperNotApplied', { target }));
       showMessage('success', res.message);
     } catch (err) {
-      showMessage('error', `壁纸更新失败: ${err}`);
+      showMessage('error', t('statsMsg.wallpaperFailed', { error: String(err) }));
     } finally {
       setBusy((p: any) => ({ ...p, wallpaper: false }));
     }
@@ -387,12 +388,12 @@ export function useStats({
   const selectCloudScope = useCallback(() => {
     if (!cloudStatusKnown) {
       changeTab('settings');
-      showMessage('info', '正在检查云端账户状态');
+      showMessage('info', t('statsMsg.checkingCloud'));
       return;
     }
     if (!cloudStatus.authenticated) {
       changeTab('settings');
-      showMessage('info', '请先登录 Supabase');
+      showMessage('info', t('statsMsg.signInSupabase'));
       return;
     }
     // 已在「云端汇总 · 全部设备」时再点一次不是切换：查询身份不变就不会发新请求，这时清掉 stats 会停在
@@ -464,7 +465,7 @@ export function useStats({
       if (nextBounds.start > todayInTimezone) {
         showMessage(
           'error',
-          `自定义范围的开始日期（${nextBounds.start}）晚于当前时区的今天（${todayInTimezone}），请重新选择。`,
+          t('statsMsg.startAfterToday', { start: nextBounds.start, today: todayInTimezone }),
         );
         return;
       }
@@ -556,7 +557,7 @@ export function useStats({
       console.error('统计刷新监听注册失败:', error);
       if (!disposed) void loadStatsRef.current?.({ notifyOnError: false });
     });
-    const unlistenWallpaper = listen('wallpaper-updated', () => showMessageRef.current('success', '壁纸已更新'));
+    const unlistenWallpaper = listen('wallpaper-updated', () => showMessageRef.current('success', t('statsMsg.wallpaperUpdated')));
     const unlistenQuotaSync = listen<unknown>('quota-sync-updated', () => {
       void Promise.allSettled([
         Promise.resolve().then(() => loadSettingsRef.current()),
@@ -574,7 +575,7 @@ export function useStats({
   useEffect(() => {
     const unlistenPrices = listen('prices-updated', () => {
       if (pricesDirty) {
-        showMessage('info', '发现新的模型价格项；请先保存或重置当前未保存的价格修改');
+        showMessage('info', t('statsMsg.newPrices'));
         return;
       }
       loadPrices();

@@ -785,13 +785,13 @@ export type ModelTab = 'agents' | 'providers' | 'gateway' | 'gatewaylog' | 'rout
  * Page surfaces. `dashboard`, `records` and `behavior` are the 概览 / 记录 / 行为分析 sub-views
  * of the single sidebar entry 「用量」 (U-89, U-100); the header still adapts per surface.
  */
-export type Tab = 'dashboard' | 'logs' | 'behavior' | 'allowances' | 'settings' | ModelTab;
+export type Tab = 'dashboard' | 'logs' | 'behavior' | 'allowances' | 'reports' | 'settings' | ModelTab;
 export const MODEL_TABS: readonly ModelTab[] = ['agents', 'providers', 'gateway', 'gatewaylog', 'routing'];
 export const isModelTab = (tab: Tab): tab is ModelTab => (MODEL_TABS as readonly Tab[]).includes(tab);
 
-/** 用量四个子页：概览、请求（原活动明细）、会话（原行为分析）、额度（对齐 magpie Usage）。 */
+/** 用量子页：概览、请求（原活动明细）、会话（原行为分析）、额度，以及周报 / 月报。 */
 export function isUsageTab(tab: Tab): boolean {
-  return tab === 'dashboard' || tab === 'logs' || tab === 'behavior' || tab === 'allowances';
+  return tab === 'dashboard' || tab === 'logs' || tab === 'behavior' || tab === 'allowances' || tab === 'reports';
 }
 
 export interface BehaviorAnalysisQuery extends StatsQueryContext {}
@@ -1361,4 +1361,26 @@ export function getPalette(theme?: 'light' | 'dark'): readonly string[] {
  */
 export function colorForTool(name: string, _index = 0, theme?: 'light' | 'dark'): string {
   return colorForSlot(toolChartSlot(name), theme);
+}
+
+/**
+ * 默认价格表从哪里来（`get_price_table_status`）：应用内置，或在线更新后缓存到本机的
+ * 更新修订。用户自定义的价格总是叠加在它上面。时间均为 RFC 3339（UTC），日期为 YYYY-MM-DD。
+ */
+export interface PriceTableStatus {
+  source: 'bundled' | 'online';
+  revision: number;
+  /** 最近一次对照官方价格页核验的日期。 */
+  verifiedAt: string;
+  /** 这一修订发布的日期。 */
+  updatedAt: string | null;
+  bundledRevision: number;
+  bundledVerifiedAt: string;
+  /** 在线表下载到本机的时间；用内置表时为空。 */
+  fetchedAt: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  autoUpdate: boolean;
+  /** 自定义了价格的型号数。 */
+  overrideModels: number;
 }

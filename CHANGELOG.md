@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Weekly and monthly usage reports under Usage › Reports: totals, cache reuse, splits by Agent, model and account, change against the previous period, the most expensive sessions, quota readings and budget results. Reports export as a share image, a single-file HTML page or a PDF via print, and an optional reminder posts a system notification every Monday (or on the 1st) at 09:00.
 - Unsigned Linux x64 packages (AppImage, deb, rpm) built by `unsigned-linux-packages.yml`, with `tokenledger-cli` bundled. Every build installs the deb and runs the AppImage under Xvfb to check the main window, tray registration, start-at-login entry, XDG data folder, first scan and single-instance handoff.
 - Start at login on Linux: the toggle in Settings › Scan & startup writes an XDG autostart entry (for the AppImage it points at the image file and follows it when moved). Windows and macOS still show it as unsupported.
 - Command-line tool `tokenledger-cli`: today/week/month usage with Agent, model and account breakdowns, quota remaining, budget status, gateway state and recent routes, on-demand scans, and CSV/JSON ledger export. Every command has table output and `--json` for scripts and status bars; numbers come from the same Rust code as the desktop app. See `docs/cli.md`.
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Android widget and dashboard visual refresh, including brand icons, input/output share bars on KPI cards, quota overview progress bars, and reduced visual noise in settings.
 - VS Code status bar extension (`extensions/vscode/`): shows today's estimated cost or the tightest quota window's remaining percentage, with a hover card and details panel for quota bars, today's per-agent split, budgets and gateway health. All figures come from the local `tokenledger-cli`; the extension reads no credentials and makes no network requests. Packaged as a .vsix by a dependency-free script; not published to the marketplace.
 - Settings cards open their target page directly, and an overview line reports a quota read that is still waiting for the first observation.
+- Model price table schema 2: dated price history so a price change only affects records after it takes effect, long-context tiers for GPT-5.6/GPT-6, Gemini Pro, Grok and MiniMax-M3 on per-request tools, and a daily online update from this repository with the bundled table as the offline fallback. Settings and the estimated-cost help show which table is in use, its revision and verification date.
 
 ### Changed
 

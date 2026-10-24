@@ -5,13 +5,14 @@ import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.jeidorf.tokenledger.mobile.DashboardSection
 
 /**
  * 一级分区（重构方案 v1/v2，对齐参考设计的窄屏分区）：
- * 用量（概览 · 趋势 · 来源 · 日历 · 请求）、路由（网关动画）、额度、我的（同步与展示）。
+ * 用量（概览 · 趋势 · 来源 · 日历 · 请求 · 会话）、路由（网关动画）、额度、我的（同步与展示）。
  */
 internal enum class MobileDestination(val label: String, val icon: ImageVector) {
     Usage("用量", LedgerNavIcons.Usage),
@@ -20,13 +21,17 @@ internal enum class MobileDestination(val label: String, val icon: ImageVector) 
     Me("我的", LedgerNavIcons.Me)
 }
 
-/** 「用量」下的子页；原「今日」成了概览，原「明细」对齐桌面端改叫「请求」。 */
+/**
+ * 「用量」下的子页；原「今日」成了概览，原「明细」对齐桌面端改叫「请求」。
+ * 「会话」对齐桌面同名子页，云端只有小时聚合，所以显示活动节律而不是会话列表。
+ */
 internal enum class InsightPane(val label: String, val icon: ImageVector) {
     Overview("概览", Icons.Default.Dashboard),
     Trend("趋势", Icons.AutoMirrored.Filled.ShowChart),
     Sources("来源", Icons.Default.BarChart),
     Calendar("日历", Icons.Default.CalendarMonth),
-    Details("请求", Icons.Default.TableRows)
+    Details("请求", Icons.Default.TableRows),
+    Sessions("会话", Icons.Default.Schedule)
 }
 
 internal enum class TodayReviewAction(val label: String, val targetPane: InsightPane?) {
@@ -49,6 +54,8 @@ internal fun InsightPane.dashboardSection(): DashboardSection = when (this) {
     InsightPane.Trend, InsightPane.Calendar -> DashboardSection.Trends
     InsightPane.Sources -> DashboardSection.Contributions
     InsightPane.Details -> DashboardSection.Details
+    // 活动节律另走自己的接口；看板仍按趋势口径刷新，不触发明细分页。
+    InsightPane.Sessions -> DashboardSection.Trends
 }
 
 internal fun MobileDestination.dashboardSection(insightPane: InsightPane): DashboardSection? = when (this) {

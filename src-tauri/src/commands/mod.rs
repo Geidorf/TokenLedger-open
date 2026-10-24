@@ -644,11 +644,14 @@ pub fn get_prices(state: tauri::State<'_, Arc<AppContext>>) -> Result<Value, Str
 pub async fn save_prices(
     state: tauri::State<'_, Arc<AppContext>>,
     prices: Value,
+    price_table_revision: Option<u64>,
 ) -> Result<Value, String> {
     let app = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || save_prices_impl(&app, prices))
-        .await
-        .map_err(|error| format!("save_prices task panicked: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        save_prices_for_editor(&app, prices, price_table_revision)
+    })
+    .await
+    .map_err(|error| format!("save_prices task panicked: {error}"))?
 }
 
 #[tauri::command]
@@ -663,6 +666,41 @@ pub fn get_price_migration_notice(
     state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<Option<PriceMigrationNoticeView>, String> {
     get_price_migration_notice_impl(state.inner())
+}
+
+/// Where the default prices come from (bundled or updated online), their
+/// revision and dates, and the auto-update setting (`price_feed`).
+#[tauri::command]
+pub fn get_price_table_status(
+    state: tauri::State<'_, Arc<AppContext>>,
+) -> Result<price_feed::PriceTableStatus, String> {
+    Ok(price_feed::status(state.inner().app_data_dir()))
+}
+
+/// Checks the online price table now, whatever the schedule says.
+#[tauri::command]
+pub async fn check_price_table_update(
+    state: tauri::State<'_, Arc<AppContext>>,
+    app_handle: tauri::AppHandle,
+) -> Result<price_feed::PriceTableStatus, String> {
+    let (status, updated) = price_feed::check_for_update(state.inner(), true).await;
+    if updated {
+        emit_app_event(&app_handle, "prices-updated");
+    }
+    Ok(status)
+}
+
+#[tauri::command]
+pub fn set_price_table_auto_update(
+    state: tauri::State<'_, Arc<AppContext>>,
+    enabled: bool,
+) -> Result<price_feed::PriceTableStatus, String> {
+    price_feed::set_auto_update(state.inner().app_data_dir(), enabled)
+}
+
+/// Starts the daily online price table check (`price_feed`).
+pub fn start_price_table_updates(app: Arc<AppContext>, handle: tauri::AppHandle) {
+    price_feed::start_scheduler(app, handle);
 }
 
 #[tauri::command]
@@ -2336,12 +2374,21 @@ struct StatRow {
     cache_write_known: Option<bool>,
     usage_provenance: Option<String>,
     timestamp: String,
+    /// The stored timestamp when `timestamp` was shifted into a query
+    /// timezone (`rows_in_timezone`): prices are chosen by the instant the
+    /// record happened, not by the shifted wall clock.
+    pricing_timestamp: Option<String>,
     session_id: String,
     cost_usd: Option<f64>,
     machine_id: String,
 }
 
 impl StatRow {
+    /// The timestamp that picks this record's price (price table schema 2).
+    fn price_timestamp(&self) -> &str {
+        self.pricing_timestamp.as_deref().unwrap_or(&self.timestamp)
+    }
+
     fn cache_split_is_proven(&self) -> bool {
         if let Some(known) = self.cache_write_known {
             return known
@@ -3521,6 +3568,7 @@ fn discovered_fallback_rates(explicit: &Value, fallback_key: &str) -> Map<String
 /// estimate it.
 fn apply_price_overrides(defaults: &Value, overrides: &Map<String, Value>) -> Value {
     let mut explicit = merge_price_overrides(defaults, &Value::Object(overrides.clone()));
+    price_schedule::strip_overridden_history(&mut explicit, overrides);
     let bundled = defaults.as_object();
     let completions: Vec<(String, Map<String, Value>)> = overrides
         .iter()
@@ -4080,7 +4128,7 @@ fn load_saved_prices(app: &AppContext) -> Value {
 /// Also says what the read found (`PriceOverridesRead`): after a migration
 /// the caller drops cached stats once the lock is released.
 fn load_saved_prices_locked(app: &AppContext) -> (Value, PriceOverridesRead) {
-    let defaults = default_prices();
+    let defaults = price_feed::effective_defaults(app.app_data_dir());
     let (overrides, read) = read_price_overrides(app.app_data_dir(), &defaults);
     let prices = match overrides {
         Some(overrides) => apply_price_overrides(&defaults, &overrides),
@@ -4904,7 +4952,10 @@ fn lookup_model_price_with_source<'a>(
 /// (fallback 0.1x input, the common read multiplier), writes at `cache_write`
 /// (fallback 1.25x input, the common 5-minute-TTL write multiplier).
 /// Legacy rows that predate the cache_write_tokens column pass write=0 and
-/// are priced as pure reads, matching the old behaviour.
+/// are priced as pure reads, matching the old behaviour. This flat form
+/// ignores old-price segments and tiers, so only tests use it; app code prices
+/// a record with `estimate_cost_at`.
+#[cfg(test)]
 fn estimate_cost(
     prices: &Value,
     tool: &str,
@@ -4921,6 +4972,38 @@ fn estimate_cost(
         cache_read,
         cache_write,
     )
+}
+
+/// `estimate_cost` for one ledger record: the price in effect at `timestamp`
+/// (`history`) and, for per-request tools, the long-context tier its prompt
+/// falls in (`tiers`); see `price_schedule`.
+#[allow(clippy::too_many_arguments)]
+fn estimate_cost_at(
+    prices: &Value,
+    tool: &str,
+    model: &str,
+    timestamp: &str,
+    input: i64,
+    output: i64,
+    cache_read: i64,
+    cache_write: i64,
+) -> f64 {
+    let entry = price_schedule::entry_for_record(
+        lookup_model_prices(prices, tool, model),
+        tool,
+        timestamp,
+        prompt_tokens(input, cache_read, cache_write),
+    );
+    estimate_cost_with_price(&entry, input, output, cache_read, cache_write)
+}
+
+/// The prompt length a long-context tier is judged by: fresh input plus
+/// cache reads and writes, negative counts ignored.
+fn prompt_tokens(input: i64, cache_read: i64, cache_write: i64) -> i64 {
+    input
+        .max(0)
+        .saturating_add(cache_read.max(0))
+        .saturating_add(cache_write.max(0))
 }
 
 /// `estimate_cost` for a price entry already resolved by `lookup_model_prices`.
@@ -6171,8 +6254,13 @@ fn rows_in_timezone(rows: &[StatRow], timezone: Tz) -> Result<Vec<StatRow>, Stri
     rows.iter()
         .map(|row| {
             let mut row = row.clone();
-            row.timestamp =
+            let shifted =
                 storage_timestamp(timestamp_in_timezone(&row.timestamp, timezone)?.naive_local());
+            if row.pricing_timestamp.is_none() {
+                row.pricing_timestamp = Some(std::mem::replace(&mut row.timestamp, shifted));
+            } else {
+                row.timestamp = shifted;
+            }
             Ok(row)
         })
         .collect()
@@ -6768,6 +6856,7 @@ fn append_stats_filters_with_entity(
 
 fn map_stat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StatRow> {
     Ok(StatRow {
+        pricing_timestamp: None,
         id: row.get(0)?,
         tool: row.get(1)?,
         model: row.get(2)?,
@@ -6815,8 +6904,10 @@ mod gateway_overlay;
 pub mod gateway_request_log;
 pub mod magpie_import;
 pub mod peer_shared;
+mod price_feed;
 mod price_memo;
 mod price_repricing;
+mod price_schedule;
 mod scanner_sync;
 mod sync_history_guard;
 pub mod wallpaper_preview;
@@ -7764,7 +7855,7 @@ fn insert_behavior_projects(
 
 /// 一次行为聚合内的记录估价。价格表在一次聚合内不变，`lookup_model_prices` 只取决于
 /// 价格表、工具与模型，所以按 (工具, 模型) 缓存匹配到的价格项后，再经同一
-/// `estimate_cost_with_price` 计价，结果与逐行 `estimate_cost` 逐位相同；省掉的是每行
+/// `estimate_cost_with_price` 计价，结果与逐行 `estimate_cost_at` 逐位相同；省掉的是每行
 /// 对整张价格表的最长匹配与字符串分配。
 struct BehaviorPricer<'p, 'r> {
     prices: &'p Value,
@@ -7791,8 +7882,18 @@ impl<'p, 'r> BehaviorPricer<'p, 'r> {
                     .matched
                     .entry((row.tool.as_str(), row.model.as_str()))
                     .or_insert_with(|| lookup_model_prices(prices, &row.tool, &row.model));
-                estimate_cost_with_price(
+                let price = price_schedule::entry_for_record(
                     price,
+                    &row.tool,
+                    row.price_timestamp(),
+                    prompt_tokens(
+                        row.input_tokens,
+                        row.cache_read_tokens(),
+                        row.cache_write_tokens,
+                    ),
+                );
+                estimate_cost_with_price(
+                    &price,
                     row.input_tokens,
                     row.output_tokens,
                     row.cache_read_tokens(),
@@ -10957,22 +11058,49 @@ pub fn get_prices_impl(app: &AppContext) -> Result<Value, String> {
 }
 
 /// Only what the user changed in the price editor, for a local backup
-/// (`local-backup-v1`): the bundled defaults are left out so a restore never
-/// pins an older build's defaults over newer ones.
+/// (`local-backup-v1`): the defaults (online table, else bundled) are left
+/// out so a restore never pins older defaults over newer ones.
 pub(crate) fn price_overrides_for_backup(app: &AppContext) -> Map<String, Value> {
     let _guard = lock_price_overrides();
-    read_price_overrides(app.app_data_dir(), &default_prices())
-        .0
-        .unwrap_or_default()
+    price_overrides_locked(app)
 }
 
-/// The table the price editor would show with `overrides` as the user's
-/// changes; saving it through `save_prices_impl` stores exactly those.
-pub(crate) fn prices_with_overrides(app: &AppContext, overrides: &Map<String, Value>) -> Value {
-    merge_discovered_prices(
-        apply_price_overrides(&default_prices(), overrides),
-        &load_discovered_model_prices(app),
+fn price_overrides_locked(app: &AppContext) -> Map<String, Value> {
+    read_price_overrides(
+        app.app_data_dir(),
+        &price_feed::effective_defaults(app.app_data_dir()),
     )
+    .0
+    .unwrap_or_default()
+}
+
+/// Replaces the user's price overrides with `merge(current)` through the
+/// editor's save path, so costs are recalculated where rates change. Reading,
+/// merging and saving share the lock an online update takes to install a new
+/// table: the defaults cannot change in between. Returns whether anything
+/// changed.
+pub(crate) fn restore_price_overrides(
+    app: &AppContext,
+    merge: impl FnOnce(&Map<String, Value>) -> Map<String, Value>,
+) -> Result<bool, String> {
+    let _guard = lock_price_overrides();
+    let local = price_overrides_locked(app);
+    let merged = merge(&local);
+    if merged == local {
+        return Ok(false);
+    }
+    let table = merge_discovered_prices(
+        apply_price_overrides(&price_feed::effective_defaults(app.app_data_dir()), &merged),
+        &load_discovered_model_prices(app),
+    );
+    save_prices_locked(app, table)?;
+    Ok(true)
+}
+
+/// Writes `prices` as a downloaded table newer than the bundled one.
+#[cfg(test)]
+pub(crate) fn install_test_price_feed(app: &AppContext, prices: Value) {
+    price_feed::install_for_test(app.app_data_dir(), prices);
 }
 
 fn price_rate_snapshot(prices: &Value) -> Value {
@@ -10990,6 +11118,13 @@ fn price_rate_snapshot(prices: &Value) -> Value {
                 rates.insert(field.to_string(), json!(value));
             }
         }
+        // Old-price segments and long-context tiers change what a record
+        // costs as much as the rates do (price table schema 2).
+        for field in ["history", "tiers"] {
+            if let Some(value) = config.get(field) {
+                rates.insert(field.to_string(), value.clone());
+            }
+        }
         snapshot.insert(model.clone(), Value::Object(rates));
     }
     Value::Object(snapshot)
@@ -11003,11 +11138,32 @@ const PRICE_RESET_WAITS_FOR_BACKUP: &str = "价格文件需要按新版规则整
 
 /// Saves the editor's whole table. Only real edits reach the override file
 /// (see `price_overrides_from_edit`); repricing runs when the effective rates
-/// actually change, compared like prices (`price_values_equal`).
+/// actually change, compared like prices (`price_values_equal`). This entry
+/// checks no editor revision: it is for callers that hand over a whole table
+/// of their own, such as restoring a backup, and for tests. The settings
+/// editor goes through `save_prices_for_editor`.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn save_prices_impl(app: &AppContext, prices: Value) -> Result<Value, String> {
     let _guard = lock_price_overrides();
+    save_prices_locked(app, prices)
+}
+
+/// `save_prices_impl` for the editor: the table revision it loaded is checked
+/// under the same lock an online update takes to install a new table, so an
+/// update cannot land between the check and the save.
+pub fn save_prices_for_editor(
+    app: &AppContext,
+    prices: Value,
+    editor_revision: Option<u64>,
+) -> Result<Value, String> {
+    let _guard = lock_price_overrides();
+    price_feed::ensure_editor_revision(app.app_data_dir(), editor_revision)?;
+    save_prices_locked(app, prices)
+}
+
+fn save_prices_locked(app: &AppContext, prices: Value) -> Result<Value, String> {
     let previous_recovery = price_repricing::recover(app);
-    let defaults = default_prices();
+    let defaults = price_feed::effective_defaults(app.app_data_dir());
     let (previous, read) = load_saved_prices_locked(app);
     if read.migration_postponed {
         return Err(PRICE_SAVE_WAITS_FOR_BACKUP.to_string());
@@ -11017,6 +11173,19 @@ pub fn save_prices_impl(app: &AppContext, prices: Value) -> Result<Value, String
         price_rate_snapshot(&merge_discovered_prices(previous.clone(), &discovered));
     let overrides = price_overrides_from_edit(&defaults, &previous, &prices)?;
     let next = merge_discovered_prices(apply_price_overrides(&defaults, &overrides), &discovered);
+    // Entries edited in this save pass the same checks as the bundled and
+    // downloaded tables, so a negative multiplier never prices a record. An
+    // older override left unchanged is not re-checked, so it cannot block
+    // saving other models.
+    for (model, entry) in &overrides {
+        let edited_now = !next
+            .get(model)
+            .zip(previous.get(model))
+            .is_some_and(|(next, previous)| price_values_equal(next, previous));
+        if entry.is_object() && edited_now {
+            price_schedule::validate_entry(model, entry)?;
+        }
+    }
     let prices_changed = !price_values_equal(&previous_rates, &price_rate_snapshot(&next));
     let bytes = if overrides.is_empty() {
         None
@@ -11088,7 +11257,10 @@ pub fn reset_prices_impl(app: &AppContext) -> Result<Value, String> {
         return Err(PRICE_RESET_WAITS_FOR_BACKUP.to_string());
     }
     let previous_rates = price_rate_snapshot(&merge_discovered_prices(previous, &discovered));
-    let prices = merge_discovered_prices(default_prices(), &discovered);
+    let prices = merge_discovered_prices(
+        price_feed::effective_defaults(app.app_data_dir()),
+        &discovered,
+    );
     if previous_recovery.pending {
         if price_repricing::file_digest(app.app_data_dir())?.is_some() {
             return Err("上次价格已经保存，但统计重算尚未完成；请先再次保存相同价格或重启应用重试，再恢复默认。".into());
@@ -11339,6 +11511,7 @@ fn for_each_ledger_row(
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
         // 看板汇总用的行结构，逐行估价才能直接复用 `PriceMemo::row_price`。
         let log = StatRow {
+            pricing_timestamp: None,
             id: row.get(0).unwrap_or(0),
             tool: row.get(1).unwrap_or_default(),
             model: row.get(2).unwrap_or_default(),
@@ -11955,6 +12128,7 @@ mod csv_export_tests {
         // 不经 SQLite、直接交给估价器的 NaN 同样写空。
         let mut estimator = CsvCostEstimator::new(&prices);
         let nan_row = StatRow {
+            pricing_timestamp: None,
             id: 1,
             tool: "opencode".to_string(),
             model: "gpt-5".to_string(),
@@ -15075,7 +15249,7 @@ fn backfill_null_costs(db_path: &std::path::Path, prices: &Value) -> Result<(), 
         log::info!("Found {count} historical rows with NULL cost_usd. Backfilling...");
 
         let mut stmt = tx
-            .prepare("SELECT id, tool, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens FROM token_logs WHERE cost_usd IS NULL")
+            .prepare("SELECT id, tool, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, timestamp FROM token_logs WHERE cost_usd IS NULL")
             .map_err(|e| e.to_string())?;
 
         let rows = stmt
@@ -15088,17 +15262,21 @@ fn backfill_null_costs(db_path: &std::path::Path, prices: &Value) -> Result<(), 
                     row.get::<_, i64>(4)?,
                     row.get::<_, i64>(5)?,
                     row.get::<_, i64>(6)?,
+                    row.get::<_, String>(7)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
 
         let mut updates = Vec::new();
-        for (id, tool, model, input, output, cached, cache_write) in rows.flatten() {
+        for (id, tool, model, input, output, cached, cache_write, timestamp) in rows.flatten() {
             let cache_read = (cached - cache_write).max(0);
-            let cost = estimate_cost(
+            // Frozen at the price in effect when the record was made, so a
+            // later price change never reaches it (MODEL_PRICING.md).
+            let cost = estimate_cost_at(
                 prices,
                 &tool,
                 &model,
+                &timestamp,
                 input,
                 output,
                 cache_read,
@@ -15413,10 +15591,11 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
             &fallback_machine,
             &|row: &gateway_cloud::HourRow| {
                 row.cost_usd.unwrap_or_else(|| {
-                    estimate_cost(
+                    estimate_cost_at(
                         &prices,
                         &row.tool,
                         &row.model,
+                        &row.timestamp,
                         row.input_tokens,
                         row.output_tokens,
                         (row.cached_tokens - row.cache_write_tokens).max(0),
@@ -15466,10 +15645,11 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
 
             let row_cost = r.cost_usd.unwrap_or_else(|| {
                 let cache_read = (r.cached_tokens - r.cache_write_tokens).max(0);
-                estimate_cost(
+                estimate_cost_at(
                     &prices,
                     &r.tool,
                     &r.model,
+                    &r.timestamp,
                     r.input_tokens,
                     r.output_tokens,
                     cache_read,
@@ -15532,10 +15712,11 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
         &mut gateway_deletes,
         &|row| {
             row.cost_usd.unwrap_or_else(|| {
-                estimate_cost(
+                estimate_cost_at(
                     &prices,
                     &row.tool,
                     &row.model,
+                    &row.timestamp,
                     row.input_tokens,
                     row.output_tokens,
                     (row.cached_tokens - row.cache_write_tokens).max(0),

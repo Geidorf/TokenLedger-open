@@ -35,7 +35,7 @@ import {
 import { cloudSidebarStatusCopy } from '../src/components/Sidebar.tsx';
 import { assignToolChartSlots, colorsForToolsInView, toolChartSlot } from '../src/types.ts';
 import { getChartThemeTokens } from '../src/utils/chartTheme.ts';
-import { MetricsGrid } from '../src/components/MetricsGrid.tsx';
+import { MetricsGridView } from '../src/components/MetricsGrid.tsx';
 import { YearHeatmap } from '../src/components/YearHeatmap.tsx';
 import {
   companyQuotaWindowLabel,
@@ -119,6 +119,14 @@ import {
 // 「检出用了哪种换行符」。
 function readSource(target) {
   return fs.readFileSync(target, 'utf8').replaceAll('\r\n', '\n');
+}
+
+// 订阅额度设置页的文案在 zh.ts 里；只查文字是否还在时，把两份源码拼在一起读。
+function readQuotaSectionWithCopy() {
+  return [
+    readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx')),
+    readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')),
+  ].join('\n');
 }
 
 
@@ -260,7 +268,8 @@ test('窄屏额度连续列表把指标移到来源身份下方，并在最窄�
 
 test('本地扫描失败写入看板恢复状态而不是只显示一次性 Toast', () => {
   const stats = readSource(path.join(process.cwd(), 'src', 'hooks', 'useStats.ts'));
-  assert.match(stats, /const errorMessage = `扫描失败: \$\{err\}`;/);
+  assert.match(stats, /const errorMessage = t\('statsMsg\.scanFailed', \{ error: String\(err\) \}\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'statsMsg\.scanFailed': '扫描失败: \{error\}'/);
   assert.match(stats, /setStatsErrorAction\('scan'\);/);
   assert.match(stats, /setStatsError\(errorMessage\);[\s\S]*showMessage\('error', errorMessage\);/);
   const dashboard = readSource(path.join(process.cwd(), 'src', 'components', 'DashboardTab.tsx'));
@@ -297,8 +306,9 @@ test('额度刷新失败保留上次来源快照并给出重试语义', () => {
   const quotaHook = readSource(path.join(process.cwd(), 'src', 'hooks', 'useQuota.ts'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
   assert.match(quota, /const hasProviderSnapshot = providers\.length > 0;/);
-  assert.match(quota, /\{\(!error \|\| showRecoveryActions\) && \([\s\S]*aria-label=\{quotaRefreshAriaLabel\}[\s\S]*\{error && \([\s\S]*className="quota-panel-error" role="alert"[\s\S]*<span>\{error\}<\/span>[\s\S]*hasProviderSnapshot[\s\S]*仍显示上次读取到的来源结果[\s\S]*检查额度来源/);
-  assert.doesNotMatch(quota, /className="quota-panel-error-actions"[\s\S]*重新读取额度/);
+  assert.match(quota, /\{\(!error \|\| showRecoveryActions\) && \([\s\S]*aria-label=\{quotaRefreshAriaLabel\}[\s\S]*\{error && \([\s\S]*className="quota-panel-error" role="alert"[\s\S]*<span>\{error\}<\/span>[\s\S]*hasProviderSnapshot[\s\S]*t\('quota\.error\.snapshot'\)[\s\S]*t\('quota\.error\.check'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.error\.snapshot': '仍显示上次读取到的来源结果。'[\s\S]*'quota\.error\.check': '检查额度来源'/);
+  assert.doesNotMatch(quota, /className="quota-panel-error-actions"[\s\S]*quota\.refresh'/);
   assert.match(quotaHook, /setQuotaError\(formatQuotaLoadError\(err\)\);/);
   assert.equal((dashboard.match(/showRecoveryActions=\{false\}/g) || []).length, 2);
   assert.match(quota, /\{providers\.length === 0 && loading \?/);
@@ -1889,7 +1899,8 @@ test('populated dashboard groups insight panels in a cache-economics then time-b
   assert.match(rhythmCss, /\.rhythm-cell\[data-level='5'\],\s*\.rhythm-legend i\[data-level='5'\] \{ background: var\(--color-primary\)/);
   assert.match(rhythmCss, /\.rhythm-tooltip-anchor \{[\s\S]*?pointer-events: none;/);
   const entitySource = readSource(path.join(process.cwd(), 'src', 'components', 'EntityDashboardModal.tsx'));
-  assert.match(entitySource, /aria-label="分布对比口径"/);
+  assert.match(entitySource, /aria-label=\{t\('entity\.metricLabel'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.metricLabel': '分布对比口径'/);
   assert.match(entitySource, /describeCompositionItem\(item, metric, total\)/);
   // 最近记录是单条记录，按记录精度显示（T10.154 §4.1、D41）。
   assert.match(entitySource, /describeCost\(item\.cost, 'record'\)\} · \{formatDateTime\(item\.timestamp\)\}/);
@@ -1917,7 +1928,8 @@ test('cache presentation keeps proven splits and falls back to one combined metr
     [{ label: '缓存合计', tokens: 120 }],
   );
 
-  const combinedMarkup = MetricsGrid({
+  // MetricsGrid 外层只订阅界面语言，卡片内容由 MetricsGridView 给出，可以直接当函数调用。
+  const combinedMarkup = MetricsGridView({
     summary: {
       totalTokens: 30,
       inputTokens: 20,
@@ -1949,8 +1961,9 @@ test('dashboard visual hierarchy keeps contributor panels aligned and trend metr
   assert.doesNotMatch(trend, /metricLabel="有效 Tokens"/);
   assert.match(trend, /completedBucketAverage\(comparison, 'tokens'\)/);
   // 单位费用的标签、计算与显示保护统一在 utils/unitCost（T10.159 决定 d，专属看板条带共用）。
-  assert.match(trend, /label: UNIT_COST_LABEL/);
-  assert.match(readSource(path.join(process.cwd(), 'src', 'utils', 'unitCost.ts')), /UNIT_COST_LABEL = '单位费用'/);
+  assert.match(trend, /label: unitCostLabel\(\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'utils', 'unitCost.ts')), /return t\('unitCost\.label'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'unitCost\.label': '单位费用'/);
   assert.match(trend, /className="comparison-kpi-main"/);
   assert.match(css, /\.comparison-kpi-main \{[\s\S]*gap:\s*4px;/);
   assert.match(css, /\.comparison-kpi-main > b \{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-width:\s*0;/);
@@ -1962,7 +1975,8 @@ test('dashboard visual hierarchy keeps contributor panels aligned and trend metr
   assert.match(css, /\.entity-modal-actions > \.ghost-inline,[\s\S]*\.entity-modal-actions > \.secondary-inline \{[\s\S]*white-space:\s*nowrap;/);
   assert.match(css, /\.entity-copy-fallback \{[\s\S]*border:\s*1px solid var\(--color-danger-soft-border\);[\s\S]*background:\s*var\(--color-danger-soft-bg\);/);
   assert.match(entity, /clipboard unavailable/);
-  assert.match(entity, /模型 ID（手动复制）/);
+  assert.match(entity, /t\('entity\.manualCopyAria'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.manualCopyAria': '模型 ID（手动复制）'/);
   assert.match(css, /Responsive KPI density[\s\S]*@media \(min-width: 341px\) and \(max-width: 860px\) \{\s*\.metrics-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(css, /Responsive KPI density[\s\S]*\.metric-card \{[\s\S]*grid-template-columns: 28px minmax\(0, 1fr\);[\s\S]*padding: 12px;/);
   assert.match(css, /Responsive KPI density[\s\S]*\.metric-value \{[\s\S]*font-size: 20px;[\s\S]*white-space: nowrap;/);
@@ -2489,8 +2503,7 @@ test('verified company OpenAPI quota uses CNY ratios and stays secret-free', () 
     path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'custom.rs'));
   const settings = readSource(
     path.join(process.cwd(), 'src-tauri', 'src', 'settings.rs'));
-  const quotaSettings = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quotaSettings = readQuotaSectionWithCopy();
   const androidWidget = readSource(
     path.join(
       process.cwd(),
@@ -2561,8 +2574,7 @@ test('quota stop is local-only while cloud deletion remains explicit and tombsto
     readSource(path.join(process.cwd(), 'src', 'App.tsx')),
     readSource(path.join(process.cwd(), 'src', 'hooks', 'useQuota.ts')),
   ].join('\n');
-  const settingsSource = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const settingsSource = readQuotaSectionWithCopy();
   assert.match(appSource, /跨设备额度同步已关闭；本机停止读写，云端历史仍保留/);
   assert.match(appSource, /invoke<unknown>\('delete_quota_snapshot_provider'/);
   assert.match(appSource, /invoke<unknown>\('clear_quota_snapshots'/);
@@ -2661,10 +2673,11 @@ test('设置页额度同步在进行中暴露状态并禁用重复点击', () =>
   const primitives = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'SettingsPrimitives.tsx'));
   assert.match(source, /const quotaSyncBusy = quotaSyncStatus\.state === 'syncing';/);
-  assert.match(source, /const quotaSyncButtonLabel = quotaSyncBusy \? '同步中…' : '同步额度';/);
-  assert.match(source, /const quotaSyncButtonAriaLabel = quotaSyncBusy \? '正在同步额度' : '同步额度';/);
+  assert.match(source, /const quotaSyncButtonLabel = quotaSyncBusy \? t\('qs\.sync\.busy'\) : t\('qs\.sync\.button'\);/);
+  assert.match(source, /const quotaSyncButtonAriaLabel = quotaSyncBusy \? t\('qs\.sync\.busyAria'\) : t\('qs\.sync\.button'\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'qs\.sync\.busy': '同步中…',[\s\S]*'qs\.sync\.button': '同步额度',[\s\S]*'qs\.sync\.busyAria': '正在同步额度'/);
   assert.match(source, /const quotaSyncActionDisabledReason = busy\.settings/);
-  assert.match(source, /<SettingsRow label="跨设备同步状态" hint="停用或撤权只停止这台设备，云端历史仍保留。" busy=\{quotaSyncBusy\} wideControl=\{Boolean\(quotaSyncRecoveryMessage\)\}>/);
+  assert.match(source, /<SettingsRow label=\{t\('qs\.sync\.status'\)\} hint=\{t\('qs\.sync\.statusHint'\)\} busy=\{quotaSyncBusy\} wideControl=\{Boolean\(quotaSyncRecoveryMessage\)\}>/);
   assert.match(source, /style=\{quotaSyncRecoveryMessage \? \{ display: 'block', overflow: 'visible', WebkitLineClamp: 'unset' \} : undefined\}/);
   assert.match(source, /aria-label=\{quotaSyncButtonAriaLabel\}/);
   assert.match(source, /id="quota-sync-action-hint"/);
@@ -2682,11 +2695,11 @@ test('云端额度快照删除在进行中暴露 provider 级反馈并禁用重�
     path.join(process.cwd(), 'src', 'hooks', 'useQuota.ts'));
   assert.match(source, /const runDeleteQuotaSnapshot = async/);
   assert.match(source, /const runClearQuotaSnapshots = async/);
-  assert.match(source, /aria-label=\{cloudDeleteBusy \? `正在删除/);
+  assert.match(source, /aria-label=\{t\(cloudDeleteBusy \? 'qs\.cloudDelete\.busyAria'/);
   assert.match(source, /aria-busy=\{cloudDeleteBusy \|\| undefined\}/);
-  assert.match(source, /\{cloudDeleteBusy \? '删除中…' : '删除云端快照'\}/);
+  assert.match(source, /\{cloudDeleteBusy \? t\('qs\.deleting'\) : t\('qs\.cloudDelete\.button'\)\}/);
   assert.match(source, /aria-busy=\{quotaSnapshotAllBusy \|\| undefined\}/);
-  assert.match(source, /\{quotaSnapshotAllBusy \? '删除中…' : '删除全部云端额度'\}/);
+  assert.match(source, /\{quotaSnapshotAllBusy \? t\('qs\.deleting'\) : t\('qs\.snapshots\.deleteAll'\)\}/);
   assert.match(hook, /if \(!\(await confirm\(\{[\s\S]*title: '删除这个来源的云端额度快照？'/);
   assert.match(hook, /if \(!\(await confirm\(\{[\s\S]*title: '删除全部云端额度快照？'/);
   assert.match(source, /onConfirm: RequestConfirmation/);
@@ -2943,8 +2956,8 @@ test('quota dashboard is a continuous provider list without legacy hero, rings, 
   assert.doesNotMatch(css, /\.quota-ring|quota-ring-sweep|\.quota-hero|\.quota-view-switch/);
   assert.match(source, /ChevronDown/);
   assert.match(source, /<summary[^>]*aria-label=/);
-  assert.match(source, /详情/);
-  assert.match(source, /aria-label=\{`\$\{windowLabel\} 可用额度`\}/);
+  assert.match(source, /t\('quota\.details\.sr'\)/);
+  assert.match(source, /aria-label=\{t\('quota\.meterAria', \{ label: windowLabel \}\)\}/);
   assert.match(source, /<span style=\{\{ width: `\$\{100 - used\}%` \}\} \/>/);
   assert.match(css, /\.quota-dashboard \{[\s\S]{0,360}display: grid;[\s\S]{0,360}grid-template-columns: 1fr;/);
   assert.match(css, /\.quota-provider \{/);
@@ -3009,7 +3022,8 @@ test('quota providers without displayable windows move into a compact pending gr
   }), false);
   assert.match(source, /const renderableProviders = displayedProviderViews\.filter\(\(view\) => view\.hasRenderableWindows\)/);
   assert.match(source, /className="quota-pending-providers"/);
-  assert.match(source, /<h3 id="quota-pending-title">待处理来源<\/h3>/);
+  assert.match(source, /<h3 id="quota-pending-title">\{t\('quota\.pending\.title'\)\}<\/h3>/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.pending\.title': '待处理来源'/);
   assert.match(source, /pending \? 'quota-provider-pending' : 'quota-provider'/);
   assert.match(css, /\.quota-pending-list \{[\s\S]*grid-template-columns: 1fr/);
   assert.match(css, /\.quota-provider-pending \{[\s\S]*background: var\(--color-bg-subtle\)/);
@@ -3025,8 +3039,8 @@ test('quota dashboard keeps normal windows compact while preserving exceptional 
     path.join(process.cwd(), 'src', 'components', 'QuotaPanel.tsx'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
   assert.match(source, /effectiveStatus !== 'ok'/);
-  assert.match(source, /className="sr-only">数据最新，\{formatObserved\(window\.observedAt\)\}/);
-  assert.match(source, /来源快照，不推算未提供的余额/);
+  assert.match(source, /className="sr-only">\{t\('quota\.fresh', \{ observed: formatObserved\(window\.observedAt\) \}\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.panel\.sr': '来源快照，不推算未提供的余额。'/);
   assert.match(source, /quota-panel-subtitle/);
   assert.match(source, /<section className="panel quota-panel" aria-labelledby="quota-panel-title"[^>]*>/);
   assert.match(source, /<h2 id="quota-panel-title" className="panel-title"/);
@@ -3034,21 +3048,23 @@ test('quota dashboard keeps normal windows compact while preserving exceptional 
   // T10.159：行尾详情另收额度消耗速度的方法、区间与不预测的原因（T10.153 §5.2、§10 第 3 条），
   // 多一个可选的来源能力参数，交给 computeQuotaPace 判断。
   assert.match(source, /function QuotaDetails\(\{ windows, now, label(?:, providerCapability)? \}/);
-  assert.match(source, /<details className="quota-details">[\s\S]{0,180}<summary aria-label=\{`\$\{label\}：查看额度详情`\}/);
+  assert.match(source, /<details className="quota-details">[\s\S]{0,180}<summary aria-label=\{t\('quota\.details\.aria', \{ label \}\)\}/);
   assert.match(source, /<QuotaDetails windows=\{windows\} now=\{now\} label=/);
   assert.match(source, /const sharedStatus = states\.length && states\.every\(state => state\.effectiveStatus === states\[0\]\.effectiveStatus\)[\s\S]{0,100}\? states\[0\]\.effectiveStatus : undefined;/);
-  assert.match(source, /title="仅展示来源返回的真实额度，不推算未提供的余额"/);
-  assert.match(source, /<p className="quota-panel-subtitle">剩余额度<\/p>/);
+  assert.match(source, /title=\{t\('quota\.panel\.titleHint'\)\}/);
+  assert.match(source, /<p className="quota-panel-subtitle">\{t\('quota\.panel\.subtitle'\)\}<\/p>/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.panel\.titleHint': '仅展示来源返回的真实额度，不推算未提供的余额'[\s\S]*'quota\.panel\.subtitle': '剩余额度'/);
   assert.match(source, /<strong title=\{windowLabel\}>\{windowLabel\}<\/strong>/);
   assert.doesNotMatch(source, /effectiveStatus === 'ok' \? '最新'/);
   assert.doesNotMatch(source, /\{usedDisplay\}% 已使用/);
   assert.match(source, /const quotaRefreshBusy = loading \|\| quotaSyncBusy;/);
-  assert.match(source, /const quotaRefreshButtonLabel = loading \? '读取中…' : quotaSyncBusy \? '同步中…' : '刷新额度';/);
-  assert.match(source, /const quotaRefreshAriaLabel = loading \? '正在读取额度' : quotaSyncBusy \? '正在同步额度' : '刷新额度';/);
+  assert.match(source, /const quotaRefreshButtonLabel = t\(loading \? 'quota\.refresh\.loading' : quotaSyncBusy \? 'quota\.refresh\.syncing' : 'quota\.refresh'\);/);
+  assert.match(source, /const quotaRefreshAriaLabel = t\(loading \? 'quota\.refresh\.loadingAria' : quotaSyncBusy \? 'quota\.refresh\.syncingAria' : 'quota\.refresh'\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.refresh\.loading': '读取中…',\s*'quota\.refresh\.syncing': '同步中…',\s*'quota\.refresh': '刷新额度',\s*'quota\.refresh\.loadingAria': '正在读取额度',\s*'quota\.refresh\.syncingAria': '正在同步额度'/);
   assert.match(source, /aria-label=\{quotaRefreshAriaLabel\}/);
   assert.match(source, /aria-busy=\{quotaRefreshBusy\}/);
-  assert.match(source, /title=\{quotaRefreshBusy \? quotaRefreshAriaLabel : '重新读取本机与已授权的额度来源'\}/);
-  assert.match(source, /刷新额度/);
+  assert.match(source, /title=\{quotaRefreshBusy \? quotaRefreshAriaLabel : t\('quota\.refresh\.title'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.refresh\.title': '重新读取本机与已授权的额度来源'/);
   assert.match(source, /providerEmptyActionLabel/);
   assert.match(source, /providerEmptyStateLabel/);
   assert.match(source, /className=\{`quota-provider-state quota-provider-state-\$\{provider\.status\}`\}/);
@@ -3076,7 +3092,8 @@ test('额度待处理来源的复制动作暴露进行中状态并禁用重复�
   assert.match(source, /finally \{[\s\S]*setActionBusy\(false\)/);
   assert.match(source, /aria-busy=\{actionBusy \|\| undefined\}/);
   assert.match(source, /disabled=\{actionBusy\}/);
-  assert.match(source, /复制中…/);
+  assert.match(source, /t\('quota\.empty\.copying'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.empty\.copying': '复制中…'/);
   assert.match(source, /LoaderCircle className="h-3\.5 w-3\.5 animate-spin"/);
 });
 
@@ -3129,7 +3146,7 @@ test('all percentage quota meters expose localized available-value text', () => 
   const source = readSource(
     path.join(process.cwd(), 'src', 'components', 'QuotaPanel.tsx'));
   assert.equal(
-    (source.match(/aria-valuetext=\{remainingDisplay === null \? undefined : `\$\{remainingDisplay\}% 可用`\}/g) || []).length,
+    (source.match(/aria-valuetext=\{remainingDisplay === null \? undefined : t\('quota\.meterText', \{ n: remainingDisplay \}\)\}/g) || []).length,
     1,
   );
 });
@@ -3275,6 +3292,7 @@ test('settings form fields expose explicit accessible names', () => {
     'PricingSection.tsx',
   ].map((file) => readSource(path.join(process.cwd(), 'src', 'components', 'settings', file)));
   const source = sources.join('\n');
+  const zhMessages = readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts'));
   for (const label of [
     'Supabase URL',
     'Publishable Key',
@@ -3287,7 +3305,12 @@ test('settings form fields expose explicit accessible names', () => {
     '清理截止日期',
     '模型价格 JSON',
   ]) {
-    assert.match(source, new RegExp(`aria-label="${label}"`), `missing accessible name: ${label}`);
+    // 迁到文案表的标签写成 aria-label={t('键')}，键在 zh.ts 里对应原文。
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const key = zhMessages.match(new RegExp(`'([\\w.]+)': '${escaped}',`))?.[1];
+    const literal = new RegExp(`aria-label="${escaped}"`).test(source);
+    const viaKey = key !== undefined && source.includes(`aria-label={t('${key}')}`);
+    assert.ok(literal || viaKey, `missing accessible name: ${label}`);
   }
 });
 
@@ -3402,7 +3425,7 @@ test('phone cloud setup keeps the next verification action in the first viewport
   const cloud = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'CloudAccountSection.tsx'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
-  assert.match(cloud, /登录云端账户/);
+  assert.match(cloud, /t\('cloud\.signInCloud'\)/);
   assert.match(cloud, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
   assert.match(cloud, /ref=\{emailInputRef\}/);
   assert.match(css, /@media \(max-width: 430px\)[\s\S]*?\.cloud-setup-steps li \{[\s\S]*?min-height:\s*44px;[\s\S]*?padding-block:\s*2px;/);
@@ -3414,7 +3437,8 @@ test('云端同步主动作会随首次同步完成状态切换文案', () => {
   const cloud = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'CloudAccountSection.tsx'));
   assert.match(cloud, /firstSyncActionLabel\(props\.setup, props\.busy\.sync\)/);
-  assert.match(cloud, /firstSyncCompleted \? '同步最新数据' : '执行首次同步'/);
+  assert.match(cloud, /firstSyncCompleted \? t\('cloud\.sync\.latest'\) : t\('cloud\.sync\.first'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'cloud\.sync\.latest': '同步最新数据',\s*'cloud\.sync\.first': '执行首次同步'/);
 });
 
 test('云端连接动作在验证或同步期间暴露进行中语义并统一入口文案', () => {
@@ -3423,7 +3447,7 @@ test('云端连接动作在验证或同步期间暴露进行中语义并统一�
   const primitives = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'SettingsPrimitives.tsx'));
   assert.match(cloud, /const capabilityBusy = props\.setup\.validating;/);
-  assert.match(cloud, /const capabilityButtonLabel = capabilityBusy \? '验证中…' : capabilityActionLabel\(props\.setup\);/);
+  assert.match(cloud, /const capabilityButtonLabel = capabilityBusy \? t\('cloud\.verify\.busy'\) : capabilityActionLabel\(props\.setup\);/);
   assert.match(cloud, /aria-label=\{capabilityButtonAriaLabel\}/);
   assert.match(cloud, /aria-busy=\{capabilityBusy \|\| undefined\}/);
   assert.match(cloud, /disabled=\{!props\.setup\.authenticated \|\| capabilityBusy \|\| props\.busy\.sync\}/);
@@ -3431,7 +3455,7 @@ test('云端连接动作在验证或同步期间暴露进行中语义并统一�
   assert.match(cloud, /<SettingsActionRow busy=\{capabilityBusy \|\| props\.busy\.sync\}>/);
   assert.match(cloud, /const firstSyncButtonAriaLabel = props\.busy\.sync/);
   assert.match(cloud, /aria-label=\{firstSyncButtonAriaLabel\}/);
-  assert.match(cloud, /const quickSyncButtonLabel = props\.busy\.sync \? '同步中…' : '立即同步';/);
+  assert.match(cloud, /const quickSyncButtonLabel = props\.busy\.sync \? t\('cloud\.sync\.busy'\) : t\('cloud\.sync\.now'\);/);
   assert.match(cloud, /aria-label=\{quickSyncButtonAriaLabel\}/);
   assert.match(cloud, /\{quickSyncButtonLabel\}/);
   assert.match(primitives, /settings-action-row" aria-busy=\{busy \|\| undefined\}/);
@@ -3440,7 +3464,7 @@ test('云端连接动作在验证或同步期间暴露进行中语义并统一�
 test('云端账户与连接配置动作在提交期间暴露进行中语义', () => {
   const cloud = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'CloudAccountSection.tsx'));
-  assert.match(cloud, /const configButtonLabel = props\.busy\.config \? '保存中…' : '保存配置';/);
+  assert.match(cloud, /const configButtonLabel = props\.busy\.config \? t\('cloud\.config\.saving'\) : t\('cloud\.config\.save'\);/);
   assert.match(cloud, /aria-label=\{configButtonAriaLabel\}/);
   assert.match(cloud, /aria-busy=\{props\.busy\.config \|\| undefined\}/);
   assert.match(cloud, /\{props\.busy\.config && <RefreshCw className="h-4 w-4 animate-spin" \/>\}/);
@@ -3449,12 +3473,13 @@ test('云端账户与连接配置动作在提交期间暴露进行中语义', ()
   assert.match(cloud, /const \[activeAuthAction, setActiveAuthAction\] = useState<AuthAction \| null>\(null\);/);
   assert.match(cloud, /const authActionBusy = \(action: AuthAction\) => props\.busy\.auth && activeAuthAction === action;/);
   assert.match(cloud, /const runAuthAction = \(action: AuthAction, callback: \(\) => void\) =>/);
-  assert.match(cloud, /aria-label=\{signInBusy \? '正在登录云端账户' : '登录'\}/);
-  assert.match(cloud, /aria-label=\{signUpBusy \? '正在注册云端账户' : '注册'\}/);
-  assert.match(cloud, /aria-label=\{signOutBusy \? '正在退出云端账户' : '退出云端账户'\}/);
-  assert.match(cloud, /\{signInBusy \? '登录中…' : '登录'\}/);
-  assert.match(cloud, /\{signUpBusy \? '注册中…' : '注册'\}/);
-  assert.match(cloud, /\{signOutBusy \? '退出中…' : '退出'\}/);
+  assert.match(cloud, /aria-label=\{signInBusy \? t\('cloud\.signIn\.busyAria'\) : t\('cloud\.signIn'\)\}/);
+  assert.match(cloud, /aria-label=\{signUpBusy \? t\('cloud\.signUp\.busyAria'\) : t\('cloud\.signUp'\)\}/);
+  assert.match(cloud, /aria-label=\{signOutBusy \? t\('cloud\.signOut\.busyAria'\) : t\('cloud\.signOut\.aria'\)\}/);
+  assert.match(cloud, /\{signInBusy \? t\('cloud\.signIn\.busy'\) : t\('cloud\.signIn'\)\}/);
+  assert.match(cloud, /\{signUpBusy \? t\('cloud\.signUp\.busy'\) : t\('cloud\.signUp'\)\}/);
+  assert.match(cloud, /\{signOutBusy \? t\('cloud\.signOut\.busy'\) : t\('cloud\.signOut'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'cloud\.signIn\.busyAria': '正在登录云端账户',\s*'cloud\.signIn': '登录'/);
   assert.match(cloud, /<SettingsActionRow busy=\{props\.busy\.auth\}>/);
 });
 
@@ -3663,7 +3688,8 @@ test('phone model ranking exposes every drilldown item without a hidden scrollba
   assert.match(phoneBlock, /\.model-cost-row-btn \{[\s\S]*display:\s*grid;[\s\S]*grid-template-areas:/);
   assert.match(phoneBlock, /\.model-cost-name \{[\s\S]*overflow-wrap:\s*anywhere;/);
   // T10.154 D27：副标题换成统一叫法，未知仍排最后、不按 0 处理。
-  assert.match(modelCost, /按预估费用排序 · 不可得的排在最后 · 展开行查看缓存构成/);
+  assert.match(modelCost, /t\('modelCost\.info'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'modelCost\.info': '按预估费用排序 · 不可得的排在最后 · 展开行查看缓存构成'/);
   assert.match(modelCost, /LayoutDashboard[\s\S]*model-cost-drilldown-label/);
   assert.match(css, /\.model-cost-drilldown-btn \{[\s\S]*min-width:\s*64px;[\s\S]*min-height:\s*44px;/);
   assert.match(css, /\.model-cost-row-btn\s*\{[\s\S]*min-block-size:\s*44px;/);
@@ -3745,8 +3771,9 @@ test('entity dashboard retry exposes loading feedback and a duplicate-click guar
   const entityTest = readSource(path.join(process.cwd(), 'src', 'components', 'EntityDashboardModal.test.tsx'));
   assert.match(entitySource, /aria-busy=\{loading\}/);
   assert.match(entitySource, /disabled=\{loading\}/);
-  assert.match(entitySource, /loading \? '重新加载中…' : '重新加载'/);
-  assert.match(entitySource, /title=\{loading \? '正在重新加载专属看板' : '重新加载专属看板'\}/);
+  assert.match(entitySource, /loading \? t\('entity\.reloading'\) : t\('entity\.reload'\)/);
+  assert.match(entitySource, /title=\{loading \? t\('entity\.reloadingTitle'\) : t\('entity\.reloadTitle'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.reloading': '重新加载中…'/);
   assert.match(entityTest, /实体看板失败恢复入口在重试期间显示进行中反馈并阻止重复点击/);
 });
 
@@ -3758,7 +3785,8 @@ test('ID copy actions expose in-progress semantics and block duplicate clicks', 
   assert.match(entitySource, /modelCopyState === 'copying'/);
   assert.match(entitySource, /disabled=\{modelCopyState === 'copying'\}/);
   assert.match(entitySource, /aria-busy=\{modelCopyState === 'copying' \|\| undefined\}/);
-  assert.match(entitySource, /'正在复制模型 ID'/);
+  assert.match(entitySource, /t\('entity\.copy\.copyingAria'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.copy\.copyingAria': '正在复制模型 ID'/);
   assert.match(logsSource, /status: 'copying'/);
   assert.match(logsSource, /disabled=\{isSessionCopying\}/);
   assert.match(logsSource, /aria-busy=\{isSessionCopying \|\| undefined\}/);
@@ -4009,11 +4037,13 @@ test('cloud status and remote quota reads require an explicit user check', () =>
   assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.cloud\.unknown': '本地就绪 · 云端状态待检查'[\s\S]*'shell\.sync\.checkInSettings': '请先在设置与云端检查云端状态'/);
   assert.match(sidebar, /onCheckCloudStatus\?: \(\) => void/);
   assert.match(sidebar, /if \(!cloudStatusKnown && onCheckCloudStatus\)/);
-  assert.match(cloudSection, /查看登录状态会读取本机钥匙串，仅在你主动点击后执行/);
-  assert.match(cloud, /当前授权周期内不会重复读取本机钥匙串；请确认登录钥匙串已解锁后，主动重试/);
+  assert.match(cloudSection, /t\('cloud\.status\.note'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'cloud\.status\.note': '查看登录状态会读取本机钥匙串，仅在你主动点击后执行。'/);
+  assert.match(cloud, /t\('cloudMsg\.keychain'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /当前授权周期内不会重复读取本机钥匙串；请确认登录钥匙串已解锁后，主动重试/);
   assert.match(cloudSection, /id=\{statusErrorId\}[\s\S]*statusErrorId/);
   assert.match(cloudSection, /aria-describedby=\{statusErrorId\}/);
-  assert.match(cloudSection, /statusError \? '重试检查' : '检查账户状态'/);
+  assert.match(cloudSection, /statusError \? t\('cloud\.status\.retry'\) : t\('cloud\.status\.check'\)/);
 });
 
 test('native startup keeps the shell hidden until the resolved window mode is applied', () => {
@@ -4111,18 +4141,15 @@ test('wallpaper consent and cleanup actions expose progress while locking duplic
     path.join(process.cwd(), 'src', 'components', 'settings', 'WallpaperSection.tsx'));
   assert.match(wallpaper, /const \[activeAction, setActiveAction\] = useState<'restore-consent' \| 'disable-consent' \| 'cleanup' \| null>\(null\);/);
   assert.match(wallpaper, /aria-busy=\{activeAction !== null \|\| undefined\}/);
-  assert.match(wallpaper, /正在确认并恢复历史壁纸设置/);
-  assert.match(wallpaper, /确认中…/);
-  assert.match(wallpaper, /正在关闭历史壁纸自动化/);
-  assert.match(wallpaper, /处理中…/);
-  assert.match(wallpaper, /正在清理历史壁纸/);
-  assert.match(wallpaper, /清理中…/);
+  for (const key of ['wall.consent.restoringAria', 'wall.consent.confirming', 'wall.consent.disablingAria', 'wall.consent.disabling', 'wall.cleanup.busyAria', 'wall.cleanup.busy']) {
+    assert.match(wallpaper, new RegExp(`t\\('${key.replace(/\./g, '\\.')}'\\)`), key);
+  }
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'wall\.consent\.restoringAria': '正在确认并恢复历史壁纸设置'[\s\S]*'wall\.cleanup\.busy': '清理中…'/);
   assert.match(wallpaper, /<SettingsActionRow busy=\{actionLocked\}>/);
 });
 
 test('quota provider immediate-read actions expose progress while locking duplicate work', () => {
-  const quota = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   assert.match(quota, /const \[activeQuotaRead, setActiveQuotaRead\] = useState<'claude' \| 'antigravity' \| null>\(null\);/);
   assert.match(quota, /const claudeReadBusy = activeQuotaRead === 'claude' && busy\.settings;/);
   assert.match(quota, /const antigravityReadBusy = activeQuotaRead === 'antigravity' && busy\.settings;/);
@@ -4140,8 +4167,7 @@ test('quota provider immediate-read actions expose progress while locking duplic
 });
 
 test('custom quota endpoint actions expose provider-specific progress while locking duplicate work', () => {
-  const quota = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   assert.match(quota, /activeCustomEndpointAction/);
   assert.match(quota, /正在启用/);
   assert.match(quota, /正在停用/);
@@ -4348,7 +4374,7 @@ test('quota backend reason codes have localized user-facing copy', () => {
   ]) {
     assert.match(source, new RegExp(`\\b${reason}:`));
   }
-  assert.match(source, /Claude Desktop 额度页可能正常/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'quota\.reason\.claudeNativeUsageUnavailable': 'Claude Desktop 额度页可能正常/);
   // T10.143f 起这段安卓文案在 ui/foundation/V2Formatters.kt，读整个看板界面源码。
   const android = readAndroidDashboardUi();
   assert.match(android, /secure_storage_unavailable.*系统安全存储暂时无法读取/);
@@ -4358,8 +4384,7 @@ test('quota backend reason codes have localized user-facing copy', () => {
 test('Claude enhanced quota prefers the bounded in-process PTY and keeps CodexBar as fallback', () => {
   const backend = readSource(
     path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'mod.rs'));
-  const settings = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const settings = readQuotaSectionWithCopy();
   assert.match(backend, /capture_claude_cli_usage/);
   assert.match(backend, /native_pty_system/);
   assert.match(backend, /authorize_claude_native_quota/);
@@ -4376,15 +4401,15 @@ test('Claude enhanced quota prefers the bounded in-process PTY and keeps CodexBa
   assert.match(backend, /claude_codexbar_envelope\(app_data_dir, fetched_at\)/);
   assert.doesNotMatch(backend, /api\/oauth\/usage|Claude Code-credentials/);
   // U-107：实验来源收进「高级」，默认不参与；边界说明仍写明不碰凭据。
-  assert.match(settings, /实验来源：内置 \/usage 与 CodexBar/);
+  assert.match(settings, /FALLBACK_CLI_NAME = 'CodexBar'/);
+  assert.match(settings, /实验来源：内置 \/usage 与 \{cli\}/);
   assert.match(settings, /不读钥匙串、Cookie 或 OAuth Token/);
 });
 
 test('Antigravity quota is native-first on every desktop and restricts CodexBar to local CLI fallback', () => {
   const backend = readSource(
     path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'antigravity.rs'));
-  const settings = readSource(
-    path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const settings = readQuotaSectionWithCopy();
   assert.match(backend, /RetrieveUserQuotaSummary/);
   assert.match(backend, /GetUserStatus/);
   assert.match(backend, /GetCommandModelConfigs/);
@@ -4398,7 +4423,7 @@ test('Antigravity quota is native-first on every desktop and restricts CodexBar 
   assert.match(backend, /Some\("app" \| "cli" \| "ide" \| "local"\)/);
   assert.doesNotMatch(backend, /api\/oauth|accounts\.google\.com/);
   assert.match(settings, /只请求当前用户 Antigravity App、IDE 或 agy 的 127\.0\.0\.1 本地服务/);
-  assert.match(settings, /内置读取失败后才调用 CodexBar CLI/);
+  assert.match(settings, /内置读取失败后才调用 \{cli\} CLI/);
 });
 
 test('Windows lock-screen refresh uses a fresh setter file and never reports a rejected update as success', () => {
@@ -6194,7 +6219,7 @@ test('Android 原型趋势图带真实时间刻度，单值指标走网格', () 
 // 立项实测：用户两个开关都开着、界面只显示 10 天前的陈旧值，而 ~/.claude/settings.json
 // 里根本没有 statusLine —— 界面既不检查也不提示，只给一行无法直接使用的 JSON 片段。
 test('Claude 接入方式给出完整可粘贴的 statusLine 对象与目标文件路径', () => {
-  const quota = readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   const commands = readSource(path.join(process.cwd(), 'src-tauri', 'src', 'commands', 'mod.rs'));
 
   // 后端必须能产出带 statusLine 外层与 type 的完整对象，而不只是 "command" 片段。
@@ -6208,11 +6233,12 @@ test('Claude 接入方式给出完整可粘贴的 statusLine 对象与目标文�
   assert.match(quota, /const claudeStatuslineBlock = claudeSetup\?\.settingsBlock/u);
   assert.match(quota, /navigator\.clipboard\.writeText\(claudeStatuslineBlock\)/u);
   assert.match(quota, /复制完整配置/u);
-  assert.match(quota, /把下面这段合并进 \$\{claudeSetup\.settingsPath\}/u);
+  assert.match(quota, /t\('qs\.claude\.manualMergeInto', \{ path: claudeSetup\.settingsPath \}\)/u);
+  assert.match(quota, /'qs\.claude\.manualMergeInto': '把下面这段合并进 \{path\}/u);
 });
 
 test('额度来源状态卡五种状态各有文案与色调，Claude 没接上时直说（T10.283）', () => {
-  const quota = readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
 
   assert.match(quota, /statusLineWired/u);
@@ -6230,7 +6256,7 @@ test('额度来源状态卡五种状态各有文案与色调，Claude 没接上�
 
 test('内置 /usage 探针在 Windows 上认得 npm 生成的 shim 并列出实际候选', () => {
   const rust = readSource(path.join(process.cwd(), 'src-tauri', 'src', 'quota', 'mod.rs'));
-  const quota = readSource(path.join(process.cwd(), 'src', 'components', 'settings', 'QuotaSection.tsx'));
+  const quota = readQuotaSectionWithCopy();
 
   // npm 在 Windows 上只生成 claude / claude.cmd / claude.ps1，没有 .exe；
   // 此前只找 .exe，等于把用户 PATH 里真正在用的 CLI 整个跳过。

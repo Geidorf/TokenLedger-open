@@ -76,6 +76,7 @@ fn stat_row(
     cost_usd: Option<f64>,
 ) -> StatRow {
     StatRow {
+        pricing_timestamp: None,
         id,
         tool: tool.to_string(),
         model: model.to_string(),
@@ -926,6 +927,7 @@ fn cloud_bridge_adopts_an_rpc_that_declares_the_capability() {
 #[test]
 fn antigravity_explicit_unknown_zero_poison_cache_split_and_net_savings() {
     let mut unknown = StatRow {
+        pricing_timestamp: None,
         id: 1,
         tool: "antigravity".into(),
         model: "antigravity-unknown".into(),

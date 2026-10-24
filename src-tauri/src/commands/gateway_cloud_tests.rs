@@ -8,6 +8,7 @@ const HOUR: &str = "2026-10-04 10:00:00";
 
 fn scan(id: i64, model: &str, input: i64, output: i64) -> HourRow {
     HourRow {
+        timestamp: "2026-10-01 10:00:00".to_string(),
         id,
         sync_revision: 0,
         tool: "codex".into(),
@@ -27,6 +28,7 @@ fn scan(id: i64, model: &str, input: i64, output: i64) -> HourRow {
 
 fn gateway(id: i64, input: i64, output: i64) -> HourRow {
     HourRow {
+        timestamp: "2026-10-01 10:00:00".to_string(),
         id,
         sync_revision: 0,
         tool: "codex".into(),

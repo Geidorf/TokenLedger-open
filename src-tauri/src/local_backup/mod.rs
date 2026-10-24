@@ -1376,17 +1376,9 @@ pub fn apply(
     }
     if sections.prices {
         if let Some(incoming) = &bundle.price_overrides {
-            let local = crate::commands::price_overrides_for_backup(app);
-            let merged = merged_overrides(&local, incoming, conflict);
-            if merged != local {
-                // The same save path as the price editor, so costs are
-                // recalculated where the rates changed.
-                crate::commands::save_prices_impl(
-                    app,
-                    crate::commands::prices_with_overrides(app, &merged),
-                )?;
-                result.prices_restored = true;
-            }
+            result.prices_restored = crate::commands::restore_price_overrides(app, |local| {
+                merged_overrides(local, incoming, conflict)
+            })?;
         }
     }
     if sections.quota_alerts {

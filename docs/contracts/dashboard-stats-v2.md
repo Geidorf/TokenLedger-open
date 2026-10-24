@@ -164,7 +164,7 @@
 | session_id | `session`；缺失时为合成值 `gateway:<requestId>`，合成值只用于明细与会话分组，不参与下述规则 A |
 | timestamp | `ts`（UTC RFC3339，流结束时的记账时刻）换算为本机存储时区后的同一时刻，与扫描记录用同一时间轴比较；去重时另用开始时刻 `ts − latencyMs` |
 | 项目 | 网关不知道工作目录，不猜测：带真实 session 时沿用该 `(tool, session_id)` 在本机项目索引（ADR-016）里的归属，否则归入「未归属」 |
-| 成本 | 与扫描记录相同，按本机价格表以 (tool, model) 估价，不使用供应商账单 |
+| 成本 | 与扫描记录相同，按本机价格表以 (tool, model) 估价，并按记录时间取生效价、按请求长度取长上下文分档（价格表 schema 2，见 `MODEL_PRICING.md`「价格变动与历史记录」），不使用供应商账单 |
 
 Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入），`outputTokens = output`，`cachedTokens = cacheRead + cacheWrite`，`cacheWriteTokens = cacheWrite`；有效 Token 仍为输入 + 输出，缓存读写单列，不得再并入。网关记录的读写拆分总是可证明的（两侧显式）。
 

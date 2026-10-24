@@ -32,4 +32,21 @@ test.describe('供应商健康度', () => {
     await expect(card.getByRole('img', { name: '健康度：降级' })).toBeVisible();
     await expect(card.getByRole('img', { name: '健康度：健康' })).toBeVisible();
   });
+
+  test('主动探活默认关；立即探活后详情显示探活结果，打开开关可选间隔', async ({ page, ipc }) => {
+    await openPage(page, 'providers');
+    const bar = page.getByRole('group', { name: '主动探活' });
+    const toggle = bar.getByRole('switch', { name: '定时主动探活' });
+    await expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(await ipc.calls('gateway_probe_providers')).toEqual([]);
+    await bar.getByRole('button', { name: '立即探活' }).click();
+    await expect(page.getByText('已探活一次')).toBeVisible();
+    await page.locator('.mw-row').filter({ hasText: 'OpenAI' }).getByRole('button', { name: /OpenAI/ }).click();
+    await expect(page.getByRole('region', { name: 'OpenAI 健康度' })).toContainText('正常');
+    await page.keyboard.press('Escape');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await bar.getByRole('combobox').selectOption('30');
+    await expect.poll(async () => (await ipc.calls('gateway_set_health_probe')).at(-1)?.args).toMatchObject({ enabled: true, intervalMins: 30 });
+  });
 });
