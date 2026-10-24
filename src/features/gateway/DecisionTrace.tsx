@@ -1,6 +1,7 @@
 import { TRACE_VERDICT_LABEL, traceReasonLabel } from './helpers';
 import type { MemberTrace, RouteDecision } from './types';
 import './decisionTrace.css';
+import { t } from '../../i18n';
 
 function verdictTone(verdict: string): string {
   if (verdict === 'chosen') return 'is-success';
@@ -23,9 +24,9 @@ export function DecisionTrace({ decision }: { decision: RouteDecision }) {
       reasons: [],
       detail: attempt.error ?? null,
     }));
-  if (trace.length === 0) return <p className="mw-caption">这次请求没有可解释的成员。</p>;
+  if (trace.length === 0) return <p className="mw-caption">{t('trace.empty')}</p>;
   return (
-    <ol className="mw-trace" aria-label={`group/${decision.group} 成员决策`}>
+    <ol className="mw-trace" aria-label={t('trace.aria', { group: decision.group })}>
       {trace.map((item) => (
         <li key={item.member} className={`mw-trace-item is-${item.verdict}`}>
           <span className="mw-trace-rank" aria-hidden="true">{item.rank == null ? '–' : item.rank + 1}</span>

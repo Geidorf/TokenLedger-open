@@ -184,7 +184,7 @@ export function statsRecoveryActions(kind: StatsFailureKind): StatsRecoveryActio
 }
 
 /** 范围控件（RangeControl）的无障碍名称；「选择预设范围」把焦点移到这一组的第一个预设上。 */
-const RANGE_CONTROL_GROUP_SELECTOR = '[role="group"][aria-label="统计时间范围"]';
+const RANGE_CONTROL_GROUP_SELECTOR = '[role="group"][data-range-control]';
 
 function focusRangePresets() {
   document.querySelector<HTMLElement>(RANGE_CONTROL_GROUP_SELECTOR)?.querySelector<HTMLButtonElement>('button')?.focus();

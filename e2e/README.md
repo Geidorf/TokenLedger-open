@@ -71,6 +71,8 @@ test('取数失败', async ({ page, ipc }) => {
 npm run test:e2e:update   # 在 Linux 上运行；只重写 chromium-zh 项目的基线
 ```
 
+比对允许 1% 像素差异（`maxDiffPixelRatio: 0.01`），只改几处文字时更新命令会认为没变、不重写文件；这种情况先删掉对应的 PNG 再跑更新。
+
 在 PR 里说明哪些画面有意改变。不是 Linux 的机器可以把这一步交给云端工位，或从 CI 失败时上传的 `playwright-report` 里取实际截图核对。升级 `@playwright/test` 时同时重新生成基线。
 
 ## 失败时看什么

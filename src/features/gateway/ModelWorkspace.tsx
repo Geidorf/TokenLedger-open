@@ -11,16 +11,18 @@ import { RequestLogPage } from './RequestLogPage';
 import { RoutingPage } from './RoutingPage';
 import type { GatewayStatus } from './types';
 import './gateway.css';
+import { useT, type MessageKey } from '../../i18n';
 
-const PAGE_COPY: Record<ModelTab, { title: string; subtitle: string }> = {
-  agents: { title: 'Agent', subtitle: '给本机 Agent 选模型或路由组，请求经本机网关转发并记账。' },
-  providers: { title: '供应商', subtitle: '添加 API key，模型就出现在 Agent 和路由组的选择器里。' },
-  gateway: { title: '网关', subtitle: '本机 127.0.0.1 上的统一入口：协议转换、记账、路由。' },
-  gatewaylog: { title: '请求日志', subtitle: '每次经网关的请求：路由原因、尝试顺序、Token、费用与耗时。只存元数据。' },
-  routing: { title: '路由', subtitle: '把多个供应商的模型合成一个虚拟模型，按规则选择、失败自动切换。' },
+const PAGE_COPY: Record<ModelTab, { title: MessageKey; subtitle: MessageKey }> = {
+  agents: { title: 'shell.nav.agents', subtitle: 'workspace.agents.subtitle' },
+  providers: { title: 'shell.nav.providers', subtitle: 'workspace.providers.subtitle' },
+  gateway: { title: 'shell.nav.gateway', subtitle: 'workspace.gateway.subtitle' },
+  gatewaylog: { title: 'workspace.gatewaylog.title', subtitle: 'workspace.gatewaylog.subtitle' },
+  routing: { title: 'shell.nav.routing', subtitle: 'workspace.routing.subtitle' },
 };
 
 export function ModelWorkspaceHeader({ page, onOpenGateway, refreshKey }: { page: ModelTab; onOpenGateway: () => void; refreshKey: number }) {
+  const t = useT();
   const [status, setStatus] = useState<GatewayStatus | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -33,19 +35,19 @@ export function ModelWorkspaceHeader({ page, onOpenGateway, refreshKey }: { page
     <header className="app-header mw-header window-drag-surface" onMouseDown={handleWindowDragMouseDown} onDoubleClick={handleWindowDragDoubleClick}>
       <div className="toolbar-brand min-w-0">
         <div className="toolbar-title truncate">
-          <span className="toolbar-title-parent">模型接入</span>
+          <span className="toolbar-title-parent">{t('workspace.parent')}</span>
           <span className="toolbar-title-crumb" aria-hidden="true">
             <span className="toolbar-title-sep"> · </span>
           </span>
-          <h1>{copy.title}</h1>
+          <h1>{t(copy.title)}</h1>
         </div>
-        <p className="toolbar-subtitle truncate">{copy.subtitle}</p>
+        <p className="toolbar-subtitle truncate">{t(copy.subtitle)}</p>
       </div>
       <div className="header-controls" data-window-drag-block>
         {page !== 'gateway' && (
           <button type="button" className="mw-gateway-pill" data-window-drag-block onClick={onOpenGateway}>
             <span className={`mw-led ${status?.running ? '' : status?.error ? 'is-danger' : 'is-off'}`} />
-            {status?.running ? `网关运行中 · ${address}` : '网关未运行'}
+            {status?.running ? t('workspace.gatewayRunning', { address }) : t('scene.gatewayStopped')}
           </button>
         )}
       </div>

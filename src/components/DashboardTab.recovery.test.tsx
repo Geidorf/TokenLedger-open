@@ -47,7 +47,7 @@ function renderDashboard(overrides: Partial<Props>) {
   const view = render(
     <>
       {/* 顶栏范围控件的替身：「选择预设范围」要把焦点移到这一组的第一个预设上。 */}
-      <div role="group" aria-label="统计时间范围">
+      <div role="group" aria-label="统计时间范围" data-range-control>
         <button type="button">今日</button>
         <button type="button">本周</button>
       </div>

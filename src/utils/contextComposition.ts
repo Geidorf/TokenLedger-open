@@ -1,4 +1,5 @@
 import type { RequestContext } from '../types';
+import { t } from '../i18n';
 
 /**
  * 逐请求 Context 构成（契约 §2.5 可选 `context`）：网关只记各部分序列化后的字节数与条数，不留内容。
@@ -6,11 +7,11 @@ import type { RequestContext } from '../types';
  * 分词器因模型而异，界面须标「估算」。
  */
 export const CONTEXT_SEGMENTS = [
-  { key: 'systemBytes', label: '系统提示' },
-  { key: 'toolsBytes', label: '工具定义' },
-  { key: 'historyBytes', label: '对话历史' },
-  { key: 'toolResultsBytes', label: '工具结果' },
-  { key: 'attachmentsBytes', label: '附件' },
+  { key: 'systemBytes', get label() { return t('context.segment.system'); } },
+  { key: 'toolsBytes', get label() { return t('context.segment.tools'); } },
+  { key: 'historyBytes', get label() { return t('context.segment.history'); } },
+  { key: 'toolResultsBytes', get label() { return t('context.segment.toolResults'); } },
+  { key: 'attachmentsBytes', get label() { return t('context.segment.attachments'); } },
 ] as const;
 
 export type ContextSegmentKey = (typeof CONTEXT_SEGMENTS)[number]['key'];

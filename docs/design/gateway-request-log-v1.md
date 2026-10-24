@@ -36,7 +36,7 @@
 
 ## 命令
 
-两个只读命令，仅主窗口（`gateway-main-only`），后台线程执行，命令总数 113 → 115：
+两个只读命令，仅主窗口（`gateway-main-only`），后台线程执行，命令总数在当时 main 的基础上 +2（写作时 114 → 116）：
 
 - `gateway_request_log(query)` → `{entries, total, offset, retained, oldest, facets}`。筛选：`since`/`until`（RFC 3339）、`agent`、`provider`（任一次尝试命中）、`model`（请求模型、上游模型或 `供应商/模型`）、`status`（`ok`、`error`、`4xx`、`5xx`、`retried` 或具体状态码）、`minLatencyMs`/`maxLatencyMs`、`search`（不区分大小写，匹配请求 ID、会话、Agent、模型、供应商、路由组、错误说明，最多 120 字）；`offset` + `limit`（默认 50，最多 200）。`facets` 给筛选下拉框用，来自全部保留请求。
 - `gateway_request_log_export(query)` → `{message, path}`：同一筛选、不分页，写到应用数据目录的固定文件 `tokenledger_gateway_requests.csv`（带 BOM），前端给不了路径。单元格沿用已有 CSV 导出的公式前缀中和。每条逻辑请求一行，尝试顺序与解释链各压成一列（`供应商/模型:状态 > …`、`成员=结论[原因码+…]; …`）。

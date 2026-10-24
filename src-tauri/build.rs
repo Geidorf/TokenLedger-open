@@ -65,6 +65,7 @@ fn main() {
         "gateway_delete_routing_group",
         "gateway_recent_route_decisions",
         "gateway_routing_cooldowns",
+        "gateway_provider_health",
         "gateway_request_log",
         "gateway_request_log_export",
         "gateway_routing_feed",
