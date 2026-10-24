@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { DashboardLayoutGrid } from './DashboardLayoutGrid';
@@ -110,5 +110,25 @@ describe('DashboardLayoutGrid', () => {
     const empty = screen.getByRole('region', { name: '当前布局没有可显示的卡片' });
     fireEvent.click(within(empty).getByRole('button', { name: '编辑布局' }));
     expect(onEdit).toHaveBeenCalledOnce();
+  });
+
+  it('marks a card empty while its component renders nothing and clears it once content arrives', async () => {
+    let show: (() => void) | undefined;
+    function Late() {
+      const [ready, setReady] = useState(false);
+      show = () => setReady(true);
+      return ready ? <p>loaded</p> : null;
+    }
+    render(<DashboardLayoutGrid
+      cards={[{ id: 'budget', visible: true, width: 'full' }]}
+      editing={false}
+      renderCard={() => <Late />}
+      emptyNote={() => ''}
+      onMove={vi.fn()} onVisible={vi.fn()} onWidth={vi.fn()}
+    />);
+    const card = document.querySelector('[data-layout-card="budget"]')!;
+    expect(card).toHaveAttribute('data-empty');
+    await act(async () => { show!(); });
+    expect(card).not.toHaveAttribute('data-empty');
   });
 });

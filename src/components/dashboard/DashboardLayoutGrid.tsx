@@ -36,6 +36,7 @@ export function DashboardLayoutGrid({ cards, editing, renderCard, emptyNote, onM
   const [announcement, setAnnouncement] = useState('');
   const handleRefs = useRef(new Map<DashboardCardId, HTMLButtonElement>());
   const refocusRef = useRef<DashboardCardId | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   // 「至少保留一张」按当前真有内容的可见卡片算：热力图在短范围、Context 没有网关构成时都不渲染。
   const contents = new Map(cards.map(item => [item.id, renderCard(item.id)]));
   const shownCount = cards.filter(item => item.visible && contents.get(item.id) !== null).length;
@@ -50,6 +51,23 @@ export function DashboardLayoutGrid({ cards, editing, renderCard, emptyNote, onM
     const handle = handleRefs.current.get(id);
     if (handle && document.activeElement !== handle) handle.focus();
   });
+
+  // 卡片组件自己判断没内容时什么都不渲染（如时段规律、懒加载中的预算），查看时不留空格子。
+  // 用脚本标记而不用 CSS :has(:empty)：WebKit 在内容后到时不会重新计算 :has。
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const mark = () => {
+      grid.querySelectorAll<HTMLElement>(':scope > [data-layout-card]').forEach(card => {
+        const body = card.querySelector(':scope > .dashboard-layout-card-body');
+        card.toggleAttribute('data-empty', !!body && body.childElementCount === 0);
+      });
+    };
+    mark();
+    const observer = new MutationObserver(mark);
+    observer.observe(grid, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   const labelOf = (id: DashboardCardId) => DASHBOARD_CARDS[id].label;
   const positionText = (id: DashboardCardId, list: readonly DashboardCardId[] = order) => `第 ${list.indexOf(id) + 1} 张，共 ${list.length} 张`;
@@ -167,7 +185,7 @@ export function DashboardLayoutGrid({ cards, editing, renderCard, emptyNote, onM
 
   return (
     <div className="dashboard-layout" data-editing={editing || undefined}>
-      <div className="dashboard-layout-grid" role={editing ? 'list' : undefined} aria-label={editing ? '概览卡片' : undefined}>
+      <div ref={gridRef} className="dashboard-layout-grid" role={editing ? 'list' : undefined} aria-label={editing ? '概览卡片' : undefined}>
         {cards.map(item => {
           const { id } = item;
           const content = contents.get(id) ?? null;

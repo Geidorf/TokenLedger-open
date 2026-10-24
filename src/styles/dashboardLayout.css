@@ -5,8 +5,8 @@
 .dashboard-layout-card[data-width='half'] { grid-column: span 3; }
 .dashboard-layout-card[data-width='third'] { grid-column: span 2; }
 .dashboard-layout-card-body { display: grid; gap: var(--space-6); min-width: 0; }
-/* 卡片组件自己判断没内容时什么都不渲染（如时段规律、额度要点），查看时不留空格子。 */
-.dashboard-layout:not([data-editing]) .dashboard-layout-card:has(> .dashboard-layout-card-body:empty) { display: none; }
+/* 卡片组件自己判断没内容时什么都不渲染（如时段规律、额度要点），查看时不留空格子；data-empty 由网格脚本标记。 */
+.dashboard-layout:not([data-editing]) .dashboard-layout-card[data-empty] { display: none; }
 @container (max-width: 980px) {
   .dashboard-layout-card[data-width='third'] { grid-column: span 3; }
 }
