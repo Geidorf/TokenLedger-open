@@ -1051,6 +1051,7 @@ fn stat_row(
     cost: Option<f64>,
 ) -> StatRow {
     StatRow {
+        pricing_timestamp: None,
         id: 0,
         tool: tool.to_string(),
         model: model.to_string(),
@@ -1216,6 +1217,7 @@ fn behavior_pricing_benchmark() {
             let (tool, model) = pairs[index % pairs.len()];
             let volume = (index % 997) as i64;
             StatRow {
+                pricing_timestamp: None,
                 id: index as i64,
                 timestamp: format!(
                     "2026-09-{:02} {:02}:{:02}:00",

@@ -74,7 +74,7 @@ describe('MetricsGrid 预估费用卡（T10.154 A1：D01–D03）', () => {
       expect(button).toHaveAttribute('aria-expanded', 'true');
       const popover = screen.getByRole('dialog', { name: '预估费用说明' });
       expect(button).toHaveAttribute('aria-controls', popover.id);
-      expect(popover).toHaveTextContent('预估费用：按模型价格表估算；工具日志自带费用时直接采用。都不是供应商账单，实际以账单为准。价格表为标准档，长上下文加价、批处理与渠道加价未计入。');
+      expect(popover).toHaveTextContent('预估费用：按模型价格表估算；工具日志自带费用时直接采用。都不是供应商账单，实际以账单为准。调价前的记录仍按当时的价格估算；GPT、Gemini、Grok 等长上下文加价按请求长度计入，批处理与渠道加价未计入。');
       expect(popover).not.toHaveAttribute('aria-modal');
       expect(popover).toHaveFocus();
 

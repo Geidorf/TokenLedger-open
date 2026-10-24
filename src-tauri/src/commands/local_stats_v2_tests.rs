@@ -68,6 +68,7 @@ fn comparison_query(range: &str, timezone: &str) -> NormalizedStatsQuery {
 
 fn comparison_row(id: i64, timestamp: &str, tokens: i64) -> StatRow {
     StatRow {
+        pricing_timestamp: None,
         id,
         tool: "codex".to_string(),
         model: "gpt".to_string(),

@@ -14,7 +14,7 @@
 //! 缓存节省（T10.162 方案 §3.1，T10.183）：每行求出缓存读取节省、缓存写入溢价与
 //! 单价来自兜底的读写量，按行序相加；缓存净节省只在输出时由两项相减得到，可为负。
 
-use super::{lookup_model_price_with_source, PriceSource, StatRow};
+use super::{lookup_model_price_with_source, price_schedule, prompt_tokens, PriceSource, StatRow};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -149,31 +149,95 @@ pub(super) struct RowPrice {
     pub cache: CacheSavingsParts,
 }
 
-/// 按 (工具, 模型) 缓存 `PriceRates`；只在一次调用内存活，价格表变化不会串到下一次。
+/// 一个 (工具, 模型) 匹配到的价格条目，以及它各（生效段, 分档）解析出的单价。
+struct MemoEntry<'p> {
+    entry: &'p Value,
+    source: PriceSource,
+    /// 条目有旧价段或分档；没有时每行都取现价标准档，不解析记录时间。
+    scheduled: bool,
+    rates: HashMap<(usize, usize), PriceRates>,
+}
+
+impl MemoEntry<'_> {
+    fn rates_at(&mut self, position: (usize, usize)) -> PriceRates {
+        let (entry, source) = (self.entry, self.source);
+        *self.rates.entry(position).or_insert_with(|| {
+            PriceRates::from_price(
+                &price_schedule::entry_at(entry, position.0, position.1),
+                source,
+            )
+        })
+    }
+}
+
+/// 按 (工具, 模型) 缓存价格条目与 `PriceRates`；只在一次调用内存活，价格表变化不会串到下一次。
 pub(super) struct PriceMemo<'p> {
     prices: &'p Value,
-    rates: HashMap<String, HashMap<String, PriceRates>>,
+    entries: HashMap<String, HashMap<String, MemoEntry<'p>>>,
 }
 
 impl<'p> PriceMemo<'p> {
     pub(super) fn new(prices: &'p Value) -> Self {
         Self {
             prices,
-            rates: HashMap::new(),
+            entries: HashMap::new(),
         }
     }
 
-    pub(super) fn rates(&mut self, tool: &str, model: &str) -> PriceRates {
-        if let Some(rates) = self.rates.get(tool).and_then(|models| models.get(model)) {
-            return *rates;
-        }
-        let (price, source) = lookup_model_price_with_source(self.prices, tool, model);
-        let rates = PriceRates::from_price(price, source);
-        self.rates
+    fn entry(&mut self, tool: &str, model: &str) -> &mut MemoEntry<'p> {
+        let prices = self.prices;
+        self.entries
             .entry(tool.to_string())
             .or_default()
-            .insert(model.to_string(), rates);
-        rates
+            .entry(model.to_string())
+            .or_insert_with(|| {
+                let (entry, source) = lookup_model_price_with_source(prices, tool, model);
+                MemoEntry {
+                    entry,
+                    source,
+                    scheduled: entry.get("history").is_some() || entry.get("tiers").is_some(),
+                    rates: HashMap::new(),
+                }
+            })
+    }
+
+    /// 现价标准档（不看记录时间与提示长度）。逐条记录计价请用 `rates_at` / `rates_for_row`。
+    /// 非测试代码暂时没有调用方，留给网关请求日志等在途改动，避免合并后编译失败。
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn rates(&mut self, tool: &str, model: &str) -> PriceRates {
+        self.entry(tool, model).rates_at((0, 0))
+    }
+
+    /// 一条记录生效的单价：按记录时间（账本格式或 RFC 3339）选旧价段，逐请求工具再按
+    /// 提示长度（新鲜输入 + 缓存读 + 缓存写）选分档，与 `estimate_cost_at` 同一规则
+    /// （`price_schedule`）。不是 `StatRow` 的记录（例如网关请求日志）用这个入口。
+    pub(super) fn rates_at(
+        &mut self,
+        tool: &str,
+        model: &str,
+        timestamp: &str,
+        prompt_tokens: i64,
+    ) -> PriceRates {
+        let entry = self.entry(tool, model);
+        if !entry.scheduled {
+            return entry.rates_at((0, 0));
+        }
+        let position = price_schedule::record_position(entry.entry, tool, timestamp, prompt_tokens);
+        entry.rates_at(position)
+    }
+
+    /// `rates_at` 用于一行账本记录。
+    pub(super) fn rates_for_row(&mut self, row: &StatRow) -> PriceRates {
+        self.rates_at(
+            &row.tool,
+            &row.model,
+            row.price_timestamp(),
+            prompt_tokens(
+                row.input_tokens,
+                row.cache_read_tokens(),
+                row.cache_write_tokens,
+            ),
+        )
     }
 
     /// 等价于逐行 `row.cost_usd.unwrap_or_else(|| estimate_cost(..))` 与
@@ -189,7 +253,7 @@ impl<'p> PriceMemo<'p> {
                 cache: CacheSavingsParts::default(),
             },
             stored => {
-                let rates = self.rates(&row.tool, &row.model);
+                let rates = self.rates_for_row(row);
                 RowPrice {
                     cost: match stored {
                         Some(cost) => stored_cost_or_unavailable(cost),
@@ -230,6 +294,7 @@ mod row_price_tests {
     /// `tool-x`/`model-y` 在价格表里查不到型号，也没有工具兜底键，会落到 `default`。
     fn row(cost_usd: Option<f64>, cache: (i64, i64), tokens: (i64, i64)) -> StatRow {
         StatRow {
+            pricing_timestamp: None,
             id: 1,
             tool: "tool-x".to_string(),
             model: "model-y".to_string(),

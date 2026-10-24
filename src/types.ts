@@ -1362,3 +1362,25 @@ export function getPalette(theme?: 'light' | 'dark'): readonly string[] {
 export function colorForTool(name: string, _index = 0, theme?: 'light' | 'dark'): string {
   return colorForSlot(toolChartSlot(name), theme);
 }
+
+/**
+ * 默认价格表从哪里来（`get_price_table_status`）：应用内置，或在线更新后缓存到本机的
+ * 更新修订。用户自定义的价格总是叠加在它上面。时间均为 RFC 3339（UTC），日期为 YYYY-MM-DD。
+ */
+export interface PriceTableStatus {
+  source: 'bundled' | 'online';
+  revision: number;
+  /** 最近一次对照官方价格页核验的日期。 */
+  verifiedAt: string;
+  /** 这一修订发布的日期。 */
+  updatedAt: string | null;
+  bundledRevision: number;
+  bundledVerifiedAt: string;
+  /** 在线表下载到本机的时间；用内置表时为空。 */
+  fetchedAt: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  autoUpdate: boolean;
+  /** 自定义了价格的型号数。 */
+  overrideModels: number;
+}
