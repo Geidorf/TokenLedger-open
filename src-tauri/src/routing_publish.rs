@@ -458,7 +458,7 @@ async fn read_bounded(response: reqwest::Response) -> Result<Vec<u8>, RpcError> 
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|error| RpcError::Failed(format!("读取云端回应失败：{error}")))?
+        .map_err(|error| RpcError::Failed(format!("读取云端回应失败：{}", error.without_url())))?
     {
         if body.len() + chunk.len() > MAX_RESPONSE_BYTES {
             return Err(RpcError::Failed("云端回应过大".to_string()));
@@ -519,7 +519,7 @@ async fn call_rpc(
         .json(&body)
         .send()
         .await
-        .map_err(|error| RpcError::Failed(format!("连接云端失败：{error}")))?;
+        .map_err(|error| RpcError::Failed(format!("连接云端失败：{}", error.without_url())))?;
     let status = response.status().as_u16();
     let bytes = read_bounded(response).await?;
     lease.ensure_current(app).map_err(RpcError::Failed)?;
