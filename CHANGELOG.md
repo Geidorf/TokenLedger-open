@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Android widget and dashboard visual refresh, including brand icons, input/output share bars on KPI cards, quota overview progress bars, and reduced visual noise in settings.
 - VS Code status bar extension (`extensions/vscode/`): shows today's estimated cost or the tightest quota window's remaining percentage, with a hover card and details panel for quota bars, today's per-agent split, budgets and gateway health. All figures come from the local `tokenledger-cli`; the extension reads no credentials and makes no network requests. Packaged as a .vsix by a dependency-free script; not published to the marketplace.
 - Settings cards open their target page directly, and an overview line reports a quota read that is still waiting for the first observation.
+- Model price table schema 2: dated price history so a price change only affects records after it takes effect, long-context tiers for GPT-5.6/GPT-6, Gemini Pro, Grok and MiniMax-M3 on per-request tools, and a daily online update from this repository with the bundled table as the offline fallback. Settings and the estimated-cost help show which table is in use, its revision and verification date.
 
 ### Changed
 

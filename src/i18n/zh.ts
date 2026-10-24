@@ -2231,10 +2231,11 @@ export const zh = {
   // 核心指标卡与费用叫法
   'cost.label': '预估费用',
   'cost.note': '按价格表估算，非账单',
-  'cost.help': '按模型价格表估算；工具日志自带费用时直接采用。都不是供应商账单，实际以账单为准。价格表为标准档，长上下文加价、批处理与渠道加价未计入。',
+  'cost.help': '按模型价格表估算；工具日志自带费用时直接采用。都不是供应商账单，实际以账单为准。调价前的记录仍按当时的价格估算；GPT、Gemini、Grok 等长上下文加价按请求长度计入，批处理与渠道加价未计入。',
   'cost.unavailableReason': '来源未提供可验证的费用',
   'cost.helpAria': '{label}说明',
   'cost.helpSep': '：',
+  'cost.priceSource': '价格来源：{source}',
   'cost.cloudZero': '云端汇总把没有费用的记录按 0 计入。',
   'peak.dayOfPeriod': '周期第{n}日',
   'peak.sameHour': '峰值时段保持在{position}',

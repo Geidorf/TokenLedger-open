@@ -863,6 +863,7 @@ pub fn run() {
                 settings_state_for_setup.clone(),
                 app.handle().clone(),
             );
+            commands::start_price_table_updates(app_ctx_for_setup.clone(), app.handle().clone());
             gateway_for_setup.set_enabled(model_access_at_launch);
             gateway_for_setup.spawn_probe_loop();
             routing_publish::start(
@@ -982,6 +983,9 @@ pub fn run() {
             commands::reset_prices,
             commands::get_price_migration_notice,
             commands::dismiss_price_migration_notice,
+            commands::get_price_table_status,
+            commands::check_price_table_update,
+            commands::set_price_table_auto_update,
             models_dev::search_models_dev_prices,
             commands::get_db_info,
             commands::export_db_csv,

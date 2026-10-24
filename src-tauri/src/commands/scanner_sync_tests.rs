@@ -159,6 +159,7 @@ fn chained_moves_delete_recreate_and_ack_never_clear_new_events() {
 fn gateway_members_are_preserved_and_mixed_snapshot_is_rejected() {
     let (_dir, _path, conn, id) = ledger();
     let mut row = gateway_cloud::HourRow {
+        timestamp: "2026-10-01 10:00:00".to_string(),
         id,
         sync_revision: revision(&conn, id),
         tool: "claude".into(),
@@ -270,6 +271,7 @@ fn antigravity_selected_label_move_repairs_old_bucket_with_null_write_and_delete
     );
     assert_eq!(deletes, vec![old.unique_key()]);
     let remaining = gateway_cloud::HourRow {
+        timestamp: "2026-10-01 10:00:00".to_string(),
         id: 99,
         sync_revision: 0,
         tool: "antigravity".into(),

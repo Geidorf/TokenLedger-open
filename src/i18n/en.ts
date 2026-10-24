@@ -2200,10 +2200,11 @@ export const en: Record<MessageKey, string> = {
 
   'cost.label': 'Estimated cost',
   'cost.note': 'estimated from the price table, not a bill',
-  'cost.help': 'Estimated from the model price table; when a tool\'s logs include cost, that is used directly. Neither is a provider bill, which is what actually counts. The price table is the standard tier; long-context surcharges, batch pricing and channel markups are not included.',
+  'cost.help': 'Estimated from the model price table; when a tool\'s logs include cost, that is used directly. Neither is a provider bill, which is what actually counts. Records from before a price change keep the price in effect at the time; long-context surcharges for GPT, Gemini, Grok and similar models follow request length, while batch pricing and channel markups are not included.',
   'cost.unavailableReason': 'The source has no verifiable cost',
   'cost.helpAria': 'About {label}',
   'cost.helpSep': ': ',
+  'cost.priceSource': 'Price source: {source}',
   'cost.cloudZero': 'The cloud total counts records without cost as 0.',
   'peak.dayOfPeriod': 'day {n} of the period',
   'peak.sameHour': 'the peak hour stays at {position}',

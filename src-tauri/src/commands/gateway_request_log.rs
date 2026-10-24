@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use super::gateway_overlay::{model_name_for, tool_for_agent};
 use super::price_memo::PriceMemo;
-use super::{csv_field, load_prices};
+use super::{csv_field, load_prices, prompt_tokens};
 use crate::app_paths::AppContext;
 use crate::gateway::request_log::{self, RequestLogEntry, RequestLogPage, RequestLogQuery};
 use crate::gateway::Gateway;
@@ -46,12 +46,20 @@ fn price_entries(entries: &mut [RequestLogEntry], prices: &Value) {
             }
             let model = model_name_for(&attempt.upstream_model, &entry.requested_model);
             let to_i64 = |value: u64| i64::try_from(value).unwrap_or(i64::MAX);
-            let cost = memo.rates(&tool, &model).cost(
+            let (input, cache_read, cache_write) = (
                 to_i64(attempt.input),
-                to_i64(attempt.output),
                 to_i64(attempt.cache_read),
                 to_i64(attempt.cache_write),
             );
+            // 与用量页同一规则：按请求时间选旧价段，按提示长度选分档。
+            let cost = memo
+                .rates_at(
+                    &tool,
+                    &model,
+                    &attempt.ts,
+                    prompt_tokens(input, cache_read, cache_write),
+                )
+                .cost(input, to_i64(attempt.output), cache_read, cache_write);
             attempt.cost_usd = cost.is_finite().then_some(cost);
             total += cost;
         }
@@ -271,6 +279,25 @@ mod tests {
         // Fallback rates: 1 M input at 1.0 + 1 M output at 3.0.
         assert_eq!(entry.attempts[1].cost_usd, Some(4.0));
         assert_eq!(entry.cost_usd, Some(4.0));
+    }
+
+    #[test]
+    fn requests_use_the_price_of_their_time_and_prompt_length() {
+        let prices = json!({ "unknown-model-x": {
+            "input": 1.0, "output": 3.0,
+            "history": [{ "until": "2026-09-01T00:00:00Z", "input": 2.0, "output": 6.0 }],
+            "tiers": [{ "above_prompt_tokens": 500_000, "multipliers": { "input": 2.0, "output": 1.5 } }]
+        } });
+        // 1 M 提示超过分档线：输入 1.0×2 + 输出 3.0×1.5。
+        let mut entries = vec![entry()];
+        price_entries(&mut entries, &prices);
+        assert_eq!(entries[0].attempts[1].cost_usd, Some(6.5));
+        // 调价前的请求按旧价段：输入 2.0×2 + 输出 6.0×1.5。
+        let mut old = entry();
+        old.attempts[1].ts = "2026-08-01T00:00:00Z".into();
+        let mut entries = vec![old];
+        price_entries(&mut entries, &prices);
+        assert_eq!(entries[0].attempts[1].cost_usd, Some(13.0));
     }
 
     #[test]

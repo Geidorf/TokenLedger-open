@@ -1,6 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { CostHelpButton } from './CostHelpButton';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
 
 /**
  * CostHelpButton 的打开聚焦、滚动收起、Shift+Tab 焦点与云端说明句
@@ -108,4 +113,24 @@ describe('CostHelpButton：打开聚焦、滚动收起、Shift+Tab 与云端说�
     popover = openPopover();
     expect(popover).toHaveTextContent('云端汇总把没有费用的记录按 0 计入。');
   });
+
+  it('本机范围写出价格表出处，云端范围不写（金额按各设备上传时的价格表冻结）', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      source: 'bundled', revision: 2, verifiedAt: '2026-09-24', updatedAt: '2026-10-24',
+      bundledRevision: 2, bundledVerifiedAt: '2026-09-24', fetchedAt: null, lastCheckedAt: null,
+      lastError: null, autoUpdate: true, overrideModels: 1,
+    });
+    const { unmount } = render(<CostHelpButton scope="local" />);
+    const popover = openPopover();
+    expect(await screen.findByText('价格来源：内置价格表（第 2 版） · 官方价核验于 2026-09-24 · 1 个型号用自定义价格')).toBeInTheDocument();
+    expect(popover).toHaveTextContent('调价前的记录仍按当时的价格估算');
+    unmount();
+
+    vi.mocked(invoke).mockClear();
+    render(<CostHelpButton scope="cloud" />);
+    openPopover();
+    expect(invoke).not.toHaveBeenCalled();
+    expect(screen.queryByText(/^价格来源：/)).not.toBeInTheDocument();
+  });
 });
+

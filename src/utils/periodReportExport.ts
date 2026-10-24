@@ -1,6 +1,6 @@
 import { escapeHtml } from './frontendContracts';
 import { formatEstimatedUsd, formatNum, formatTokens } from './format';
-import { ESTIMATED_COST_NOTE } from './costCopy';
+import { estimatedCostNote } from './costCopy';
 import { DIGEST_STYLES } from './reportTheme';
 import { budgetScopeName } from '../components/settings/BudgetSection';
 import { BUDGET_METRIC_LABELS } from '../hooks/useBudget';
@@ -209,7 +209,7 @@ ${REPORT_EXTRA_STYLES}</style>
     <footer class="report-footer">
       <strong>TokenLedger</strong>
       <p>有效 Token = 输入 + 输出；缓存读写另列。不可得表示来源未提供可靠数据，已知零值仍为 0。</p>
-      <p>预估费用${ESTIMATED_COST_NOTE}。</p>
+      <p>预估费用${estimatedCostNote('zh')}。</p>
       <p>${hideCosts ? '费用已隐藏：费用与费用变化均未写入文件。' : '本文件含预估费用，转发前请确认分享范围。'} 文件只含统计摘要，不含账户、设备标识、会话内容或项目数据。</p>
     </footer>
   </div>
