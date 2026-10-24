@@ -374,14 +374,17 @@ describe('DashboardTab', () => {
     launcher.focus();
     fireEvent.click(launcher);
     expect(screen.getByRole('dialog', { name: '调整显示' })).toBeInTheDocument();
-    const moveTrendUp = screen.getByRole('button', { name: '上移模块：趋势' });
+    const moveTrendUp = screen.getByRole('button', { name: '上移卡片：趋势' });
     moveTrendUp.focus();
     fireEvent.click(moveTrendUp);
     expect(moveTrendUp).toHaveFocus();
-    fireEvent.click(screen.getByRole('switch', { name: '隐藏模块：订阅额度' }));
-    expect(screen.getByRole('switch', { name: '显示模块：订阅额度' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('switch', { name: '隐藏卡片：额度详情' }));
+    expect(screen.getByRole('switch', { name: '显示卡片：额度详情' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '卡片宽度：趋势' }), { target: { value: 'half' } });
+    expect(screen.getByRole('combobox', { name: '卡片宽度：趋势' })).toHaveValue('half');
     fireEvent.click(screen.getByRole('button', { name: '恢复默认' }));
-    expect(screen.getByRole('switch', { name: '隐藏模块：趋势' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '隐藏卡片：额度详情' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: '卡片宽度：趋势' })).toHaveValue('full');
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: '调整显示' })).not.toBeInTheDocument();
     expect(launcher).toHaveFocus();
@@ -398,13 +401,16 @@ describe('首屏额度与显示偏好', () => {
       observedAt: new Date().toISOString(), fetchedAt: new Date().toISOString(), staleAfterSeconds: 900,
     }],
   };
-  function preferences(hiddenModuleIds: string[], hiddenQuotaSourceIds: string[] = []) {
+  function preferences(hiddenCardIds: string[], hiddenQuotaSourceIds: string[] = []) {
     act(() => {
-      localStorage.setItem('tokenledger:dashboard-display-preferences:v1', JSON.stringify({version:1, hiddenModuleIds, hiddenQuotaSourceIds}));
+      localStorage.setItem('tokenledger:dashboard-display-preferences:v1', JSON.stringify({version:1, hiddenQuotaSourceIds}));
+      localStorage.setItem('tokenledger:dashboard-layouts:v2', JSON.stringify({version:2, activeId:'daily', layouts:[{id:'daily', name:'日常', preset:'daily',
+        cards: ['metrics', 'quotaHighlights', 'trend', 'quota'].map(id => ({id, visible: !hiddenCardIds.includes(id), width:'full'}))}]}));
       window.dispatchEvent(new StorageEvent('storage', {key:'tokenledger:dashboard-display-preferences:v1'}));
+      window.dispatchEvent(new StorageEvent('storage', {key:'tokenledger:dashboard-layouts:v2'}));
     });
   }
-  it('摘要位于趋势之前，详情按钮移交焦点，隐藏额度或KPI时摘要消失', () => {
+  it('摘要位于趋势之前，详情按钮移交焦点；额度要点是独立卡片，可单独隐藏', () => {
     const scroll = vi.fn();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {configurable:true, value:scroll});
     renderPopulated({quotaProviders:[quota]});
@@ -414,10 +420,11 @@ describe('首屏额度与显示偏好', () => {
     fireEvent.click(within(summary).getByRole('button'));
     expect(screen.getByLabelText('订阅额度详情')).toHaveFocus();
     expect(scroll).toHaveBeenCalledOnce();
-    preferences(['quota']);
+    preferences(['quotaHighlights']);
     expect(screen.queryByRole('region', {name:'首屏额度摘要'})).not.toBeInTheDocument();
-    preferences(['kpi']);
-    expect(screen.queryByRole('region', {name:'首屏额度摘要'})).not.toBeInTheDocument();
+    preferences(['metrics']);
+    expect(screen.getByRole('region', {name:'首屏额度摘要'})).toBeInTheDocument();
+    expect(screen.queryByTestId('metrics-grid')).not.toBeInTheDocument();
     preferences([]);
   });
 

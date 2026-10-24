@@ -53,6 +53,7 @@ tokenledger-cli <命令> [选项] [--json]
 | `scan` | 立即扫描本机各 Agent 的日志入库 |
 | `export [范围] [--format csv\|json] [--output 文件]` | 导出账本，默认整本、CSV、写到标准输出 |
 | `status [--no-quota]` | 一行摘要，给状态栏插件用 |
+| `mcp` | 以 stdio 运行只读 MCP 服务，给 Claude Code、Codex 等 Agent 调用，见 [MCP 文档](mcp.md) |
 | `help`、`version` | 帮助与版本 |
 
 范围：`today`、`week`、`month`、`year`、`all`，或 `--from YYYY-MM-DD --to YYYY-MM-DD`（本地日期闭区间）。周从周一开始，与看板一致。

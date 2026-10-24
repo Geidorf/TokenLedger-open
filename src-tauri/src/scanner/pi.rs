@@ -1,5 +1,6 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::bounded_lines;
 use super::types::LogRecord;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 use serde_json::Value;
@@ -7,7 +8,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -213,7 +214,7 @@ fn scan_pi_file(
     let mut parsed = 0;
     let mut seen_keys = HashSet::new();
 
-    for (line_index, line) in reader.lines().enumerate() {
+    for (line_index, line) in bounded_lines(reader).enumerate() {
         let line = line.map_err(|error| {
             format!("failed to read Pi session {}: {error}", filepath.display())
         })?;

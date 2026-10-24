@@ -1,17 +1,20 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::{bounded_lines, read_text_capped, MAX_JSON_DOCUMENT_BYTES};
 use super::types::LogRecord;
 use chrono::TimeZone;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs::File;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 #[cfg(test)]
 use super::runner::persist_scan_batch;
+#[cfg(test)]
+use std::fs;
 #[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -142,7 +145,7 @@ fn gemini_parse_jsonl_file(filepath: &Path, logs: &mut Vec<LogRecord>) -> bool {
     };
     let reader = BufReader::new(file);
     let mut session_id = gemini_session_hint(filepath);
-    let mut lines = reader.lines().enumerate().peekable();
+    let mut lines = bounded_lines(reader).enumerate().peekable();
     while let Some((line_index, line)) = lines.next() {
         let Ok(line) = line else {
             return false;
@@ -182,7 +185,7 @@ fn gemini_parse_jsonl_file(filepath: &Path, logs: &mut Vec<LogRecord>) -> bool {
 /// Older layout: the whole session is one JSON document with a `messages`
 /// array and a top-level `sessionId`.
 fn gemini_parse_json_file(filepath: &Path, logs: &mut Vec<LogRecord>) -> bool {
-    let Ok(content) = fs::read_to_string(filepath) else {
+    let Ok(content) = read_text_capped(filepath, MAX_JSON_DOCUMENT_BYTES) else {
         return false;
     };
     let Ok(session) = serde_json::from_str::<Value>(&content) else {

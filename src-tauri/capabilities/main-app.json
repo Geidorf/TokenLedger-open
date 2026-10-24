@@ -23,6 +23,7 @@
     "allow-restore-claude-statusline-setup",
     "allow-get-settings",
     "allow-save-settings",
+    "allow-autostart-supported",
     "allow-get-cost-profile",
     "allow-validate-cost-profile",
     "allow-save-cost-profile",

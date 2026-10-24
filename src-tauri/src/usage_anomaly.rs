@@ -343,7 +343,10 @@ fn window_start(today: NaiveDate) -> NaiveDate {
     today - Duration::days(RECENT_DAYS + BASELINE_DAYS - 1)
 }
 
-fn evaluate_local(app: &AppContext, now: DateTime<Local>) -> Result<AnomalyReport, String> {
+pub(crate) fn evaluate_local(
+    app: &AppContext,
+    now: DateTime<Local>,
+) -> Result<AnomalyReport, String> {
     let today = now.date_naive();
     let rows = crate::commands::anomaly_rows::local_usage_rows(app, window_start(today), now)?;
     let gateway_since = hour_floor(now.naive_local())

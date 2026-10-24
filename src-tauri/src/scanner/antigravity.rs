@@ -1,5 +1,6 @@
 use super::checkpoints::*;
 use super::helpers::get_home_dir;
+use super::jsonl::bounded_lines;
 use super::other_tools::extract_model_from_settings_change;
 use super::types::*;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
@@ -7,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 pub(crate) const ANTIGRAVITY_CHECKPOINT_SOURCE_KIND: &str = "antigravity-transcript-jsonl-v3";
@@ -266,7 +267,7 @@ fn parse_transcript(path: &Path, session: &str, cli: bool) -> std::io::Result<(P
     let mut complete = true;
     let mut selected_model = "antigravity-unknown".to_string();
     let mut cumulative_chars = 0usize;
-    for line in reader.lines() {
+    for line in bounded_lines(reader) {
         let line = line?;
         if line.trim().is_empty() {
             continue;

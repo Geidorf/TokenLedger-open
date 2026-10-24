@@ -33,6 +33,7 @@ import {
 } from './SettingsPrimitives';
 import { AlertWebhookCard } from './AlertWebhookCard';
 import '../../styles/budget.css';
+import { getLang, localized, t, useLang } from '../../i18n';
 
 interface Draft {
   id: string | null;
@@ -62,21 +63,21 @@ export function budgetScopeName(rule: Pick<BudgetRule, 'scopeKind' | 'scopeId'>)
 
 /** 「同步到手机」开关下面的说明：开着时说清现在有没有送到云端。 */
 export function phoneSyncHint(enabled: boolean, status: PhoneSyncStatus): string {
-  const base = '手机端读到接近或超出时推本地通知。只上传范围名、周期和已用百分比，不上传金额与上限。';
+  const base = t('budget.phone.base');
   if (!enabled) return base;
   switch (status.state) {
     case 'ok':
       return status.lastPublishedAt
-        ? `已同步，最近一次 ${new Date(status.lastPublishedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}。`
-        : '已同步。';
+        ? t('budget.phone.okAt', { time: new Date(status.lastPublishedAt).toLocaleTimeString(getLang() === 'en' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' }) })
+        : t('budget.phone.ok');
     case 'signed-out':
-      return '需要先在「云同步」登录，手机用同一账号登录后才能收到。';
+      return t('budget.phone.signedOut');
     case 'not-deployed':
-      return '云端尚未部署预算同步，部署后自动开始。';
+      return t('budget.phone.notDeployed');
     case 'error':
-      return `同步失败：${status.error ?? '未知原因'}，稍后自动重试。`;
+      return t('budget.phone.error', { error: status.error ?? t('budget.phone.errorUnknown') });
     default:
-      return '正在准备同步…';
+      return t('budget.phone.pending');
   }
 }
 
@@ -90,25 +91,25 @@ function formatAmount(metric: BudgetMetric, value: number | null): string {
 
 /** 读数文案：已用 / 上限 · 百分比；读不到时说明原因，不当成 0。 */
 export function budgetReading(rule: BudgetRule, status: BudgetStatus | undefined): string {
-  if (!rule.enabled) return `已停用 · 上限 ${formatAmount(rule.metric, rule.limit)}`;
-  if (!status) return `上限 ${formatAmount(rule.metric, rule.limit)} · 读取中`;
+  if (!rule.enabled) return t('budget.reading.disabled', { limit: formatAmount(rule.metric, rule.limit) });
+  if (!status) return t('budget.reading.loading', { limit: formatAmount(rule.metric, rule.limit) });
   if (status.level === 'unavailable' || status.used === null) {
     const reason = rule.scopeKind === 'provider'
-      ? '账号维度需要网关记录'
-      : rule.metric === 'cost' ? '有未核价的记录' : '统计暂不可读';
-    return `上限 ${formatAmount(rule.metric, rule.limit)} · 用量不可得（${reason}）`;
+      ? t('budget.reason.provider')
+      : rule.metric === 'cost' ? t('budget.reason.unpriced') : t('budget.reason.unreadable');
+    return t('budget.reading.unavailable', { limit: formatAmount(rule.metric, rule.limit), reason });
   }
   const percent = Math.floor(status.percent ?? 0);
   const shown = percent > 999 ? '>999%' : `${percent}%`;
-  return `已用 ${formatAmount(rule.metric, status.used)} / ${formatAmount(rule.metric, rule.limit)} · ${shown}`;
+  return t('budget.reading.used', { used: formatAmount(rule.metric, status.used), limit: formatAmount(rule.metric, rule.limit), percent: shown });
 }
 
-const LEVEL_LABELS: Record<BudgetStatus['level'], string> = {
-  ok: '正常',
-  warn: '接近上限',
-  over: '已超出',
-  unavailable: '不可得',
-};
+const LEVEL_LABELS = localized<BudgetStatus['level']>({
+  ok: 'budget.level.ok',
+  warn: 'budget.level.warn',
+  over: 'budget.level.over',
+  unavailable: 'budget.level.unavailable',
+});
 
 function parseLimit(metric: BudgetMetric, raw: string): number | null {
   const value = Number(raw.trim());
@@ -122,6 +123,7 @@ function parseLimit(metric: BudgetMetric, raw: string): number | null {
  * 与看板同一份本机统计；接近（默认 80%）与超出各提醒一次，托盘提示同时显示。
  */
 export function BudgetSection() {
+  useLang();
   const { settings, loaded, saving, error, save } = useBudgetSettings();
   const { report, error: statusError, reload } = useBudgetStatus(settings);
   const phoneState = report?.phoneSync.state ?? 'off';
@@ -151,12 +153,12 @@ export function BudgetSection() {
     event.preventDefault();
     const limit = parseLimit(draft.metric, draft.limit);
     if (limit === null) {
-      setFormError(draft.metric === 'tokens' ? '上限至少 1 个 Token' : '上限要大于 0');
+      setFormError(draft.metric === 'tokens' ? t('budget.form.minTokens') : t('budget.form.positive'));
       return;
     }
     const scopeId = draft.scopeKind === 'all' ? '' : draft.scopeId.trim();
     if (draft.scopeKind !== 'all' && !scopeId) {
-      setFormError(`请填写${BUDGET_SCOPE_LABELS[draft.scopeKind]}`);
+      setFormError(t('budget.form.missingScope', { scope: BUDGET_SCOPE_LABELS[draft.scopeKind] }));
       return;
     }
     setFormError('');
@@ -190,12 +192,12 @@ export function BudgetSection() {
   };
 
   return (
-    <SettingsSection id="budget" title="预算提醒">
-      <SettingsCard title="提醒方式">
+    <SettingsSection id="budget" title={t('budget.title')}>
+      <SettingsCard title={t('budget.notify.card')}>
         <SettingsGroup>
           <SettingsToggleRow
-            label="接近或超出预算时提醒"
-            hint="系统通知，每条预算每个周期接近与超出各一次；托盘提示同时显示。"
+            label={t('budget.notify.label')}
+            hint={t('budget.notify.hint')}
             icon={Bell}
             checked={settings.notify}
             disabled={disabled}
@@ -203,7 +205,7 @@ export function BudgetSection() {
             onChange={(notify) => void save({ ...settings, notify })}
           />
           <SettingsToggleRow
-            label="同步到手机"
+            label={t('budget.phone.label')}
             hint={phoneSyncHint(settings.syncToPhone, report?.phoneSync ?? OFF_PHONE_SYNC)}
             icon={Smartphone}
             checked={settings.syncToPhone}
@@ -216,12 +218,12 @@ export function BudgetSection() {
       </SettingsCard>
 
       <SettingsCard
-        title="预算"
-        description="只看已经发生的用量，按日历周期统计（每周从周一算起），与看板同一份本机数据。"
+        title={t('budget.list.title')}
+        description={t('budget.list.description')}
       >
         <SettingsGroup>
           {settings.rules.length === 0 && (
-            <SettingsRow label="还没有预算" hint="在下面新增一条，例如「本月 · 全部用量 · 预估费用 $50」。" icon={Wallet}>
+            <SettingsRow label={t('budget.empty.label')} hint={t('budget.empty.hint')} icon={Wallet}>
               <span />
             </SettingsRow>
           )}
@@ -247,17 +249,17 @@ export function BudgetSection() {
                         rules: settings.rules.map((item) => (item.id === rule.id ? { ...item, enabled: !item.enabled } : item)),
                       })}
                     >
-                      {rule.enabled ? '停用' : '启用'}
+                      {rule.enabled ? t('budget.disable') : t('budget.enable')}
                     </button>
-                    <button type="button" className="secondary-inline" disabled={disabled} onClick={() => edit(rule)} aria-label={`编辑 ${title}`} title="编辑">
+                    <button type="button" className="secondary-inline" disabled={disabled} onClick={() => edit(rule)} aria-label={t('budget.editAria', { title })} title={t('budget.edit')}>
                       <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
                     <button
                       type="button"
                       className="secondary-inline"
                       disabled={disabled}
-                      aria-label={`删除 ${title}`}
-                      title="删除"
+                      aria-label={t('budget.deleteAria', { title })}
+                      title={t('budget.delete')}
                       onClick={() => {
                         if (draft.id === rule.id) setDraft(EMPTY_DRAFT);
                         void save({ ...settings, rules: settings.rules.filter((item) => item.id !== rule.id) });
@@ -270,7 +272,7 @@ export function BudgetSection() {
                 <div
                   className="budget-rule-meter"
                   role="meter"
-                  aria-label={`${title}已用比例`}
+                  aria-label={t('budget.meterAria', { title })}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={Math.round(percent)}
@@ -284,14 +286,14 @@ export function BudgetSection() {
         </SettingsGroup>
       </SettingsCard>
 
-      <SettingsCard title={draft.id ? '编辑预算' : '新增预算'}>
+      <SettingsCard title={draft.id ? t('budget.form.editTitle') : t('budget.form.addTitle')}>
         <form onSubmit={(event) => void submit(event)}>
           <SettingsGroup>
-            <SettingsRow label="周期与范围" hint="账号指网关记录的转发目标；只有经网关的请求能按账号统计。" icon={Plus} wideControl>
+            <SettingsRow label={t('budget.form.scopeLabel')} hint={t('budget.form.scopeHint')} icon={Plus} wideControl>
               <div className="budget-form-fields">
                 <select
                   className="settings-select"
-                  aria-label="预算周期"
+                  aria-label={t('budget.form.periodAria')}
                   value={draft.period}
                   onChange={(event) => setDraft({ ...draft, period: event.target.value as BudgetPeriod })}
                 >
@@ -299,7 +301,7 @@ export function BudgetSection() {
                 </select>
                 <select
                   className="settings-select"
-                  aria-label="预算范围"
+                  aria-label={t('budget.form.scopeAria')}
                   value={draft.scopeKind}
                   onChange={(event) => setDraft({ ...draft, scopeKind: event.target.value as BudgetScopeKind, scopeId: '' })}
                 >
@@ -309,8 +311,8 @@ export function BudgetSection() {
                   <>
                     <input
                       className="settings-input"
-                      aria-label={`预算${BUDGET_SCOPE_LABELS[draft.scopeKind]}`}
-                      placeholder={draft.scopeKind === 'tool' ? '例如 codex' : draft.scopeKind === 'model' ? '例如 gpt-5' : '网关供应商名'}
+                      aria-label={t('budget.form.scopeIdAria', { scope: BUDGET_SCOPE_LABELS[draft.scopeKind] })}
+                      placeholder={draft.scopeKind === 'tool' ? t('budget.form.toolPlaceholder') : draft.scopeKind === 'model' ? t('budget.form.modelPlaceholder') : t('budget.form.providerPlaceholder')}
                       value={draft.scopeId}
                       maxLength={128}
                       list={listId}
@@ -328,13 +330,13 @@ export function BudgetSection() {
               </div>
             </SettingsRow>
             {draft.scopeKind === 'provider' && report && !choices.providersAvailable && (
-              <p className="settings-hint" role="note">本机还没有网关记录，账号预算会显示为不可得，直到有请求经过网关。</p>
+              <p className="settings-hint" role="note">{t('budget.form.noGateway')}</p>
             )}
-            <SettingsRow label="上限" hint="接近比例到达时先提醒一次，超出上限再提醒一次。" wideControl>
+            <SettingsRow label={t('budget.form.limitLabel')} hint={t('budget.form.limitHint')} wideControl>
               <div className="budget-form-fields">
                 <select
                   className="settings-select"
-                  aria-label="预算口径"
+                  aria-label={t('budget.form.metricAria')}
                   value={draft.metric}
                   onChange={(event) => setDraft({ ...draft, metric: event.target.value as BudgetMetric })}
                 >
@@ -342,19 +344,19 @@ export function BudgetSection() {
                 </select>
                 <input
                   className="settings-input"
-                  aria-label="预算上限"
+                  aria-label={t('budget.form.limitAria')}
                   inputMode="decimal"
-                  placeholder={draft.metric === 'cost' ? '美元，例如 50' : 'Token 数，例如 20000000'}
+                  placeholder={draft.metric === 'cost' ? t('budget.form.costPlaceholder') : t('budget.form.tokensPlaceholder')}
                   value={draft.limit}
                   onChange={(event) => setDraft({ ...draft, limit: event.target.value })}
                 />
                 <select
                   className="settings-select"
-                  aria-label="接近提醒比例"
+                  aria-label={t('budget.form.warnAria')}
                   value={String(draft.warnPercent)}
                   onChange={(event) => setDraft({ ...draft, warnPercent: Number(event.target.value) })}
                 >
-                  {BUDGET_WARN_PERCENTS.map((value) => <option key={value} value={value}>{`用到 ${value}% 时提醒`}</option>)}
+                  {BUDGET_WARN_PERCENTS.map((value) => <option key={value} value={value}>{t('budget.form.warnOption', { percent: value })}</option>)}
                 </select>
               </div>
             </SettingsRow>
@@ -364,13 +366,13 @@ export function BudgetSection() {
                 type="submit"
                 className="primary-inline"
                 disabled={disabled || full}
-                title={full ? `最多 ${MAX_BUDGET_RULES} 条预算` : undefined}
+                title={full ? t('budget.form.max', { count: MAX_BUDGET_RULES }) : undefined}
               >
-                {draft.id ? '保存预算' : '添加预算'}
+                {draft.id ? t('budget.form.save') : t('budget.form.add')}
               </button>
               {draft.id && (
                 <button type="button" className="secondary-inline" onClick={() => { setDraft(EMPTY_DRAFT); setFormError(''); }}>
-                  取消编辑
+                  {t('budget.form.cancel')}
                 </button>
               )}
             </SettingsActionRow>

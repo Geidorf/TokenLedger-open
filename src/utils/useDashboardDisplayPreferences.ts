@@ -1,5 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
+// 旧版「调整显示」的五个大模块。概览已改为卡片布局（dashboardLayout.ts），这里只保留读取，用来迁移旧设置；
+// 额度来源的顺序与隐藏仍存在这里。
 export const DASHBOARD_MODULE_IDS = ['kpi', 'trend', 'quota', 'distribution', 'insights'] as const;
 export type DashboardModuleId = typeof DASHBOARD_MODULE_IDS[number];
 
@@ -126,12 +128,6 @@ export function useDashboardDisplayPreferences() {
   return {
     preferences,
     reset,
-    moveModule: (id: DashboardModuleId, direction: -1 | 1) => update(current => ({ ...current, moduleOrder: moveItem(current.moduleOrder, id, direction) as DashboardModuleId[] })),
-    setModuleVisible: (id: DashboardModuleId, visible: boolean) => update(current => {
-      const hidden = current.hiddenModuleIds.filter(item => item !== id);
-      if (!visible && current.moduleOrder.filter(item => !hidden.includes(item)).length > 1) hidden.push(id);
-      return { ...current, hiddenModuleIds: hidden };
-    }),
     moveQuotaSource: (id: string, direction: -1 | 1, sourceKeys: readonly string[]) => update(current => {
       const activeKeys = uniqueStrings(sourceKeys);
       const movedActive = moveItem(orderQuotaSourceKeys(activeKeys, current), id, direction);

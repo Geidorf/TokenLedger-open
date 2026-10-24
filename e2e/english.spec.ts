@@ -84,6 +84,27 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('供应商页与 Agent 页：列表、编辑表单与健康度是英文', async ({ page }) => {
+    await openEnglish(page, 'providers');
+    await expect(page.getByText(/^3 enabled · 1 without a key/)).toBeVisible();
+    await page.getByRole('button', { name: /^DeepSeek/ }).first().click();
+    const sheet = page.getByRole('dialog', { name: /DeepSeek/ });
+    await expect(sheet.getByText('Upstream protocol')).toBeVisible();
+    await expect(sheet.getByRole('region', { name: 'DeepSeek health' })).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Delete provider' })).toBeVisible();
+    await sheet.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Add provider' }).click();
+    await expect(page.getByText('Pick a preset and paste a key')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'China vendors' })).toBeVisible();
+    await openEnglish(page, 'agents');
+    await expect(page.getByText(/models and routing groups · agent configs get only the gateway URL/)).toBeVisible();
+    await page.getByRole('button', { name: 'Setup steps' }).last().click();
+    const manual = page.getByRole('dialog', { name: 'Claude Desktop manual setup' });
+    await expect(manual.getByText(/Gateway base URL: Enter the root URL without \/v1/)).toBeVisible();
+    await expect(manual.getByText('Model list', { exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('网关页：接入说明、模型目录与最近请求是英文', async ({ page }) => {
     await openEnglish(page, 'gateway');
     await expect(page.getByRole('heading', { name: /^Connect/ })).toBeVisible();
@@ -118,5 +139,16 @@ test.describe('英文界面', () => {
     await openEnglish(page, 'settings-data');
     await expect(page.getByText('Shared usage from other computers')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Show computers sharing usage' })).toBeVisible();
+    // 重复计数警示在英文下也要保留。
+    await expect(page.getByText(/Only tick computers without TokenLedger installed/)).toBeVisible();
+  });
+
+  test('设置：预算提醒、外部网关同步与按项目统计是英文', async ({ page }) => {
+    await openEnglish(page, 'settings-budget');
+    await expect(page.getByRole('switch', { name: 'Alert when nearing or over budget' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add budget' })).toBeVisible();
+    await openEnglish(page, 'settings-data');
+    await expect(page.getByText('External gateway WebDAV sync')).toBeVisible();
+    await expect(page.getByRole('switch', { name: 'Count local usage by project' })).toBeVisible();
   });
 });
