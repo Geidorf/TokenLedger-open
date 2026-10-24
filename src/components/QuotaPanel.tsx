@@ -1,4 +1,5 @@
 import { ChevronDown, Command, Gauge, Globe2, LoaderCircle, Network, RefreshCw, Settings2, Sparkles, Terminal } from 'lucide-react';
+import { EmptyState } from './EmptyState';
 import { useEffect, useId, useState } from 'react';
 import type { QuotaProviderEnvelope, QuotaSyncStatus, QuotaWindowSnapshot } from '../types';
 import { effectiveVisibleQuotaSourceKeys } from '../utils/useDashboardDisplayPreferences';
@@ -813,12 +814,15 @@ export function QuotaPanel({
             // 冷启动会有一段安静的空窗：T10.71 移除了启动时的额度同步（避免一开机
             // 就弹钥匙串），首次后台读取改由 5 分钟周期接手。在此之前面板原本什么
             // 都不显示，用户无法区分「还没读」和「没有来源」。两种情况各给一条出路。
-            <p className="quota-panel-cold-start" role="status">
-              还没有任何额度快照。已授权来源的首次后台读取会在应用启动约 5 分钟后进行，想立刻查看请点上方「刷新额度」；
-              <button type="button" className="link-inline" onClick={onOpenSettings}>
-                还没授权任何来源？去设置开启
-              </button>
-            </p>
+            <EmptyState
+              variant="inset"
+              icon={Gauge}
+              className="quota-panel-cold-start"
+              title="还没有额度数据"
+              description="已授权来源的首次后台读取会在应用启动约 5 分钟后进行，想马上看就点上方「刷新额度」。还没授权任何来源时，先去设置里选择要读取的来源。"
+            >
+              <button type="button" className="secondary-inline" onClick={onOpenSettings}>去设置授权</button>
+            </EmptyState>
           )}
         </>
       )}

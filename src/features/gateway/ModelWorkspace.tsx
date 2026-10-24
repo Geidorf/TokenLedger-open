@@ -60,9 +60,9 @@ export function ModelWorkspaceContent({ page, onPage, onNotify, onConfirm, onCha
 }) {
   return (
     <div className="mw-content">
-      {page === 'agents' && <AgentsPage onNotify={onNotify} onConfirm={onConfirm} />}
+      {page === 'agents' && <AgentsPage onNotify={onNotify} onConfirm={onConfirm} onOpenProviders={() => onPage('providers')} />}
       {page === 'providers' && <ProvidersPage onNotify={onNotify} onConfirm={onConfirm} onChanged={onChanged} />}
-      {page === 'gateway' && <GatewayPage onOpenRouting={() => onPage('routing')} />}
+      {page === 'gateway' && <GatewayPage onOpenRouting={() => onPage('routing')} onOpenProviders={() => onPage('providers')} onOpenAgents={() => onPage('agents')} />}
       {page === 'routing' && <RoutingPage onNotify={onNotify} onConfirm={onConfirm} />}
     </div>
   );

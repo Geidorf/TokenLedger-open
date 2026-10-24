@@ -1090,3 +1090,24 @@ describe('BehaviorAnalysisView custom range (T10.300e)', () => {
     expect(screen.queryByLabelText('自定义起始日期')).not.toBeInTheDocument();
   });
 });
+
+describe('BehaviorAnalysisView 空状态', () => {
+  const empty = (): BehaviorAnalysisResponse => {
+    const data = buildData();
+    return { ...data, summary: { ...data.summary, requests: 0 } };
+  };
+
+  it('只是所选范围没有记录时建议扩大范围，不提示扫描', () => {
+    render(<BehaviorAnalysisView data={empty()} loading={false} error="" scope="local" range="today" customRange={null} onRangeChange={noop} onRetry={noop} onViewLocal={noop} onScan={noop} />);
+    expect(screen.getByText('这段时间没有会话')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '看近 30 天' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '扫描本机日志' })).not.toBeInTheDocument();
+  });
+
+  it('本机账本完全为空时给出扫描', () => {
+    const onScan = vi.fn();
+    render(<BehaviorAnalysisView data={empty()} loading={false} error="" scope="local" range="today" customRange={null} onRangeChange={noop} onRetry={noop} onViewLocal={noop} ledgerEmpty onScan={onScan} />);
+    fireEvent.click(screen.getByRole('button', { name: '扫描本机日志' }));
+    expect(onScan).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ClipboardList, FileDiff, LoaderCircle, Search, Undo2 } from 'lucide-react';
+import { Check, ChevronDown, ClipboardList, FileDiff, LoaderCircle, Plus, Search, Undo2, Waypoints } from 'lucide-react';
+import { EmptyState } from '../../components/EmptyState';
 import { BrandIcon, GroupIcon } from '../../prototypes/prototypeKit';
 import type { ToastType } from '../../types';
 import type { RequestConfirmation } from '../../utils/confirmation';
@@ -18,6 +19,8 @@ interface PageProps {
   supported?: AgentAdapter[];
   manual?: ManualAgent[];
   pending?: PendingAgent[];
+  /** Shown as the next step while there is no model to pick yet. */
+  onOpenProviders?: () => void;
 }
 
 function ModelPicker({ agentName, options, current, onPick, onClose }: {
@@ -264,8 +267,8 @@ function ManualRow({ agent, baseUrl, options }: { agent: ManualAgent; baseUrl: s
   );
 }
 
-export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, manual = MANUAL_AGENTS, pending = PENDING_AGENTS }: PageProps) {
-  const [options, setOptions] = useState<ModelOption[]>([]);
+export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, manual = MANUAL_AGENTS, pending = PENDING_AGENTS, onOpenProviders }: PageProps) {
+  const [options, setOptions] = useState<ModelOption[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
   const [legacyResolution, setLegacyResolution] = useState({ revision: 0, chooseGateway: false });
@@ -287,12 +290,17 @@ export function AgentsPage({ onNotify, onConfirm, supported = SUPPORTED_AGENTS, 
     <>
       <LegacyRestoreCard onConfirm={onConfirm} onResolved={(chooseGateway) => setLegacyResolution((previous) => ({ revision: previous.revision + 1, chooseGateway }))} />
       <div className="mw-toolbar">
-        <span className="mw-caption">{options.length} 个可选模型与路由组 · Agent 配置只写网关地址和本地 token</span>
+        <span className="mw-caption">{options?.length ?? 0} 个可选模型与路由组 · Agent 配置只写网关地址和本地 token</span>
       </div>
       {loadError && <p className="mw-note is-danger" role="alert">读取模型列表失败：{loadError}</p>}
+      {options?.length === 0 && (
+        <EmptyState variant="banner" icon={Waypoints} title="还没有可选的模型" description="添加一个供应商并填入 API key，它的模型就会出现在下面每个 Agent 的选择器里。">
+          {onOpenProviders && <button type="button" className="mw-btn is-primary" onClick={onOpenProviders}><Plus className="h-4 w-4" />添加供应商</button>}
+        </EmptyState>
+      )}
       <div className="mw-card mw-rows">
-        {supported.map((agent) => <AgentRow key={`${agent.id}:${legacyResolution.revision}`} agent={agent} options={options} onNotify={onNotify} onConfirm={onConfirm} startPicker={agent.id === 'codex' && legacyResolution.chooseGateway} />)}
-        {manual.map((agent) => <ManualRow key={agent.id} agent={agent} baseUrl={baseUrl} options={options} />)}
+        {supported.map((agent) => <AgentRow key={`${agent.id}:${legacyResolution.revision}`} agent={agent} options={options ?? []} onNotify={onNotify} onConfirm={onConfirm} startPicker={agent.id === 'codex' && legacyResolution.chooseGateway} />)}
+        {manual.map((agent) => <ManualRow key={agent.id} agent={agent} baseUrl={baseUrl} options={options ?? []} />)}
         {pending.map((agent) => (
           <div key={agent.id} className="mw-row mw-agent is-off">
             <BrandIcon id={agent.icon} fallback={agent.monogram} size={30} />

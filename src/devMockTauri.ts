@@ -1,3 +1,4 @@
+import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import packageJson from '../package.json';
 import bundledPrices from '../src-tauri/prices.json';
@@ -33,7 +34,7 @@ import {
 } from './utils/frontendContracts';
 import { BEHAVIOR_PROJECT_DIMENSION_DISABLED, BEHAVIOR_PROJECT_DIMENSION_UNAVAILABLE, BEHAVIOR_UNATTRIBUTED_FILTER_KEY } from './utils/contracts/behaviorProjects';
 import type { CostProfile, CostProfileSaveResult } from './types';
-import { handleGatewayMock } from './features/gateway/devMock';
+import { handleGatewayMock, resetGatewayMockToFresh } from './features/gateway/devMock';
 import { mockWallpaperPreview } from './devMockWallpaperPreview';
 import { attachE2eHarness, resolveE2eOverride } from './devMockE2e';
 import { COST_PROFILE_DEFAULT_CNY_PER_USD, checkCostProfileInput, isCostProfileCleared } from './utils/contracts/costProfile';
@@ -1539,6 +1540,11 @@ let mockQuotaSyncStatus: QuotaSyncStatus = { enabled: false, state: 'disabled' }
 let mockQuotaAlertSettings = { enabled: false, thresholds: [20] as number[] };
 let mockUnsyncedRecords = 12;
 let mockCloudAuthenticated = true;
+// `?fresh=1` previews a first launch: empty ledger, no cloud account and model
+// access off. The first `refresh_scan` puts the sample ledger back, so the
+// onboarding steps can be walked through end to end.
+let mockFreshInstall = false;
+let mockFreshLedger: StatsData['history'] = [];
 // T10.282：Claude 一键接入默认停在「未接入」，写入后切到已接入并留下备份。
 let mockClaudeStatuslineWired = false;
 let mockClaudeBackup: { createdAt: string; originalExisted: boolean; restorableWithoutForce: boolean } | null = null;
@@ -2015,6 +2021,16 @@ function mockMagpieImportStatus() {
 export function installDevMockTauri() {
   mockUnsyncedRecords = 12;
   mockCloudAuthenticated = true;
+  // `?fresh=gateway` is the same first launch with model access already on.
+  const fresh = typeof window === 'undefined' || !window.location ? null : new URLSearchParams(window.location.search).get('fresh');
+  mockFreshInstall = fresh === '1' || fresh === 'gateway';
+  if (mockFreshInstall) {
+    mockFreshLedger = mockHistory.splice(0, mockHistory.length);
+    mockUnsyncedRecords = 0;
+    mockCloudAuthenticated = false;
+    mockSettings = { ...mockSettings, model_access_enabled: fresh === 'gateway', routing_publish_enabled: false };
+    resetGatewayMockToFresh();
+  }
   mockCostProfile = emptyMockCostProfile();
   resetMockProjectDimension();
   attachE2eHarness();
@@ -2026,6 +2042,7 @@ export function installDevMockTauri() {
       : {};
     switch (cmd) {
       case 'get_cloud_config':
+        if (mockFreshInstall && !mockCloudAuthenticated) return { supabase_url: '', supabase_key: '' };
         return { supabase_url: 'https://demo.supabase.co', supabase_key: 'sb_publishable_demo' };
       case 'get_cloud_status':
         return {
@@ -2315,7 +2332,7 @@ export function installDevMockTauri() {
       case 'get_local_quota_providers':
       case 'retry_quota_providers':
       case 'retry_local_quota_providers':
-        return quotaResponse();
+        return mockFreshInstall ? [] : quotaResponse();
       case 'authorize_claude_native_quota':
         if (!mockSettings.quota_claude_codexbar_enabled) throw new Error('请先开启 Claude 内置额度读取');
         return 'Claude 内置 /usage 读取已启用，无需安装 CodexBar';
@@ -2323,6 +2340,13 @@ export function installDevMockTauri() {
         if (!mockSettings.quota_antigravity_local_enabled) throw new Error('请先开启 Antigravity 本地额度读取');
         return 'Antigravity 本地额度读取成功，共识别 4 个额度窗口';
       case 'refresh_scan':
+        if (mockFreshInstall && mockHistory.length === 0 && mockFreshLedger.length > 0) {
+          mockHistory.push(...mockFreshLedger);
+          mockUnsyncedRecords = mockHistory.length;
+          // The native scan announces new rows the same way.
+          window.setTimeout(() => { void emit('stats-updated'); }, 0);
+          return { message: `扫描完成，已发现 ${mockHistory.length} 条新记录` };
+        }
         return { message: '扫描完成，已发现 6 条新记录' };
       case 'sync_to_supabase': {
         const syncedCount = mockUnsyncedRecords;
@@ -2407,6 +2431,7 @@ export function installDevMockTauri() {
         return { state: 'ok', lastPublishedAt: new Date(Date.now() - 4000).toISOString(), flows: 3, error: null };
       case 'peer_live_snapshot':
       case 'gateway_external_feed':
+        if (mockFreshInstall) return { reachable: false, port: 3425, requests: 0, waiting: 0, tools: 0, active: [], recent: [] };
         return {
           reachable: true, port: 3425, requests: 2, waiting: 1, tools: 0,
           active: [
