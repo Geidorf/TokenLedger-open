@@ -21,7 +21,12 @@ try {
     logLevel: 'silent',
   });
 
-  const result = spawnSync(process.execPath, ['--test', bundledTest, path.join(root, 'tests/design-tokens.test.mjs'), path.join(root, 'tests/tauri-command-acl.test.mjs')], {
+  // VS Code 状态栏插件（extensions/vscode）的单测零依赖，跟前端契约同一轮跑，CI 与本地门禁都覆盖到。
+  const vscodeExtensionTests = fs.readdirSync(path.join(root, 'extensions/vscode/test'))
+    .filter((name) => name.endsWith('.test.js'))
+    .sort()
+    .map((name) => path.join(root, 'extensions/vscode/test', name));
+  const result = spawnSync(process.execPath, ['--test', bundledTest, path.join(root, 'tests/design-tokens.test.mjs'), path.join(root, 'tests/tauri-command-acl.test.mjs'), ...vscodeExtensionTests], {
     cwd: root,
     env: process.env,
     stdio: 'inherit',
