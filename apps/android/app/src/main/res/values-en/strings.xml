@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TokenLedger</string>
+    <string name="config_missing_message">Service configuration is unavailable. Contact the publisher for the correct version.</string>
+    <string name="login_subtitle">Cloud dashboard · v%1$s</string>
+    <string name="email_label">Email</string>
+    <string name="password_label">Password</string>
+    <string name="login_action">Sign in</string>
+    <string name="login_loading">Signing in</string>
+    <string name="widget_label">TokenLedger quota</string>
+    <string name="widget_description">View subscription quota and token usage, with clear data freshness.</string>
+    <string name="widget_ring_label">TokenLedger · Ring quota (2x2)</string>
+    <string name="widget_ring_description">Two independent ring gauges showing available quota by AI source.</string>
+    <string name="widget_bar_label">TokenLedger · Usage row (4x1)</string>
+    <string name="widget_bar_description">Compact usage row with effective tokens, estimated cost, and data time.</string>
+    <string name="widget_combo_label">TokenLedger · Dashboard (4x2)</string>
+    <string name="widget_combo_description">Two-column cards showing source quota, token usage, and estimated cost.</string>
+    <string name="widget_quota_label">TokenLedger · Quota bars (4x3)</string>
+    <string name="widget_quota_description">One row per quota window with available percentage, reset time, and the latest gateway route when available.</string>
+    <string name="widget_routing_label">TokenLedger · Live routing (4x3)</string>
+    <string name="widget_routing_description">Gateway routing and the latest 3 calls, updated every few minutes while your desktop is online.</string>
+    <string name="quick_tile_label">TokenLedger quota</string>
+</resources>
