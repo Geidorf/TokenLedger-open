@@ -1,0 +1,416 @@
+/* ==========================================================================
+   First-run guide and shared empty states
+   --------------------------------------------------------------------------
+   Same surfaces as the rest of the desktop refresh: white card on the grey
+   page, one indigo accent, 13px body, 120–180ms motion. Unlayered and
+   imported after index.css.
+   ========================================================================== */
+
+/* ---- Guide dialog ------------------------------------------------------- */
+
+.onboarding-overlay {
+  z-index: 1010;
+  padding: 16px;
+}
+
+.onboarding-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-width: 620px;
+  max-height: calc(100vh - 32px);
+  gap: 16px;
+  padding: 22px 22px 18px;
+}
+
+.onboarding-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.onboarding-mark {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--color-primary-soft-bg);
+  color: var(--color-primary);
+}
+
+.onboarding-head-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.onboarding-head-copy h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+  font-weight: var(--weight-title);
+  line-height: 1.35;
+}
+
+.onboarding-head-copy p {
+  margin: 4px 0 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+.onboarding-icon-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-button);
+  color: var(--color-text-tertiary);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.onboarding-icon-button:hover {
+  background: var(--shell-hover);
+  color: var(--color-text-primary);
+}
+
+.onboarding-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.onboarding-progress span {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--shell-track);
+  transition: background-color 180ms ease;
+}
+
+.onboarding-progress span.is-done {
+  background: var(--color-primary);
+}
+
+.onboarding-steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  list-style: none;
+  overflow: hidden;
+}
+
+.onboarding-step {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  transition: background-color 150ms ease;
+}
+
+.onboarding-step + .onboarding-step {
+  border-top: 1px solid var(--color-row-divider, var(--color-border));
+}
+
+.onboarding-step.is-current {
+  background: var(--color-primary-subtle);
+}
+
+.onboarding-step-badge {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-panel);
+  color: var(--color-text-secondary);
+}
+
+.onboarding-step.is-current .onboarding-step-badge {
+  border-color: var(--color-primary-soft-border);
+  background: var(--color-primary-soft-bg);
+  color: var(--color-primary);
+}
+
+.onboarding-step.is-done .onboarding-step-badge {
+  border-color: transparent;
+  background: var(--color-success-soft-bg);
+  color: var(--color-success-text);
+}
+
+.onboarding-step.is-blocked .onboarding-step-badge,
+.onboarding-step.is-unknown .onboarding-step-badge {
+  color: var(--color-text-faint);
+}
+
+.onboarding-step-copy {
+  min-width: 0;
+}
+
+.onboarding-step-copy strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-label);
+}
+
+.onboarding-step.is-done .onboarding-step-copy strong {
+  color: var(--color-text-secondary);
+}
+
+.onboarding-step-index {
+  color: var(--color-text-faint);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-regular);
+}
+
+.onboarding-step-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.onboarding-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--shell-track);
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  font-weight: var(--weight-regular);
+}
+
+.onboarding-tag.is-done {
+  background: var(--color-success-soft-bg);
+  color: var(--color-success-text);
+}
+
+.onboarding-step .primary-inline,
+.onboarding-step .secondary-inline {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: var(--font-size-sm);
+}
+
+.onboarding-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboarding-privacy {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.onboarding-privacy svg {
+  flex: none;
+}
+
+@media (max-width: 560px) {
+  .onboarding-step {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .onboarding-step > button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .onboarding-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* ---- Minimized chip ----------------------------------------------------- */
+
+.onboarding-chip {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-panel);
+  box-shadow: var(--shadow-modal);
+  animation: tl-enter-scale 180ms var(--ease-out-expo) backwards;
+}
+
+.onboarding-chip-open {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-label);
+  transition: background-color 120ms ease;
+}
+
+.onboarding-chip-open:hover,
+.onboarding-chip-close:hover {
+  background: var(--shell-hover);
+}
+
+.onboarding-chip-count {
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-regular);
+}
+
+.onboarding-chip-close {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--color-text-tertiary);
+  transition: background-color 120ms ease;
+}
+
+.onboarding-ring {
+  flex: none;
+}
+
+.onboarding-ring circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.onboarding-ring-track {
+  stroke: var(--shell-track);
+}
+
+.onboarding-ring-fill {
+  stroke: var(--color-primary);
+  stroke-linecap: round;
+  transition: stroke-dasharray 180ms ease;
+}
+
+/* ---- Shared empty state ------------------------------------------------- */
+
+.tl-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.tl-empty-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.tl-empty-inset {
+  padding: 24px 16px;
+}
+
+.tl-empty-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--color-primary-soft-bg);
+  color: var(--color-primary);
+}
+
+.tl-empty-inset .tl-empty-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.tl-empty-copy {
+  display: grid;
+  max-width: 460px;
+  gap: 4px;
+}
+
+.tl-empty-copy strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-title);
+}
+
+.tl-empty-copy p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-md);
+  line-height: 1.55;
+}
+
+.tl-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Banner: one row, copy left and the action right. Shares the card face. */
+.tl-empty-banner {
+  flex-direction: row;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-primary-soft-border);
+  border-radius: var(--radius-card);
+  background: var(--color-primary-subtle);
+  text-align: left;
+}
+
+.tl-empty-banner .tl-empty-copy {
+  max-width: none;
+  flex: 1;
+}
+
+.tl-empty-banner .tl-empty-actions {
+  margin-top: 0;
+}
+
+@media (max-width: 560px) {
+  .tl-empty-banner {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-chip {
+    animation: none;
+  }
+}
+
+.onboarding-dialog:focus {
+  outline: none;
+}

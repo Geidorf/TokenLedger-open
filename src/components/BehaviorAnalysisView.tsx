@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, CalendarDays, ChevronRight, Database, Info, ListTree, RefreshCw, Server, Users, type LucideIcon } from 'lucide-react';
+import { Activity, CalendarDays, ChevronRight, Database, FolderSearch, Info, ListTree, RefreshCw, Server, Users, type LucideIcon } from 'lucide-react';
+import { EmptyState } from './EmptyState';
 import { colorForTool, getPalette, toolColorMap, type BehaviorAnalysisResponse, type CustomDateRange, type DataScope, type RangeKey } from '../types';
 import { formatAxisTokens, formatNum, formatTokens, formatUsdApprox } from '../utils/format';
 import { getChartThemeTokens, getChartTooltip, getChartGrid, getChartAnimation, barSeriesStyle, type ChartThemeTokens } from '../utils/chartTheme';
@@ -58,6 +59,9 @@ interface Props {
   onRebuildProjectIndex?: () => void;
   /** 本机索引回填进度；没有时用响应里的范围内计数。 */
   projectBackfill?: { done: number; total: number } | null;
+  /** Empty local ledger: the empty state offers a scan. */
+  onScan?: () => void;
+  scanBusy?: boolean;
 }
 
 type QuickRange = 'today' | 'threeDays' | 'sevenDays' | 'thirtyDays';
@@ -228,7 +232,7 @@ function valueAxis(theme: ChartThemeTokens, formatter: (value: number) => string
   };
 }
 
-export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loading, refreshing = false, updatedAt = null, error, scope, range, customRange, onRangeChange, onRetry, onViewLocal, onSelectDate, onOpenTool, onOpenSession, projectFilter = [], onProjectFilterChange, onOpenProjectSettings, onRebuildProjectIndex, projectBackfill = null }: Props) {
+export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loading, refreshing = false, updatedAt = null, error, scope, range, customRange, onRangeChange, onRetry, onViewLocal, onSelectDate, onOpenTool, onOpenSession, projectFilter = [], onProjectFilterChange, onOpenProjectSettings, onRebuildProjectIndex, projectBackfill = null, onScan, scanBusy = false }: Props) {
   const { effective } = useTheme(); // Tool-ranking/session-ranking colours below must recompute on theme toggle (T10.178 review P2-1).
   const { hidden: hideProjectNames, setHidden: setHideProjectNames } = useHideProjectNames();
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
@@ -539,7 +543,15 @@ export function BehaviorAnalysisView({ hasPageTitle = false, data: dataProp, loa
         hideNames={hideProjectNames}
         onHideNamesChange={setHideProjectNames}
       />
-      {data.summary.requests === 0 ? <div className="panel behavior-empty">该区间没有本机账本记录。可扩大时间范围，或先扫描本机日志。</div> : <>
+      {data.summary.requests === 0 ? (data.meta.firstRecordAt ? (
+        <EmptyState icon={CalendarDays} title="这段时间没有会话" description={`本机最早的记录在 ${data.meta.firstRecordAt.slice(0, 10)}。换成更长的时间范围看看。`}>
+          {range !== 'custom' || preset !== 'thirtyDays' ? <button type="button" className="secondary-inline" onClick={() => choosePreset('thirtyDays')}>看近 30 天</button> : null}
+        </EmptyState>
+      ) : (
+        <EmptyState icon={FolderSearch} title="本机还没有会话记录" description="扫描 Claude Code、Codex 等工具留在本机的日志后，这里会按会话、项目和工具拆开看用量。">
+          {onScan && <button type="button" className="primary-inline" onClick={onScan} disabled={scanBusy} aria-busy={scanBusy || undefined}><RefreshCw className={`h-4 w-4 ${scanBusy ? 'animate-spin' : ''}`} />扫描本机日志</button>}
+        </EmptyState>
+      )) : <>
         <div className="behavior-day-pager" aria-label="分析日期窗口">
           <span>当前显示 {visibleDates[0]} 至 {visibleDates[visibleDates.length - 1]} · 全区间 {dates.length} 天</span>
           <button type="button" disabled={dayOffset + 14 >= dates.length} onClick={() => setDayOffset(offset => Math.min(dates.length - 14, offset + 14))}>较早日期</button>

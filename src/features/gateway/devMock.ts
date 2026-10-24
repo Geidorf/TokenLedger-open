@@ -28,14 +28,14 @@ let groups: RoutingGroup[] = [
   { id: 'cheap', name: '便宜优先', strategy: 'rotate', members: ['deepseek/deepseek-chat', 'deepseek/deepseek-reasoner'], rules: [], sessionTtlSecs: 1800, enabled: true },
 ];
 
-const requests: LedgerRecord[] = [
+let requests: LedgerRecord[] = [
   { ts: minutesAgo(1), requestId: 'r6', agent: 'codex', session: 's1', endpoint: '/v1/responses', provider: 'openai', requestedModel: 'group/coding', upstreamModel: 'gpt-5', wire: 'responses', stream: true, status: 200, ok: true, input: 18234, output: 1420, cacheRead: 12288, cacheWrite: 0, latencyMs: 2310, group: 'coding', member: 'openai/gpt-5' },
   { ts: minutesAgo(4), requestId: 'r5', agent: 'codex', session: 's1', endpoint: '/v1/responses', provider: 'deepseek', requestedModel: 'group/coding', upstreamModel: 'deepseek-chat', wire: 'chat', stream: true, status: 200, ok: true, input: 9120, output: 860, cacheRead: 4096, cacheWrite: 0, latencyMs: 1830, group: 'coding', member: 'deepseek/deepseek-chat' },
   { ts: minutesAgo(9), requestId: 'r4', agent: null, session: null, endpoint: '/v1/chat/completions', provider: 'deepseek', requestedModel: 'deepseek/deepseek-reasoner', upstreamModel: 'deepseek-reasoner', wire: 'chat', stream: false, status: 200, ok: true, input: 512, output: 2048, cacheRead: 0, cacheWrite: 0, latencyMs: 6420 },
   { ts: minutesAgo(15), requestId: 'r3', agent: 'codex', session: 's0', endpoint: '/v1/responses', provider: 'openrouter', requestedModel: 'openrouter/anthropic/claude-sonnet-4.5', upstreamModel: 'anthropic/claude-sonnet-4.5', wire: 'chat', stream: true, status: 401, ok: false, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, latencyMs: 210, error: '上游返回 401' },
 ];
 
-const decisions: RouteDecision[] = [
+let decisions: RouteDecision[] = [
   { ts: minutesAgo(1), requestId: 'r6', group: 'coding', session: 's1', reason: 'rule', detail: '请求带图片', chosen: 'openai/gpt-5', attempts: [{ member: 'openai/gpt-5', outcome: 'ok', status: 200 }], trace: [
     { member: 'openai/gpt-5', rank: 0, verdict: 'chosen', reasons: ['rule_match', 'answered'], detail: '请求带图片' },
     { member: 'deepseek/deepseek-chat', rank: 1, verdict: 'not_reached', reasons: ['fallback', 'not_reached'], detail: null },
@@ -155,6 +155,14 @@ function handleAgentMock(cmd: string, payload: Record<string, unknown>) {
       agent.version += 1;
       return { configPath: agent.path, removed: true, version: `v${agent.version}` };
   }
+}
+
+/** First-launch preview (`?fresh=1`): no providers, groups or traffic yet. */
+export function resetGatewayMockToFresh() {
+  providers = [];
+  groups = [];
+  requests = [];
+  decisions = [];
 }
 
 /** Returns undefined when the command is not a gateway command. */

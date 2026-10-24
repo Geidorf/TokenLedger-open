@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Cloud, Database, Download, HardDrive, RefreshCw, RotateCcw, Share2, Timer, Trash2 } from 'lucide-react';
+import { Cloud, Database, Download, HardDrive, RefreshCw, RotateCcw, Share2, Sparkles, Timer, Trash2 } from 'lucide-react';
+import { requestOpenOnboarding } from '../../features/onboarding/onboardingState';
 import type { BusyState, DbInfo } from '../../types';
 import { formatNum } from '../../utils/format';
 import {
@@ -163,6 +164,18 @@ export function DataHelpSection(props: DataHelpSectionProps) {
             </button>
           </div>
         )}
+      </SettingsCard>
+
+      <SettingsCard title="新手引导">
+        <SettingsGroup>
+          <p className="settings-project-note">扫描本机数据、开启模型网关、云端同步与手机锁屏壁纸，四步各自的完成情况都在这里。</p>
+          <SettingsActionRow>
+            <button className="secondary-inline" type="button" onClick={requestOpenOnboarding}>
+              <Sparkles className="h-4 w-4" />
+              打开新手引导
+            </button>
+          </SettingsActionRow>
+        </SettingsGroup>
       </SettingsCard>
 
       <ProjectDimensionCard />

@@ -6405,28 +6405,11 @@
   .quota-panel-error-detail { color: var(--color-text-secondary); }
   .quota-panel-error-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-  /* 冷启动空窗说明：语气与其他空态一致，行内动作用链接样式而不是又一个按钮，
-     避免和顶部「刷新额度」抢主次。 */
+  /* 冷启动空窗说明：版式用共享空态（styles/onboarding.css 的 .tl-empty），
+     只留一个「去设置授权」次级按钮，不和顶部「刷新额度」抢主次。 */
   .quota-panel-cold-start {
-    padding: 18px;
-    color: var(--color-text-secondary);
-    font-size: 12px;
-    line-height: 1.7;
-    text-align: center;
     overflow-wrap: anywhere;
   }
-
-  .quota-panel-cold-start .link-inline {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--color-primary);
-    font: inherit;
-    text-decoration: underline;
-    cursor: pointer;
-  }
-
-  .quota-panel-cold-start .link-inline:hover { text-decoration: none; }
 
   .details-page .logs-panel {
     height: auto;

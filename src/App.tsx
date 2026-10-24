@@ -12,6 +12,7 @@ import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { Sidebar } from './components/Sidebar';
 import { Toast } from './components/Toast';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { FirstRunGuide } from './features/onboarding/FirstRunGuide';
 import {
   cloudStatsIdentity,
   clearCloudStatsSnapshots,
@@ -674,6 +675,9 @@ function MainApp() {
   // 待上传数：数据库信息未读到或读取失败时为 null（未知），不得写成 0（GLB-01）。
   // 侧栏、顶栏与总览共用同一次计算，避免三处口径分叉（T10.180）。
   const pendingUploadCount = settings.dbInfo && !settings.dbInfoError ? settings.dbInfo.unsyncedRecords : null;
+  // 本机账本行数；未读到或读取失败时为 null，空态与新手引导都不据此下结论。
+  const localRecordCount = settings.dbInfo && !settings.dbInfoError ? settings.dbInfo.totalRecords : null;
+  const localLedgerEmpty = localRecordCount === 0;
   // 模型接入总开关（U-112）；undefined 表示设置还没读到，不据此跳页。
   const modelAccessEnabled = settings.appSettings.model_access_enabled;
   const modelPageVisible = useModelAccessRedirect(activeTab, modelAccessEnabled, changeTab);
@@ -832,6 +836,9 @@ function MainApp() {
                   dayDrill={dayDrill.dayDrill ? dayDrillCopy(dayDrill.dayDrill) : null}
                   onReturnFromDayDrill={dayDrill.returnFromDayDrill}
                   hasPageTitle
+                  ledgerEmpty={statsHook.dataScope === 'local' && localLedgerEmpty}
+                  onScan={() => void statsHook.triggerScan()}
+                  scanBusy={busy.scan}
                   exporting={usageDetails.detailsExporting}
                   onExportCsv={() => {
                     usageDetails.exportDetailsCsv()
@@ -866,6 +873,8 @@ function MainApp() {
                   }}
                   onRebuildProjectIndex={() => { void projectDimension.rebuild(); }}
                   projectBackfill={projectDimension.status?.backfill ?? null}
+                  onScan={() => void statsHook.triggerScan()}
+                  scanBusy={busy.scan}
                   onSelectDate={(date) => {
                     statsHook.changeRange('custom', { start: date, end: date });
                     usageDetails.setDetailFilters(EMPTY_DETAIL_FILTERS);
@@ -1067,6 +1076,27 @@ function MainApp() {
           />
         )}
       </Suspense>
+      <FirstRunGuide
+        facts={{
+          totalRecords: localRecordCount,
+          modelAccessEnabled,
+          cloudAuthenticated: cloud.cloudStatusKnown && cloud.cloudStatus.authenticated,
+          cloudCapabilityVerified: cloud.cloudSetup.capabilityVerified,
+          cloudFirstSyncCompleted: cloud.cloudSetup.firstSyncCompleted,
+          routingPublishEnabled: settings.appSettings.routing_publish_enabled === true,
+        }}
+        scanBusy={busy.scan}
+        syncBusy={busy.sync}
+        settingsBusy={busy.settings}
+        gatewayRefreshKey={gatewayRefreshKey}
+        onScan={() => void statsHook.triggerScan()}
+        onSync={() => void triggerCloudSync()}
+        onModelAccessChanged={handleModelAccessChanged}
+        onEnablePhoneRouting={() => settings.updateSetting('routing_publish_enabled', true)}
+        onOpenProviders={() => changeTab('providers')}
+        onOpenCloudSettings={openCloudSettings}
+        onNotify={(text) => showMessage('error', text)}
+      />
       {confirmation && (
         <ConfirmDialog
           {...confirmation}

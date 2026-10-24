@@ -5354,7 +5354,8 @@ test('额度面板说明冷启动空窗，而不是留一片空白', () => {
   assert.match(panel, /providers\.length === 0 && !error/);
   assert.match(panel, /quota-panel-cold-start/);
   assert.match(panel, /启动约 5 分钟后进行/);
-  assert.match(panel, /还没授权任何来源？去设置开启/);
+  assert.match(panel, /还没授权任何来源时/);
+  assert.match(panel, /去设置授权/);
   assert.match(css, /\.quota-panel-cold-start \{/);
 });
 
