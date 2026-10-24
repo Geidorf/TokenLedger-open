@@ -202,6 +202,7 @@ export const TRACE_REASON_LABEL: Record<string, string> = localized({
   unhealthy: 'routing.trace.unhealthy',
   disabled: 'routing.trace.disabled',
   not_planned: 'routing.trace.not_planned',
+  probe_unsupported: 'routing.trace.probe_unsupported',
 });
 
 /** Codes that say why a member could not serve, for compact one-line hints. */

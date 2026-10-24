@@ -8,13 +8,14 @@ import type {
 } from '../../types';
 import { formatLocalDateTime } from '../../utils/format';
 import '../../styles/price-migration-notice.css';
+import { localized, t, useLang } from '../../i18n';
 
-const FIELD_LABELS: Record<string, string> = {
-  input: '输入',
-  output: '输出',
-  cache_input: '缓存读',
-  cache_write: '缓存写',
-};
+const FIELD_LABELS: Record<string, string> = localized({
+  input: 'priceMig.field.input',
+  output: 'priceMig.field.output',
+  cache_input: 'priceMig.field.cacheInput',
+  cache_write: 'priceMig.field.cacheWrite',
+});
 
 /** Price changes listed before 「显示全部」. */
 const VISIBLE_CHANGES = 5;
@@ -102,6 +103,7 @@ export const PriceMigrationNoticeOpenContext = createContext<(open: boolean) => 
  * Dismissing it is kept by the backend for this migration.
  */
 export function PriceMigrationNotice() {
+  useLang();
   const [notice, setNotice] = useState<PriceMigrationNoticeData | null>(null);
   const [showAllChanges, setShowAllChanges] = useState(false);
   const [dismissing, setDismissing] = useState(false);
@@ -164,13 +166,13 @@ export function PriceMigrationNotice() {
         <History className="h-4 w-4" />
       </span>
       <div className="price-migration-notice-body">
-        <h3 className="price-migration-notice-title" id={titleId}>已整理你保存过的价格</h3>
+        <h3 className="price-migration-notice-title" id={titleId}>{t('priceMig.title')}</h3>
         <p>
-          {`旧版本保存价格表时，会把内置价和估算价一起写进自定义价格文件。带着这种痕迹的价格文件（旧版本写的，或从别处拷回、手工改过的）会整理一次，只保留你改过的价格。这次删除了 ${notice.modelsCleared} 个型号的 ${notice.fieldsCleared} 项价格：它们与某一版内置价或估算价相同，或者所在的行仍带“待核价”标记。`}
+          {t('priceMig.body', { models: notice.modelsCleared, fields: notice.fieldsCleared })}
         </p>
         {changes.length > 0 ? (
           <>
-            <p id={changesLabelId}>其中 {changes.length} 项删除后价格有变化（单位：$/百万 Token）：</p>
+            <p id={changesLabelId}>{t('priceMig.changed', { n: changes.length })}</p>
             <ul className="price-migration-notice-changes" id={changesId} aria-labelledby={changesLabelId}>
               {visibleChanges.map((change) => (
                 <li key={`${change.model}\u0000${change.field}`}>
@@ -179,8 +181,8 @@ export function PriceMigrationNotice() {
                   <span className="price-migration-notice-rate">
                     {formatRate(change.previous)}
                     <span aria-hidden="true"> → </span>
-                    <span className="sr-only">改为</span>
-                    {change.current === null ? '按工具兜底价估算' : formatRate(change.current)}
+                    <span className="sr-only">{t('priceMig.to')}</span>
+                    {change.current === null ? t('priceMig.fallback') : formatRate(change.current)}
                   </span>
                 </li>
               ))}
@@ -193,33 +195,33 @@ export function PriceMigrationNotice() {
                 aria-controls={changesId}
                 onClick={() => setShowAllChanges((expanded) => !expanded)}
               >
-                {showAllChanges ? `只看前 ${VISIBLE_CHANGES} 项` : `显示全部 ${changes.length} 项`}
+                {showAllChanges ? t('priceMig.showFirst', { n: VISIBLE_CHANGES }) : t('priceMig.showAll', { n: changes.length })}
                 <ChevronDown className="h-4 w-4 price-migration-notice-chevron" aria-hidden="true" />
               </button>
             )}
-            {unchanged > 0 && <p>其余 {unchanged} 项与现在的价格相同，删除后价格不变。</p>}
+            {unchanged > 0 && <p>{t('priceMig.unchangedRest', { n: unchanged })}</p>}
           </>
         ) : (
-          <p>这些价格都与现在的价格相同，删除后价格没有变化。</p>
+          <p>{t('priceMig.allSame')}</p>
         )}
         <p>
-          {'如果其中有你特意填写的价格：用文本编辑器打开下面的备份文件对照，再展开下方的价格表重新填写并保存。不要把备份改名回 prices.json，那样会被再次整理。'}
+          {t('priceMig.restoreHint')}
         </p>
         <dl className="price-migration-notice-facts">
-          <dt>备份文件</dt>
+          <dt>{t('priceMig.backupFile')}</dt>
           <dd><code>{notice.backupFile}</code></dd>
-          <dt>所在目录</dt>
+          <dt>{t('priceMig.backupDir')}</dt>
           <dd><code>{notice.backupDir}</code></dd>
           {migratedAt && (
             <>
-              <dt>整理时间</dt>
+              <dt>{t('priceMig.migratedAt')}</dt>
               <dd>{migratedAt}</dd>
             </>
           )}
         </dl>
         {dismissError && (
           <p className="price-migration-notice-error" role="alert">
-            没能记住“不再提示”（{dismissError}）。可以再点一次；价格不受影响。
+            {t('priceMig.dismissError', { error: dismissError })}
           </p>
         )}
         <div className="price-migration-notice-actions">
@@ -230,7 +232,7 @@ export function PriceMigrationNotice() {
             disabled={dismissing}
             aria-busy={dismissing || undefined}
           >
-            {dismissing ? '正在关闭…' : '知道了，不再提示'}
+            {dismissing ? t('priceMig.closing') : t('priceMig.dismiss')}
           </button>
         </div>
       </div>

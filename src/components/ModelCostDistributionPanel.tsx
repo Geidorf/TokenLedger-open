@@ -5,6 +5,7 @@ import { formatEstimatedUsd, formatTokens, formatUsdApprox } from '../utils/form
 import { modelCacheBreakdown, modelCostDistribution, type ModelCostRow } from '../utils/modelDistribution';
 import { InfoTip } from './InfoTip';
 import '../styles/overviewDrill.css';
+import { localized, t, useLang } from '../i18n';
 
 interface ModelCostDistributionPanelProps {
   /** 本期全部模型（不是 Token 前 8）：金额排序与“无法归属”都以全集为准。 */
@@ -54,13 +55,13 @@ function shareDenominator(rows: ModelCostRow[], totalCost: number | undefined): 
 export function hiddenRowsSummary(hiddenRows: ModelCostRow[], denominator: number): string {
   const knownRows = hiddenRows.filter((row) => row.cost !== null);
   const unknownCount = hiddenRows.length - knownRows.length;
-  if (knownRows.length === 0) return `其余 ${hiddenRows.length} 个模型预估费用不可得`;
+  if (knownRows.length === 0) return t('modelCost.hidden.allUnknown', { n: hiddenRows.length });
   const knownCost = knownCostOf(knownRows);
   const share = denominator > 0 ? Math.round((knownCost / denominator) * 1000) / 10 : null;
-  const amount = `${formatEstimatedUsd(knownCost)}${share === null ? '' : `（${share}%）`}`;
+  const amount = share === null ? formatEstimatedUsd(knownCost) : t('modelCost.hidden.share', { amount: formatEstimatedUsd(knownCost), share });
   return unknownCount === 0
-    ? `其余 ${hiddenRows.length} 个模型合计 ${amount}`
-    : `其余 ${hiddenRows.length} 个模型：已知合计 ${amount}，${unknownCount} 个不可得`;
+    ? t('modelCost.hidden.total', { n: hiddenRows.length, amount })
+    : t('modelCost.hidden.partial', { n: hiddenRows.length, amount, unknown: unknownCount });
 }
 
 /**
@@ -73,12 +74,22 @@ export function unattributedCostNote(rows: ModelCostRow[], totalCost: number | u
   if (remainder < UNATTRIBUTED_MIN_USD) return null;
   const unknownCount = rows.filter((row) => row.cost === null).length;
   return unknownCount === 0
-    ? `另有 ${formatUsdApprox(remainder)} 无法归属到具体模型。`
-    : `另有 ${formatUsdApprox(remainder)} 未能归属到已知费用的模型，可能来自 ${unknownCount} 个预估费用不可得的模型。`;
+    ? t('modelCost.unattributed', { amount: formatUsdApprox(remainder) })
+    : t('modelCost.unattributedUnknown', { amount: formatUsdApprox(remainder), n: unknownCount });
 }
+
+// 缓存构成各段的显示名；`modelCacheBreakdown` 自带的中文标签留给导出报告。
+const SEGMENT_LABELS = localized<'input' | 'output' | 'cacheRead' | 'cacheWrite' | 'cacheCombined'>({
+  input: 'modelCost.segment.input',
+  output: 'modelCost.segment.output',
+  cacheRead: 'modelCost.segment.cacheRead',
+  cacheWrite: 'modelCost.segment.cacheWrite',
+  cacheCombined: 'modelCost.cacheTotal',
+});
 
 /** 模型费用分布报表（REQ-DRILL-04）：全部模型按预估费用降序，默认前 8 行，下钻展示单模型命中缓存消耗分布。 */
 export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: ModelCostDistributionPanelProps) {
+  useLang();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showAllRows, setShowAllRows] = useState(false);
   const listId = useId();
@@ -95,27 +106,27 @@ export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: 
   if (rows.length === 0) return null;
 
   return (
-    <section className="panel model-cost-panel" aria-label="模型费用分布">
+    <section className="panel model-cost-panel" aria-label={t('modelCost.title')}>
       <div className="panel-header">
         <div className="panel-title">
           <span className="panel-icon tone-warning" aria-hidden="true"><Banknote className="h-4 w-4" /></span>
-          <span>模型费用分布</span>
-          <InfoTip label="模型费用分布说明">按预估费用排序 · 不可得的排在最后 · 展开行查看缓存构成</InfoTip>
+          <span>{t('modelCost.title')}</span>
+          <InfoTip label={t('modelCost.infoLabel')}>{t('modelCost.info')}</InfoTip>
         </div>
       </div>
 
       {showCoverageSummary && (
-        <div className="model-cost-coverage-summary" aria-label="模型费用完整性">
-          <span className="is-known">已知正费用 <strong>{coverage.known}</strong></span>
-          <span className="is-zero">已知为 0 <strong>{coverage.zero}</strong></span>
-          <span className="is-unavailable">费用不可得 <strong>{coverage.unavailable}</strong></span>
+        <div className="model-cost-coverage-summary" aria-label={t('modelCost.coverageAria')}>
+          <span className="is-known">{t('modelCost.knownPositive')} <strong>{coverage.known}</strong></span>
+          <span className="is-zero">{t('modelCost.knownZero')} <strong>{coverage.zero}</strong></span>
+          <span className="is-unavailable">{t('modelCost.unavailable')} <strong>{coverage.unavailable}</strong></span>
         </div>
       )}
 
       <div
         id={listId}
         className="model-cost-list"
-        aria-label="按预估费用降序的模型费用列表"
+        aria-label={t('modelCost.listAria')}
       >
         {visibleRows.map((row, index) => {
           const breakdown = modelCacheBreakdown(row.model);
@@ -129,7 +140,7 @@ export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: 
                   className="model-cost-row-btn"
                   onClick={() => setExpanded(open ? null : row.model.name)}
                   aria-expanded={open}
-                  title={`${open ? '收起' : '展开'} ${row.model.name} 命中缓存消耗分布`}
+                  title={t(open ? 'modelCost.collapseRow' : 'modelCost.expandRow', { model: row.model.name })}
                 >
                   {/* Unknown cost is not $0 (GLB-01): no cost rank and no zero-width
                       bar, only a dashed empty slot next to 「不可得」. */}
@@ -151,13 +162,13 @@ export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: 
 
                   <span
                     className={`model-cost-amount is-${costState}`}
-                    aria-label={`${row.model.name}预估费用：${costState === 'unavailable' ? '不可得' : costState === 'zero' ? '已知为 0' : formatEstimatedUsd(row.cost)}`}
+                    aria-label={t('modelCost.amountAria', { model: row.model.name, value: costState === 'unavailable' ? t('modelCost.na') : costState === 'zero' ? t('modelCost.knownZero') : formatEstimatedUsd(row.cost) })}
                   >
-                    <span className="sr-only">预估费用</span>
+                    <span className="sr-only">{t('modelCost.costSr')}</span>
                     {costState === 'unavailable'
-                      ? '不可得'
+                      ? t('modelCost.na')
                       : costState === 'zero'
-                        ? <><small>已知为 0</small><span>{formatEstimatedUsd(row.cost)}</span></>
+                        ? <><small>{t('modelCost.knownZero')}</small><span>{formatEstimatedUsd(row.cost)}</span></>
                         : formatEstimatedUsd(row.cost)}
                   </span>
                   <span className="model-cost-share">
@@ -166,8 +177,8 @@ export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: 
 
                   <span className="model-cost-badge">
                     {row.cacheReusePercent !== null
-                      ? `复用率 ${row.cacheReusePercent}%`
-                      : '缓存合计'}
+                      ? t('modelCost.reuse', { pct: row.cacheReusePercent })
+                      : t('modelCost.cacheTotal')}
                   </span>
 
                   {open ? (
@@ -182,11 +193,11 @@ export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: 
                     type="button"
                     className="model-cost-drilldown-btn"
                     onClick={() => onModelClick(row.model)}
-                    title={`打开 ${row.model.name} 专属看板`}
-                    aria-label={`打开 ${row.model.name} 专属看板`}
+                    title={t('modelCost.openDashboard', { model: row.model.name })}
+                    aria-label={t('modelCost.openDashboard', { model: row.model.name })}
                   >
                     <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="model-cost-drilldown-label">看板</span>
+                    <span className="model-cost-drilldown-label">{t('modelCost.dashboard')}</span>
                   </button>
                 )}
               </div>
@@ -195,19 +206,19 @@ export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: 
                 <div className="model-cache-drawer">
                   <div className="model-cache-drawer-header">
                     <span>
-                      {row.model.name} · 预估费用 {formatEstimatedUsd(row.cost)} · 请求 {row.requests} 次
-                      {row.requests > 0 && row.effectiveTokens !== null && ` (均耗 ≈${formatTokens(Math.round(row.effectiveTokens / row.requests))})`}
+                      {t('modelCost.drawerHead', { model: row.model.name, cost: formatEstimatedUsd(row.cost), n: row.requests })}
+                      {row.requests > 0 && row.effectiveTokens !== null && t('modelCost.drawerAvg', { tokens: formatTokens(Math.round(row.effectiveTokens / row.requests)) })}
                     </span>
                     {breakdown.reusePercent !== null && (
                       <span className="text-success font-medium">
-                        命中缓存复用率 {breakdown.reusePercent}%
+                        {t('modelCost.cacheReuse', { pct: breakdown.reusePercent })}
                       </span>
                     )}
                   </div>
 
                   {breakdown.segments.map((segment) => (
                     <div key={segment.kind} className="model-cache-segment-row">
-                      <span className="model-cache-segment-label">{segment.label}</span>
+                      <span className="model-cache-segment-label">{SEGMENT_LABELS[segment.kind]}</span>
                       <span className="model-cache-segment-meter" aria-hidden="true">
                         <i
                           className={`model-cache-segment-fill kind-${segment.kind}`}
@@ -239,7 +250,7 @@ export function ModelCostDistributionPanel({ models, totalCost, onModelClick }: 
             {showAllRows
               ? <ChevronUp className="h-4 w-4" aria-hidden="true" />
               : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
-            {showAllRows ? '收起' : `展开全部（${rows.length}）`}
+            {showAllRows ? t('modelCost.collapse') : t('modelCost.showAll', { n: rows.length })}
           </button>
           {!showAllRows && (
             <span className="model-cost-more-summary">{hiddenRowsSummary(hiddenRows, shareDenominator(rows, totalCost))}</span>

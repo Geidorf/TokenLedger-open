@@ -4,10 +4,11 @@ import { ChevronDown, RefreshCw, X } from 'lucide-react';
 import { formatNum, formatTokens } from '../utils/format';
 import { sessionAnalysisReason, type SessionAnalysis, type SessionAnalysisRecord, type SessionTurn } from '../types/sessionAnalysis';
 import '../styles/sessionAnalysis.css';
+import { getLang, t, useLang } from '../i18n';
 
 function timeLabel(value: string | null) {
-  if (!value || !Number.isFinite(Date.parse(value))) return '时间未知';
-  return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  if (!value || !Number.isFinite(Date.parse(value))) return t('session.time.unknown');
+  return new Date(value).toLocaleString(getLang() === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 /**
@@ -16,32 +17,33 @@ function timeLabel(value: string | null) {
  * 非有限或负值一律显示“不可得”，不回退成 0（GLB-01）。
  */
 function formatTokenCount(value: number): string {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? formatTokens(value) : '不可得';
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? formatTokens(value) : t('session.unavailable');
 }
 
 function TurnRow({ turn, toolCallsKnown }: { turn: SessionTurn; toolCallsKnown: boolean }) {
   const splitKnown = turn.cacheReadTokens !== undefined && turn.cacheWriteTokens !== undefined;
   return <details className="session-turn">
-    <summary aria-label={`第 ${turn.ordinal} 轮，${turn.requestCount} 次请求，查看详情`}>
-      <span className="session-turn-identity"><strong>第 {turn.ordinal} 轮</strong><small>{timeLabel(turn.startedAt)}</small></span>
-      <span className="session-turn-number"><small>输入</small>{formatTokenCount(turn.inputTokens)}</span>
-      <span className="session-turn-number"><small>输出</small>{formatTokenCount(turn.outputTokens)}</span>
-      <span className="session-turn-number session-turn-cache"><small>缓存</small>{formatTokenCount(turn.cachedTokens)}</span>
+    <summary aria-label={t('session.turn.aria', { n: turn.ordinal, requests: turn.requestCount })}>
+      <span className="session-turn-identity"><strong>{t('session.turn.title', { n: turn.ordinal })}</strong><small>{timeLabel(turn.startedAt)}</small></span>
+      <span className="session-turn-number"><small>{t('session.input')}</small>{formatTokenCount(turn.inputTokens)}</span>
+      <span className="session-turn-number"><small>{t('session.output')}</small>{formatTokenCount(turn.outputTokens)}</span>
+      <span className="session-turn-number session-turn-cache"><small>{t('session.cache')}</small>{formatTokenCount(turn.cachedTokens)}</span>
       <ChevronDown size={16} aria-hidden="true" />
     </summary>
     <div className="session-turn-detail">
-      <p>{formatNum(turn.requestCount)} 次请求 · {turn.status === 'complete' ? '已结束' : turn.status === 'in_progress' ? '进行中' : '结束状态未知'}</p>
+      <p>{t('session.turn.requests', { n: formatNum(turn.requestCount) })} · {t(turn.status === 'complete' ? 'session.turn.done' : turn.status === 'in_progress' ? 'session.turn.running' : 'session.turn.unknown')}</p>
       <dl>
-        <div><dt>模型</dt><dd>{turn.models.length ? turn.models.join('、') : '未知'}</dd></div>
-        <div><dt>工具调用</dt><dd>{!toolCallsKnown ? '来源未提供完整调用信息' : turn.tools.length ? turn.tools.map(tool => `${tool.name} × ${tool.count}`).join('、') : '无'}</dd></div>
-        <div><dt>缓存构成</dt><dd>{splitKnown ? `读取 ${formatTokenCount(turn.cacheReadTokens!)} · 写入 ${formatTokenCount(turn.cacheWriteTokens!)}` : '来源未提供读写拆分'}</dd></div>
-        {turn.endedAt && <div><dt>结束时间</dt><dd>{timeLabel(turn.endedAt)}</dd></div>}
+        <div><dt>{t('session.model')}</dt><dd>{turn.models.length ? turn.models.join(t('session.joiner')) : t('session.unknown')}</dd></div>
+        <div><dt>{t('session.toolCalls')}</dt><dd>{!toolCallsKnown ? t('session.toolCalls.unknown') : turn.tools.length ? turn.tools.map(tool => `${tool.name} × ${tool.count}`).join(t('session.joiner')) : t('session.none')}</dd></div>
+        <div><dt>{t('session.cacheSplit')}</dt><dd>{splitKnown ? t('session.cacheSplit.value', { read: formatTokenCount(turn.cacheReadTokens!), write: formatTokenCount(turn.cacheWriteTokens!) }) : t('session.cacheSplit.unknown')}</dd></div>
+        {turn.endedAt && <div><dt>{t('session.endedAt')}</dt><dd>{timeLabel(turn.endedAt)}</dd></div>}
       </dl>
     </div>
   </details>;
 }
 
 export default function SessionAnalysisDrawer({ record, onClose }: { record: SessionAnalysisRecord; onClose: () => void }) {
+  useLang();
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -92,25 +94,25 @@ export default function SessionAnalysisDrawer({ record, onClose }: { record: Ses
   const ready = analysis && analysis.status !== 'unavailable';
   return <dialog ref={dialog} className="session-analysis-drawer" aria-labelledby="session-analysis-title">
     <header className="session-analysis-header">
-      <div><span className="session-analysis-eyebrow">{record.tool} · 本机会话</span><h2 id="session-analysis-title">逐轮分析</h2></div>
-      <button ref={closeButton} type="button" className="session-analysis-icon" onClick={onClose} aria-label="关闭逐轮分析"><X size={20} /></button>
+      <div><span className="session-analysis-eyebrow">{t('session.eyebrow', { tool: record.tool })}</span><h2 id="session-analysis-title">{t('session.title')}</h2></div>
+      <button ref={closeButton} type="button" className="session-analysis-icon" onClick={onClose} aria-label={t('session.close')}><X size={20} /></button>
     </header>
     <div className="session-analysis-content" aria-busy={loading}>
-      <p className="session-analysis-intro">分析整个会话，不受当前明细筛选限制。仅提取用量与工具元数据，不展示或上传对话正文。</p>
+      <p className="session-analysis-intro">{t('session.intro')}</p>
       <code className="session-analysis-id">{record.sessionId}</code>
-      {loading ? <div className="session-analysis-state" role="status">正在读取本机会话…</div> : failed || !ready ? <div className="session-analysis-state" role="status"><h3>暂时无法逐轮分析</h3><p>{sessionAnalysisReason(analysis?.reason)}</p></div> : <>
-        {analysis.status === 'partial' && <p className="session-analysis-notice" role="status">部分用量无法归属到可靠轮次。下方只展示已确认部分。{analysis.reason ? sessionAnalysisReason(analysis.reason) : ''}</p>}
+      {loading ? <div className="session-analysis-state" role="status">{t('session.loading')}</div> : failed || !ready ? <div className="session-analysis-state" role="status"><h3>{t('session.failed')}</h3><p>{sessionAnalysisReason(analysis?.reason)}</p></div> : <>
+        {analysis.status === 'partial' && <p className="session-analysis-notice" role="status">{t('session.partial')}{analysis.reason ? sessionAnalysisReason(analysis.reason) : ''}</p>}
         <div className="session-analysis-totals">
-          <div><span>{analysis.status === 'partial' ? '已确认有效 Token' : '有效 Token'}</span><strong>{formatTokenCount(totals.tokens)}</strong></div>
-          <div><span>用户轮次</span><strong>{formatNum(turns.length)}</strong></div>
-          <div><span>请求</span><strong>{formatNum(totals.requests)}</strong></div>
+          <div><span>{t(analysis.status === 'partial' ? 'session.tokensConfirmed' : 'session.tokens')}</span><strong>{formatTokenCount(totals.tokens)}</strong></div>
+          <div><span>{t('session.userTurns')}</span><strong>{formatNum(turns.length)}</strong></div>
+          <div><span>{t('session.requests')}</span><strong>{formatNum(totals.requests)}</strong></div>
         </div>
-        <div className="session-analysis-list-label"><h3>轮次明细</h3><span>输入 + 输出为有效 Token · 缓存单列</span></div>
+        <div className="session-analysis-list-label"><h3>{t('session.list')}</h3><span>{t('session.list.note')}</span></div>
         <div className="session-analysis-turns">{turns.slice(0, visibleTurns).map(turn => <TurnRow key={turn.id} turn={turn} toolCallsKnown={analysis.coverage.toolCallsKnown} />)}</div>
-        {visibleTurns < turns.length && <button className="session-analysis-more" type="button" onClick={() => setVisibleTurns(value => value + 50)}>显示接下来 {Math.min(50, turns.length - visibleTurns)} 轮</button>}
-        {analysis.unassignedUsage && <p className="session-analysis-notice">未归属轮次：{formatNum(analysis.unassignedUsage.requestCount)} 次请求，{formatTokenCount(analysis.unassignedUsage.inputTokens + analysis.unassignedUsage.outputTokens)} 有效 Token，{formatTokenCount(analysis.unassignedUsage.cachedTokens)} 缓存 Token。</p>}
+        {visibleTurns < turns.length && <button className="session-analysis-more" type="button" onClick={() => setVisibleTurns(value => value + 50)}>{t('session.more', { n: Math.min(50, turns.length - visibleTurns) })}</button>}
+        {analysis.unassignedUsage && <p className="session-analysis-notice">{t('session.unassigned', { requests: formatNum(analysis.unassignedUsage.requestCount), tokens: formatTokenCount(analysis.unassignedUsage.inputTokens + analysis.unassignedUsage.outputTokens), cached: formatTokenCount(analysis.unassignedUsage.cachedTokens) })}</p>}
       </>}
     </div>
-    <footer className="session-analysis-footer"><span>{ready ? `读取于 ${timeLabel(analysis.observedAt)}` : '原始日志仅在本机按需读取'}</span><button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)}><RefreshCw size={15} aria-hidden="true" />重新读取</button></footer>
+    <footer className="session-analysis-footer"><span>{ready ? t('session.readAt', { time: timeLabel(analysis.observedAt) }) : t('session.onDemand')}</span><button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)}><RefreshCw size={15} aria-hidden="true" />{t('session.reread')}</button></footer>
   </dialog>;
 }

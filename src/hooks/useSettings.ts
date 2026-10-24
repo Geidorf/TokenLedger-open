@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { parsePriceTableStatus } from '../utils/priceTableStatus';
 import { invoke } from '@tauri-apps/api/core';
 import {
   resolveWallpaperConsentSettings,
@@ -66,6 +67,11 @@ export interface UseSettingsProps {
   setBusy: (fn: (p: any) => any) => void;
 }
 
+/** 后端 `ensure_editor_revision` 的拒收：编辑器里的表比当前默认价旧。 */
+function isStalePriceTableError(error: unknown) {
+  return String(error).includes('编辑框里还是第');
+}
+
 export function useSettings({
   showMessage,
   confirm,
@@ -92,6 +98,8 @@ export function useSettings({
 
   const settingsDebounceTimer = useRef<number | null>(null);
   const pendingSettingsRef = useRef<AppSettings | null>(null);
+  /** 编辑器载入价格表时默认价格表的修订号；保存时交给后端核对，防止把旧默认价当成自定义价格。 */
+  const pricesRevisionRef = useRef<number | null>(null);
   const pricesRequestId = useRef(0);
 
   const toggleTokenMode = useCallback(() => {
@@ -139,8 +147,26 @@ export function useSettings({
     setPricesLoading(true);
     setPricesLoadError('');
     try {
-      const nextPricesText = JSON.stringify(await invoke<Record<string, unknown>>('get_prices'), null, 2);
+      // 修订号在读表前后各取一次：两次相同才说明这张表就是该修订号的表（修订号只增不减）。
+      // 中途有在线更新就重读；一直对不上时记下读表前的修订号，保存会被后端拒收，不会把旧价存成覆盖。
+      const readRevision = async () => {
+        const status = await Promise.resolve()
+          .then(() => invoke<unknown>('get_price_table_status'))
+          .catch(() => null);
+        return parsePriceTableStatus(status)?.revision ?? null;
+      };
+      let table: Record<string, unknown> = {};
+      let revision: number | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const before = await readRevision();
+        table = await invoke<Record<string, unknown>>('get_prices');
+        const after = await readRevision();
+        revision = before;
+        if (before === after) break;
+      }
+      const nextPricesText = JSON.stringify(table, null, 2);
       if (requestId !== pricesRequestId.current) return;
+      pricesRevisionRef.current = revision;
       setPricesText(nextPricesText);
       setPricesDirty(false);
     } catch (err) {
@@ -254,13 +280,16 @@ export function useSettings({
         return;
       }
       // 整表提交；后端只把与内置价、待核价兜底价不同的字段写入覆盖文件（T10.171）。
-      const res = await invoke<PriceSaveResult>('save_prices', { prices: parsed });
+      const res = await invoke<PriceSaveResult>('save_prices', { prices: parsed, priceTableRevision: pricesRevisionRef.current });
       setPricesError('');
       setPricesDirty(false);
       showMessage(res.warning || res.repricing_pending ? 'warning' : 'success', res.warning || res.message);
       await Promise.all([loadPrices(), loadStats()]);
     } catch (err) {
-      showMessage('error', `保存价格表失败: ${err}`);
+      const message = `保存价格表失败: ${err}`;
+      // 编辑器载入后价格表已在线更新：亮出「重新读取」，草稿之外的自定义价格都保留。
+      if (isStalePriceTableError(err)) setPricesLoadError(message);
+      showMessage('error', message);
     } finally {
       setBusy((p: any) => ({ ...p, prices: false }));
     }
@@ -332,7 +361,7 @@ export function useSettings({
       const validationError = validatePricesConfig(next);
       if (validationError) throw new Error(validationError);
 
-      const res = await invoke<PriceSaveResult>('save_prices', { prices: next });
+      const res = await invoke<PriceSaveResult>('save_prices', { prices: next, priceTableRevision: pricesRevisionRef.current });
       setPricesText(JSON.stringify(next, null, 2));
       setPricesError('');
       setPricesDirty(false);
@@ -341,6 +370,7 @@ export function useSettings({
       await Promise.all([loadPrices(), loadStats()]);
       return true;
     } catch (error) {
+      if (isStalePriceTableError(error)) setPricesLoadError(`保存价格表失败: ${error}`);
       showMessage('error', `导入 models.dev 价格失败: ${error}`);
       return false;
     } finally {
@@ -365,13 +395,14 @@ export function useSettings({
       setPricesText(JSON.stringify(res.prices, null, 2));
       setPricesDirty(false);
       showMessage(res.warning || res.repricing_pending ? 'warning' : 'success', res.warning || res.message);
-      await loadStats();
+      // 重新读表，连同修订号一起更新：编辑框有改动时在线更新不会重载，恢复默认后修订号要跟上，否则再保存会被当成旧表拒收。
+      await Promise.all([loadPrices(), loadStats()]);
     } catch (err) {
       showMessage('error', `重置价格表失败: ${err}`);
     } finally {
       setBusy((p: any) => ({ ...p, prices: false }));
     }
-  }, [confirm, loadStats, setBusy, showMessage]);
+  }, [confirm, loadPrices, loadStats, setBusy, showMessage]);
 
   const exportCsv = useCallback(async () => {
     setBusy((p: any) => ({ ...p, db: true }));

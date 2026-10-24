@@ -3,6 +3,7 @@ import { ChevronDown, DollarSign, Download, RefreshCw, Search, X } from 'lucide-
 import type { BusyState, ModelsDevCandidate } from '../../types';
 import { ModelsDevImportDialog } from '../ModelsDevImportDialog';
 import { PriceMigrationNotice } from './PriceMigrationNotice';
+import { PriceTableStatusRow } from './PriceTableStatusRow';
 import { SettingsActionRow, SettingsRow, SettingsSection } from './SettingsPrimitives';
 
 export interface PricingSectionProps {
@@ -63,6 +64,24 @@ function autoDiscoveredInfo(config: PriceModelConfig) {
     observedModel: typeof meta.observed_model === 'string' ? meta.observed_model : '',
     tools: Array.isArray(meta.tools) ? meta.tools.filter((tool): tool is string => typeof tool === 'string') : [],
   };
+}
+
+/** 长上下文分档的最低阈值（K Token）；没有分档时为空。 */
+function longContextThreshold(config: PriceModelConfig) {
+  if (!Array.isArray(config.tiers)) return null;
+  const thresholds = config.tiers
+    .map((tier) => (tier && typeof tier === 'object' ? (tier as Record<string, unknown>).above_prompt_tokens : null))
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  return thresholds.length > 0 ? Math.round(Math.min(...thresholds) / 1000) : null;
+}
+
+/** 最近一次调价的生效时间（旧价段里最晚的 until）；没有调价记录时为空。 */
+function lastPriceChange(config: PriceModelConfig) {
+  if (!Array.isArray(config.history)) return null;
+  const dates = config.history
+    .map((segment) => (segment && typeof segment === 'object' ? (segment as Record<string, unknown>).until : null))
+    .filter((value): value is string => typeof value === 'string');
+  return dates.length > 0 ? dates.sort()[dates.length - 1].slice(0, 10) : null;
 }
 
 function modelsDevProvider(config: PriceModelConfig) {
@@ -165,6 +184,7 @@ export function PricingSection(props: PricingSectionProps) {
             <ChevronDown className={pricingExpanded ? 'is-expanded' : ''} />
           </button>
         </SettingsRow>
+        <PriceTableStatusRow refreshKey={props.pricesDirty ? 'dirty' : props.pricesText} />
         {(props.pricesLoadError || props.pricesLoading) && (
           <div
             className="settings-pricing-load-error"
@@ -274,6 +294,22 @@ export function PricingSection(props: PricingSectionProps) {
                                 title={`当前按 ${autoDiscoveredInfo(config)?.fallback} 暂估，请核对供应商官方价格`}
                               >
                                 待核价（暂按 {autoDiscoveredInfo(config)?.fallback} 估算）
+                              </span>
+                            )}
+                            {longContextThreshold(config) !== null && (
+                              <span
+                                className="price-status-badge price-status-badge-source"
+                                title="单次请求的提示（输入 + 缓存）超过阈值时按长上下文加价计；只对逐请求记账的工具生效"
+                              >
+                                超 {longContextThreshold(config)}K 加价
+                              </span>
+                            )}
+                            {lastPriceChange(config) && (
+                              <span
+                                className="price-status-badge price-status-badge-source"
+                                title="生效日之前的记录仍按旧价估算；自定义价格后对全部记录生效"
+                              >
+                                {lastPriceChange(config)} 调价
                               </span>
                             )}
                             {modelsDevProvider(config) && (

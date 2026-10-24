@@ -213,7 +213,8 @@ internal class WidgetStateRepository(context: Context) {
             costCny = CurrencyUnit.CNY.convertFromUsd(summary.totalCost, BuildConfig.TOKENLEDGER_CNY_EXCHANGE_RATE),
             requests = summary.totalRequests,
             freshnessText = formatRelativeTime(nowMillis - cached.savedAtEpochMillis),
-            tokenDelta = delta
+            tokenDelta = delta,
+            savedAtEpochMillis = cached.savedAtEpochMillis
         )
     }
 }

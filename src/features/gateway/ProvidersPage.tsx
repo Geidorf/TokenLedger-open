@@ -8,7 +8,7 @@ import type { ToastType } from '../../types';
 import { deleteProvider, errorText, listProviders, setProviderKey, upsertProvider } from './api';
 import { parseModels, slugId } from './helpers';
 import { hostOf, PROVIDER_PRESET_GROUPS, type ProviderPreset } from './presets';
-import { HealthBadge, HealthDetail, HealthSpark, useProviderHealth } from './ProviderHealth';
+import { healthByProvider, HealthBadge, HealthDetail, HealthSpark, ProbeBar, useHealthReport } from './ProviderHealth';
 import type { ProviderHealth, ProviderRecord, ProviderView, WireApi } from './types';
 import { beginProviderSave, clearProviderDraft, endProviderSave, readProviderDraft, useProviderSaving, writeProviderDraft } from './providerDrafts';
 import { ProviderIcon, Sheet } from './ui';
@@ -194,7 +194,8 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
   const [showOff, setShowOff] = useState(false);
   const [adding, setAdding] = useState<ProviderPreset | 'pick' | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const health = useProviderHealth();
+  const [healthReport, setHealthReport] = useHealthReport();
+  const health = useMemo(() => healthByProvider(healthReport), [healthReport]);
 
   const load = useCallback(async () => {
     try {
@@ -293,6 +294,7 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
           <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />{t('empty.providers.action')}</button>
         </EmptyState>
       )}
+      {on.length > 0 && <ProbeBar settings={healthReport?.probe} onReport={setHealthReport} onNotify={onNotify} />}
       {on.length > 0 && (
         <div className="mw-card mw-rows">
           {on.map((provider) => <ProviderRow key={provider.id} provider={provider} health={health.get(provider.id)} busy={busy || saving} onOpen={() => { editSession.current++; setEditingId(provider.id); }} onToggle={() => toggle(provider)} />)}

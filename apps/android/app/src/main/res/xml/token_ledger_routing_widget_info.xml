@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  实时路由：一帧路由图（Agent → 网关 → 供应商/模型）+ 最近 3 条调用，数据经云端中转，几分钟读一次。
+  4×3 为主要形态，最小 4×2（只剩文字行）。主题跟随系统，没有配置页。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="200dp"
+    android:minHeight="100dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="80dp"
+    android:maxResizeHeight="320dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:description="@string/widget_routing_description"
+    android:previewImage="@drawable/ic_widget_routing_preview"
+    android:previewLayout="@layout/widget_routing_preview_layout"
+    android:initialLayout="@layout/glance_default_loading_layout" />

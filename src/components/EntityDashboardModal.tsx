@@ -9,8 +9,9 @@ import { TrendPanel } from './TrendPanel';
 import { YearHeatmap } from './YearHeatmap';
 import { focusWrapTarget } from '../utils/frontendContracts';
 import { toolDisplayName } from '../utils/toolDisplayName';
-import { computeUnitCostUsd, formatUnitCost, UNIT_COST_LABEL } from '../utils/unitCost';
+import { computeUnitCostUsd, formatUnitCost, unitCostLabel } from '../utils/unitCost';
 import { useSegmentedIndicator } from '../hooks/useSegmentedIndicator';
+import { getLang, t, useLang } from '../i18n';
 
 interface EntitySelection {
   kind: 'tool' | 'model';
@@ -69,10 +70,10 @@ function describeCost(value: unknown, kind: 'summary' | 'record' = 'summary'): s
 
 export function describeCompositionItem(item: CompositionItem, metric: CompositionMetric, total: number): string {
   const measure = metric === 'cost' ? readableCost(item.cost) : item.tokens;
-  const share = measure !== null && total > 0 ? `（${Math.round((measure / total) * 100)}%）` : '';
+  const share = measure !== null && total > 0 ? t('entity.share', { pct: Math.round((measure / total) * 100) }) : '';
   return metric === 'cost'
-    ? `${describeCost(item.cost)}${share} · ${formatTokens(item.tokens)} · ${formatNum(item.requests)} 次`
-    : `${formatTokens(item.tokens)}${share} · ${formatNum(item.requests)} 次 · ${describeCost(item.cost)}`;
+    ? `${describeCost(item.cost)}${share} · ${formatTokens(item.tokens)} · ${t('entity.requests', { n: formatNum(item.requests) })}`
+    : `${formatTokens(item.tokens)}${share} · ${t('entity.requests', { n: formatNum(item.requests) })} · ${describeCost(item.cost)}`;
 }
 
 function visibleEntityName(kind: 'tool' | 'model', name: string): string {
@@ -93,10 +94,10 @@ function CompositionList({ title, icon: Icon, items, metric, onSelect, labelFor 
         {title}
       </div>
       {metric === 'cost' && items.some((item) => readableCost(item.cost) === null) && (
-        <p className="entity-empty-copy">占比只按已知费用计算；不可得的项保留在列表中。</p>
+        <p className="entity-empty-copy">{t('entity.unknownCostNote')}</p>
       )}
       {items.length === 0 ? (
-        <p className="entity-empty-copy">当前范围没有分布数据。</p>
+        <p className="entity-empty-copy">{t('entity.noComposition')}</p>
       ) : (
         <div className="entity-composition-list">
           {sorted.slice(0, 8).map((item) => (
@@ -132,7 +133,7 @@ function formatDateTime(value?: string | null) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(getLang() === 'en' ? 'en-US' : 'zh-CN', {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(date);
 }
@@ -232,13 +233,14 @@ export function EntityDashboardModal({
   onOpenEntity,
   globalCostContext = null,
 }: EntityDashboardModalProps) {
+  const lang = useLang();
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   const [modelCopyState, setModelCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   const [history, setHistory] = useState<EntitySelection[]>([]);
   const copyResetRef = useRef<number | null>(null);
   const titleId = `entity-dashboard-${selection.kind}-title`;
-  const contextLabel = selection.kind === 'tool' ? '工具专属看板' : '模型专属看板';
+  const contextLabel = selection.kind === 'tool' ? t('entity.context.tool') : t('entity.context.model');
 
   const handleNavigate = (kind: 'tool' | 'model', name: string, tool?: string) => {
     setHistory((prev) => [...prev, selection]);
@@ -320,11 +322,13 @@ export function EntityDashboardModal({
   const compositionToggleRef = useSegmentedIndicator<HTMLDivElement>();
   const recent = data?.historyPage?.items || [];
   const granularityLabel = detailGranularityLabel(data?.historyPage);
-  const rangeLabel = range === 'custom' ? rangeDisplayName('custom', customRange) : range === 'today' ? '今日' : range === 'week' ? '本周' : range === 'month' ? '本月' : range === 'year' ? '今年' : '全部';
+  const rangeLabel = range === 'custom' ? rangeDisplayName('custom', customRange) : t(range === 'today' ? 'range.today' : range === 'week' ? 'range.week' : range === 'month' ? 'range.month' : range === 'year' ? 'range.year' : 'entity.rangeAll');
   const peakCopy = useMemo(() => {
-    if (!data?.peak?.bucket) return '暂无峰值';
+    if (!data?.peak?.bucket) return t('entity.noPeak');
     return `${data.peak.bucket} · ${formatTokens(data.peak.tokens || 0)}`;
-  }, [data]);
+    // 文案随界面语言变化，lang 只用来触发重算。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, lang]);
   const entityTrend = useMemo(
     () => Object.entries(data?.heatmap || {})
       .sort(([left], [right]) => left.localeCompare(right))
@@ -335,7 +339,7 @@ export function EntityDashboardModal({
   // Q10：占总预估费用 x% 与单位费用。分母必须和实体查询同一 range/scope/
   // 设备筛选、且两侧抓取时间足够新鲜（见 sameFreshnessWindow），否则宁可隐藏
   // 也不给误导性的百分比；单位费用只依赖实体自身的数据，永远可以尝试计算，
-  // 算不出时显示"不可得"。
+  // 算不出时显示t('entity.na')。
   const entityTotalCost = readableCost(data?.summary?.totalCost);
   const globalTotalCost = globalCostContext ? readableCost(globalCostContext.totalCost) : null;
   const shareComparable = Boolean(
@@ -355,7 +359,7 @@ export function EntityDashboardModal({
     : null;
   const costSharePercent = rawSharePercent !== null && rawSharePercent <= 100 ? rawSharePercent : null;
   const costShareDisplay = costSharePercent === null
-    ? '不可得'
+    ? t('entity.na')
     : costSharePercent > 0 && costSharePercent < 1
       ? '<1%'
       : `${Math.round(costSharePercent)}%`;
@@ -386,15 +390,15 @@ export function EntityDashboardModal({
       >
         <header className={`modal-header entity-modal-header${modelCopyState === 'failed' ? ' has-copy-fallback' : ''}`}>
           {history.length > 0 && (
-            <nav className="entity-breadcrumb-nav" aria-label="专属看板导航历史">
+            <nav className="entity-breadcrumb-nav" aria-label={t('entity.historyNav')}>
               <button
                 type="button"
                 className="entity-back-button secondary-inline"
                 onClick={handleBack}
-                aria-label="返回上一个看板"
+                aria-label={t('entity.backAria')}
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
-                <span>返回</span>
+                <span>{t('entity.back')}</span>
               </button>
               <ol className="entity-breadcrumb-list">
                 {history.map((item, idx) => (
@@ -403,8 +407,8 @@ export function EntityDashboardModal({
                       type="button"
                       className="entity-breadcrumb-link"
                       onClick={() => handleBreadcrumbClick(idx)}
-                      aria-label={`返回 ${visibleEntityName(item.kind, item.name)}`}
-                      title={`返回 ${visibleEntityName(item.kind, item.name)}`}
+                      aria-label={t('entity.backTo', { name: visibleEntityName(item.kind, item.name) })}
+                      title={t('entity.backTo', { name: visibleEntityName(item.kind, item.name) })}
                     >
                       {visibleEntityName(item.kind, item.name)}
                     </button>
@@ -425,7 +429,7 @@ export function EntityDashboardModal({
                 <span>{contextLabel}</span>
               </div>
               <p>
-                统计周期：{rangeLabel} · {selection.tool && selection.kind === 'model' ? `${toolDisplayName(selection.tool)} / ` : ''}{granularityLabel}
+                {t('entity.period', { range: rangeLabel, tool: selection.tool && selection.kind === 'model' ? `${toolDisplayName(selection.tool)} / ` : '', granularity: granularityLabel })}
               </p>
             </div>
           </div>
@@ -434,8 +438,8 @@ export function EntityDashboardModal({
               <button
                 className={`ghost-inline entity-copy-action${modelCopyState === 'failed' ? ' is-failed' : ''}${modelCopyState === 'copied' ? ' is-success' : ''}`}
                 type="button"
-                aria-label={modelCopyState === 'copying' ? '正在复制模型 ID' : modelCopyState === 'failed' ? '复制失败，点击重试模型 ID' : modelCopyState === 'copied' ? '已复制模型 ID' : '复制模型 ID'}
-                title={modelCopyState === 'copying' ? '正在复制模型 ID' : modelCopyState === 'failed' ? '剪贴板不可用，可手动选择完整模型 ID或重试' : selection.name}
+                aria-label={modelCopyState === 'copying' ? t('entity.copy.copyingAria') : modelCopyState === 'failed' ? t('entity.copy.failedAria') : modelCopyState === 'copied' ? t('entity.copy.copiedAria') : t('entity.copy.action')}
+                title={modelCopyState === 'copying' ? t('entity.copy.copyingAria') : modelCopyState === 'failed' ? t('entity.copy.failedTitle') : selection.name}
                 disabled={modelCopyState === 'copying'}
                 aria-busy={modelCopyState === 'copying' || undefined}
                 onClick={async () => {
@@ -465,28 +469,28 @@ export function EntityDashboardModal({
                     : modelCopyState === 'failed'
                       ? <AlertCircle className="h-4 w-4" />
                       : <Copy className="h-4 w-4" />}
-                {modelCopyState === 'copying' ? '复制中…' : modelCopyState === 'copied' ? '已复制' : modelCopyState === 'failed' ? '复制失败' : '复制模型 ID'}
+                {modelCopyState === 'copying' ? t('entity.copy.copying') : modelCopyState === 'copied' ? t('entity.copy.copied') : modelCopyState === 'failed' ? t('entity.copy.failed') : t('entity.copy.action')}
               </button>
             )}
             <button className="secondary-inline" type="button" onClick={() => onOpenDetails()}>
               <TableProperties className="h-4 w-4" />
-              在明细中查看
+              {t('entity.openDetails')}
             </button>
-            <button ref={closeRef} className="modal-close" type="button" onClick={onClose} aria-label="关闭专属看板">
+            <button ref={closeRef} className="modal-close" type="button" onClick={onClose} aria-label={t('entity.close')}>
               <X className="h-5 w-5" />
             </button>
           </div>
           {selection.kind === 'model' && modelCopyState === 'failed' && (
             <div className="entity-copy-fallback" role="status" aria-live="polite">
               <div>
-                <strong>剪贴板不可用</strong>
-                <span>可手动选择完整模型 ID，或点击“复制失败”重试。</span>
+                <strong>{t('entity.clipboard.title')}</strong>
+                <span>{t('entity.clipboard.body')}</span>
               </div>
               <input
                 type="text"
                 readOnly
                 value={selection.name}
-                aria-label="模型 ID（手动复制）"
+                aria-label={t('entity.manualCopyAria')}
                 onFocus={(event) => event.currentTarget.select()}
                 onClick={(event) => event.currentTarget.select()}
               />
@@ -497,12 +501,12 @@ export function EntityDashboardModal({
         {loading && !data ? (
           <div className="entity-loading-state">
             <LoaderCircle className="h-6 w-6 animate-spin" />
-            <strong>正在生成专属看板</strong>
-            <span>读取趋势、分布、活跃时间和最近明细…</span>
+            <strong>{t('entity.loading.title')}</strong>
+            <span>{t('entity.loading.body')}</span>
           </div>
         ) : error ? (
           <div className="details-state details-state-error" role="alert">
-            <strong>专属看板暂时不可用</strong>
+            <strong>{t('entity.error.title')}</strong>
             <span>{error}</span>
             <button
               className="secondary-inline"
@@ -510,10 +514,10 @@ export function EntityDashboardModal({
               onClick={onRetry}
               disabled={loading}
               aria-busy={loading}
-              title={loading ? '正在重新加载专属看板' : '重新加载专属看板'}
+              title={loading ? t('entity.reloadingTitle') : t('entity.reloadTitle')}
             >
               <LoaderCircle className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              {loading ? '重新加载中…' : '重新加载'}
+              {loading ? t('entity.reloading') : t('entity.reload')}
             </button>
           </div>
         ) : data ? (
@@ -523,47 +527,47 @@ export function EntityDashboardModal({
             <div className="entity-insight-strip">
               <div>
                 <Clock3 className="h-4 w-4" />
-                <span>峰值时段</span>
+                <span>{t('entity.peak')}</span>
                 <strong>{peakCopy}</strong>
               </div>
               <div>
                 <Activity className="h-4 w-4" />
-                <span>活跃天数</span>
-                <strong>{formatNum(data.activity?.activeDays || 0)} 天</strong>
+                <span>{t('entity.activeDays')}</span>
+                <strong>{t('entity.days', { n: formatNum(data.activity?.activeDays || 0) })}</strong>
               </div>
               <div>
                 <Clock3 className="h-4 w-4" />
-                <span>首次记录</span>
+                <span>{t('entity.firstSeen')}</span>
                 <strong>{formatDateTime(data.activity?.firstSeenAt)}</strong>
               </div>
               <div>
                 <Clock3 className="h-4 w-4" />
-                <span>最近使用</span>
+                <span>{t('entity.lastSeen')}</span>
                 <strong>{formatDateTime(data.activity?.lastSeenAt)}</strong>
               </div>
               {shareComparable && (
                 <div>
                   <PieChart className="h-4 w-4" />
-                  <span>占总预估费用</span>
+                  <span>{t('entity.costShare')}</span>
                   <strong>{costShareDisplay}</strong>
                 </div>
               )}
               {showUnitCostCell && (
                 <div>
                   <DollarSign className="h-4 w-4" />
-                  <span>{UNIT_COST_LABEL}</span>
+                  <span>{unitCostLabel()}</span>
                   <strong>{unitCostDisplay}</strong>
                 </div>
               )}
             </div>
 
             {range === 'all' && !data.comparison ? (
-              <section className="panel entity-trend-unavailable" aria-label="累计趋势不可用">
+              <section className="panel entity-trend-unavailable" aria-label={t('entity.trendUnavailableAria')}>
                 <div className="entity-section-title">
                   <Activity className="h-4 w-4" />
-                  累计趋势暂不可用
+                  {t('entity.trendUnavailable')}
                 </div>
-                <p>当前 v2 契约只返回本年度热力数据，不能把它伪装成全部历史趋势。切换到今日、本周、本月可查看同进度对比，或切换到今年查看本年至今趋势。</p>
+                <p>{t('entity.trendUnavailableBody')}</p>
               </section>
             ) : (
               <TrendPanel
@@ -575,7 +579,7 @@ export function EntityDashboardModal({
                 currentSeriesName={selection.name}
                 currentSeriesIsTool={selection.kind === 'tool'}
                 currentOnlyNote={range === 'year'
-                  ? '年度范围不自动推断同比；当前图表展示本年至今的绝对趋势。'
+                  ? t('entity.yearNote')
                   : undefined}
               />
             )}
@@ -583,22 +587,22 @@ export function EntityDashboardModal({
             <section className="panel heatmap-panel entity-heatmap-panel">
               <div className="panel-title">
                 <Activity className="h-4 w-4 text-primary" />
-                年度活跃热力图
+                {t('entity.yearHeatmap')}
               </div>
               <YearHeatmap heatmap={data.heatmap || {}} />
             </section>
 
             <div className="entity-composition-toolbar">
-              <span>分布对比口径</span>
-              <div className="entity-metric-toggle tl-seg" role="group" aria-label="分布对比口径" ref={compositionToggleRef}>
-                <button type="button" aria-pressed={compositionMetric === 'tokens'} onClick={() => setCompositionMetric('tokens')}>有效 Token</button>
-                <button type="button" aria-pressed={compositionMetric === 'cost'} onClick={() => setCompositionMetric('cost')}>费用</button>
+              <span>{t('entity.metricLabel')}</span>
+              <div className="entity-metric-toggle tl-seg" role="group" aria-label={t('entity.metricLabel')} ref={compositionToggleRef}>
+                <button type="button" aria-pressed={compositionMetric === 'tokens'} onClick={() => setCompositionMetric('tokens')}>{t('entity.metric.tokens')}</button>
+                <button type="button" aria-pressed={compositionMetric === 'cost'} onClick={() => setCompositionMetric('cost')}>{t('entity.metric.cost')}</button>
               </div>
             </div>
             <div className="entity-composition-grid">
               {selection.kind === 'model' && (
                 <CompositionList
-                  title="关联工具分布"
+                  title={t('entity.byTool')}
                   icon={Layers3}
                   items={data.composition.tools || []}
                   metric={compositionMetric}
@@ -608,7 +612,7 @@ export function EntityDashboardModal({
               )}
               {selection.kind === 'tool' && (
                 <CompositionList
-                  title="关联模型分布"
+                  title={t('entity.byModel')}
                   icon={Activity}
                   items={data.composition.models || []}
                   metric={compositionMetric}
@@ -616,7 +620,7 @@ export function EntityDashboardModal({
                 />
               )}
               <CompositionList
-                title="设备分布"
+                title={t('entity.byDevice')}
                 icon={Monitor}
                 items={data.composition.machines || []}
                 metric={compositionMetric}
@@ -628,12 +632,12 @@ export function EntityDashboardModal({
               <div className="entity-recent-head">
                 <div className="panel-title">
                   <TableProperties className="h-4 w-4 text-primary" />
-                  最近明细
+                  {t('entity.recent')}
                 </div>
                 <span>{granularityLabel}</span>
               </div>
               {recent.length === 0 ? (
-                <p className="entity-empty-copy">当前范围没有最近记录。</p>
+                <p className="entity-empty-copy">{t('entity.noRecent')}</p>
               ) : (
                 <div className="entity-recent-list">
                   {recent.slice(0, 6).map((item) => (

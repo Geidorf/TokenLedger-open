@@ -129,11 +129,30 @@ export interface ProviderHealth {
   buckets: HealthBucket[];
   recentFailures: { ts: string; model: string; status: number; code: string; error: string | null }[];
   cooling: CoolingMember[];
+  /** Active probes, newest first; empty while probing is off. */
+  probes?: ProbeResult[];
+}
+
+/** Optional active probe: one `GET …/models` per provider with its own key. Off by default. */
+export interface ProbeSettings {
+  enabled: boolean;
+  intervalMins: number;
+}
+
+export interface ProbeResult {
+  ts: string;
+  ok: boolean;
+  status: number | null;
+  latencyMs: number;
+  /** Trace reason code; `probe_unsupported` when the provider has no model list. */
+  code: string;
+  error: string | null;
 }
 
 export interface HealthReport {
   generatedAt: string;
   windowHours: number;
+  probe?: ProbeSettings;
   providers: ProviderHealth[];
 }
 

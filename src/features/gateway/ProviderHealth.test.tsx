@@ -1,6 +1,12 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { formatMs, formatRate, HealthBadge, HealthDetail, HealthSpark, healthSummary } from './ProviderHealth';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import * as api from './api';
+import { formatMs, formatRate, HealthBadge, HealthDetail, HealthSpark, healthSummary, ProbeBar } from './ProviderHealth';
+
+vi.mock('./api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./api')>();
+  return { ...actual, providerHealth: vi.fn(), setHealthProbe: vi.fn(), probeProviders: vi.fn() };
+});
 import type { HealthBucket, ProviderHealth } from './types';
 
 const buckets: HealthBucket[] = Array.from({ length: 24 }, (_, hour) => ({
@@ -74,5 +80,30 @@ describe('ProviderHealth', () => {
     expect(within(section).getByText('deepseek-reasoner')).toBeInTheDocument();
     expect(within(section).getByText('上游返回 429：slow down')).toBeInTheDocument();
     expect(within(section).getByText(/不额外访问供应商/)).toBeInTheDocument();
+  });
+
+  it('详情显示最近一次探活结果', () => {
+    render(<HealthDetail health={{ ...degraded, probes: [{ ts: '2026-10-24T12:20:00Z', ok: false, status: 401, latencyMs: 300, code: 'auth_failed', error: '上游返回 401' }] }} name="DeepSeek" />);
+    expect(screen.getByText(/最近探活 .* 鉴权失败（HTTP 401）/)).toBeInTheDocument();
+    expect(screen.getByText(/另含主动探活结果/)).toBeInTheDocument();
+  });
+
+  it('探活开关默认关，打开后保存设置，立即探活回填报告', async () => {
+    const report = { generatedAt: 't', windowHours: 24, probe: { enabled: true, intervalMins: 15 }, providers: [] };
+    vi.mocked(api.setHealthProbe).mockResolvedValue({ enabled: true, intervalMins: 15 });
+    vi.mocked(api.providerHealth).mockResolvedValue(report);
+    vi.mocked(api.probeProviders).mockResolvedValue(report);
+    const onReport = vi.fn();
+    const onNotify = vi.fn();
+    render(<ProbeBar settings={undefined} onReport={onReport} onNotify={onNotify} />);
+    const toggle = screen.getByRole('switch', { name: '定时主动探活' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('combobox')).toBeDisabled();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+    expect(api.setHealthProbe).toHaveBeenCalledWith({ enabled: true, intervalMins: 15 });
+    fireEvent.click(screen.getByRole('button', { name: '立即探活' }));
+    await waitFor(() => expect(onNotify).toHaveBeenCalledWith('success', '已探活一次'));
+    expect(onReport).toHaveBeenLastCalledWith(report);
   });
 });

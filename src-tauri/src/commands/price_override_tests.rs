@@ -267,6 +267,17 @@ fn write_override_file(app: &AppContext, content: &Value) -> Vec<u8> {
 /// cache placeholder, Opus 5.5 not yet bundled and Sonnet 4.2 still listed.
 fn bundled_before_price_audit() -> Value {
     let mut table = default_prices();
+    // Tables before schema 2 had no `history` or `tiers`.
+    for entry in table
+        .as_object_mut()
+        .expect("bundled prices are an object")
+        .values_mut()
+    {
+        if let Some(entry) = entry.as_object_mut() {
+            entry.remove("history");
+            entry.remove("tiers");
+        }
+    }
     table["claude-sonnet-5"] =
         json!({ "input": 3.0, "output": 15.0, "cache_input": 0.3, "cache_write": 3.75 });
     table["o3"] = json!({ "input": 10.0, "output": 40.0, "cache_input": 0.5, "cache_write": 2.0 });
@@ -2102,4 +2113,39 @@ fn a_price_save_succeeds_while_a_reader_holds_the_file_open() {
     );
     assert_no_price_temps(&dir);
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_user_schedule_with_an_invalid_multiplier_is_refused() {
+    let app = test_app("bad_tier");
+    let mut editor = as_sent_by_editor(&get_prices_impl(&app).expect("load prices"));
+    editor["gpt-6-sol"]["tiers"][0]["multipliers"]["input"] = json!(-2);
+
+    let error = save_prices_impl(&app, editor).expect_err("negative multiplier is refused");
+
+    assert!(
+        error.contains("gpt-6-sol.tiers[0].multipliers.input"),
+        "{error}"
+    );
+    assert!(override_file(&app).is_none());
+    let _ = fs::remove_dir_all(app.app_data_dir());
+}
+
+#[test]
+fn an_older_invalid_override_left_alone_does_not_block_other_edits() {
+    let app = test_app("old_bad_tier");
+    let mut stored = Map::new();
+    stored.insert(
+        "gpt-6-sol".to_string(),
+        json!({"tiers": [{"above_prompt_tokens": 272000, "multipliers": {"input": -2}}]}),
+    );
+    store_price_overrides(app.app_data_dir(), &stored).expect("store old override");
+    let mut editor = as_sent_by_editor(&get_prices_impl(&app).expect("load prices"));
+    editor["gpt-5.6-terra"]["input"] = json!(9.5);
+
+    save_prices_impl(&app, editor).expect("saving another model still works");
+
+    let file = override_file(&app).expect("override file");
+    assert_eq!(file["gpt-5.6-terra"]["input"], json!(9.5));
+    let _ = fs::remove_dir_all(app.app_data_dir());
 }

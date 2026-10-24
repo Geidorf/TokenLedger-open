@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { computeUnitCostUsd, formatUnitCost, UNIT_COST_LABEL, UNIT_COST_UNAVAILABLE } from './unitCost';
+import { computeUnitCostUsd, formatUnitCost, unitCostLabel, unitCostUnavailable } from './unitCost';
 
 describe('单位费用（T10.159，T10.154 术语）', () => {
   it('指标名是“单位费用”，不是“单位成本”', () => {
-    expect(UNIT_COST_LABEL).toBe('单位费用');
-    expect(UNIT_COST_UNAVAILABLE).toBe('不可得');
+    expect(unitCostLabel()).toBe('单位费用');
+    expect(unitCostUnavailable()).toBe('不可得');
   });
 
   it('每百万有效 Token 的预估费用；费用未知或有效 Token 不是正数时算不出，不当作 0', () => {
