@@ -89,4 +89,10 @@ describe('UsageAnomalyView', () => {
     fireEvent.click(screen.getByRole('button', { name: '再显示 2 项' }));
     expect(screen.getAllByRole('button', { name: /Token 突增/ })).toHaveLength(8);
   });
+
+  it('marks a retained report as stale when a refresh fails', () => {
+    renderView({ error: '异常检测读取失败' });
+    expect(screen.getByRole('alert')).toHaveTextContent('刷新失败，下面是上一次检查的结果');
+    expect(screen.getByRole('status')).not.toHaveClass('is-healthy');
+  });
 });

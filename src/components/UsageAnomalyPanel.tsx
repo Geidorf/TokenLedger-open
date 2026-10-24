@@ -113,6 +113,9 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
       </div>
       {notifyError && <p className="usage-anomaly-note is-error" role="alert">{notifyError}</p>}
 
+      {error && report && (
+        <p className="usage-anomaly-note is-error" role="alert">刷新失败，下面是上一次检查的结果，可能已过时。</p>
+      )}
       {error && !report ? (
         <div className="anomaly-status-banner" role="status">
           <Activity className="h-4 w-4 text-tertiary flex-none" />
@@ -124,7 +127,7 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
           <span>正在检查最近的用量…</span>
         </div>
       ) : findings.length === 0 ? (
-        <div className="anomaly-status-banner is-healthy" role="status">
+        <div className={`anomaly-status-banner${error ? '' : ' is-healthy'}`} role="status">
           <CheckCircle2 className="h-4 w-4 text-success flex-none" />
           <span>最近 {report.recentHours} 小时与 {report.recentDays} 天没有发现异常（与此前 {report.baselineDays} 天比较）。</span>
         </div>

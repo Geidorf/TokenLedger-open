@@ -277,22 +277,28 @@ pub fn get_usage_anomaly_settings(
 }
 
 #[tauri::command]
-pub fn set_usage_anomaly_settings(
+pub async fn set_usage_anomaly_settings(
     app_state: tauri::State<'_, std::sync::Arc<AppContext>>,
     settings: AnomalySettings,
 ) -> Result<AnomalySettings, String> {
-    save_settings(app_state.inner().app_data_dir(), &settings)?;
-    if settings.notify {
-        // Turning it on should not replay findings that are already on
-        // screen as a burst of notifications: mark them as delivered.
-        let app = app_state.inner().clone();
-        std::thread::spawn(move || {
-            if let Ok(report) = evaluate_local(&app, Local::now()) {
-                mark_delivered(app.app_data_dir(), &report.findings, Utc::now());
+    let app = app_state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let was_on = load_settings(app.app_data_dir()).notify;
+        if settings.notify && !was_on {
+            // Turning it on must not replay findings already on screen as a
+            // burst of notifications. They are marked delivered before the
+            // setting is saved, so a background check cannot see the new
+            // setting first.
+            match evaluate_local(&app, Local::now()) {
+                Ok(report) => mark_delivered(app.app_data_dir(), &report.findings, Utc::now()),
+                Err(error) => log::debug!("usage anomaly seed skipped: {error}"),
             }
-        });
-    }
-    Ok(settings)
+        }
+        save_settings(app.app_data_dir(), &settings)?;
+        Ok(settings)
+    })
+    .await
+    .map_err(|error| format!("set_usage_anomaly_settings task panicked: {error}"))?
 }
 
 pub(crate) fn load_settings(app_data_dir: &Path) -> AnomalySettings {
