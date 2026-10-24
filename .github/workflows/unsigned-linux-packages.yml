@@ -1,0 +1,217 @@
+name: TokenLedger Unsigned Linux Packages
+
+# 为公开发行版产出**未签名**的 Linux x64 安装包：AppImage、deb 与 rpm。
+#
+# 与 unsigned-windows-installer.yml、unsigned-macos-dmg.yml 对称：走完整的
+# bundle 流程，未签名产物不得表述为已签名的 RC，只上传到 release 的
+# pre-release 资产，且必须如实标注签名状态。Tauri 打包会把 crate 里的所有
+# 可执行文件一起装进去，命令行工具 tokenledger-cli 随之进入 deb、rpm 与
+# AppImage 的 /usr/bin；crate 里还没有它时跳过对应检查。
+#
+# 打完包后在同一台 runner 上装 deb、跑 AppImage，用 Xvfb 冒烟启动：主窗口、
+# 托盘注册、开机自启条目、XDG 数据目录与冷启动扫描、单实例（见
+# scripts/linux-package-smoke.sh）。
+#
+# 在 ubuntu-22.04 上构建：AppImage 只能在 glibc 不低于构建机的系统上运行，
+# 用较老的 LTS 覆盖面更广。
+#
+# 触发：手动 dispatch，在 v* tag 上运行，或改动本文件与冒烟脚本的 PR（只构建、不发布）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '上传到哪个 release tag（留空则不发布，只构建）'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/unsigned-linux-packages.yml'
+      - 'scripts/linux-package-smoke.sh'
+      - 'scripts/linux-tray-watcher.py'
+      - 'src-tauri/src/autostart.rs'
+
+permissions:
+  # 上传 release 资产需要 contents: write。
+  contents: write
+
+concurrency:
+  group: tokenledger-unsigned-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unsigned-linux:
+    name: Unsigned Linux x64 AppImage, deb & rpm
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      # GitHub runner 没有 FUSE：打包时的 linuxdeploy 与冒烟时的 AppImage 都改为解包后运行。
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      # 构建步骤不需要 git 凭据；不把可写 token 留在工作区里。
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Tauri build and smoke-test system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libssl-dev patchelf file rpm \
+            xvfb xdotool sqlite3 dbus dbus-x11 python3-gi gir1.2-glib-2.0 \
+            desktop-file-utils fonts-noto-cjk
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Build unsigned AppImage, deb and rpm
+        run: npm run build -- --bundles appimage,deb,rpm --ci
+
+      - name: Stage the packages and record hashes
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          STAGE=release-stage/linux
+          mkdir -p "$STAGE"
+
+          BIN_PATH=src-tauri/target/release/tokenledger
+          APPIMAGE_PATH="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
+          DEB_PATH="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          RPM_PATH="$(find src-tauri/target/release/bundle/rpm -maxdepth 1 -name '*.rpm' -print -quit)"
+          test -s "$BIN_PATH"
+          test -n "$APPIMAGE_PATH"
+          test -n "$DEB_PATH"
+          test -n "$RPM_PATH"
+
+          VERSION="$(node -p "require('./package.json').version")"
+          # 要上传的 tag（push 的 v* tag，或手动 dispatch 指定的 tag）必须与包版本一致。
+          RELEASE_TAG="${INPUT_TAG:-}"
+          if [[ -z "$RELEASE_TAG" && "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          fi
+          if [ -n "$RELEASE_TAG" ]; then
+            TAG_VERSION="${RELEASE_TAG#v}"
+            if [ "$VERSION" != "$TAG_VERSION" ]; then
+              echo "package version $VERSION != tag version $TAG_VERSION" >&2
+              exit 1
+            fi
+          fi
+
+          # 记录签名状态：未签名产物必须如实标注，不能被表述为已签名。
+          {
+            echo "signature=unsigned"
+            echo "package_version=$VERSION"
+            echo "source_sha=$GITHUB_SHA"
+            echo "build_environment=GitHub Actions ubuntu-22.04 x64; run $GITHUB_RUN_ID"
+          } > "$STAGE/linux-signature.txt"
+
+          cp "$APPIMAGE_PATH" "$STAGE/TokenLedger_Linux_${VERSION}_x86_64-unsigned.AppImage"
+          chmod +x "$STAGE/TokenLedger_Linux_${VERSION}_x86_64-unsigned.AppImage"
+          cp "$DEB_PATH" "$STAGE/TokenLedger_Linux_${VERSION}_amd64-unsigned.deb"
+          cp "$RPM_PATH" "$STAGE/TokenLedger_Linux_${VERSION}_x86_64-unsigned.rpm"
+
+          sha256sum "$STAGE"/*.AppImage "$STAGE"/*.deb "$STAGE"/*.rpm | tee "$STAGE/linux-sha256.txt"
+
+          # 清洁扫描对象：包是压缩的，扫打包前的同一批可执行文件；不进 artifact。
+          mkdir -p release-scan/linux
+          cp "$BIN_PATH" release-scan/linux/tokenledger
+          if [ -f src-tauri/target/release/tokenledger-cli ]; then
+            cp src-tauri/target/release/tokenledger-cli release-scan/linux/tokenledger-cli
+          fi
+
+      - name: Verify the packaged executables contain no forbidden strings
+        env:
+          # 维护者标识清单从 secret 注入；未配置时脚本只跑通用规则并给出警告。
+          TOKENLEDGER_FORBIDDEN_JSON: ${{ secrets.RELEASE_FORBIDDEN_JSON }}
+        run: node scripts/verify-release-artifact-clean.mjs release-scan/linux/*
+
+      - name: Check package contents and metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEB="$(ls release-stage/linux/*.deb)"
+          RPM="$(ls release-stage/linux/*.rpm)"
+          dpkg-deb --info "$DEB"
+          DEB_FILES="$(dpkg-deb --contents "$DEB")"
+          RPM_FILES="$(rpm -qlp "$RPM")"
+          for path in /usr/bin/tokenledger /usr/share/applications/tokenledger.desktop; do
+            grep -q " \.$path\$" <<<"$DEB_FILES" || { echo "deb is missing $path" >&2; exit 1; }
+            grep -qx "$path" <<<"$RPM_FILES" || { echo "rpm is missing $path" >&2; exit 1; }
+          done
+          if [ -f src-tauri/target/release/tokenledger-cli ]; then
+            grep -q " \./usr/bin/tokenledger-cli\$" <<<"$DEB_FILES" || { echo "deb is missing tokenledger-cli" >&2; exit 1; }
+            grep -qx /usr/bin/tokenledger-cli <<<"$RPM_FILES" || { echo "rpm is missing tokenledger-cli" >&2; exit 1; }
+          fi
+          # deb 必须声明 WebKitGTK 与托盘库依赖，否则别的机器装上也起不来。
+          DEPENDS="$(dpkg-deb --field "$DEB" Depends)"
+          echo "Depends: $DEPENDS"
+          grep -q 'libwebkit2gtk-4.1' <<<"$DEPENDS"
+          grep -q 'libgtk-3' <<<"$DEPENDS"
+          rpm -qp --requires "$RPM"
+          mkdir -p desktop-check
+          dpkg-deb --fsys-tarfile "$DEB" | tar -x -C desktop-check ./usr/share/applications
+          desktop-file-validate desktop-check/usr/share/applications/*.desktop
+
+      - name: Install the deb and smoke-test it under Xvfb
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y ./release-stage/linux/*.deb
+          CLI=""
+          if [ -x /usr/bin/tokenledger-cli ]; then CLI=/usr/bin/tokenledger-cli; fi
+          xvfb-run -a -s '-screen 0 1440x900x24' dbus-run-session -- \
+            bash scripts/linux-package-smoke.sh /usr/bin/tokenledger /usr/bin/tokenledger "$CLI"
+
+      - name: Smoke-test the AppImage under Xvfb
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 先卸掉 deb，确认 AppImage 自带依赖、不靠系统里刚装的那份程序。
+          sudo apt-get remove -y tokenledger
+          APPIMAGE="$(ls "$GITHUB_WORKSPACE"/release-stage/linux/*.AppImage)"
+          xvfb-run -a -s '-screen 0 1440x900x24' dbus-run-session -- \
+            bash scripts/linux-package-smoke.sh "$APPIMAGE" "$APPIMAGE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-linux
+          path: release-stage/linux
+          if-no-files-found: error
+
+      - name: Upload to the release as pre-release assets
+        if: github.event_name != 'pull_request' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # 未签名产物只能挂在 pre-release 上，不能混进正式发行版。
+            IS_PRERELEASE="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)"
+            if [ "$IS_PRERELEASE" != "true" ]; then
+              echo "release $RELEASE_TAG is not a pre-release; refusing to attach unsigned packages" >&2
+              exit 1
+            fi
+            gh release upload --repo "$GITHUB_REPOSITORY" "$RELEASE_TAG" \
+              release-stage/linux/*.AppImage release-stage/linux/*.deb release-stage/linux/*.rpm --clobber
+            echo "uploaded to existing release $RELEASE_TAG"
+          else
+            echo "release $RELEASE_TAG does not exist; artifacts stay in this run only" >&2
+          fi
