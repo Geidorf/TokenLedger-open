@@ -533,13 +533,6 @@ fn stored_user(app: &AppContext) -> Option<String> {
     )
 }
 
-async fn signed_in_user(app: &AppContext) -> Option<String> {
-    let (config, _lease) = crate::commands::acquire_current_cloud_session(app)
-        .await
-        .ok()?;
-    config.session.map(|session| session.user_id)
-}
-
 struct Published {
     user: String,
     device: String,
@@ -609,16 +602,31 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             }
 
             pending_clear = None;
-            let Some(user) = signed_in_user(&app).await else {
-                published = None;
-                set_status(|status| {
-                    *status = RoutingPublishStatus {
-                        state: "signed-out",
-                        ..Default::default()
-                    }
-                });
-                delay = SIGNED_OUT_RETRY;
-                continue;
+            // Identity comes from the local config: a token refresh failing during an outage
+            // surfaces from `call_rpc` as a retryable error and keeps `published`, so a later
+            // switch-off still knows which row to delete.
+            let user = match stored_user(&app) {
+                Some(user) if !user.is_empty() => user,
+                Some(_) => {
+                    published = None;
+                    set_status(|status| {
+                        *status = RoutingPublishStatus {
+                            state: "signed-out",
+                            ..Default::default()
+                        }
+                    });
+                    delay = SIGNED_OUT_RETRY;
+                    continue;
+                }
+                None => {
+                    set_status(|status| {
+                        status.state = "error";
+                        status.error = Some("读取云端登录信息失败".to_string());
+                    });
+                    delay = backoff;
+                    backoff = (backoff * 2).min(MAX_BACKOFF);
+                    continue;
+                }
             };
             if published
                 .as_ref()
