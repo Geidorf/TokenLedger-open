@@ -38,7 +38,7 @@ import com.jeidorf.tokenledger.mobile.v2FormatTokens
 import java.time.format.DateTimeFormatter
 
 internal const val RHYTHM_CLOUD_LIMIT_NOTE =
-    "云端只有按小时汇总的数据，没有会话列表和单次请求大小。完整的会话分析在桌面「用量 › 会话」。"
+    "云端只有按小时汇总的数据，没有会话列表和每条记录的请求大小。完整的会话分析在桌面「用量 › 会话」。"
 
 private val WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
 private val RANGE_DATE = DateTimeFormatter.ofPattern("M月d日")
