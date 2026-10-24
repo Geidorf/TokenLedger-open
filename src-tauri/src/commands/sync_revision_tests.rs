@@ -84,6 +84,7 @@ fn revision_survives_reopen_and_gateway_receipt_uses_its_snapshot() {
     let (_dir, path, conn, id) = ledger();
     let old = snapshot(&conn, id);
     let hours = gateway_cloud::HourRow {
+        timestamp: "2026-10-01 10:00:00".to_string(),
         id,
         sync_revision: old.1,
         tool: "claude".into(),

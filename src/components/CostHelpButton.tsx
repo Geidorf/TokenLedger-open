@@ -10,8 +10,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { invoke } from '@tauri-apps/api/core';
 import { ESTIMATED_COST_HELP, ESTIMATED_COST_LABEL } from '../utils/costCopy';
-import type { DataScope } from '../types';
+import type { DataScope, PriceTableStatus } from '../types';
+import { describePriceTableSource, parsePriceTableStatus } from '../utils/priceTableStatus';
 import '../styles/costHelp.css';
 
 const EDGE = 8;
@@ -56,6 +58,18 @@ export function CostHelpButton({ scope }: CostHelpButtonProps = {}) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const focusedRef = useRef(false);
   const popoverId = useId();
+  const [priceTable, setPriceTable] = useState<PriceTableStatus | null>(null);
+
+  // 打开时读一次价格表出处；云端金额按各设备上传时的价格表冻结，不显示本机出处。
+  useEffect(() => {
+    if (!open || scope === 'cloud') return undefined;
+    let active = true;
+    Promise.resolve()
+      .then(() => invoke<unknown>('get_price_table_status'))
+      .then((value) => { if (active) setPriceTable(parsePriceTableStatus(value)); })
+      .catch(() => { if (active) setPriceTable(null); });
+    return () => { active = false; };
+  }, [open, scope]);
 
   const close = useCallback((returnFocus: boolean) => {
     setOpen(false);
@@ -187,6 +201,7 @@ export function CostHelpButton({ scope }: CostHelpButtonProps = {}) {
         >
           <p><strong>{ESTIMATED_COST_LABEL}</strong>：{ESTIMATED_COST_HELP}</p>
           {scope === 'cloud' && <p>{CLOUD_ZERO_COALESCE_NOTE}</p>}
+          {scope !== 'cloud' && priceTable && <p className="cost-help-source">价格来源：{describePriceTableSource(priceTable)}</p>}
         </div>,
         container,
       )}

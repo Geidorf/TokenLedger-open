@@ -492,6 +492,8 @@ start_tokenledger.bat --show
 - `prices.legacy-backup-*.json`：升级时整理自定义价格前的原文件备份，「恢复默认」不删除
 - `prices.migration-notice.json`：升级时整理自定义价格的结果提示与已关闭记录，「恢复默认」不删除
 - `models-dev-catalog.json`：models.dev 模型目录缓存，默认 24 小时刷新；刷新失败时可继续使用旧缓存
+- `prices.feed.json`：在线更新下载的价格表缓存（修订号比内置表新时作为默认价）
+- `prices.feed-state.json`：价格表自动更新开关、上次检查时间与失败原因
 
 ---
 
@@ -527,6 +529,7 @@ TokenLedger 的一切统计都**先在本机完成**：
 
 - 扫描只读取各 AI 工具自己的日志与数据库目录，不触碰浏览器数据、SSH 密钥、系统钥匙串或其他通用敏感位置。
 - 云端同步是**可选**的，默认关闭。开启后只上传按「设备 × 工具 × 模型 × 小时」聚合的行，不含会话 ID、提示词、请求与回复内容、文件路径或凭据。
+- 价格表每天联网检查一次更新：只从 `raw.githubusercontent.com` 下载本仓库 `main` 分支的 `src-tauri/prices.json` 与 `prices.meta.json`，不上传任何数据，请求只带应用版本号。可在「设置 → 模型价格 → 每天自动更新价格表」关闭；关闭后只用内置表与已下载的缓存。
 - 额度来源需要授权时，只读取你显式开启的本地来源；不复制 OAuth Token，不读浏览器 Cookie，不调用任何消费级产品的未公开内部接口。完整边界见 [额度来源合规说明](docs/design/quota-source-compliance.md)。
 
 ## 许可证

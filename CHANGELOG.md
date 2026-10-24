@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deep links into settings now switch pages correctly while the app is running. The usage records page shows the active filter and can clear it in one action.
 - Android widget and dashboard visual refresh, including brand icons, input/output share bars on KPI cards, quota overview progress bars, and reduced visual noise in settings.
 - Settings cards open their target page directly, and an overview line reports a quota read that is still waiting for the first observation.
+- Model price table schema 2: dated price history so a price change only affects records after it takes effect, long-context tiers for GPT-5.6/GPT-6, Gemini Pro, Grok and MiniMax-M3 on per-request tools, and a daily online update from this repository with the bundled table as the offline fallback. Settings and the estimated-cost help show which table is in use, its revision and verification date.
 
 ### Changed
 

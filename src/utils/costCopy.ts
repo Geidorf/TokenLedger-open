@@ -8,7 +8,7 @@ export const ESTIMATED_COST_LABEL = '预估费用';
 export const ESTIMATED_COST_NOTE = '按价格表估算，非账单';
 
 /** KPI「预估费用 ⓘ」帮助弹层的正文（§4.2 第一条；订阅相关的几条属于 B 期）。 */
-export const ESTIMATED_COST_HELP = '按模型价格表估算；工具日志自带费用时直接采用。都不是供应商账单，实际以账单为准。价格表为标准档，长上下文加价、批处理与渠道加价未计入。';
+export const ESTIMATED_COST_HELP = '按模型价格表估算；工具日志自带费用时直接采用。都不是供应商账单，实际以账单为准。调价前的记录仍按当时的价格估算；GPT、Gemini、Grok 等长上下文加价按请求长度计入，批处理与渠道加价未计入。';
 
 /** 总额不可得时 KPI 副行的原因（§4.3「总额不可得」）。 */
 export const ESTIMATED_COST_UNAVAILABLE_REASON = '来源未提供可验证的费用';
