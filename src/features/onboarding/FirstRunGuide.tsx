@@ -1,6 +1,8 @@
 import { Check, Cloud, FolderSearch, Lock, Network, Smartphone, Sparkles, X, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLang, useT, type MessageKey } from '../../i18n';
+import { LanguageSelect } from '../../i18n/LanguageSelect';
 import type { AppSettings } from '../../types';
 import { focusWrapTarget } from '../../utils/frontendContracts';
 import { errorText, gatewayStatus, setModelAccess } from '../gateway/api';
@@ -18,11 +20,11 @@ import {
   type OnboardingVisibility,
 } from './onboardingState';
 
-const STEP_COPY: Record<OnboardingStepId, { title: string; icon: LucideIcon; optional: boolean }> = {
-  scan: { title: '扫描本机数据', icon: FolderSearch, optional: false },
-  gateway: { title: '开启模型网关', icon: Network, optional: true },
-  cloud: { title: '开启云端同步', icon: Cloud, optional: true },
-  phone: { title: '手机锁屏壁纸', icon: Smartphone, optional: true },
+const STEP_COPY: Record<OnboardingStepId, { title: MessageKey; icon: LucideIcon; optional: boolean }> = {
+  scan: { title: 'onboarding.step.scan.title', icon: FolderSearch, optional: false },
+  gateway: { title: 'onboarding.step.gateway.title', icon: Network, optional: true },
+  cloud: { title: 'onboarding.step.cloud.title', icon: Cloud, optional: true },
+  phone: { title: 'onboarding.step.phone.title', icon: Smartphone, optional: true },
 };
 
 const GATEWAY_POLL_MS = 5_000;
@@ -66,6 +68,7 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
   const [view, setView] = useState<View>(() => viewFor(readOnboardingVisibility()));
   const [gateway, setGateway] = useState<OnboardingFacts['gateway']>(null);
   const [accessBusy, setAccessBusy] = useState(false);
+  const lang = useLang();
 
   const show = useCallback((next: View, persist: OnboardingVisibility | null) => {
     setView(next);
@@ -111,8 +114,8 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
   }, [watchGateway, gatewayRefreshKey]);
 
   const steps = useMemo(
-    () => deriveOnboardingSteps({ ...facts, gateway }),
-    [facts, gateway],
+    () => deriveOnboardingSteps({ ...facts, gateway }, lang),
+    [facts, gateway, lang],
   );
   const done = completedCount(steps);
   const allDone = done === steps.length;
@@ -187,15 +190,17 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
 }
 
 function GuideChip({ done, total, onOpen, onDismiss }: { done: number; total: number; onOpen: () => void; onDismiss: () => void }) {
+  const t = useT();
   const allDone = done === total;
+  const state = t(allDone ? 'onboarding.chip.done' : 'onboarding.chip.start');
   return (
-    <div className="onboarding-chip" role="region" aria-label="新手引导">
-      <button type="button" className="onboarding-chip-open" onClick={onOpen} aria-label={`${allDone ? '设置完成' : '开始使用'}：已完成 ${done}/${total} 步，展开新手引导`}>
+    <div className="onboarding-chip" role="region" aria-label={t('onboarding.region')}>
+      <button type="button" className="onboarding-chip-open" onClick={onOpen} aria-label={t('onboarding.chip.openAria', { state, done, total })}>
         <ProgressRing done={done} total={total} />
-        <span>{allDone ? '设置完成' : '开始使用'}</span>
+        <span>{state}</span>
         <span className="onboarding-chip-count">{done}/{total}</span>
       </button>
-      <button type="button" className="onboarding-chip-close" onClick={onDismiss} aria-label={allDone ? '关闭新手引导' : '不再提示新手引导'} title={allDone ? '关闭' : '不再提示（可在设置 › 数据与帮助里重新打开）'}>
+      <button type="button" className="onboarding-chip-close" onClick={onDismiss} aria-label={t(allDone ? 'onboarding.chip.closeAria' : 'onboarding.chip.dismissAria')} title={t(allDone ? 'onboarding.chip.closeTitle' : 'onboarding.chip.dismissTitle')}>
         <X className="h-3.5 w-3.5" />
       </button>
     </div>
@@ -223,6 +228,7 @@ function GuideDialog({ steps, done, allDone, actionBusy, error, onAction, onMini
   onMinimize: () => void;
   onDismiss: () => void;
 }) {
+  const t = useT();
   const dialogRef = useRef<HTMLElement>(null);
   const onMinimizeRef = useRef(onMinimize);
   useEffect(() => { onMinimizeRef.current = onMinimize; }, [onMinimize]);
@@ -279,19 +285,18 @@ function GuideDialog({ steps, done, allDone, actionBusy, error, onAction, onMini
         <header className="onboarding-head">
           <span className="onboarding-mark" aria-hidden="true"><Sparkles className="h-5 w-5" /></span>
           <div className="onboarding-head-copy">
-            <h2 id="onboarding-title">{allDone ? '一切就绪' : '欢迎使用 TokenLedger'}</h2>
+            <h2 id="onboarding-title">{t(allDone ? 'onboarding.title.ready' : 'onboarding.title.welcome')}</h2>
             <p id="onboarding-subtitle">
-              {allDone
-                ? '四步都完成了。之后可在「设置 › 数据与帮助」重新打开这份引导。'
-                : '第一步扫描本机数据就能看到用量；后面三步按需开启，随时可以跳过。'}
+              {t(allDone ? 'onboarding.subtitle.ready' : 'onboarding.subtitle.welcome')}
             </p>
           </div>
-          <button type="button" className="onboarding-icon-button" onClick={onMinimize} aria-label="收起新手引导" title="收起到右下角">
+          <LanguageSelect className="onboarding-lang" />
+          <button type="button" className="onboarding-icon-button" onClick={onMinimize} aria-label={t('onboarding.minimizeAria')} title={t('onboarding.minimizeTitle')}>
             <X className="h-4 w-4" />
           </button>
         </header>
 
-        <div className="onboarding-progress" aria-label={`已完成 ${done} / ${steps.length} 步`}>
+        <div className="onboarding-progress" aria-label={t('onboarding.progressAria', { done, total: steps.length })}>
           {steps.map((step) => <span key={step.id} className={step.status === 'done' ? 'is-done' : ''} />)}
         </div>
 
@@ -311,10 +316,10 @@ function GuideDialog({ steps, done, allDone, actionBusy, error, onAction, onMini
         {error && <p className="onboarding-error" role="alert">{error}</p>}
 
         <footer className="onboarding-footer">
-          <span className="onboarding-privacy"><Lock className="h-3.5 w-3.5" aria-hidden="true" />数据默认只留在本机；不读取任何订阅账号的登录凭据。</span>
+          <span className="onboarding-privacy"><Lock className="h-3.5 w-3.5" aria-hidden="true" />{t('onboarding.privacy')}</span>
           {allDone
-            ? <button type="button" className="primary-inline" onClick={onDismiss}>开始使用</button>
-            : <button type="button" className="ghost-inline" onClick={onDismiss}>跳过引导</button>}
+            ? <button type="button" className="primary-inline" onClick={onDismiss}>{t('onboarding.finish')}</button>
+            : <button type="button" className="ghost-inline" onClick={onDismiss}>{t('onboarding.skip')}</button>}
         </footer>
       </section>
     </div>
@@ -329,6 +334,7 @@ function StepRow({ step, index, current, busy, onAction }: {
   busy: boolean;
   onAction: () => void;
 }) {
+  const t = useT();
   const copy = STEP_COPY[step.id];
   const Icon = copy.icon;
   const titleId = `onboarding-step-${step.id}`;
@@ -340,9 +346,9 @@ function StepRow({ step, index, current, busy, onAction }: {
       <div className="onboarding-step-copy">
         <strong id={titleId}>
           <span className="onboarding-step-index">{index + 1}</span>
-          {copy.title}
-          {copy.optional && step.status !== 'done' && <span className="onboarding-tag">可选</span>}
-          {step.status === 'done' && <span className="onboarding-tag is-done">已完成</span>}
+          {t(copy.title)}
+          {copy.optional && step.status !== 'done' && <span className="onboarding-tag">{t('onboarding.tag.optional')}</span>}
+          {step.status === 'done' && <span className="onboarding-tag is-done">{t('onboarding.tag.done')}</span>}
         </strong>
         <p>{step.detail}</p>
       </div>
@@ -355,7 +361,7 @@ function StepRow({ step, index, current, busy, onAction }: {
           aria-busy={busy || undefined}
           aria-describedby={titleId}
         >
-          {busy ? '处理中…' : step.actionLabel}
+          {busy ? t('onboarding.busy') : step.actionLabel}
         </button>
       )}
     </li>

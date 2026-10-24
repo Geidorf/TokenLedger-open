@@ -5353,9 +5353,11 @@ test('额度面板说明冷启动空窗，而不是留一片空白', () => {
   // 周期接手。在此之前面板什么都不显示，用户无法区分「还没读」和「没有来源」。
   assert.match(panel, /providers\.length === 0 && !error/);
   assert.match(panel, /quota-panel-cold-start/);
-  assert.match(panel, /启动约 5 分钟后进行/);
-  assert.match(panel, /还没授权任何来源时/);
-  assert.match(panel, /去设置授权/);
+  // 文案在界面文案表里（中英两份），面板只引用键。
+  const copy = readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts'));
+  assert.match(panel, /t\('empty\.quota\.description'\)/);
+  assert.match(copy, /'empty\.quota\.description': '[^']*启动约 5 分钟后进行[^']*还没授权任何来源时/);
+  assert.match(copy, /'empty\.quota\.action': '去设置授权'/);
   assert.match(css, /\.quota-panel-cold-start \{/);
 });
 

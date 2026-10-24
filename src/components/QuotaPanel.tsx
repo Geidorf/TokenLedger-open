@@ -13,6 +13,7 @@ import {
 import { providerDisplayName, quotaLevel } from '../utils/quotaOverview';
 import { computeQuotaPace, describeQuotaPace, type QuotaPace, type QuotaPaceCopy } from '../utils/quotaPace';
 import { BrandIcon, resolveBrandIconKey } from './brand/BrandIcon';
+import { useT } from '../i18n';
 
 interface QuotaPanelProps {
   providers: QuotaProviderEnvelope[];
@@ -638,6 +639,7 @@ export function QuotaPanel({
   sourceOrder = [],
   hiddenSourceIds = [],
 }: QuotaPanelProps) {
+  const t = useT();
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 60_000);
@@ -818,10 +820,10 @@ export function QuotaPanel({
               variant="inset"
               icon={Gauge}
               className="quota-panel-cold-start"
-              title="还没有额度数据"
-              description="已授权来源的首次后台读取会在应用启动约 5 分钟后进行，想马上看就点上方「刷新额度」。还没授权任何来源时，先去设置里选择要读取的来源。"
+              title={t('empty.quota.title')}
+              description={t('empty.quota.description')}
             >
-              <button type="button" className="secondary-inline" onClick={onOpenSettings}>去设置授权</button>
+              <button type="button" className="secondary-inline" onClick={onOpenSettings}>{t('empty.quota.action')}</button>
             </EmptyState>
           )}
         </>

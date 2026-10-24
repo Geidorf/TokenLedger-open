@@ -92,9 +92,9 @@ export const test = base.extend<{ ipc: IpcFixture; guard: void }>({
 
 export { expect };
 
-/** 打开某个 hash 页面并等主区域渲染完成。 */
-export async function openPage(page: Page, hash: string) {
-  await page.goto(`/#${hash}`);
+/** 打开某个 hash 页面并等主区域渲染完成；`query` 如 `?lang=en`。 */
+export async function openPage(page: Page, hash: string, query = '') {
+  await page.goto(`/${query}#${hash}`);
   await expect(page.locator('main').first()).toBeVisible();
 }
 
