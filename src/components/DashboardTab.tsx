@@ -622,6 +622,8 @@ export function DashboardTab({
   // 交叉时拆分面板只能显示 Token；热力图跟面板实际显示的指标走，不跟残留的选择。
   const heatmapView = splitHeatmapView(stats, activeSplitFocus,
     effectiveSplitMetric(stats, activeSplitDimension, splitMetric, activeSplitFocus, showTotalTokens));
+  // 日历画的是某个账号时，点开的单日明细筛不出这个账号，会比格子上的数多：先不让点。
+  const accountHeatmap = heatmapView.focused && activeSplitFocus?.dimension === 'account';
   const cloudRecovery = scope === 'cloud'
     ? cloudSyncRecoveryCopy({ authenticated: cloudAuthenticated, capabilityVerified: cloudCapabilityVerified })
     : null;
@@ -902,7 +904,8 @@ export function DashboardTab({
           {showHeatmap && <HeatmapSection heatmap={heatmapView.heatmap} subject={heatmapView.focused && activeSplitFocus ? activeSplitFocus.id : undefined}
             subjectUnavailable={activeSplitFocus && !heatmapView.focused ? activeSplitFocus.id : undefined}
             metric={heatmapView.metric} metricFallback={heatmapView.metricFallback}
-            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (heatmapView.focused && activeSplitFocus && activeSplitFocus.dimension !== 'account'
+            drillUnavailableNote={accountHeatmap && onSelectDate && !dateDrillUnavailable ? '明细暂不能按账号筛选，选中账号时日期不可点开。' : undefined}
+            onSelectDate={dateDrillUnavailable || !onSelectDate || accountHeatmap ? undefined : (date) => (heatmapView.focused && activeSplitFocus
               ? onSelectDate(date, { tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [], models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [] })
               : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} />}
           <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />
