@@ -362,3 +362,32 @@ fn credentials_go_over_http_only_on_this_computer_or_the_local_network() {
     assert!(!allowed("http://dav.example/dav"));
     assert!(!allowed("http://8.8.8.8/"));
 }
+
+#[test]
+fn the_shared_selection_survives_saving_the_setup() {
+    let dir = temp_dir();
+    let secrets = MemorySecrets::default();
+    assert!(shared_selection(&dir).is_empty());
+    let picked =
+        save_shared_selection(&dir, &["BB".into(), "aa".into(), "bb".into(), "x/y".into()])
+            .unwrap();
+    assert_eq!(picked, ["aa", "bb"]);
+    save_config(
+        &dir,
+        &secrets,
+        SaveConfigInput {
+            url: "https://dav.example/dav".into(),
+            user: "me".into(),
+            password: None,
+            passphrase: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(shared_selection(&dir), ["aa", "bb"]);
+    save_shared_selection(&dir, &[]).unwrap();
+    assert!(shared_selection(&dir).is_empty());
+    assert!(!fs::read_to_string(dir.join(CONFIG_FILE))
+        .unwrap()
+        .contains("sharedComputers"));
+    let _ = fs::remove_dir_all(dir);
+}

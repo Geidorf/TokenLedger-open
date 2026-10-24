@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 /// The whole-setup backup.
 pub const BACKUP_FORMAT: &str = crate::peer_wire::BACKUP_FORMAT;
 /// Any other file the peer seals, such as shared usage days.
-#[allow(dead_code)] // shared usage is not read in v1
 pub const DATA_FORMAT: &str = crate::peer_wire::DATA_FORMAT;
 /// The peer's own iteration count, for files TokenLedger seals.
 #[allow(dead_code)] // nothing is sealed for the peer yet
@@ -89,18 +88,60 @@ fn header(envelope: &Envelope) -> Vec<u8> {
     .into_bytes()
 }
 
-fn key_for(passphrase: &str, envelope: &Envelope) -> Result<LessSafeKey, OpenError> {
-    let iterations = NonZeroU32::new(envelope.iterations).ok_or(OpenError::Corrupt)?;
+fn derive(passphrase: &str, salt: &[u8], iterations: u32) -> Result<[u8; 32], OpenError> {
+    let iterations = NonZeroU32::new(iterations).ok_or(OpenError::Corrupt)?;
     let mut key = [0u8; 32];
     pbkdf2::derive(
         pbkdf2::PBKDF2_HMAC_SHA256,
         iterations,
-        &envelope.salt,
+        salt,
         passphrase.as_bytes(),
         &mut key,
     );
-    let unbound = UnboundKey::new(&AES_256_GCM, &key).map_err(|_| OpenError::Corrupt)?;
+    Ok(key)
+}
+
+fn aead_key(raw: &[u8; 32]) -> Result<LessSafeKey, OpenError> {
+    let unbound = UnboundKey::new(&AES_256_GCM, raw).map_err(|_| OpenError::Corrupt)?;
     Ok(LessSafeKey::new(unbound))
+}
+
+fn key_for(passphrase: &str, envelope: &Envelope) -> Result<LessSafeKey, OpenError> {
+    aead_key(&derive(passphrase, &envelope.salt, envelope.iterations)?)
+}
+
+/// Opens many files sealed with one passphrase, deriving each salt's key
+/// once: the peer seals every shared file under the same salt, and 600000
+/// rounds per file would make a few months of days take minutes.
+pub struct Opener {
+    passphrase: String,
+    keys: std::collections::HashMap<(Vec<u8>, u32), [u8; 32]>,
+}
+
+impl Opener {
+    pub fn new(passphrase: &str) -> Self {
+        Self {
+            passphrase: passphrase.to_string(),
+            keys: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn open(&mut self, data: &[u8], format: &str) -> Result<Vec<u8>, OpenError> {
+        let passphrase = &self.passphrase;
+        let keys = &mut self.keys;
+        open_with(data, format, &mut |envelope| {
+            let slot = (envelope.salt.clone(), envelope.iterations);
+            let raw = match keys.get(&slot) {
+                Some(raw) => *raw,
+                None => {
+                    let raw = derive(passphrase, &envelope.salt, envelope.iterations)?;
+                    keys.insert(slot, raw);
+                    raw
+                }
+            };
+            aead_key(&raw)
+        })
+    }
 }
 
 /// Whether `data` begins like a sealed file of `format`, whitespace aside.
@@ -114,6 +155,14 @@ fn begins_like(data: &[u8], format: &str) -> bool {
 
 /// Opens a file the peer sealed as `format`.
 pub fn open(data: &[u8], passphrase: &str, format: &str) -> Result<Vec<u8>, OpenError> {
+    open_with(data, format, &mut |envelope| key_for(passphrase, envelope))
+}
+
+fn open_with(
+    data: &[u8],
+    format: &str,
+    key_of: &mut dyn FnMut(&Envelope) -> Result<LessSafeKey, OpenError>,
+) -> Result<Vec<u8>, OpenError> {
     let data = data.strip_prefix(b"\xef\xbb\xbf").unwrap_or(data);
     let Ok(envelope) = serde_json::from_slice::<Envelope>(data) else {
         return Err(if begins_like(data, format) {
@@ -134,7 +183,7 @@ pub fn open(data: &[u8], passphrase: &str, format: &str) -> Result<Vec<u8>, Open
     {
         return Err(OpenError::Corrupt);
     }
-    let key = key_for(passphrase, &envelope)?;
+    let key = key_of(&envelope)?;
     let nonce =
         Nonce::try_assume_unique_for_key(&envelope.nonce).map_err(|_| OpenError::Corrupt)?;
     let mut buffer = envelope.data.clone();

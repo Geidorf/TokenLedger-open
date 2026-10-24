@@ -15,13 +15,18 @@ macro_rules! app {
 pub const LIVE_PATH: &str = concat!("/v1/", app!(), "/concurrency");
 /// The sealed whole-setup backup's format name.
 pub const BACKUP_FORMAT: &str = concat!(app!(), "-backup");
-/// Any other sealed file's format name.
-#[allow(dead_code)] // shared usage files are not read yet
+/// Any other sealed file's format name (a shared usage day).
 pub const DATA_FORMAT: &str = concat!(app!(), "-data");
 /// Its folder in a WebDAV sync address.
 pub const DAV_FOLDER: &str = app!();
 /// The backup's file name in that folder.
 pub const DAV_BACKUP_FILE: &str = concat!(app!(), ".", app!(), "-backup");
+/// The folder beside the backup where each computer shares its days.
+pub const DAV_USAGE_FOLDER: &str = "usage";
+/// A shared day's file ending: `<computer id>-<YYYY-MM-DD><this>`.
+pub const USAGE_FILE_EXT: &str = concat!(".", app!(), "-usage");
+/// The file in its config folder naming this computer for sharing.
+pub const LOCAL_COMPUTER_FILE: &str = "usage-computer.json";
 
 /// Its config folder: under `$XDG_CONFIG_HOME` when that is an absolute
 /// path, otherwise under `~/.config` on every platform, as it finds it.

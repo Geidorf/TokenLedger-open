@@ -18,6 +18,7 @@
 
 pub mod backup;
 pub mod dav;
+pub mod shared;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -43,6 +44,9 @@ pub struct SyncConfig {
     pub url: String,
     #[serde(default)]
     pub user: String,
+    /// The peer ids of the computers whose shared usage is counted here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shared_computers: Vec<String>,
 }
 
 /// What the page sees of the setup: never a secret.
@@ -121,15 +125,49 @@ pub fn save_config(
     let config = SyncConfig {
         url: url.to_string(),
         user: user.to_string(),
+        shared_computers: load_config(app_dir)
+            .ok()
+            .flatten()
+            .map(|config| config.shared_computers)
+            .unwrap_or_default(),
     };
-    let body = serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?;
+    write_config(app_dir, &config)?;
+    view(app_dir, secrets)
+}
+
+fn write_config(app_dir: &Path, config: &SyncConfig) -> Result<(), String> {
+    let body = serde_json::to_vec_pretty(config).map_err(|error| error.to_string())?;
     fs::create_dir_all(app_dir).map_err(|error| error.to_string())?;
     let path = config_path(app_dir);
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, body)
         .and_then(|_| fs::rename(&tmp, &path))
-        .map_err(|error| format!("保存外部网关同步设置失败：{error}"))?;
-    view(app_dir, secrets)
+        .map_err(|error| format!("保存外部网关同步设置失败：{error}"))
+}
+
+/// Remembers which computers' shared usage is counted; ids that aren't a
+/// peer computer id are dropped.
+pub fn save_shared_selection(app_dir: &Path, ids: &[String]) -> Result<Vec<String>, String> {
+    let mut config = load_config(app_dir)?.unwrap_or_default();
+    let mut picked: Vec<String> = ids
+        .iter()
+        .map(|id| id.trim().to_ascii_lowercase())
+        .filter(|id| !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+        .collect();
+    picked.sort();
+    picked.dedup();
+    config.shared_computers = picked.clone();
+    write_config(app_dir, &config)?;
+    Ok(picked)
+}
+
+/// The saved computers' selection, empty when there's no setup.
+pub fn shared_selection(app_dir: &Path) -> Vec<String> {
+    load_config(app_dir)
+        .ok()
+        .flatten()
+        .map(|config| config.shared_computers)
+        .unwrap_or_default()
 }
 
 /// Forgets the setup and its keychain entries.
@@ -419,8 +457,8 @@ pub fn apply(
     Ok(result)
 }
 
-/// Reads and opens the server's backup with the saved setup.
-async fn fetch_bundle(app_dir: &Path, secrets: &dyn SecretStore) -> Result<PeerBundle, String> {
+/// A client for the saved server and the saved passphrase.
+fn connect(app_dir: &Path, secrets: &dyn SecretStore) -> Result<(dav::DavClient, String), String> {
     let config = load_config(app_dir)?
         .filter(|config| !config.url.is_empty())
         .ok_or_else(|| "请先填写 WebDAV 地址。".to_string())?;
@@ -429,6 +467,21 @@ async fn fetch_bundle(app_dir: &Path, secrets: &dyn SecretStore) -> Result<PeerB
         .ok_or_else(|| "请先填写外部网关的同步密码。".to_string())?;
     let password = secrets.get(PASSWORD_ACCOUNT)?.unwrap_or_default();
     let client = dav::DavClient::new(&config.url, &config.user, &password)?;
+    Ok((client, passphrase))
+}
+
+/// The shared usage on the saved server.
+pub fn shared_source(
+    app_dir: &Path,
+    secrets: &dyn SecretStore,
+) -> Result<shared::SharedSource, String> {
+    let (client, passphrase) = connect(app_dir, secrets)?;
+    Ok(shared::SharedSource::new(client, passphrase))
+}
+
+/// Reads and opens the server's backup with the saved setup.
+async fn fetch_bundle(app_dir: &Path, secrets: &dyn SecretStore) -> Result<PeerBundle, String> {
+    let (client, passphrase) = connect(app_dir, secrets)?;
     let sealed = client
         .get_backup()
         .await?
@@ -442,7 +495,7 @@ async fn fetch_bundle(app_dir: &Path, secrets: &dyn SecretStore) -> Result<PeerB
     parse_bundle(&plain)
 }
 
-fn ensure_main(window: &tauri::WebviewWindow) -> Result<(), String> {
+pub(crate) fn ensure_main(window: &tauri::WebviewWindow) -> Result<(), String> {
     if window.label() == "main" {
         Ok(())
     } else {
@@ -450,7 +503,7 @@ fn ensure_main(window: &tauri::WebviewWindow) -> Result<(), String> {
     }
 }
 
-fn secrets() -> crate::gateway::KeyringSecrets {
+pub(crate) fn secrets() -> crate::gateway::KeyringSecrets {
     crate::gateway::KeyringSecrets
 }
 
