@@ -1,18 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AppSettings } from '../../types';
-import type {
-  AgentApplyResult,
-  AgentInspection,
-  AgentPreview,
-  AgentRestoreResult,
-  CodexInspection,
-  GatewayStatus,
-  LedgerRecord,
-  ProviderRecord,
-  ProviderView,
-  RouteDecision,
-  RoutingGroup,
-} from './types';
+import type { AgentApplyResult, AgentInspection, AgentPreview, AgentRestoreResult, CodexInspection, CoolingMember, GatewayStatus, LedgerRecord, ProviderRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
 
 export const gatewayStatus = () => invoke<GatewayStatus>('gateway_status');
 
@@ -41,6 +29,8 @@ export const upsertRoutingGroup = (group: RoutingGroup) =>
   invoke<RoutingGroup[]>('gateway_upsert_routing_group', { group });
 
 export const deleteRoutingGroup = (id: string) => invoke<RoutingGroup[]>('gateway_delete_routing_group', { id });
+
+export const routingCooldowns = () => invoke<CoolingMember[]>('gateway_routing_cooldowns');
 
 export const recentRouteDecisions = (limit = 30) =>
   invoke<RouteDecision[]>('gateway_recent_route_decisions', { limit });

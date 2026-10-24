@@ -82,6 +82,13 @@ export interface RoutingGroup {
   enabled: boolean;
 }
 
+/** A member tried after the others for now because it recently failed. */
+export interface CoolingMember {
+  member: string;
+  remainingSecs: number;
+  failures: number;
+}
+
 export interface RouteAttempt {
   member: string;
   outcome: 'ok' | 'rejected' | 'failed' | 'skipped' | string;

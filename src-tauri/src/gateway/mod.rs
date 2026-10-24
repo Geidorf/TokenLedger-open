@@ -33,7 +33,7 @@ pub(crate) use ledger::accounting;
 use ledger::Ledger;
 pub use ledger::LedgerRecord;
 use routing::Router;
-pub use routing::{RouteDecision, RoutingGroup};
+pub use routing::{CoolingMember, RouteDecision, RoutingGroup};
 #[cfg(test)]
 pub use store::MemorySecrets;
 use store::{ensure_local_token, provider_account, ProviderStore};
@@ -650,6 +650,10 @@ impl Gateway {
         self.shared.router.delete(id)
     }
 
+    pub fn routing_cooldowns(&self) -> Vec<CoolingMember> {
+        self.shared.router.cooling()
+    }
+
     pub fn recent_route_decisions(&self, limit: usize) -> Vec<RouteDecision> {
         self.shared.router.recent(limit.clamp(1, 200))
     }
@@ -929,6 +933,16 @@ pub fn gateway_recent_route_decisions(
 ) -> Result<Vec<RouteDecision>, String> {
     ensure_main(&window)?;
     Ok(gateway.recent_route_decisions(limit.unwrap_or(50)))
+}
+
+/// Group members currently cooling down after failures; main window only.
+#[tauri::command]
+pub fn gateway_routing_cooldowns(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+) -> Result<Vec<CoolingMember>, String> {
+    ensure_main(&window)?;
+    Ok(gateway.routing_cooldowns())
 }
 
 /// Redacted live routing view for the main window and both widget windows.

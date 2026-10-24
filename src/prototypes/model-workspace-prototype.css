@@ -497,3 +497,8 @@ button.mw-chip { cursor: pointer; }
 [data-gateway-modal] .confirm-dialog-actions button, [data-gateway-modal] .ghost-inline { min-height: 44px; min-width: 44px; }
 .mw-weight { display: inline-flex; align-items: center; gap: 6px; }
 .mw-weight input { width: 4.5em; }
+.mw-cooling { display: grid; gap: 6px; margin-bottom: 12px; }
+.mw-cooling h4 { margin: 0; font-size: 12px; }
+.mw-cooling ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.mw-cooling li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.mw-cooling li .mw-mono-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

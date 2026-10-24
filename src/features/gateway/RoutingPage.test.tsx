@@ -11,6 +11,7 @@ vi.mock('./api', async (importOriginal) => {
     listRoutingGroups: vi.fn(),
     listProviders: vi.fn(),
     recentRouteDecisions: vi.fn(),
+    routingCooldowns: vi.fn(),
     upsertRoutingGroup: vi.fn(),
     deleteRoutingGroup: vi.fn(),
   };
@@ -40,6 +41,7 @@ describe('RoutingPage', () => {
         { member: 'deepseek/deepseek-chat', rank: 1, verdict: 'chosen', reasons: ['fallback', 'answered'] },
       ] },
     ]);
+    vi.mocked(api.routingCooldowns).mockResolvedValue([]);
     vi.mocked(api.upsertRoutingGroup).mockImplementation(async (group) => [group]);
     vi.mocked(api.deleteRoutingGroup).mockResolvedValue([]);
   });
@@ -60,6 +62,14 @@ describe('RoutingPage', () => {
     fireEvent.click(toggle);
     const trace = within(panel).getByRole('list', { name: 'group/coding 成员决策' });
     expect(within(trace).getAllByRole('listitem')[0]).toHaveTextContent('策略首选 · 限流');
+  });
+
+  it('冷却中的成员在组卡片与右栏标出，没有时不显示', async () => {
+    vi.mocked(api.routingCooldowns).mockResolvedValue([{ member: 'openai/gpt-5', remainingSecs: 45, failures: 2 }]);
+    render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
+    expect(await screen.findAllByText('冷却中 · 约 45 秒')).toHaveLength(2);
+    const panel = screen.getByRole('region', { name: '冷却中的成员' });
+    expect(within(panel).getByText('openai/gpt-5')).toBeInTheDocument();
   });
 
   it('新建路由组：添加成员、规则与会话保持后提交', async () => {
