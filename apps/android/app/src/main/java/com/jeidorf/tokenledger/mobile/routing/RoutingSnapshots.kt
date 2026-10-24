@@ -127,6 +127,16 @@ data class RoutingScene(
     val empty: RoutingEmptyReason?
 ) {
     val playable: Boolean get() = liveness is RoutingLiveness.Live
+
+    /**
+     * 这条流能不能播放：整体在线之外，它所属的设备自己也得在线。另一台设备在线不能让已离线设备的旧记录重新播放；
+     * 没标设备的流（单机预览、测试）只看整体。
+     */
+    fun canPlay(flow: RoutingFlow, nowServerMs: Long): Boolean {
+        if (!playable) return false
+        if (nowServerMs - flow.atServerMs !in -5_000L until RoutingSnapshots.PLAYABLE_WITHIN_MS) return false
+        return flow.device.isEmpty() || devices.isEmpty() || devices.any { it.device == flow.device && it.live }
+    }
 }
 
 enum class RoutingEmptyReason { NoSnapshot, Offline, Idle }
@@ -356,16 +366,15 @@ class RoutingPlaybackTracker(private val maxRemembered: Int = 512) {
             flow.phase != RoutingFlowPhase.Inflight && seen.add(flow.id)
         }
         while (seen.size > maxRemembered) seen.remove(seen.first())
-        if (!scene.playable) return emptyList()
         return fresh
-            .filter { nowServerMs - it.atServerMs in -5_000L until RoutingSnapshots.PLAYABLE_WITHIN_MS }
+            .filter { scene.canPlay(it, nowServerMs) }
             .take(limit)
             .reversed()
     }
 }
 
 /**
- * 待播放的流。轮询比播放快时只留最新的几条；取出时再查一遍：桌面端离线或已超出可播放窗口的直接丢掉，
+ * 待播放的流。轮询比播放快时只留最新的几条；取出时按当前场景再查一遍：所属设备离线或已超出可播放窗口的直接丢掉，
  * 不在页面开久了之后补播很早以前的请求。
  */
 class RoutingPlaybackQueue(private val capacity: Int = 3) {
@@ -378,14 +387,10 @@ class RoutingPlaybackQueue(private val capacity: Int = 3) {
         while (pending.size > capacity) pending.removeFirst()
     }
 
-    fun next(playable: Boolean, nowServerMs: Long): RoutingFlow? {
-        if (!playable) {
-            pending.clear()
-            return null
-        }
+    fun next(scene: RoutingScene, nowServerMs: Long): RoutingFlow? {
         while (true) {
             val flow = pending.removeFirstOrNull() ?: return null
-            if (nowServerMs - flow.atServerMs in -5_000L until RoutingSnapshots.PLAYABLE_WITHIN_MS) return flow
+            if (scene.canPlay(flow, nowServerMs)) return flow
         }
     }
 }

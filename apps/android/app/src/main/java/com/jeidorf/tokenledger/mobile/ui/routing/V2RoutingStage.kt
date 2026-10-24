@@ -199,7 +199,7 @@ internal fun V2RoutingStage(
     var playing by remember { mutableStateOf<Pair<RoutingFlow, Float>?>(null) }
     val queue = remember { RoutingPlaybackQueue() }
     val currentNow by rememberUpdatedState(nowServerMs)
-    val currentPlayable by rememberUpdatedState(scene.playable)
+    val currentScene by rememberUpdatedState(scene)
     // 键里带上阶段：同一个在途请求变成已结束时也要重新判断要不要播放。
     val flowIds = scene.flows.joinToString(",") { "${it.id}:${it.phase}" }
     LaunchedEffect(flowIds, scene.playable) {
@@ -210,7 +210,7 @@ internal fun V2RoutingStage(
         if (!motion) return@LaunchedEffect
         val progress = Animatable(0f)
         while (true) {
-            val next = queue.next(currentPlayable, currentNow)
+            val next = queue.next(currentScene, currentNow)
             if (next == null) {
                 delay(250L)
                 continue

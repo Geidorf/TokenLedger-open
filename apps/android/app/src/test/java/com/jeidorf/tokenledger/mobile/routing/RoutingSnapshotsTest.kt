@@ -191,17 +191,61 @@ class RoutingSnapshotsTest {
             atServerMs = at,
             hops = listOf(RoutingHop("p/m", RoutingHopOutcome.Ok))
         )
+        val live = RoutingSnapshots.sceneFromFlows(emptyList()).copy(liveness = RoutingLiveness.Live(0L))
         val queue = RoutingPlaybackQueue(capacity = 3)
         queue.offer((1..5).map { flow("f$it", it * 1_000L) })
         assertEquals(3, queue.size)
-        assertEquals("f3", queue.next(playable = true, nowServerMs = 6_000L)?.id)
+        assertEquals("f3", queue.next(live, nowServerMs = 6_000L)?.id)
 
         val later = 4_000L + RoutingSnapshots.PLAYABLE_WITHIN_MS
-        assertEquals("f5", queue.next(playable = true, nowServerMs = later)?.id)
-        assertNull(queue.next(playable = true, nowServerMs = later))
+        assertEquals("f5", queue.next(live, nowServerMs = later)?.id)
+        assertNull(queue.next(live, nowServerMs = later))
 
         queue.offer(listOf(flow("g", 10_000L)))
-        assertNull(queue.next(playable = false, nowServerMs = 10_000L))
+        assertNull(queue.next(live.copy(liveness = RoutingLiveness.Offline(2L)), nowServerMs = 10_000L))
         assertEquals(0, queue.size)
+    }
+
+    private val finishedOnB = """{"id":"00000000000000c1","source":"tokenledger","agent":"codex","via":"m","phase":"done","at":"2026-10-24T06:57:00Z","hops":[{"target":"x/m","outcome":"ok"}]}"""
+
+    @Test
+    fun `an offline device's finished flow stays in the list but never plays while another device is live`() {
+        val result = RoutingSnapshots.parse(
+            envelope(
+                "2026-10-24T07:00:00Z",
+                row("aaaaaaaaaaaaaaaa", "2026-10-24T06:59:58Z", "2026-10-24T06:59:58Z", "[]"),
+                row("bbbbbbbbbbbbbbbb", "2026-10-24T06:57:00Z", "2026-10-24T06:57:00Z", "[$finishedOnB]")
+            )
+        )
+        val scene = RoutingSnapshots.merge(result)
+        assertTrue(scene.playable)
+        assertEquals(listOf("00000000000000c1"), scene.flows.map { it.id })
+        assertTrue(RoutingPlaybackTracker().takeNew(scene, result.serverTimeMs).isEmpty())
+    }
+
+    @Test
+    fun `a queued flow is dropped once its own device goes offline`() {
+        val now = RoutingSnapshots.parseTime("2026-10-24T06:57:05Z")!!
+        val fresh = RoutingSnapshots.merge(
+            RoutingSnapshots.parse(
+                envelope(
+                    "2026-10-24T06:57:05Z",
+                    row("aaaaaaaaaaaaaaaa", "2026-10-24T06:57:00Z", "2026-10-24T06:57:00Z", "[]"),
+                    row("bbbbbbbbbbbbbbbb", "2026-10-24T06:57:00Z", "2026-10-24T06:57:00Z", "[$finishedOnB]")
+                )
+            )
+        )
+        val queue = RoutingPlaybackQueue()
+        queue.offer(RoutingPlaybackTracker().takeNew(fresh, now))
+        assertEquals(1, queue.size)
+
+        val later = RoutingSnapshots.parse(
+            envelope(
+                "2026-10-24T06:59:00Z",
+                row("aaaaaaaaaaaaaaaa", "2026-10-24T06:58:58Z", "2026-10-24T06:58:58Z", "[]"),
+                row("bbbbbbbbbbbbbbbb", "2026-10-24T06:57:00Z", "2026-10-24T06:57:00Z", "[$finishedOnB]")
+            )
+        )
+        assertNull(queue.next(RoutingSnapshots.merge(later), later.serverTimeMs))
     }
 }
