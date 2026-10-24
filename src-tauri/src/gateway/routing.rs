@@ -574,6 +574,18 @@ pub fn build_trace(
             detail,
         });
     }
+    // Exclusions from inside subgroups, which are not members here.
+    for item in &plan.excluded {
+        if !trace.iter().any(|row| row.member == item.member) {
+            trace.push(MemberTrace {
+                member: item.member.clone(),
+                rank: None,
+                verdict: "excluded",
+                reasons: vec![item.reason],
+                detail: item.detail.as_deref().map(clip),
+            });
+        }
+    }
     trace
 }
 
@@ -973,12 +985,27 @@ impl Router {
                 continue;
             };
             path.push(sub.id.clone());
-            let inner = self.plan_level(&sub, features, None, path, advance);
+            // Only the primary subgroup spends a turn; fallbacks that are
+            // listed but may never be reached keep their rotation.
+            let inner = self.plan_level(&sub, features, None, path, advance && index == 0);
             path.pop();
             if index == 0 && inner.is_rule() && !expanded.is_rule() {
                 expanded.reason = "rule";
                 expanded.detail = format!("{}：{}", sub.name, inner.detail);
             }
+            if inner.candidates.is_empty() {
+                let gone: Vec<&str> = inner
+                    .excluded
+                    .iter()
+                    .map(|item| item.member.as_str())
+                    .collect();
+                expanded.excluded.push(Exclusion {
+                    member: member.clone(),
+                    reason: "nested",
+                    detail: Some(format!("子路由组没有可用成员（{}）", gone.join("、"))),
+                });
+            }
+            expanded.excluded.extend(inner.excluded);
             for (leaf, via) in inner.candidates.into_iter().zip(inner.via) {
                 if !expanded.candidates.contains(&leaf) {
                     expanded.candidates.push(leaf);
@@ -1408,6 +1435,51 @@ mod tests {
             manual_member: None,
             ..group(strategy, vec![])
         }
+    }
+
+    #[test]
+    fn fallback_subgroups_keep_their_turn_and_nested_exclusions_surface() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-fallback-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let providers = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let router = Router::new(&dir);
+        let left = nested("left", Strategy::Rotate, &["a/m1", "a/m2"]);
+        let right = nested("right", Strategy::Rotate, &["b/m1", "b/m2"]);
+        let top = nested("top", Strategy::Rotate, &["group/left", "group/right"]);
+        for g in [&left, &right, &top] {
+            router.upsert(g.clone(), &providers).unwrap();
+        }
+        let none = Features::default();
+        let firsts: Vec<String> = (0..4)
+            .map(|_| router.plan(&top, &none, None).candidates[0].clone())
+            .collect();
+        assert_eq!(
+            firsts,
+            ["a/m1", "b/m1", "a/m2", "b/m2"],
+            "every leaf gets primary turns"
+        );
+
+        let low = nested("low", Strategy::Failover, &["c/m3"]);
+        let mid = nested("mid", Strategy::Failover, &["group/low"]);
+        let chain = nested("chain", Strategy::Failover, &["group/mid"]);
+        for g in [&low, &mid, &chain] {
+            router.upsert(g.clone(), &providers).unwrap();
+        }
+        let mut off = low.clone();
+        off.enabled = false;
+        router.upsert(off, &providers).unwrap();
+        let plan = router.plan(&chain, &none, None);
+        assert!(plan.candidates.is_empty());
+        let trace = build_trace(&chain, &plan, &[]);
+        let row = |member: &str| trace.iter().find(|row| row.member == member).unwrap();
+        assert_eq!(row("group/mid").reasons, ["nested"]);
+        assert!(row("group/mid")
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains("group/low"));
+        assert_eq!(row("group/low").reasons, ["disabled"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
