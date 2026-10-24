@@ -88,6 +88,9 @@ import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.entityKindLabel
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
+import com.jeidorf.tokenledger.mobile.ui.dimensions.DimensionsFeed
+import com.jeidorf.tokenledger.mobile.ui.dimensions.rememberDimensionsFeed
+import com.jeidorf.tokenledger.mobile.ui.dimensions.v2DimensionItems
 import com.jeidorf.tokenledger.mobile.ui.rhythm.RhythmFeed
 import com.jeidorf.tokenledger.mobile.ui.rhythm.rememberRhythmFeed
 import com.jeidorf.tokenledger.mobile.ui.rhythm.v2RhythmItems
@@ -627,6 +630,13 @@ internal fun V2DestinationContent(
         // 看板每次重新取数（顶部刷新、下拉刷新、跨日）都会换 generatedAt，节律跟着重读。
         refreshKey = state.visibleData?.meta?.generatedAt
     )
+    // 会话排行与 Context 构成来自桌面开启后上传的用量维度，和节律共用页面可见性与刷新代次。
+    val dimensionsFeed = rememberDimensionsFeed(
+        state.session,
+        state.query,
+        active = destination == MobileDestination.Usage && insightPane == InsightPane.Sessions,
+        refreshKey = state.visibleData?.meta?.generatedAt
+    )
     val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
     var mePage by rememberSaveable { mutableStateOf(initialMePage) }
     // 双栏时待机屏常驻右栏，返回键不用先退子页。
@@ -844,6 +854,7 @@ internal fun V2DestinationContent(
                                 { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
                                 onRefresh,
                                 rhythmFeed = rhythmFeed,
+                                dimensionsFeed = dimensionsFeed,
                                 calendarFocusDate = calendarFocusDate,
                                 onCalendarFocusRestored = { calendarFocusPending = false }
                             )
@@ -973,6 +984,7 @@ internal fun LazyListScope.v2InsightsItems(
     calendarAxis: InsightCalendarAxis,
     onRefresh: () -> Unit = {},
     rhythmFeed: RhythmFeed = RhythmFeed(signedIn = false),
+    dimensionsFeed: DimensionsFeed = DimensionsFeed(signedIn = false),
     showTabs: Boolean = true,
     calendarFocusDate: String? = null,
     onCalendarFocusRestored: () -> Unit = {}
@@ -987,7 +999,10 @@ internal fun LazyListScope.v2InsightsItems(
     when (pane) {
         // 概览由 v2OverviewItems 渲染，调用方不会以概览进入这里。
         InsightPane.Overview -> Unit
-        InsightPane.Sessions -> v2RhythmItems(palette, rhythmFeed)
+        InsightPane.Sessions -> {
+            v2RhythmItems(palette, rhythmFeed)
+            v2DimensionItems(palette, dimensionsFeed)
+        }
         InsightPane.Trend -> {
             item(key = "insights-trend", contentType = "chart") {
                 V2TrendInsightCard(

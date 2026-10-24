@@ -4,6 +4,10 @@ import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.tooling.preview.Preview
+import com.jeidorf.tokenledger.mobile.ui.dimensions.DimensionsFeed
+import com.jeidorf.tokenledger.mobile.ui.dimensions.DimensionsPreviewKind
+import com.jeidorf.tokenledger.mobile.ui.dimensions.LocalDimensionsFeedOverride
+import com.jeidorf.tokenledger.mobile.ui.dimensions.dimensionsPreviewFeed
 import com.jeidorf.tokenledger.mobile.ui.me.V2MePage
 import java.time.Instant
 import java.time.LocalDate
@@ -54,13 +58,20 @@ internal fun LedgerDashboardPreviewHost(
     forceLandscape: Boolean = false,
     settingsVisible: Boolean = false,
     mePage: V2MePage = V2MePage.Root,
-    guideVisible: Boolean = false
+    guideVisible: Boolean = false,
+    dimensionsFeed: DimensionsFeed? = null
 ) {
     TokenLedgerTheme(appearance) {
         ProvideLedgerPalette(appearance) {
             // 预览统一钉一个"此刻"：额度的新鲜/过期与重置倒计时全由 now 裁决，
             // 读墙上时钟会让同一份夹具随日历漂移（见 [LEDGER_PREVIEW_NOW]）。
-            CompositionLocalProvider(LocalLedgerNow provides { LEDGER_PREVIEW_NOW }) {
+            CompositionLocalProvider(
+                LocalLedgerNow provides { LEDGER_PREVIEW_NOW },
+                LocalDimensionsFeedOverride provides (
+                    dimensionsFeed ?: LocalDimensionsFeedOverride.current
+                    ?: dimensionsPreviewFeed(DimensionsPreviewKind.Live)
+                )
+            ) {
                 LedgerDashboardV2Screen(
                     state = state.copy(calendarHeatmap = state.visibleData?.let { data ->
                         val axis = buildInsightCalendarAxis(data, state.query)

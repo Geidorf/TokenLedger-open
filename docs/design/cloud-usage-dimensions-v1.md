@@ -1,6 +1,6 @@
 # 云端用量维度：会话、账号与平均 Context 构成（v1）
 
-> **状态：方案，未实施。** 2026-10-24。适用平台：桌面（上传）、Supabase（存储与 RPC）、Android（只读）。本文不改任何契约、迁移或代码；落地前需负责人答复第 9 节的待定问题，并按 B 级（迁移、RLS/RPC、同步格式）另开任务。
+> **状态：已定，实施中。** 2026-10-24 负责人的决定见第 10 节，以下设计已按该决定收束；机器字段与 RPC 以 `docs/contracts/usage-dimensions-cloud-v1.md` 为准。适用平台：桌面（上传）、Supabase（存储与 RPC）、Android（只读）。
 
 ## 1. 背景
 
@@ -26,76 +26,76 @@ Android 只读云端看板，事实源是 `public.token_logs` 的小时聚合（
 
 ### 3.1 会话（按日）
 
-新表 `public.usage_session_days`，每用户每设备每会话每本地日一行：
+新表 `private.usage_session_days`，每用户每设备每会话每本地日一行：
 
 | 列 | 含义 |
 |---|---|
-| `user_id` | 所有者，默认 `auth.uid()` |
+| `user_id` | 由写入 RPC 从 `auth.uid()` 确定的所有者 |
 | `machine_id` | 与 `token_logs.machine_id` 相同的设备标识 |
-| `session_key` | 不透明会话键：`HMAC-SHA256(每用户随机密钥, 工具 + 原始会话 ID)` 的前 16 字节十六进制。密钥只存本机安全存储，云端与其他设备无法反推原始会话 ID |
+| `session_key` | 不透明会话键：`HMAC-SHA256(本机随机密钥, 工具 + "\n" + 原始会话 ID)` 的前 16 字节十六进制。密钥只存本机安全存储，不经设备同步共享 |
 | `tool` | 工具名 |
 | `local_date` | 本地日期 `YYYY-MM-DD`（与 `token_logs.timestamp` 同一墙钟） |
-| `input_tokens` / `output_tokens` / `cached_tokens` | 当天该会话合计 |
+| `tokens` | 当天该会话的有效 Token，即输入加输出，不再计入缓存读写 |
 | `requests` | 当天该会话记录数 |
 | `cost_usd` | 当天该会话预估费用，可空（不可得时为空，不写 0） |
 | `first_at` / `last_at` | 当天该会话首末记录时间，截到分钟 |
 | `top_model` | 当天有效 Token 最多的模型，可空 |
+| `truncated` | 该设备当天是否超出 500 会话上限，同一设备日的所有行相同 |
 
-- 缺少会话 ID（空、空白、`unknown_session`）的记录不进此表，Android 用 `token_logs` 总量减去会话合计得到「缺少会话 ID」的部分，规则同 `behavior-analysis-local-v1` v1.1。
-- 跨日会话按日拆行；Android 显示会话时按 `session_key` 跨日合并。
-- 多设备同一 HMAC 密钥才能跨设备合并同一会话；首版每台设备各自生成密钥，跨设备不合并（见第 9 节问题 2）。
-- RPC：`get_session_list_v1(p_query jsonb)`，返回按有效 Token 倒序的前 100 个会话与完整区间会话数，形状对齐本机 `sessions[]`，`id` 为 `session_key`。
+- 缺少会话 ID（空、空白、`unknown_session`）的记录不进此表。截断和独立保留期都会使会话合计小于总量，Android 不通过两者相减推算缺少 ID 的用量。
+- 跨日会话按日拆行；读取 RPC 按 `(machine_id, session_key)` 跨日合并，不跨设备合并。
+- `get_usage_dimensions_v1(p_query jsonb)` 返回前 100 个会话与完整区间会话数；Android 首屏列出前 20 个并说明其余数量。会话键不用于展示原始会话标识。
 
-### 3.2 账号（网关供应商，按小时）
+### 3.2 账号（网关供应商，按日）
 
-新表 `public.usage_provider_hours`，与 `token_logs` 同粒度：`user_id`、`machine_id`、`provider_key`、`tool`、`model`、`hour_bucket`、`input_tokens`、`output_tokens`、`cached_tokens`、`cache_write_tokens`、`requests`、`cost_usd`。
+新表 `private.usage_provider_days`：`user_id`、`machine_id`、`local_date`、`provider`、`input_tokens`、`output_tokens`、`cached_tokens`、`cache_write_tokens`、`requests`、`cost_usd`。按日与白名单供应商聚合，不按工具、模型拆分。
 
-- 只包含经 §2.5 去重后保留、且 `provider` 非空的网关与导入记录；扫描记录没有账号，不进此表。各账号合计可以小于 `token_logs` 总量，Android 必须写明「仅统计经网关的请求」。
-- `provider` 是用户在外部网关里自填的标签，可能含个人信息（如邮箱前缀、公司名）。两种处理二选一（第 9 节问题 1）：
-  - **A. 哈希加本机别名**：上传 `provider_key = HMAC(用户密钥, provider)`，另在桌面把用户确认过的显示名以单独字段 `provider_label` 上传（用户可留空，留空时 Android 显示「账号 1/2/…」）。
-  - **B. 白名单**：只上传落在内置供应商名单里的名字（例如官方 API 的规范名），其余归为「其他」。实现简单，但用户自建的多个账号会被合并。
-- RPC：在 `get_dashboard_stats_v2` 上按 §2.7 同形输出可选顶层 `providers`，或单开 `get_provider_split_v1`。倾向后者，避免旧看板 RPC 再变重。
+- 只包含经 `dashboard-stats-v2` §2.5 去重后保留、且 `provider` 非空的网关与导入记录；扫描记录没有账号，不进此表。各账号合计可以小于 `token_logs` 总量，Android 必须写明「仅统计经网关的请求」。
+- `provider` 只保留契约白名单中的规范名，其他值全部归为 `other`，Android 显示「其他」并说明多个账号可能合并。不上传用户自填标签、别名或标签哈希。
+- 与另两个维度一起经 `get_usage_dimensions_v1` 读取；Android 展示有效 Token、请求数、缓存读写和可空费用。有效 Token 始终为输入加输出，费用未知不当作零。
 
 ### 3.3 平均 Context 构成（按日）
 
-新表 `public.usage_context_days`：`user_id`、`machine_id`、`local_date`、`requests`、`prompt_tokens`、`system_bytes`、`tools_bytes`、`history_bytes`、`tool_results_bytes`、`attachments_bytes`、`messages`、`tool_results`、`attachments`，全部非负整数，含义与 §2.8 `contextComposition` 相同，只是按日求和。
+新表 `private.usage_context_days`：`user_id`、`machine_id`、`local_date`、`requests`、`prompt_tokens`、`system_bytes`、`tools_bytes`、`history_bytes`、`tool_results_bytes`、`attachments_bytes`、`messages`、`tool_results`、`attachments`，全部非负整数，含义与 §2.8 `contextComposition` 相同，只是按日求和。
 
 - 只记大小与条数。日粒度足够算区间平均，且不暴露单次请求的大小分布。
-- RPC 在区间内求和后返回与 §2.8 同形的对象；没有行时不返回该字段。
+- 读取 RPC 在区间内逐列求和，Android 用 `requests` 计算平均字节与平均输入 Token；没有行时返回明确的 `empty` 状态。
+- 三个维度均区分 `ok`、`empty`、`filtered`。带模型或搜索筛选时三个维度均不可得；带工具筛选时账号与 Context 不可得。Android 不用未筛选的值填补。
 
 ## 4. 容量与上限
 
-| 表 | 每用户每年量级 | 上限 |
+| 表 | 聚合粒度 | 上限 |
 |---|---|---|
-| `usage_session_days` | 重度用户每天约 50 个会话 × 设备数，约 2 万行 | 每用户每设备每日最多 500 行，超出按有效 Token 取前 500，余量计入「缺少会话 ID」并在响应里标 `truncated` |
-| `usage_provider_hours` | 每小时每设备「账号 × 工具 × 模型」行，通常远少于 `token_logs` | 每用户最多 32 个不同 `provider_key`，超出归「其他」 |
-| `usage_context_days` | 每设备每日 1 行，约 365 行 | 无需额外上限 |
+| `usage_session_days` | 每设备每日每会话一行 | 每设备每日最多 500 行，按有效 Token 取前 500 并标记 `truncated`；不改变总量 |
+| `usage_provider_days` | 每设备每日每白名单供应商一行 | 15 个规范名及 `other`，名单外的账号合并 |
+| `usage_context_days` | 每设备每日一行 | 无逐请求数据 |
 
-- 字段长度：`tool`、`model` 沿用 `token_logs` 的长度约束；`session_key`、`provider_key` 固定 32 个十六进制字符；`provider_label` 不超过 40 字节。
-- 写入用与 `token_logs` 相同的 `on_conflict` 幂等 upsert，桌面每批不超过 500 行。
+- 三表统一保留最近 90 天。设备标识、工具与主模型最长 128 字符；会话键固定 32 个十六进制字符。
+- 每个维度每批最多 92 个日期，整批最多 10000 行、JSON 文本不超过 2 MiB。具体日期范围及错误码见契约。
+- 写入 RPC 在同一事务中替换本人、该设备、该日、该维度的全部行；空行集表示删除当日数据，重复上传结果相同，省略的维度不动。
 
 ## 5. 权限与 RLS
 
-- 三张表都开 RLS，策略与 `token_logs` 相同：`authenticated` 仅能增删改查 `auth.uid() = user_id` 的行；`anon` 与 `public` 无任何表权限。
-- 读取只经 `SECURITY DEFINER`、空 `search_path` 的 RPC，所有者恒为 `auth.uid()`，查询校验复用 `private.tokenledger_normalize_query_v2`。客户端不持有 service role。
+- 三张表都在 `private` schema，开启并强制 RLS。客户端没有直接表权限，所有读写和清理只经 RPC。
+- RPC 使用 `SECURITY DEFINER`、空 `search_path`，所有者恒为 `auth.uid()`，查询校验复用 `private.tokenledger_normalize_query_v2`。客户端不持有 service role。
 - 检查约束：计数与字节非负、`requests ≥ 1`、`first_at ≤ last_at`、键为 32 位十六进制。
 
 ## 6. 保留与删除
 
-- 与 `token_logs` 相同的保留期；用户删除设备或清空云端数据时一并删除三张表的对应行（`on delete cascade` 到 `auth.users`，设备级删除由现有清理 RPC 扩展）。
-- 关闭某个维度的开关：桌面调用对应的 `clear_*_v1()` 删除本人该维度全部行，再停止上传。
+- 三个维度均保留最近 90 天；每次上传和每日清理删除过期行。删除云端账号时经 `on delete cascade` 删除该账号的维度记录；当前清理 RPC 以账号和维度为单位，不提供单设备清理接口。
+- 关闭某个维度的开关：立即停止本机该维度的后续上传，再由 `clear_usage_dimension_v1()` 清理本人该维度全部设备的行；待清理、失败或未登录时保留标记。多个账号的标记分别保存，只有原账号登录且清理回执确认后才移除。
 - 本机 HMAC 密钥丢失（重装）后，新旧 `session_key` 不再相同；旧行按保留期自然过期，不尝试迁移。
 
 ## 7. 上传节奏
 
-- 随现有小时聚合同步同一批次上传，不新增定时器；只上传有变化的日或小时桶（复用现有脏桶标记）。
-- 网关维度依赖本机合并结果，与 `gateway-cloud-sync-v1` 的合并上传共用一个计划，避免账号合计与总量不一致。
-- 上传失败不影响 `token_logs` 同步，下一轮重试；三张表的上传各自记录状态。
+- 手动或后台云同步成功后通知维度发布器；本地状态循环响应开关变化与失败重试。开启时补最近 90 天，此后重传今天、昨天及上传内容指纹变化的日。
+- 网关维度复用本机看板的去重与聚合；去重前排除外机扫描和共享行。每日内容指纹覆盖费用、会话和 Context，历史修正与删除也会触发重传。
+- 上传失败不影响 `token_logs` 同步；采用有上限的退避，旧云缺少 RPC 时五分钟后重试，三个维度分别记录状态。
 
 ## 8. 发布与回滚
 
-- 每个维度一条独立迁移与回归测试，接入 `supabase:verify:release`；负责人执行 `supabase db push`。
-- 回滚：删除对应 RPC 与表；旧客户端不调用新 RPC，不受影响。桌面开关保持关闭即停止上传。
+- 三个维度放在一条迁移中，相关权限、输入约束、读取和清理回归接入 `supabase:verify:release`；负责人执行 `supabase db push`。
+- 回滚：删除三个 RPC、定时清理任务与三张表；旧客户端不调用新 RPC，不受影响。桌面开关保持关闭即停止上传。
 - Android 先探测 RPC 是否存在，缺失时把该维度标为「云端不支持」，不从其他字段推算。
 
 ## 9. 待负责人决定的问题
@@ -106,3 +106,12 @@ Android 只读云端看板，事实源是 `public.token_logs` 的小时聚合（
 4. **会话行上限**：每设备每日 500 个会话是否足够？
 5. **保留期**：是否与 `token_logs` 相同，还是会话与账号维度只保留最近 731 天？
 6. **优先级**：三个维度是否按「会话 → 账号 → Context 构成」顺序分三次实施？
+
+## 10. 负责人答复（2026-10-24）
+
+1. 账号名采用 **B 白名单**：只上传内置供应商规范名，其余归为「其他」；不上传用户自填的标签，也不上传其哈希。
+2. 会话不跨设备合并，HMAC 密钥只留在本机。
+3. 三个维度都默认关闭。
+4. 每设备每日 500 个会话的上限保留。
+5. 云端只保留最近 **90 天**（三个维度相同），每次上传与每日定时清理删除过期行。
+6. 三个维度一起实施；为减少实施轮次，账号与 Context 构成改为**按日**聚合（第 3.2 节原定按小时），云端不再按工具、模型拆分账号，带工具或模型筛选时 Android 标「筛选下不可得」。

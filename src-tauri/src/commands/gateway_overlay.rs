@@ -534,13 +534,23 @@ pub(super) fn scan_candidates_for_machine(
 }
 
 fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Result<()> {
+    install_overlay_for_machine(conn, gateway, None)
+}
+
+fn install_overlay_for_machine(
+    conn: &Connection,
+    gateway: &[GatewayRow],
+    machine: Option<&str>,
+) -> rusqlite::Result<()> {
     let OverlayResolution { superseded, held } = resolve_overlay(
         gateway,
-        &scan_candidates(conn, gateway)?,
+        &scan_candidates_for_machine(conn, gateway, machine)?,
         DEDUPE_WINDOW_SECS,
     );
-    let machine_id = crate::device_identity::for_connection(conn)
-        .unwrap_or_else(|_| crate::device_identity::UNKNOWN_MACHINE.to_string());
+    let machine_id = machine.map(str::to_string).unwrap_or_else(|| {
+        crate::device_identity::for_connection(conn)
+            .unwrap_or_else(|_| crate::device_identity::UNKNOWN_MACHINE.to_string())
+    });
     conn.execute_batch(
         "CREATE TEMP TABLE gw_rows (
              id INTEGER PRIMARY KEY, tool TEXT NOT NULL, model TEXT NOT NULL,
@@ -597,6 +607,28 @@ pub(super) fn open_stats_connection(db_path: &Path) -> Result<Connection, String
     if let Some(signature) = ledger_signature(db_path) {
         let rows = gateway_rows_cached(db_path, &signature)?;
         install_overlay(&conn, &rows).map_err(|error| error.to_string())?;
+    }
+    Ok(conn)
+}
+
+pub(super) fn open_local_stats_connection(
+    db_path: &Path,
+    machine: &str,
+) -> Result<Connection, String> {
+    let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
+    if let Some(signature) = ledger_signature(db_path) {
+        let rows = gateway_rows_cached(db_path, &signature)?;
+        let local: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                row.machine_id
+                    .as_deref()
+                    .is_none_or(|id| id.is_empty() || id == machine)
+            })
+            .cloned()
+            .collect();
+        install_overlay_for_machine(&conn, &local, Some(machine))
+            .map_err(|error| error.to_string())?;
     }
     Ok(conn)
 }

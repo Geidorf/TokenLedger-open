@@ -38,7 +38,7 @@ import com.jeidorf.tokenledger.mobile.v2FormatTokens
 import java.time.format.DateTimeFormatter
 
 internal const val RHYTHM_CLOUD_LIMIT_NOTE =
-    "云端只有按小时汇总的数据，没有会话列表和每条记录的请求大小。完整的会话分析在桌面「用量 › 会话」。"
+    "活动节律按小时汇总。会话、账号与平均 Context 构成需要在桌面开启对应同步；云端不包含逐条请求内容。"
 
 private val WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
 private val RANGE_DATE = DateTimeFormatter.ofPattern("M月d日")
@@ -52,7 +52,7 @@ internal fun rhythmFailureMessage(failure: RhythmReadFailure): String = when (fa
 
 /**
  * 「用量 › 会话」子页（对齐桌面「用量 › 会话」的云端可得部分）：总量、24 小时分布、
- * 星期 × 小时热力、Agent 与模型排行。云端没有会话列表，页底写明。
+ * 星期 × 小时热力、Agent 与模型排行。独立用量维度由同页的其他卡片展示。
  */
 internal fun LazyListScope.v2RhythmItems(palette: MobileV2Palette, feed: RhythmFeed) {
     val rhythm = feed.rhythm

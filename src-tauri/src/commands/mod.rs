@@ -6939,6 +6939,8 @@ mod price_repricing;
 mod price_schedule;
 mod scanner_sync;
 mod sync_history_guard;
+mod usage_dimension_days;
+pub(crate) use usage_dimension_days::local_usage_dimension_days;
 pub mod wallpaper_preview;
 use price_memo::{CacheSavingsParts, PriceMemo, RowPrice};
 #[cfg(test)]
@@ -8052,6 +8054,20 @@ fn build_local_behavior_analysis(
     now: DateTime<Tz>,
     projects: &BehaviorProjectScope<'_>,
 ) -> Result<Value, String> {
+    build_local_behavior_analysis_with_limit::<100>(
+        rows, query, bounds, window, prices, now, projects,
+    )
+}
+
+fn build_local_behavior_analysis_with_limit<const SESSION_LIMIT: usize>(
+    rows: Vec<StatRow>,
+    query: &NormalizedStatsQuery,
+    bounds: &QueryBounds,
+    window: &BehaviorWindow,
+    prices: &Value,
+    now: DateTime<Tz>,
+    projects: &BehaviorProjectScope<'_>,
+) -> Result<Value, String> {
     let first_record_at = rows
         .iter()
         .map(|row| row.timestamp.as_str())
@@ -8188,7 +8204,7 @@ fn build_local_behavior_analysis(
         }
     }
 
-    // Rank the typed aggregates and serialize only the published top 100.
+    // Rank before serializing, using the limit of the destination.
     let mut ranked_sessions: Vec<_> = sessions.into_iter().collect();
     ranked_sessions.sort_by(|((a_tool, a_id), a), ((b_tool, b_id), b)| {
         b.tokens
@@ -8197,8 +8213,8 @@ fn build_local_behavior_analysis(
             .then_with(|| a_id.cmp(b_id))
     });
     let session_count = ranked_sessions.len();
-    let sessions_truncated = session_count > 100;
-    ranked_sessions.truncate(100);
+    let sessions_truncated = session_count > SESSION_LIMIT;
+    ranked_sessions.truncate(SESSION_LIMIT);
     let session_rows: Vec<_> = ranked_sessions
         .into_iter()
         .map(|((tool, id), session)| {
@@ -8292,7 +8308,7 @@ fn build_local_behavior_analysis(
             "recordCount": rows.len(),
             "firstRecordAt": first_record_at,
             "lastRecordAt": last_record_at,
-            "sessionLimit": 100,
+            "sessionLimit": SESSION_LIMIT,
             "sessionsTruncated": sessions_truncated,
             "rangeDayLimit": MAX_CUSTOM_RANGE_DAYS,
             "rangeTruncated": window.truncated
@@ -15568,7 +15584,9 @@ mod cloud_local_rows_http_tests;
 
 pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
     let sync_flight = acquire_cloud_sync_singleflight().await;
-    sync_to_supabase_locked(app, sync_flight).await
+    sync_to_supabase_locked(app, sync_flight)
+        .await
+        .inspect(|_| crate::usage_dimensions_publish::nudge_after_cloud_sync())
 }
 
 /// 自动上传（调度器与刷新扫描后）。托盘面板「后台同步」的暂停状态在拿到 singleflight 之后才读：
@@ -15579,7 +15597,10 @@ pub async fn background_sync_to_supabase_impl(app: &AppContext) -> Result<Option
     if crate::settings::background_sync_paused_now(app) {
         return Ok(None);
     }
-    sync_to_supabase_locked(app, sync_flight).await.map(Some)
+    sync_to_supabase_locked(app, sync_flight)
+        .await
+        .inspect(|_| crate::usage_dimensions_publish::nudge_after_cloud_sync())
+        .map(Some)
 }
 
 async fn sync_to_supabase_locked(

@@ -6894,7 +6894,7 @@ test('Android 额度新鲜度不读墙上时钟，参考图不随日历漂移', 
     '预览固定时钟没了或改了取值');
   assert.match(preview, /internal fun ledgerFreshQuotaSnapshotFixture[\s\S]{0,400}?val now = LEDGER_PREVIEW_NOW/u,
     '新鲜额度夹具又用回了自己的日历字面量');
-  const providers = preview.match(/CompositionLocalProvider\(LocalLedgerNow provides \{ LEDGER_PREVIEW_NOW \}\)/gu) || [];
+  const providers = preview.match(/CompositionLocalProvider\(\s*LocalLedgerNow provides \{ LEDGER_PREVIEW_NOW \}(?:,|\))/gu) || [];
   assert.equal(providers.length, 2,
     `看板与息屏两个预览宿主都必须钉时钟，实际 ${providers.length} 处`);
 });

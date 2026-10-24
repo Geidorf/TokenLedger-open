@@ -123,6 +123,18 @@ class SupabaseGateway(
             )
         }
 
+    /** 云端用量维度（契约 usage-dimensions-cloud-v1）：只读，所有者由 auth.uid() 决定。 */
+    internal suspend fun fetchUsageDimensions(session: MobileSession, query: CanonicalDashboardQuery): String =
+        withContext(Dispatchers.IO) {
+            request(
+                path = "/rest/v1/rpc/$USAGE_DIMENSIONS_READ_FUNCTION",
+                method = "POST",
+                bearerToken = session.accessToken,
+                body = JSONObject().put("p_query", query.toJson()),
+                maxResponseBytes = USAGE_DIMENSIONS_MAX_RESPONSE_BYTES
+            )
+        }
+
     suspend fun fetchBudgetSnapshots(session: MobileSession): String = withContext(Dispatchers.IO) {
         request(
             path = "/rest/v1/rpc/$BUDGET_SNAPSHOTS_READ_FUNCTION",
@@ -890,6 +902,8 @@ internal const val ROUTING_SNAPSHOTS_READ_FUNCTION = "get_routing_snapshots_v1"
 // 两年按小时分桶再加按日 × 模型，留足余量；超出按读取失败处理。
 private const val ACTIVITY_RHYTHM_MAX_RESPONSE_BYTES = 4 * 1_024 * 1_024
 internal const val ACTIVITY_RHYTHM_READ_FUNCTION = "get_activity_rhythm_v1"
+private const val USAGE_DIMENSIONS_MAX_RESPONSE_BYTES = 1_024 * 1_024
+internal const val USAGE_DIMENSIONS_READ_FUNCTION = "get_usage_dimensions_v1"
 internal const val BUDGET_SNAPSHOTS_READ_FUNCTION = "get_budget_snapshots_v1"
 private const val BUDGET_SNAPSHOTS_MAX_RESPONSE_BYTES = 128 * 1_024
 private const val SUPABASE_ERROR_MAX_RESPONSE_BYTES = 128 * 1_024
