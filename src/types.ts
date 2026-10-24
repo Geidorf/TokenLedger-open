@@ -706,6 +706,13 @@ export interface AppSettings {
   start_minimized: boolean;
   widget_open_at_startup: boolean;
   tray_text_enabled: boolean;
+  /** 托盘数字显示哪一项：`cost` 今日预估费用、`quota` 最紧额度可用%。旧设置文件没有这一项。 */
+  tray_text_metric?: string;
+  /**
+   * 托盘面板快捷开关里的后台暂停，只读：只经 `tray_panel_toggle` 写入，通用 `save_settings` 忽略它们。
+   */
+  readonly background_scan_paused?: boolean;
+  readonly background_sync_paused?: boolean;
   /** 指向托盘图标即临时显示挂件、移开后收起（T10.110）；关闭后只有单击切换。 */
   tray_hover_widget_enabled: boolean;
   /** 指针在托盘图标上停留多少毫秒才弹出托盘挂件；0 = 立即（容易被"路过"误触）。 */
@@ -1083,11 +1090,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   start_minimized: false,
   widget_open_at_startup: false,
   tray_text_enabled: false,
+  tray_text_metric: 'cost',
   tray_hover_widget_enabled: true,
   tray_hover_delay_ms: 450,
   desktop_widget_enabled: false,
   routing_publish_enabled: false,
-  widget_popover_layout: 'usage',
+  widget_popover_layout: 'panel',
   widget_popover_theme: 'system',
   widget_popover_range: 'today',
   widget_popover_provider: null,

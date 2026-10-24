@@ -41,6 +41,8 @@ mod scanner;
 mod session_analysis;
 mod settings;
 mod stats_query;
+mod tray_badge;
+mod tray_panel;
 mod wallpaper;
 mod widget_window;
 
@@ -148,7 +150,12 @@ fn scan_sync_and_notify(
         }
     }
 
-    if persisted_changes || allow_idle_sync_retry {
+    // 托盘面板「后台同步」关掉时只停这条自动同步；设置页与手动同步不受影响。
+    let sync_paused = app_handle
+        .try_state::<Arc<Mutex<AppSettings>>>()
+        .and_then(|state| state.lock().ok().map(|guard| guard.background_sync_paused))
+        .unwrap_or(false);
+    if (persisted_changes || allow_idle_sync_retry) && !sync_paused {
         match block_on_async(commands::sync_to_supabase_impl(ctx)) {
             Ok(result) => {
                 stats_changed |= sync_result_has_stats_changes(&result);
@@ -175,11 +182,16 @@ fn scan_sync_and_notify(
 /// `commands::refresh_scan`（手动刷新，R-52）也要在同一次调用里立即刷新一次，不必等下一次
 /// 后台扫描周期。
 pub(crate) fn refresh_tray_status(ctx: &AppContext, app_handle: &tauri::AppHandle) {
-    let tray_text_enabled = app_handle
+    let (tray_text_enabled, tray_text_metric) = app_handle
         .try_state::<Arc<Mutex<AppSettings>>>()
-        .and_then(|state| state.lock().ok().map(|guard| guard.tray_text_enabled))
-        .unwrap_or(false);
-    widget_window::refresh_tray_status(ctx, app_handle, tray_text_enabled);
+        .and_then(|state| {
+            state
+                .lock()
+                .ok()
+                .map(|guard| (guard.tray_text_enabled, guard.tray_text_metric.clone()))
+        })
+        .unwrap_or_else(|| (false, "cost".to_string()));
+    widget_window::refresh_tray_status(ctx, app_handle, tray_text_enabled, &tray_text_metric);
 }
 
 /// 跨日检测（R-52）：与上次记录的本地日历日不同就该立即刷新一次托盘文字（“今日”的统计换了
@@ -324,6 +336,10 @@ fn start_background_scheduler(
 
             #[cfg(target_os = "windows")]
             let mut stats_changed = false;
+            // 托盘面板「后台扫描」关掉时跳过定时扫描（计时照走，打开后按原节奏继续）；手动刷新照常。
+            if now >= next_scan && cfg.background_scan_paused {
+                next_scan = now + Duration::from_secs(cfg.scan_interval_secs);
+            }
             if now >= next_scan {
                 let allow_idle_sync_retry = now >= next_cloud_sync_retry;
                 let scan_stats_changed =
@@ -343,11 +359,16 @@ fn start_background_scheduler(
             if now >= next_quota_sync {
                 // The main window only polls quotas while visible; a tray-resident
                 // app still needs a fresh local read for alerts. No keychain retry.
-                if quota::alerts::load_settings(ctx.app_data_dir()).enabled {
+                // 托盘显示最紧额度时同样要后台读一次，否则主窗口不开时数字不会更新。
+                let tray_shows_quota = cfg.tray_text_enabled && cfg.tray_text_metric == "quota";
+                if tray_shows_quota || quota::alerts::load_settings(ctx.app_data_dir()).enabled {
                     let _ =
                         tauri::async_runtime::block_on(quota::get_local_quota_providers_impl(&ctx));
+                    refresh_tray_status(&ctx, &app_handle);
                 }
-                sync_quota_and_notify(&ctx, &app_handle);
+                if !cfg.background_sync_paused {
+                    sync_quota_and_notify(&ctx, &app_handle);
+                }
                 next_quota_sync = now + Duration::from_secs(5 * 60);
             }
 
@@ -674,6 +695,7 @@ pub fn run() {
                 }
             }
 
+            tray_panel::install_tray_refresher(app.handle().clone());
             // Create System Tray
             let quit_i = tauri::menu::MenuItemBuilder::with_id("quit", "退出").build(app)?;
             let show_i = tauri::menu::MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
@@ -974,6 +996,8 @@ pub fn run() {
             widget_window::toggle_widget_window,
             widget_window::widget_pointer_hover,
             widget_window::set_desktop_widget_enabled,
+            tray_panel::tray_panel_status,
+            tray_panel::tray_panel_toggle,
             focus_main_window,
             open_main_settings,
         ])

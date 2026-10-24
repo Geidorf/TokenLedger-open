@@ -533,7 +533,9 @@ pub async fn save_settings(
     // 桌面小组件随设置页开关即时创建/移除（T10.110）。
     crate::widget_window::sync_desktop_widget_from_settings(&app_handle, &settings);
     // 切换 macOS 菜单栏标题开关要立即生效，不等下一次后台扫描周期（R-52）。
-    if previous.tray_text_enabled != settings.tray_text_enabled {
+    if previous.tray_text_enabled != settings.tray_text_enabled
+        || previous.tray_text_metric != settings.tray_text_metric
+    {
         crate::refresh_tray_status(state.inner(), &app_handle);
     }
 

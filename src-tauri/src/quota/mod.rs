@@ -264,6 +264,9 @@ pub(crate) async fn get_local_quota_providers_impl_with_retry_flag(
         });
     }
     alerts::check_quota_alerts(app, &providers);
+    // 托盘数字的最紧额度缓存；`tests/quota_parser.rs` 单独编译本模块，那里没有托盘。
+    #[cfg(not(test))]
+    crate::tray_panel::record_local_quota(&providers);
     providers
 }
 

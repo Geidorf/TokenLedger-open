@@ -11,7 +11,7 @@ import type { QuotaWindowHighlight } from './quotaOverview';
  */
 
 export type WidgetSurface = 'popover' | 'desktop';
-export type WidgetLayout = 'usage' | 'combo' | 'quota' | 'compact' | 'routing';
+export type WidgetLayout = 'usage' | 'combo' | 'quota' | 'compact' | 'routing' | 'panel';
 export type WidgetThemeMode = 'system' | 'light' | 'dark';
 /** 挂件只提供主看板范围的一个子集；写成 `Extract` 是为了两边不会各自漂移。 */
 export type WidgetRange = Extract<RangeKey, 'today' | 'week' | 'month'>;
@@ -34,7 +34,22 @@ export const WIDGET_LAYOUTS: ReadonlyArray<{
   { id: 'quota', label: '额度总览', description: '只看额度，按吃紧程度排列' },
   { id: 'compact', label: '单行消耗', description: '只有大数字与预估费用' },
   { id: 'routing', label: '实时路由', description: 'Agent → 网关 → 上游，失败切换实时可见' },
+  { id: 'panel', label: '托盘面板', description: '今日用量、额度条、网关与最近路由、快捷开关' },
 ];
+
+/** 托盘挂件的默认板式（Rust `DEFAULT_POPOVER_LAYOUT`）：一屏看完额度、今日用量与网关，还能直接开关。 */
+export const DEFAULT_POPOVER_LAYOUT: WidgetLayout = 'panel';
+
+/** 托盘数字显示哪一项（`tray_text_metric`）；Rust `TRAY_TEXT_METRICS` 用同一组字符串。 */
+export type TrayTextMetric = 'cost' | 'quota';
+export const TRAY_TEXT_METRICS: ReadonlyArray<{ id: TrayTextMetric; label: string }> = [
+  { id: 'cost', label: '今日预估费用' },
+  { id: 'quota', label: '最紧额度可用 %' },
+];
+
+export function parseTrayTextMetric(value: unknown): TrayTextMetric {
+  return value === 'quota' ? 'quota' : 'cost';
+}
 
 // 主题三个取值的名字已经说尽了它们的行为，不再配 description：
 // 下拉框里写着「跟随系统」，旁边再写一行「随系统深浅色切换」只是重复。
@@ -129,11 +144,12 @@ export function widgetConfigFromSettings(
   settings: Partial<AppSettings> | null | undefined,
   surface: WidgetSurface,
 ): WidgetConfig {
-  if (!settings) return { ...DEFAULT_WIDGET_CONFIG };
+  const defaultLayout = surface === 'popover' ? DEFAULT_POPOVER_LAYOUT : DEFAULT_WIDGET_CONFIG.layout;
+  if (!settings) return { ...DEFAULT_WIDGET_CONFIG, layout: defaultLayout };
   const keys = widgetSettingKeys(surface);
   const provider = settings[keys.provider];
   return {
-    layout: parseWidgetLayout(settings[keys.layout]),
+    layout: parseFrom(WIDGET_LAYOUTS, settings[keys.layout], defaultLayout),
     theme: parseWidgetThemeMode(settings[keys.theme]),
     range: parseWidgetRange(settings[keys.range]),
     providerId: typeof provider === 'string' && provider.trim() ? provider : null,

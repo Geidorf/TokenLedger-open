@@ -42,7 +42,7 @@ describe("ScanStartupSection", () => {
     render(<ScanStartupSection {...props} />);
     expect(screen.getByRole("heading", { name: "扫描" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "启动" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "菜单栏" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "菜单栏与托盘" })).toBeInTheDocument();
   });
 
   it("不再承载两块挂件的开关：它们已迁到独立的「桌面挂件」分区", () => {
@@ -52,15 +52,34 @@ describe("ScanStartupSection", () => {
     expect(screen.queryByText("指向托盘图标时弹出挂件")).not.toBeInTheDocument();
     expect(screen.queryByText("在桌面添加小组件")).not.toBeInTheDocument();
     expect(
-      screen.getByText("菜单栏显示今日预估费用（仅 macOS）"),
+      screen.getByText("在菜单栏 / 托盘上显示数字"),
     ).toBeInTheDocument();
   });
 
   it("菜单栏开关沿用「预估费用」叫法（T10.154 D64）", () => {
     render(<ScanStartupSection {...props} />);
-    expect(
-      screen.getByText("在菜单栏图标旁显示今天的预估费用；Windows 在悬停提示中显示。"),
-    ).toBeInTheDocument();
+    const metric = screen.getByRole("combobox", { name: "菜单栏与托盘显示哪个数字" }) as HTMLSelectElement;
+    expect(Array.from(metric.options).map((option) => option.text)).toEqual(["今日预估费用", "最紧额度可用 %"]);
+    expect(screen.getByText("今天的预估费用，与看板同一个数。")).toBeInTheDocument();
     expect(screen.queryByText(/成本/)).not.toBeInTheDocument();
+  });
+
+  it("数字开关关着时不能选显示哪个数字；选最紧额度时写清口径", () => {
+    const onSettingChange = vi.fn();
+    const { rerender } = render(<ScanStartupSection {...props} onSettingChange={onSettingChange} />);
+    const metric = screen.getByRole("combobox", { name: "菜单栏与托盘显示哪个数字" }) as HTMLSelectElement;
+    expect(metric).toBeDisabled();
+    rerender(
+      <ScanStartupSection
+        {...props}
+        appSettings={{ ...props.appSettings, tray_text_enabled: true, tray_text_metric: "quota" }}
+        onSettingChange={onSettingChange}
+      />,
+    );
+    expect(metric).toBeEnabled();
+    expect(metric.value).toBe("quota");
+    expect(screen.getByText(/可用比例最低的那条窗口/)).toBeInTheDocument();
+    fireEvent.change(metric, { target: { value: "cost" } });
+    expect(onSettingChange).toHaveBeenCalledWith("tray_text_metric", "cost");
   });
 });

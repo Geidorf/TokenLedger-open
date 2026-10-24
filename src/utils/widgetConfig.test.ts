@@ -4,10 +4,12 @@ import {
   DEFAULT_WIDGET_CONFIG,
   TRAY_HOVER_DELAY_CHOICES,
   TRAY_HOVER_DELAY_MAX_MS,
+  TRAY_TEXT_METRICS,
   WIDGET_LAYOUTS,
   WIDGET_RANGES,
   WIDGET_THEMES,
   parseTrayHoverDelay,
+  parseTrayTextMetric,
   parseWidgetLayout,
   parseWidgetRange,
   parseWidgetThemeMode,
@@ -45,7 +47,11 @@ describe('widgetConfig', () => {
   it('合法取值与 Rust 侧的闭合集合逐字对齐', () => {
     // settings.rs 的 WIDGET_LAYOUTS / WIDGET_THEMES / WIDGET_RANGES 是同一组字符串，
     // 两端任何一边加了取值而另一边没加，都会在这里显形。
-    expect(WIDGET_LAYOUTS.map((item) => item.id)).toEqual(['usage', 'combo', 'quota', 'compact', 'routing']);
+    expect(WIDGET_LAYOUTS.map((item) => item.id)).toEqual(['usage', 'combo', 'quota', 'compact', 'routing', 'panel']);
+    expect(TRAY_TEXT_METRICS.map((item) => item.id)).toEqual(['cost', 'quota']);
+    expect(parseTrayTextMetric('quota')).toBe('quota');
+    expect(parseTrayTextMetric('tokens')).toBe('cost');
+    expect(parseTrayTextMetric(undefined)).toBe('cost');
     expect(WIDGET_THEMES.map((item) => item.id)).toEqual(['system', 'light', 'dark']);
     expect(WIDGET_RANGES.map((item) => item.id)).toEqual(['today', 'week', 'month']);
   });
@@ -78,7 +84,11 @@ describe('widgetConfig', () => {
   });
 
   it('读不到设置时给默认配置，空白来源等价于不钉住', () => {
-    expect(widgetConfigFromSettings(null, 'popover')).toEqual(DEFAULT_WIDGET_CONFIG);
+    // 托盘挂件的默认板式是「托盘面板」（与 Rust DEFAULT_POPOVER_LAYOUT 一致），桌面小组件仍是「用量详情」。
+    expect(widgetConfigFromSettings(null, 'popover')).toEqual({ ...DEFAULT_WIDGET_CONFIG, layout: 'panel' });
+    expect(widgetConfigFromSettings(null, 'desktop')).toEqual(DEFAULT_WIDGET_CONFIG);
+    expect(widgetConfigFromSettings({ widget_popover_layout: 'future' }, 'popover').layout).toBe('panel');
+    expect(widgetConfigFromSettings({ widget_desktop_layout: 'future' }, 'desktop').layout).toBe('usage');
     expect(widgetConfigFromSettings({ widget_popover_provider: '  ' }, 'popover').providerId).toBeNull();
   });
 
