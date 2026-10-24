@@ -26,7 +26,10 @@ class RoutingAccessibilityTest {
     fun `live announcement does not change while the visible age ticks`() {
         // 第一分钟里「N 秒前」每秒一变；播报区的内容只要变，TalkBack 就再念一遍。
         val captions = (0L..90L).map { routingFooterCaption(flow, it * 1_000L) }.toSet()
-        val announcements = (0L..90L).map { routingLiveAnnouncement(flow) }.toSet()
+        var announced: RoutingAnnouncement? = null
+        val announcements = (0L..90L).map {
+            nextRoutingAnnouncement(announced, flow).also { next -> announced = next }.text
+        }.toSet()
         assertTrue("visible caption keeps showing the age", captions.size > 50)
         assertEquals(1, announcements.size)
         assertTrue(announcements.single().isNotBlank())
@@ -34,10 +37,23 @@ class RoutingAccessibilityTest {
     }
 
     @Test
-    fun `a different latest flow is announced again`() {
-        val next = flow.copy(id = "f2", agent = "codex")
-        assertNotEquals(routingLiveAnnouncement(flow), routingLiveAnnouncement(next))
-        assertEquals("", routingLiveAnnouncement(null))
+    fun `every new flow changes the announcement, even with the same description`() {
+        val first = nextRoutingAnnouncement(null, flow)
+        val twin = nextRoutingAnnouncement(first, flow.copy(id = "f2"))
+        assertNotEquals("same agent, target and outcome must still be announced", first.text, twin.text)
+        val third = nextRoutingAnnouncement(twin, flow.copy(id = "f3"))
+        assertNotEquals(twin.text, third.text)
+        val other = nextRoutingAnnouncement(third, flow.copy(id = "f4", agent = "codex"))
+        assertNotEquals(third.text, other.text)
+        assertEquals("", nextRoutingAnnouncement(other, null).text)
+    }
+
+    @Test
+    fun `the same flow is announced again only when what it says changes`() {
+        val inflight = flow.copy(phase = RoutingFlowPhase.Inflight, hops = listOf(RoutingHop("anthropic/sonnet", RoutingHopOutcome.Pending)))
+        val first = nextRoutingAnnouncement(null, inflight)
+        assertEquals(first, nextRoutingAnnouncement(first, inflight))
+        assertNotEquals(first.text, nextRoutingAnnouncement(first, flow).text)
     }
 
     @Test

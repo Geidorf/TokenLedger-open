@@ -150,20 +150,37 @@ internal fun routingFooterCaption(latest: RoutingFlow?, now: Long): String = lat
     "$prefix${RoutingSnapshots.describe(flow)}" + if (flow.phase == RoutingFlowPhase.Inflight) "" else " · ${ago(age)}"
 }.orEmpty()
 
+/** 读屏礼貌播报区此刻的内容，以及它说的是哪条流。 */
+internal data class RoutingAnnouncement(val flowId: String?, val text: String)
+
+private const val ANNOUNCE_AGAIN = "又一条："
+
 /**
  * 读屏礼貌播报的内容：只说流本身，不带「N 秒前」与「最近：」。
  * 播报区的文字一变 TalkBack 就念一遍；带上每秒都变的时间，一条流在第一分钟里会被念五十多次。
- * 时间仍能在「最近调用」列表里逐行读到。
+ * 反过来，换了一条流但说法完全相同（同一 Agent、同一上游、同样结果）时文字不变，就不会念，
+ * 所以这时加「又一条：」与上一句区分开。时间仍能在「最近调用」列表里逐行读到。
  */
-internal fun routingLiveAnnouncement(latest: RoutingFlow?): String =
-    latest?.let { RoutingSnapshots.describe(it) }.orEmpty()
+internal fun nextRoutingAnnouncement(previous: RoutingAnnouncement?, latest: RoutingFlow?): RoutingAnnouncement {
+    if (latest == null) return RoutingAnnouncement(null, "")
+    val base = RoutingSnapshots.describe(latest)
+    if (previous?.flowId == latest.id && previous.text.removePrefix(ANNOUNCE_AGAIN) == base) return previous
+    val text = if (previous?.flowId != latest.id && previous?.text == base) ANNOUNCE_AGAIN + base else base
+    return RoutingAnnouncement(latest.id, text)
+}
+
+/** 记住上一次播报的内容，跨重组比较；不是状态，改它不触发重组。 */
+private class RoutingAnnouncementHolder(var last: RoutingAnnouncement? = null)
 
 /** 舞台下方：最新一条流的一句话说明（读屏礼貌播报）+ 请求 / 转路 / 报错。 */
 @Composable
 private fun V2RoutingFooter(palette: MobileV2Palette, scene: RoutingScene, now: Long) {
     val latest = scene.flows.firstOrNull()
     val caption = routingFooterCaption(latest, now)
-    val announcement = routingLiveAnnouncement(latest)
+    val holder = remember { RoutingAnnouncementHolder() }
+    val announcement = remember(latest?.id, latest?.let(RoutingSnapshots::describe)) {
+        nextRoutingAnnouncement(holder.last, latest).also { holder.last = it }
+    }.text
     HorizontalDivider(color = palette.divider, modifier = Modifier.padding(top = 12.dp))
     val captionText = @Composable { modifier: Modifier ->
         Text(
