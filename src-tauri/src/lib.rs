@@ -286,7 +286,10 @@ fn start_background_scheduler(
         // database must not trigger a surprise cloud/keychain operation.
         // Newly inserted rows still sync through `persisted_changes`; an idle
         // retry is deliberately deferred to the first 15-minute retry window.
-        let _ = scan_sync_and_notify(&ctx, &app_handle, false);
+        // 托盘面板「后台扫描」关着时冷启动也不扫，等用户手动刷新或重新打开。
+        if !initial.background_scan_paused {
+            let _ = scan_sync_and_notify(&ctx, &app_handle, false);
+        }
         // 冷启动无论有没有新行，托盘文字都要先落一次“今日”数字。
         refresh_tray_status(&ctx, &app_handle);
         // Quota transport has its own five-minute cadence. Deferring the first
