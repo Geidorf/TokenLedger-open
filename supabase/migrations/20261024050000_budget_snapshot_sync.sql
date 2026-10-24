@@ -73,7 +73,7 @@ $$;
 create or replace function private.budget_snapshot_date_ok_v1(p_value jsonb)
 returns boolean
 language plpgsql
-immutable
+stable
 set search_path = ''
 as $$
 begin
