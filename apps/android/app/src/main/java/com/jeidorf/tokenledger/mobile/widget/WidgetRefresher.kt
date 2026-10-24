@@ -11,13 +11,19 @@ import kotlinx.coroutines.CancellationException
  */
 internal object WidgetRefresher {
     /** 在协程上下文中调用（例如 LaunchedEffect）。失败静默，绝不影响应用主流程。 */
-    suspend fun notifyDataChanged(context: Context) {
+    suspend fun notifyDataChanged(context: Context) = redrawAll(context)
+
+    /** 重绘全部桌面表面：额度/用量小组件、实时路由小组件，并请快捷设置磁贴下次展开时重读缓存。 */
+    suspend fun redrawAll(context: Context) {
+        val appContext = context.applicationContext
         try {
-            TokenLedgerWidget().updateAll(context.applicationContext)
+            TokenLedgerWidget().updateAll(appContext)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
             // 小组件推送失败不得回灌成应用错误。
         }
+        RoutingLiveWidgets.redraw(appContext)
+        runCatching { com.jeidorf.tokenledger.mobile.tile.LedgerQuickTileService.requestUpdate(appContext) }
     }
 }
