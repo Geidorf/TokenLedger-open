@@ -149,14 +149,16 @@ pub(crate) fn scan_cline_tasks_dir(
 }
 
 /// Cline's `task_metadata.json` lists `{ts, model_id}` whenever the model in
-/// use changes. Roo and Kilo do not record the model per request.
-fn cline_model_history(task_dir: &Path) -> Vec<(i64, String)> {
-    let Ok(content) = std::fs::read_to_string(task_dir.join("task_metadata.json")) else {
-        return Vec::new();
+/// use changes. Roo and Kilo do not record the model per request. A missing
+/// file yields an empty history; one that exists but does not read or parse
+/// yields `None` so the task is retried instead of frozen as unknown.
+fn cline_model_history(task_dir: &Path) -> Option<Vec<(i64, String)>> {
+    let content = match std::fs::read_to_string(task_dir.join("task_metadata.json")) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some(Vec::new()),
+        Err(_) => return None,
     };
-    let Ok(metadata) = serde_json::from_str::<Value>(&content) else {
-        return Vec::new();
-    };
+    let metadata = serde_json::from_str::<Value>(&content).ok()?;
     let mut history: Vec<(i64, String)> = metadata
         .get("model_usage")
         .and_then(Value::as_array)
@@ -173,7 +175,7 @@ fn cline_model_history(task_dir: &Path) -> Vec<(i64, String)> {
         })
         .collect();
     history.sort();
-    history
+    Some(history)
 }
 
 fn cline_parse_task(tool: &str, task_dir: &Path, logs: &mut Vec<LogRecord>) -> bool {
@@ -191,7 +193,9 @@ fn cline_parse_task(tool: &str, task_dir: &Path, logs: &mut Vec<LogRecord>) -> b
         .and_then(|name| name.to_str())
         .unwrap_or("unknown_task")
         .to_string();
-    let models = cline_model_history(task_dir);
+    let Some(models) = cline_model_history(task_dir) else {
+        return false;
+    };
     for message in messages {
         if let Some(record) = cline_request_record(tool, &task_id, &models, message) {
             logs.push(record);
@@ -388,6 +392,30 @@ mod scanner_cline_tests {
         scan_cline_tasks_dir("cline", &root, &mut logs, &HashMap::new(), &mut pending);
         assert!(logs.is_empty());
         assert!(pending.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn half_written_metadata_is_retried_instead_of_freezing_unknown_models() {
+        let root = temp_root();
+        write_task(&root, "t", false);
+        fs::write(
+            root.join("t").join("task_metadata.json"),
+            &TASK_METADATA[..TASK_METADATA.len() / 2],
+        )
+        .expect("write partial metadata");
+        let mut pending = Vec::new();
+        let mut logs = Vec::new();
+        scan_cline_tasks_dir("cline", &root, &mut logs, &HashMap::new(), &mut pending);
+        assert!(logs.is_empty());
+        assert!(pending.is_empty());
+
+        fs::write(root.join("t").join("task_metadata.json"), TASK_METADATA)
+            .expect("write metadata");
+        scan_cline_tasks_dir("cline", &root, &mut logs, &HashMap::new(), &mut pending);
+        assert_eq!(logs.len(), 3);
+        assert_eq!(logs[0].model, "claude-sonnet-4.6");
+        assert_eq!(pending.len(), 1);
         let _ = fs::remove_dir_all(root);
     }
 
