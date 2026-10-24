@@ -15,7 +15,7 @@ use chrono::{DateTime, Local, NaiveDateTime, Utc};
 use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection};
 
 use crate::db;
-use crate::gateway::{accounting, LedgerRecord};
+use crate::gateway::{accounting, ContextSize, LedgerRecord};
 
 /// Slack around a gateway request's `[ts − latencyMs, ts]` span: magpie's 2 s
 /// end-time match plus up to 1 s of second truncation on each side, plus 1 s.
@@ -66,6 +66,8 @@ pub(super) struct GatewayRow {
     pub machine_id: Option<String>,
     /// Request duration in milliseconds as the gateway measured it; 0 when unknown.
     pub latency_ms: i64,
+    /// Prompt composition sizes; only gateway rows recorded after it existed carry one.
+    pub context: Option<ContextSize>,
 }
 
 #[derive(Clone, Debug)]
@@ -164,6 +166,7 @@ pub(super) fn map_record(
         cache_write_tokens: to_i64(record.cache_write),
         machine_id: None,
         latency_ms: to_i64(record.latency_ms),
+        context: record.context,
     })
 }
 
@@ -522,7 +525,7 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
              cached_tokens INTEGER NOT NULL, cache_write_tokens INTEGER NOT NULL,
              timestamp TEXT NOT NULL, session_id TEXT NOT NULL, cost_usd REAL,
              machine_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL,
-             latency_ms INTEGER NOT NULL);
+             latency_ms INTEGER NOT NULL, context TEXT);
          CREATE TEMP TABLE gw_superseded (id INTEGER PRIMARY KEY);
          CREATE TEMP VIEW token_logs AS
              SELECT id, tool, model, input_tokens, output_tokens, cached_tokens,
@@ -535,7 +538,7 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
                FROM temp.gw_rows;",
     )?;
     let mut insert_row = conn.prepare(
-        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12, ?13)",
+        "INSERT OR IGNORE INTO temp.gw_rows VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12, ?13, ?14)",
     )?;
     for row in gateway.iter().filter(|row| !held.contains(&row.id)) {
         insert_row.execute(params![
@@ -552,6 +555,9 @@ fn install_overlay(conn: &Connection, gateway: &[GatewayRow]) -> rusqlite::Resul
             row.provider,
             row.source.as_str(),
             row.latency_ms,
+            row.context
+                .as_ref()
+                .and_then(|context| serde_json::to_string(context).ok()),
         ])?;
     }
     let mut insert_superseded = conn.prepare("INSERT INTO temp.gw_superseded VALUES (?1)")?;
@@ -590,6 +596,8 @@ pub(super) struct GatewayDetail {
     pub provider: String,
     /// `None` when the gateway did not record a duration.
     pub latency_ms: Option<i64>,
+    /// `None` for imported rows and gateway rows recorded without one.
+    pub context: Option<ContextSize>,
 }
 
 /// Source (`gateway` or `imported-magpie`), provider and duration of a merged
@@ -599,14 +607,16 @@ pub(super) fn gateway_detail(conn: &Connection, id: i64) -> Option<GatewayDetail
         return None;
     }
     conn.query_row(
-        "SELECT source, provider, latency_ms FROM temp.gw_rows WHERE id = ?1",
+        "SELECT source, provider, latency_ms, context FROM temp.gw_rows WHERE id = ?1",
         params![id],
         |row| {
             let latency_ms: i64 = row.get(2)?;
+            let context: Option<String> = row.get(3)?;
             Ok(GatewayDetail {
                 source: row.get(0)?,
                 provider: row.get(1)?,
                 latency_ms: (latency_ms > 0).then_some(latency_ms),
+                context: context.and_then(|text| serde_json::from_str(&text).ok()),
             })
         },
     )

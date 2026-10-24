@@ -21,6 +21,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Semaphore, SemaphorePermit};
 
 use super::anthropic;
+use super::context_size::{self, ContextApi, ContextSize};
 use super::convert::{chat_to_response, responses_to_chat, ChatStream, StreamConverter};
 use super::gemini::{self, GeminiPath, GeminiStream};
 use super::ledger::{agent_from_user_agent, sse_data, LedgerRecord, SseLines, Usage};
@@ -443,6 +444,7 @@ async fn gemini_entry(
     };
     let mut ctx = request_ctx(&headers, Endpoint::Gemini, model, stream);
     ctx.gate = gate;
+    ctx.context = context_size::measure(ContextApi::Gemini, &body);
     gemini_rewrap(route(ctx, &shared, &payload).await).await
 }
 
@@ -518,6 +520,7 @@ struct Call {
     wire: WireApi,
     stream: bool,
     group: Option<String>,
+    context: Option<ContextSize>,
 }
 
 impl Call {
@@ -548,6 +551,7 @@ impl Call {
                 .group
                 .as_ref()
                 .map(|_| format!("{}/{}", self.provider, self.upstream_model)),
+            context: self.context,
         };
         if let Err(error) = self.shared.ledger.append(&record) {
             log::warn!("gateway ledger: {error}");
@@ -623,6 +627,8 @@ struct RequestCtx {
     group: Option<String>,
     /// Client headers an Anthropic-protocol provider should also see.
     anthropic_headers: Vec<(&'static str, String)>,
+    /// Prompt composition of the client request, measured before conversion.
+    context: Option<ContextSize>,
 }
 
 /// One upstream try. `Next` means another group member may be tried: the
@@ -723,6 +729,7 @@ fn request_ctx(
                 Some((name, value.to_string()))
             })
             .collect(),
+        context: None,
     }
 }
 
@@ -748,6 +755,13 @@ async fn proxy(
         .unwrap_or(false);
     let mut ctx = request_ctx(&headers, endpoint, requested_model, stream);
     ctx.gate = gate;
+    let api = match endpoint {
+        Endpoint::Messages => Some(ContextApi::Messages),
+        Endpoint::Chat => Some(ContextApi::Chat),
+        Endpoint::Responses => Some(ContextApi::Responses),
+        Endpoint::Gemini => None,
+    };
+    ctx.context = api.and_then(|api| context_size::measure(api, &payload));
     route(ctx, &shared, &payload).await
 }
 
@@ -971,6 +985,7 @@ async fn attempt(
         wire: provider.wire,
         stream: ctx.stream,
         group: ctx.group.clone(),
+        context: ctx.context,
     };
 
     let mut payload = original.clone();

@@ -6,7 +6,7 @@ import { cacheHitRate, outputTokensPerSecond } from './usageSplit';
 /**
  * 用量 · 请求的「导出 CSV」：导出当前范围与筛选下的全部行，
  * 不只是已加载的那一页。列与界面同一口径：缓存读写只在拆分可证明时分列，否则只给合计；
- * 缺失的值写空，不写 0。耗时与输出速度只有网关记录带，新列追加在末尾。
+ * 缺失的值写空，不写 0。耗时、输出速度与 Context 构成字节数只有网关记录带，新列追加在末尾。
  */
 export const REQUESTS_CSV_COLUMNS = [
   'time',
@@ -28,6 +28,11 @@ export const REQUESTS_CSV_COLUMNS = [
   'machine_id',
   'latency_ms',
   'output_tokens_per_sec',
+  'context_system_bytes',
+  'context_tools_bytes',
+  'context_history_bytes',
+  'context_tool_results_bytes',
+  'context_attachments_bytes',
 ] as const;
 
 /** 一次导出最多取的行数；超过时只导出前这么多行并告知，避免把界面卡死。 */
@@ -72,6 +77,11 @@ export function requestCsvRow(item: LogHistoryItem, scope: DataScope = 'local'):
     item.machineId,
     item.latencyMs,
     speed === null ? null : Number(speed.toFixed(2)),
+    item.context?.systemBytes,
+    item.context?.toolsBytes,
+    item.context?.historyBytes,
+    item.context?.toolResultsBytes,
+    item.context?.attachmentsBytes,
   ];
   return cells.map(csvCell).join(',');
 }

@@ -96,5 +96,20 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/token_ledger_combo_widget_info" />
         </receiver>
+
+        <!-- 锁屏动态壁纸（routing-snapshot-v1）：近实时网关路由动画，数据经云端中转。 -->
+        <service
+            android:name=".wallpaper.RoutingWallpaperService"
+            android:exported="true"
+            android:label="@string/routing_wallpaper_label"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/routing_wallpaper" />
+        </service>
     </application>
 </manifest>

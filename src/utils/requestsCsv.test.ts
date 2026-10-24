@@ -77,6 +77,15 @@ describe('requestsToCsv', () => {
     expect(at(untimed, 'output_tokens_per_sec')).toBe('');
   });
 
+  it('writes context byte sizes only for rows that carry a composition', () => {
+    const at = (row: string, column: (typeof REQUESTS_CSV_COLUMNS)[number]) => row.split(',')[REQUESTS_CSV_COLUMNS.indexOf(column)];
+    const context = { systemBytes: 10, toolsBytes: 900, historyBytes: 300, toolResultsBytes: 0, attachmentsBytes: 0, messages: 3, toolResults: 0, attachments: 0 };
+    const row = requestCsvRow(item({ context }));
+    expect(at(row, 'context_tools_bytes')).toBe('900');
+    expect(at(row, 'context_tool_results_bytes')).toBe('0');
+    expect(at(requestCsvRow(item()), 'context_tools_bytes')).toBe('');
+  });
+
   it('flattens embedded line breaks so every record stays on one line', () => {
     const csv = requestsToCsv([item({ model: 'a\r\nb', sessionId: 'x\ny' }), item({ id: 2 })]);
     const lines = csv.trimEnd().split('\n');

@@ -180,6 +180,8 @@ Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入�
 
 **带耗时行的合计（可选扩展）。** 本机明细的 `filteredSummary` 在筛选范围内有带 `latencyMs`（且输出大于 0）的行时，另带 `timedRequests`（这些行的条数）、`timedOutputTokens`（它们的输出 Token 合计）与 `timedLatencyMs`（它们的耗时合计，毫秒）；没有这样的行时三项都缺失，不写 0。读者据此给出整体输出速度（输出合计 ÷ 耗时合计）；总览 `summary` 与云端响应不带这三项。
 
+**逐请求 Context 构成（可选扩展）。** 本机明细的网关行在网关记下构成时另带可选 `context`：`{ systemBytes, toolsBytes, historyBytes, toolResultsBytes, attachmentsBytes, messages, toolResults, attachments }`，全为非负整数。前五项是客户端请求体中系统提示、工具定义、对话历史、工具结果与附件各自序列化后的 UTF-8 字节数，后三项是对话消息、工具结果与附件的条数；分段规则见 [request-context-composition-v1](../design/request-context-composition-v1.md)。网关只记大小，不保存内容或哈希。导入行、扫描行、小时聚合、总览与云端都不带；缺失即不可得，读者不得按 0 显示或推算。读者给出的分段 Token 只能标为估算（按字节占比分摊该行实测输入）。
+
 **兼容与边界。**
 
 - 网关记录不写入本机 `token_logs`；本机看板通过只读合并视图并入。云端见下文「云端合并上传」。
@@ -414,4 +416,5 @@ v2 内的只增扩展逐条记在这里；`meta.contractVersion` 只在 §7 第 
 - 2026-10-23（输出速度）：§2.5 本机明细的网关与导入行增加可选 `latencyMs`；扫描行、小时聚合与云端不带；旧读者忽略该字段；`contractVersion` 仍为 2。
 - 2026-10-23（输出速度合计）：§2.5 本机明细 `filteredSummary` 增加可选 `timedRequests` / `timedOutputTokens` / `timedLatencyMs`；旧读者忽略；`contractVersion` 仍为 2。
 - 2026-10-23（热力图指标）：新增 §2.6 本机可选 `heatmapRequests` / `heatmapCost`（顶层与工具、模型）；云端不带；`contractVersion` 仍为 2。
+- 2026-10-23（Context 构成）：§2.5 本机明细的网关行增加可选 `context`（各部分字节数与条数）；其他来源与云端不带；旧读者忽略；`contractVersion` 仍为 2。
 - 2026-10-23（账号维度）：新增 §2.7 本机可选顶层 `providers`（按网关供应商汇总，只含网关与导入记录）；§2.6 `heatmapCost` 输出保留 6 位小数；云端不带；`contractVersion` 仍为 2。

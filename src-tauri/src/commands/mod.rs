@@ -8618,6 +8618,9 @@ fn get_usage_details_normalized_at(
                         if let Some(latency_ms) = detail.latency_ms {
                             object.insert("latencyMs".to_string(), json!(latency_ms));
                         }
+                        if let Some(context) = detail.context {
+                            object.insert("context".to_string(), json!(context));
+                        }
                     }
                     None => {
                         object.insert("source".to_string(), json!("scan"));

@@ -84,6 +84,7 @@ import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.entityKindLabel
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
+import com.jeidorf.tokenledger.mobile.ui.routing.rememberRoutingFeed
 import com.jeidorf.tokenledger.mobile.ui.routing.v2RoutingItems
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2DayReviewSummary
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2InsightCalendarCard
@@ -532,6 +533,8 @@ internal fun V2DestinationContent(
     val quotaListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_quota") { LazyListState() }
     val widgetListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_widget") { LazyListState() }
     val routingListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_routing") { LazyListState() }
+    // 路由页只在可见时轮询云端路由快照（routing-snapshot-v1），不影响用量统计的读取。
+    val routingFeed = rememberRoutingFeed(state.session, active = destination == MobileDestination.Routing)
     val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
     var mePage by rememberSaveable { mutableStateOf(initialMePage) }
     BackHandler(enabled = destination == MobileDestination.Me && mePage != V2MePage.Root) { mePage = V2MePage.Root }
@@ -632,7 +635,7 @@ internal fun V2DestinationContent(
                 if (stats == null) {
                     // 只有路由页与「我的」会在没有统计时走到这里；切页过渡里旧页也可能短暂落在这一支。
                     when (targetDestination) {
-                        MobileDestination.Routing -> v2RoutingItems(palette)
+                        MobileDestination.Routing -> v2RoutingItems(palette, routingFeed)
                         MobileDestination.Me -> meItems()
                         else -> Unit
                     }
@@ -671,7 +674,7 @@ internal fun V2DestinationContent(
                         trendMetric, trendCurrency,
                         { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis
                     )
-                    MobileDestination.Routing -> v2RoutingItems(palette)
+                    MobileDestination.Routing -> v2RoutingItems(palette, routingFeed)
                     MobileDestination.Quota -> v2QuotaItems(
                         palette = palette,
                         quota = state.quota,

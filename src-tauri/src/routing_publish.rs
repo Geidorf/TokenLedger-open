@@ -936,6 +936,7 @@ mod tests {
             error: Some("quota exceeded for key sk-SECRET-abcdef".to_string()),
             group: group.map(str::to_string),
             member: None,
+            context: None,
         }
     }
 

@@ -184,6 +184,30 @@ class DashboardRepository(context: Context) : DashboardDataSource {
         return freshSession to details
     }
 
+    /**
+     * Background readers (the live wallpaper) use the stored session through the same authority:
+     * refreshed when close to expiry and once more on a 401. Null when nobody is signed in.
+     */
+    suspend fun <T> readWithStoredSession(read: suspend (MobileSession) -> T): T? {
+        val session = withContext(Dispatchers.IO) { sessionAuthority.restore() } ?: return null
+        val lease = sessionAuthority.lease(session)
+        var freshSession = sessionAuthority.ensureFresh(lease)
+        val result = try {
+            read(freshSession)
+        } catch (error: SupabaseHttpException) {
+            if (error.status != 401) throw error
+            freshSession = refreshSession(lease, freshSession)
+            try {
+                read(freshSession)
+            } catch (retryError: SupabaseHttpException) {
+                if (retryError.status == 401) throw DashboardAuthExpiredException(retryError)
+                throw retryError
+            }
+        }
+        sessionAuthority.requireCurrent(lease)
+        return result
+    }
+
     private suspend fun refreshSession(lease: SessionSnapshot, session: MobileSession): MobileSession =
         sessionAuthority.rotate(lease, session)
 

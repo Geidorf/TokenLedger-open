@@ -127,6 +127,7 @@ fn shared_calls_are_counted_under_their_computer_and_never_replace_a_scan() {
             source: "shared-peer".to_string(),
             provider: "anthropic".to_string(),
             latency_ms: Some(2000),
+            context: None,
         })
     );
     drop(conn);
