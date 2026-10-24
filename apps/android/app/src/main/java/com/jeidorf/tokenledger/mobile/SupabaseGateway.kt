@@ -79,6 +79,21 @@ class SupabaseGateway(
         )
     }
 
+    /**
+     * 云端活动节律（契约 docs/contracts/activity-rhythm-cloud-v1.md）：只读，原样返回 JSON，由
+     * `rhythm` 包解析。所有者由云端取 auth.uid()，不传 p_user。
+     */
+    internal suspend fun fetchActivityRhythm(session: MobileSession, query: CanonicalDashboardQuery): String =
+        withContext(Dispatchers.IO) {
+            request(
+                path = "/rest/v1/rpc/$ACTIVITY_RHYTHM_READ_FUNCTION",
+                method = "POST",
+                bearerToken = session.accessToken,
+                body = JSONObject().put("p_query", query.toJson()),
+                maxResponseBytes = ACTIVITY_RHYTHM_MAX_RESPONSE_BYTES
+            )
+        }
+
     suspend fun fetchDashboardStats(
         session: MobileSession,
         range: RangeKey,
@@ -833,6 +848,9 @@ internal const val QUOTA_READ_V2_FUNCTION = "get_quota_snapshots_v2"
 /** 契约 routing-snapshot-v1：最多 8 份快照，每份不超过 16 KB，再留出外层与转义的余量。 */
 private const val ROUTING_SNAPSHOTS_MAX_RESPONSE_BYTES = 256 * 1_024
 internal const val ROUTING_SNAPSHOTS_READ_FUNCTION = "get_routing_snapshots_v1"
+// 两年按小时分桶再加按日 × 模型，留足余量；超出按读取失败处理。
+private const val ACTIVITY_RHYTHM_MAX_RESPONSE_BYTES = 4 * 1_024 * 1_024
+internal const val ACTIVITY_RHYTHM_READ_FUNCTION = "get_activity_rhythm_v1"
 private const val SUPABASE_ERROR_MAX_RESPONSE_BYTES = 128 * 1_024
 
 internal class SupabaseResponseTooLargeException(maxBytes: Int) :

@@ -87,6 +87,9 @@ import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.entityKindLabel
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
+import com.jeidorf.tokenledger.mobile.ui.rhythm.RhythmFeed
+import com.jeidorf.tokenledger.mobile.ui.rhythm.rememberRhythmFeed
+import com.jeidorf.tokenledger.mobile.ui.rhythm.v2RhythmItems
 import com.jeidorf.tokenledger.mobile.ui.routing.rememberRoutingFeed
 import com.jeidorf.tokenledger.mobile.ui.routing.v2RoutingItems
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2DayReviewSummary
@@ -576,6 +579,12 @@ internal fun V2DestinationContent(
     val routingListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_routing") { LazyListState() }
     // 路由页只在可见时轮询云端路由快照（routing-snapshot-v1），不影响用量统计的读取。
     val routingFeed = rememberRoutingFeed(state.session, active = destination == MobileDestination.Routing)
+    // 「会话」子页只在可见时按当前查询读云端活动节律（activity-rhythm-cloud-v1）。
+    val rhythmFeed = rememberRhythmFeed(
+        state.session,
+        state.query,
+        active = destination == MobileDestination.Usage && insightPane == InsightPane.Sessions
+    )
     val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
     var mePage by rememberSaveable { mutableStateOf(initialMePage) }
     BackHandler(enabled = destination == MobileDestination.Me && mePage != V2MePage.Root) { mePage = V2MePage.Root }
@@ -584,6 +593,7 @@ internal fun V2DestinationContent(
     val sourcesListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_sources") { LazyListState() }
     val calendarListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_calendar") { LazyListState() }
     val detailsListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_details") { LazyListState() }
+    val sessionsListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_sessions") { LazyListState() }
 
     fun listStateFor(dest: MobileDestination, pane: InsightPane): LazyListState = when (dest) {
         MobileDestination.Usage -> when (pane) {
@@ -592,6 +602,7 @@ internal fun V2DestinationContent(
             InsightPane.Sources -> sourcesListState
             InsightPane.Calendar -> calendarListState
             InsightPane.Details -> detailsListState
+            InsightPane.Sessions -> sessionsListState
         }
         MobileDestination.Routing -> routingListState
         MobileDestination.Quota -> quotaListState
@@ -711,7 +722,8 @@ internal fun V2DestinationContent(
                         calendarOpenedDate,
                         trendMetric, trendCurrency,
                         { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
-                        onRefresh
+                        onRefresh,
+                        rhythmFeed = rhythmFeed
                     )
                     MobileDestination.Routing -> v2RoutingItems(palette, routingFeed)
                     MobileDestination.Quota -> v2QuotaItems(
@@ -833,7 +845,8 @@ internal fun LazyListScope.v2InsightsItems(
     onTrendCurrencyChange: (CurrencyUnit) -> Unit,
     onOpenTrendDay: (String, InsightPane) -> Unit,
     calendarAxis: InsightCalendarAxis,
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    rhythmFeed: RhythmFeed = RhythmFeed(signedIn = false)
 ) {
     item(key = "insights-tabs", contentType = "controls") { V2InsightStrip(palette, pane, onPaneChange) }
     if (pane != InsightPane.Overview && v2HasDesktopData(stats, state.hasActiveFilters) == false) {
@@ -845,6 +858,7 @@ internal fun LazyListScope.v2InsightsItems(
     when (pane) {
         // 概览由 v2OverviewItems 渲染，调用方不会以概览进入这里。
         InsightPane.Overview -> Unit
+        InsightPane.Sessions -> v2RhythmItems(palette, rhythmFeed)
         InsightPane.Trend -> {
             item(key = "insights-trend", contentType = "chart") {
                 V2TrendInsightCard(
