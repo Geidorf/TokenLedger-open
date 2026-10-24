@@ -2,6 +2,7 @@ package com.jeidorf.tokenledger.mobile.ui.split
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -94,6 +96,8 @@ internal fun V2UsageSplitCard(
             options = SplitDimension.entries.map { V2Segment(it, it.label, contentDescription = "按${it.label}拆分") },
             selected = dimension,
             onSelect = { dimension = it },
+            // 放大字号时四段排成两行，不把「Agent」拆成两截。
+            columns = if (LocalDensity.current.fontScale > 1.3f) 2 else SplitDimension.entries.size,
             boundsKeyPrefix = "split-dimension"
         )
         Spacer(Modifier.height(LedgerSpace.sm))
@@ -126,10 +130,10 @@ internal fun V2UsageSplitCard(
                 }
                 Text(
                     buildString {
-                        append("${rows.size} 个${dimension.label}")
-                        if (result.unknownCount > 0) append(" · ${result.unknownCount} 项${metric.label}不可得")
-                        append(if (hideCost) " · 费用已隐藏 · 按名称列出" else " · 按${metric.label}排序")
-                    },
+                        append("${rows.size} 个${spacedLabel(dimension.label)}")
+                        if (result.unknownCount > 0) append(" · ${result.unknownCount} 项${spacedLabel(metric.label)}不可得")
+                        append(if (hideCost) " · 费用已隐藏 · 按名称列出" else " · 按${spacedLabel(metric.label)}排序")
+                    }.replace("  ", " "),
                     color = palette.muted,
                     fontSize = LedgerFont.caption,
                     modifier = Modifier.padding(vertical = LedgerSpace.sm)
@@ -180,7 +184,14 @@ private fun splitColor(palette: MobileV2Palette, dimension: SplitDimension, name
     SplitDimension.Device, SplitDimension.Account -> palette.green
 }
 
-/** 拆分行：身份块 + 名称与占比 + 右侧数值，底部数据条；[onClick] 为 null 时只读。 */
+/** 拉丁文标签夹在中文里时两侧留空格（「按 Token 排序」）；中文标签原样。 */
+private fun spacedLabel(label: String): String =
+    if (label.first().code < 0x80) " $label " else label
+
+/**
+ * 拆分行：身份块 + 名称与占比 + 右侧数值，底部数据条；[onClick] 为 null 时只读。
+ * 窄屏或放大字号时数值换到名称下方，名称不被挤成一列。
+ */
 @Composable
 private fun V2SplitRow(
     palette: MobileV2Palette,
@@ -196,26 +207,33 @@ private fun V2SplitRow(
     } else {
         Modifier
     }
-    Row(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .v2DataBarBackground(palette, color, barFraction)
             .then(clickModifier)
             .semantics(mergeDescendants = true) { contentDescription = "$label，$value，$note" }
-            .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 10.dp)
     ) {
-        V2SourceTile(palette, label, color)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, color = palette.text, fontSize = LedgerFont.label, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(note, color = palette.faint, fontSize = LedgerFont.caption, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(value, color = palette.text, fontSize = LedgerFont.label, fontWeight = FontWeight.SemiBold)
-        if (onClick != null) {
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = palette.faint, modifier = Modifier.size(V2_ICON_INLINE))
+        val stacked = maxWidth < 280.dp || LocalDensity.current.fontScale > 1.3f
+        Row(verticalAlignment = if (stacked) Alignment.Top else Alignment.CenterVertically) {
+            V2SourceTile(palette, label, color)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(label, color = palette.text, fontSize = LedgerFont.label, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(note, color = palette.faint, fontSize = LedgerFont.caption, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (stacked) {
+                    Text(value, color = palette.text, fontSize = LedgerFont.label, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            if (!stacked) {
+                Spacer(Modifier.width(8.dp))
+                Text(value, color = palette.text, fontSize = LedgerFont.label, fontWeight = FontWeight.SemiBold)
+            }
+            if (onClick != null) {
+                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = palette.faint, modifier = Modifier.size(V2_ICON_INLINE))
+            }
         }
     }
 }
