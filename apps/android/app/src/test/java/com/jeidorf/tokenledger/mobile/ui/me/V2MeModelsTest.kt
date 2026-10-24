@@ -61,7 +61,10 @@ class V2MeModelsTest {
     fun wallpaperEntryIsHonestBeforeTheServiceShips() {
         assertEquals("准备中", v2MeWallpaperValue(V2MeWallpaperState.Unavailable))
         assertEquals("网关动画 · 即将推出", v2MeWallpaperMeta(V2MeWallpaperState.Unavailable))
+        assertEquals("设置", v2MeWallpaperValue(V2MeWallpaperState.Available))
+        assertEquals("网关动画 · 省电时降帧", v2MeWallpaperMeta(V2MeWallpaperState.Available))
         assertEquals("已开启", v2MeWallpaperValue(V2MeWallpaperState.Active))
+        assertEquals("使用中 · 省电时降帧", v2MeWallpaperMeta(V2MeWallpaperState.Active))
     }
 
     @Test
