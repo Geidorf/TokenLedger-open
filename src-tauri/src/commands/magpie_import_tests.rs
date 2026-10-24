@@ -114,7 +114,8 @@ fn parse_keeps_counted_calls_and_drops_identifying_fields() {
             repeated: 1,
         }
     );
-    assert_eq!(calls[0].model, "claude-sonnet-5");
+    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().any(|call| call.model == "claude-sonnet-5"));
     assert!(calls.iter().any(|call| call.model == "vendor-model"));
     let kept = serde_json::to_string(&calls).unwrap();
     for dropped in [
