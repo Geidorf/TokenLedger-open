@@ -43,6 +43,13 @@ export function median(values) {
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+/** `--runs` 只收 1–50 的整数；不合法返回 null，免得一次都不跑却写出空中位数。 */
+export function parseRuns(raw) {
+  if (!/^\d+$/u.test(String(raw).trim())) return null;
+  const runs = Number(raw);
+  return runs >= 1 && runs <= 50 ? runs : null;
+}
+
 /** `wm size` 的物理分辨率（有 Override 时取 Override）。 */
 export function parseScreenSize(output) {
   const override = /Override size:\s*(\d+)x(\d+)/u.exec(output);
@@ -130,7 +137,11 @@ function option(name, fallback) {
 async function main() {
   const pkg = option('package', 'com.jeidorf.tokenledger.mobile.qa');
   const outDir = option('out', 'build/android-perf');
-  const runs = Number(option('runs', '10'));
+  const runs = parseRuns(option('runs', '10'));
+  if (runs === null) {
+    console.error(`--runs 需要 1 到 50 的整数，收到：${option('runs', '10')}`);
+    process.exit(2);
+  }
   const size = parseScreenSize(adb(['shell', 'wm', 'size'])) ?? { width: 1080, height: 2400 };
   const device = [
     adb(['shell', 'getprop', 'ro.product.model']).trim(),

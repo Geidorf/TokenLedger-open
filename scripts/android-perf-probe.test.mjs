@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatSummary, median, parseGfxinfo, parseScreenSize, parseTotalTime } from './android-perf-probe.mjs';
+import { formatSummary, median, parseGfxinfo, parseRuns, parseScreenSize, parseTotalTime } from './android-perf-probe.mjs';
 
 test('reads TotalTime from am start -W', () => {
   const output = 'Starting: Intent { cmp=x/.MainActivity }\nStatus: ok\nLaunchState: COLD\nActivity: x/.MainActivity\nTotalTime: 812\nWaitTime: 830\nComplete\n';
@@ -53,4 +53,13 @@ test('summary shows a dash for anything that was not measured', () => {
   assert.match(summary, /640 ms/u);
   assert.match(summary, /「请求」页首帧（预览夹具，中位数） \| — \|/u);
   assert.match(summary, /30\.1/u);
+});
+
+test('accepts only whole run counts from 1 to 50', () => {
+  assert.equal(parseRuns('10'), 10);
+  assert.equal(parseRuns('1'), 1);
+  assert.equal(parseRuns('50'), 50);
+  for (const bad of ['0', '51', '-3', '2.5', 'abc', '']) {
+    assert.equal(parseRuns(bad), null, bad);
+  }
 });
