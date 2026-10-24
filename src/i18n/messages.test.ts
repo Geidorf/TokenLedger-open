@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { en } from './en';
 import { format, MESSAGES } from './index';
@@ -21,17 +19,17 @@ const NATIVE_NAME_KEYS = new Set(['language.option.zh']);
 const CJK = /[㐀-鿿＀-￯　-〿]/;
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
-function stripComments(source: string) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+function stripComments(text: string) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
 }
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return sourceFiles(path);
-    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : [];
-  });
-}
+// 键是 `/src/...` 形式的路径，值是源码原文。
+const SOURCES = import.meta.glob<string>(['/src/**/*.{ts,tsx}', '!/src/**/*.test.{ts,tsx}'], { query: '?raw', import: 'default', eager: true });
+const source = (path: string) => {
+  const text = SOURCES[`/${path}`];
+  if (text === undefined) throw new Error(`找不到源码：${path}`);
+  return text;
+};
 
 describe('界面文案表', () => {
   it('中英文键一一对应', () => {
@@ -53,16 +51,16 @@ describe('界面文案表', () => {
   });
 
   it('每个键都有代码在用', () => {
-    const corpus = sourceFiles('src')
-      .filter((path) => !relative('src', path).startsWith('i18n/zh') && !relative('src', path).startsWith('i18n/en'))
-      .map((path) => readFileSync(path, 'utf8'))
+    const corpus = Object.entries(SOURCES)
+      .filter(([path]) => path !== '/src/i18n/zh.ts' && path !== '/src/i18n/en.ts')
+      .map(([, text]) => text)
       .join('\n');
     const unused = Object.keys(zh).filter((key) => !corpus.includes(`'${key}'`));
     expect(unused).toEqual([]);
   });
 
   it('已迁移文件里没有写死的中文', () => {
-    const offenders = FULLY_LOCALIZED.flatMap((path) => stripComments(readFileSync(path, 'utf8'))
+    const offenders = FULLY_LOCALIZED.flatMap((path) => stripComments(source(path))
       .split('\n')
       .map((line, index) => ({ line, index }))
       .filter(({ line }) => CJK.test(line))

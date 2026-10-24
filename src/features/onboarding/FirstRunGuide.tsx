@@ -247,7 +247,7 @@ function GuideDialog({ steps, done, allDone, actionBusy, error, onAction, onMini
         return;
       }
       if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled])'));
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled])'));
       if (focusable.length === 0) return;
       const wrap = focusWrapTarget(
         event.shiftKey ? 'backward' : 'forward',

@@ -152,4 +152,15 @@ describe('FirstRunGuide', () => {
     expect(screen.getByRole('combobox', { name: 'Interface language' })).toHaveValue('en');
     expect(screen.queryByText(/[\u4e00-\u9fff]{2,}/, { ignore: 'option, script, style' })).not.toBeInTheDocument();
   });
+
+  it('键盘 Tab 在对话框里循环时能到达语言选择', () => {
+    renderGuide();
+    const select = screen.getByRole('combobox', { name: '界面语言' });
+    const skip = screen.getByRole('button', { name: '跳过引导' });
+    skip.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(select).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(skip).toHaveFocus();
+  });
 });
