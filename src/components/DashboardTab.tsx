@@ -3,6 +3,7 @@ import { Cloud, FolderSearch, RefreshCw, Settings, SlidersHorizontal, TriangleAl
 import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
+import { AverageContextPanel } from './usage/AverageContextPanel';
 import { UsageSplitPanel } from './usage/UsageSplitPanel';
 import { accountSplitAvailable, effectiveSplitMetric, splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
 import { LoadingSkeleton, MetricsSkeleton } from './LoadingSkeleton';
@@ -76,8 +77,8 @@ interface DashboardTabProps {
   onQuotaNotify: (message: string) => void;
   refreshCompletedAt: string;
   /** 日期下钻：进入该日的单日复盘（审计 P0-1）。 */
-  /** `entity` 只在热力图只看某个 Agent 或模型时传：单日明细同时按它筛选。 */
-  onSelectDate?: (date: string, entity?: { tools: string[]; models: string[] }) => void;
+  /** `entity` 只在热力图只看某个 Agent、模型或账号时传：单日明细同时按它筛选。 */
+  onSelectDate?: (date: string, entity?: { tools: string[]; models: string[]; providers?: string[] }) => void;
   /** 当前作用域做不了单日复盘时（桌面云端）的说明；入口显示为不可用，绝不跳到空结果。 */
   dateDrillUnavailable?: DayDrillUnavailable | null;
   /**
@@ -622,8 +623,6 @@ export function DashboardTab({
   // 交叉时拆分面板只能显示 Token；热力图跟面板实际显示的指标走，不跟残留的选择。
   const heatmapView = splitHeatmapView(stats, activeSplitFocus,
     effectiveSplitMetric(stats, activeSplitDimension, splitMetric, activeSplitFocus, showTotalTokens));
-  // 日历画的是某个账号时，点开的单日明细筛不出这个账号，会比格子上的数多：先不让点。
-  const accountHeatmap = heatmapView.focused && activeSplitFocus?.dimension === 'account';
   const cloudRecovery = scope === 'cloud'
     ? cloudSyncRecoveryCopy({ authenticated: cloudAuthenticated, capabilityVerified: cloudCapabilityVerified })
     : null;
@@ -896,6 +895,7 @@ export function DashboardTab({
         return <section key={module} className="dashboard-preference-module" aria-labelledby="dashboard-insights-title">
           <h2 id="dashboard-insights-title" className="insight-group-title">消费洞察 · 缓存与模型经济</h2>
           <CacheFlowPanel summary={stats.summary} />
+          <AverageContextPanel totals={stats.contextComposition} />
           <ModelCostDistributionPanel models={allModelsList} totalCost={stats.summary.totalCost} onModelClick={onModelClick} />
           {allModelsList.length > 1 && <CostEfficiencyQuadrantPanel models={allModelsList} onModelClick={onModelClick} toolColors={toolColors} />}
           <TemporalInsightsSection trends={stats.trends} context={insightTimeContext} comparison={stats.comparison ?? null} onSelectDate={onSelectDate} dateDrillUnavailable={dateDrillUnavailable} />
@@ -904,9 +904,12 @@ export function DashboardTab({
           {showHeatmap && <HeatmapSection heatmap={heatmapView.heatmap} subject={heatmapView.focused && activeSplitFocus ? activeSplitFocus.id : undefined}
             subjectUnavailable={activeSplitFocus && !heatmapView.focused ? activeSplitFocus.id : undefined}
             metric={heatmapView.metric} metricFallback={heatmapView.metricFallback}
-            drillUnavailableNote={accountHeatmap && onSelectDate && !dateDrillUnavailable ? '明细暂不能按账号筛选，选中账号时日期不可点开。' : undefined}
-            onSelectDate={dateDrillUnavailable || !onSelectDate || accountHeatmap ? undefined : (date) => (heatmapView.focused && activeSplitFocus
-              ? onSelectDate(date, { tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [], models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [] })
+            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (heatmapView.focused && activeSplitFocus
+              ? onSelectDate(date, {
+                tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [],
+                models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [],
+                ...(activeSplitFocus.dimension === 'account' ? { providers: [activeSplitFocus.id] } : {}),
+              })
               : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} />}
           <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />
         </section>;

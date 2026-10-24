@@ -23,8 +23,6 @@ export interface HeatmapSectionProps {
   metric?: SplitMetric;
   /** 所选的记录数或费用没有逐日数据，已退回 Token。 */
   metricFallback?: boolean;
-  /** 日历画的是某一项、但单日明细不能按它筛选时的说明；此时调用方不传 onSelectDate。 */
-  drillUnavailableNote?: string;
 }
 
 const METRIC_TITLE: Record<SplitMetric, string> = { tokens: ' Token 消耗日历', requests: '记录数日历', cost: '预估费用日历' };
@@ -35,7 +33,7 @@ const METRIC_FORMAT: Partial<Record<SplitMetric, (value: number) => string>> = {
 
 const LEGEND_LEVELS = [1, 2, 3, 4, 5] as const;
 
-export function HeatmapSection({ heatmap, onSelectDate, range, customRange, timeContext, subject, subjectUnavailable, metric = 'tokens', metricFallback, drillUnavailableNote }: HeatmapSectionProps) {
+export function HeatmapSection({ heatmap, onSelectDate, range, customRange, timeContext, subject, subjectUnavailable, metric = 'tokens', metricFallback }: HeatmapSectionProps) {
   const { year, today, coverage } = resolveHeatmapWindow(range, customRange, timeContext);
   const coverageNote = heatmapCoverageNote(year, coverage, today);
   const baseTitle = range === 'custom' ? `${year} 年${METRIC_TITLE[metric]}` : `本年度${METRIC_TITLE[metric]}`;
@@ -67,7 +65,6 @@ export function HeatmapSection({ heatmap, onSelectDate, range, customRange, time
       {coverageNote && <p className="heatmap-coverage">{coverageNote}</p>}
       {subjectUnavailable && <p className="heatmap-coverage">{subjectUnavailable} 没有逐日数据，这里显示全部用量。</p>}
       {metricFallback && <p className="heatmap-coverage">当前来源没有逐日的记录数与费用，这里显示有效 Token。</p>}
-      {drillUnavailableNote && <p className="heatmap-coverage">{drillUnavailableNote}</p>}
       <YearHeatmap heatmap={heatmap} onSelectDate={onSelectDate} year={year} coverage={coverage} today={today} formatValue={METRIC_FORMAT[metric]} />
     </section>
   );

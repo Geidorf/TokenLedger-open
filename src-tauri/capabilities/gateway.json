@@ -25,6 +25,7 @@
     "allow-gateway-upsert-routing-group",
     "allow-gateway-delete-routing-group",
     "allow-gateway-recent-route-decisions",
+    "allow-gateway-routing-cooldowns",
     "allow-gateway-reveal-local-token"
   ]
 }

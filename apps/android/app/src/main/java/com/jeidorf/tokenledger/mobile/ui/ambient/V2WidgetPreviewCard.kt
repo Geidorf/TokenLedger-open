@@ -3,11 +3,9 @@ package com.jeidorf.tokenledger.mobile.ui.ambient
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -16,44 +14,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MonitorHeart
-import androidx.compose.material.icons.filled.ScreenRotation
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selectableGroup
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,7 +43,6 @@ import com.jeidorf.tokenledger.mobile.AmbientRenderProfile
 import com.jeidorf.tokenledger.mobile.DashboardUiState
 import com.jeidorf.tokenledger.mobile.FillPolicy
 import com.jeidorf.tokenledger.mobile.LedgerAppearance
-import com.jeidorf.tokenledger.mobile.LedgerFont
 import com.jeidorf.tokenledger.mobile.LocalCostMaskEnabled
 import com.jeidorf.tokenledger.mobile.LocalDashboardCurrency
 import com.jeidorf.tokenledger.mobile.LocalLedgerNow
@@ -95,9 +71,12 @@ import com.jeidorf.tokenledger.mobile.resolveRenderProfile
 import com.jeidorf.tokenledger.mobile.trendAvailabilityMessage
 import com.jeidorf.tokenledger.mobile.ui.charts.V2HeatmapChart
 import com.jeidorf.tokenledger.mobile.ui.charts.V2TrendChart
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerSpace
+import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerStroke
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
-import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
-import com.jeidorf.tokenledger.mobile.ui.foundation.V2_CONTROL_HEIGHT
+import com.jeidorf.tokenledger.mobile.ui.foundation.V2Segment
+import com.jeidorf.tokenledger.mobile.ui.foundation.V2SegmentedToggle
 import com.jeidorf.tokenledger.mobile.ui.foundation.tokenModeToggle
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2CacheHit
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2FormatMoney
@@ -116,123 +95,10 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal fun LazyListScope.v2WidgetItems(
-    palette: MobileV2Palette,
-    state: DashboardUiState,
-    stats: StatsData,
-    appearance: LedgerAppearance,
-    ambientMode: AmbientMode,
-    tokenDisplayMode: TokenDisplayMode,
-    onAmbientModeChange: (AmbientMode) -> Unit,
-    onTokenDisplayModeChange: (TokenDisplayMode) -> Unit,
-    onOpenLowPowerDisplay: () -> Unit
-) {
-    val profile = resolveRenderProfile(ambientMode, appearance)
-    item { V2WidgetModeStrip(palette, ambientMode, onAmbientModeChange) }
-    item(key = "widget-preview-card", contentType = "preview") {
-        V2AmbientModePreviewCard(
-            outerPalette = palette,
-            state = state,
-            stats = stats,
-            appearance = appearance,
-            mode = ambientMode,
-            tokenDisplayMode = tokenDisplayMode,
-            onTokenDisplayModeChange = onTokenDisplayModeChange
-        )
-    }
-    item {
-        Button(
-            onClick = onOpenLowPowerDisplay,
-            modifier = Modifier.fillMaxWidth().heightIn(min = V2_CONTROL_HEIGHT),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = palette.blue,
-                contentColor = palette.onBlue
-            ),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Icon(Icons.Default.MonitorHeart, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("进入全屏摆件", fontWeight = FontWeight.SemiBold)
-        }
-    }
-    item {
-        V2Card(palette) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                Icon(Icons.Default.ScreenRotation, contentDescription = null, tint = palette.muted)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        "${ambientMode.label} · ${ambientCadenceLabel(profile)}",
-                        color = palette.text,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        ambientMode.summary,
-                        color = palette.text,
-                        fontSize = LedgerFont.label
-                    )
-                    Text(
-                        if (appearance == LedgerAppearance.EInk) {
-                            "墨水屏形态：静态绘制、低频刷新。"
-                        } else {
-                            "彩屏形态：低频像素位移，降低长期驻留风险。"
-                        },
-                        color = palette.muted,
-                        fontSize = LedgerFont.caption,
-                        lineHeight = 16.sp
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun V2WidgetModeStrip(
-    palette: MobileV2Palette,
-    selected: AmbientMode,
-    onSelect: (AmbientMode) -> Unit
-) {
-    val largeText = LocalDensity.current.fontScale >= 1.5f
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.surface)
-            .then(if (largeText) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
-            .padding(4.dp)
-            .semantics { selectableGroup() },
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        AmbientMode.orderedForDisplay().forEach { mode ->
-            val isSelected = selected == mode
-            TextButton(
-                onClick = { onSelect(mode) },
-                modifier = (if (largeText) Modifier.widthIn(min = 94.dp) else Modifier.weight(1f))
-                    .heightIn(min = 48.dp)
-                    .semantics {
-                        this.selected = isSelected
-                        role = Role.RadioButton
-                        stateDescription = if (isSelected) "已选择。${mode.summary}" else "未选择。${mode.summary}"
-                    },
-                colors = ButtonDefaults.textButtonColors(
-                    containerColor = if (isSelected) palette.selected else Color.Transparent,
-                    contentColor = if (isSelected) palette.text else palette.muted
-                ),
-                shape = RoundedCornerShape(9.dp),
-                contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)
-            ) {
-                Text(
-                    mode.label,
-                    fontSize = LedgerFont.caption,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
+/**
+ * 待机屏子页的缩略画面：只画「屏幕」本身，模式名、说明与彩屏 / 墨水屏切换由子页的标题行负责。
+ * [einkPreview] 由调用方持有，切换后说明文字与画面一起变。
+ */
 @Composable
 internal fun V2AmbientModePreviewCard(
     outerPalette: MobileV2Palette,
@@ -240,12 +106,10 @@ internal fun V2AmbientModePreviewCard(
     stats: StatsData,
     appearance: LedgerAppearance,
     mode: AmbientMode,
+    einkPreview: Boolean,
     tokenDisplayMode: TokenDisplayMode,
     onTokenDisplayModeChange: (TokenDisplayMode) -> Unit
 ) {
-    var einkPreview by rememberSaveable(appearance) {
-        mutableStateOf(appearance == LedgerAppearance.EInk)
-    }
     val previewAppearance = when {
         einkPreview -> LedgerAppearance.EInk
         appearance == LedgerAppearance.EInk -> LedgerAppearance.Dark
@@ -256,32 +120,19 @@ internal fun V2AmbientModePreviewCard(
     val elements = remember(mode) { ambientPreviewElements(mode) }
     val rhythmSeries = remember(stats) { ambientRhythmSeries(stats.comparison, stats.trends) }
     val shape = RoundedCornerShape(profile.cornerRadiusDp.dp)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    "${mode.label}预览",
-                    color = outerPalette.text,
-                    fontSize = AmbientFont.label,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.semantics { heading() }
-                )
-                Text(
-                    if (einkPreview) mode.einkSummary else mode.summary,
-                    color = outerPalette.muted,
-                    fontSize = AmbientFont.bodyLarge
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            V2EInkPreviewToggle(outerPalette, einkPreview) { einkPreview = it }
-        }
+    // 外圈一道发丝线当「屏框」，和页面其余卡片同一套描边；里面才是摆件自己的底色。
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(LedgerRadius.xl + 4.dp))
+            .background(outerPalette.raised)
+            .border(LedgerStroke.hairline, outerPalette.divider, RoundedCornerShape(LedgerRadius.xl + 4.dp))
+            .padding(LedgerSpace.sm)
+    ) {
         Card(
             colors = CardDefaults.cardColors(containerColor = palette.surface),
             border = if (palette.isEInk) BorderStroke(profile.strokeWidthDp.dp, palette.divider) else null,
-            elevation = CardDefaults.cardElevation(defaultElevation = if (palette.isEInk) 0.dp else 1.5.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             shape = shape,
             modifier = Modifier
                 .fillMaxWidth()
@@ -356,46 +207,25 @@ internal fun V2AmbientModePreviewCard(
     }
 }
 
+/** 预览介质：彩屏 / 墨水屏两段，只换预览画法，不改应用外观。 */
 @Composable
 internal fun V2EInkPreviewToggle(
     palette: MobileV2Palette,
     checked: Boolean,
-    onChange: (Boolean) -> Unit
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(999.dp)
-    Box(
-        Modifier
-            .heightIn(min = 48.dp)
-            .widthIn(min = 48.dp)
-            .toggleable(
-                value = checked,
-                role = Role.Switch,
-                onValueChange = onChange
-            )
-            .semantics {
-                stateDescription = if (checked) "墨水屏预览已开启" else "墨水屏预览已关闭"
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            Modifier
-                .clip(shape)
-                .background(if (checked) palette.selected else palette.surfaceContainer)
-                .then(
-                    if (palette.isEInk) Modifier.border(1.dp, palette.divider, shape)
-                    else Modifier
-                )
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "墨水屏",
-                color = if (checked) palette.text else palette.muted,
-                fontSize = AmbientFont.body,
-                fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal
-            )
-        }
-    }
+    V2SegmentedToggle(
+        palette = palette,
+        options = listOf(
+            V2Segment(false, "彩屏", contentDescription = "彩屏预览"),
+            V2Segment(true, "墨水屏", contentDescription = "墨水屏预览")
+        ),
+        selected = checked,
+        onSelect = onChange,
+        modifier = modifier,
+        role = Role.RadioButton
+    )
 }
 
 @Composable

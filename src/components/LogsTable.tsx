@@ -27,6 +27,8 @@ export interface DetailFilters {
   models: string[];
   machines: string[];
   search: string;
+  /** 只看这些供应商账号的网关行（契约 §2.7），仅本机；从概览热力图选中账号点日期时设置。 */
+  providers?: string[];
 }
 
 interface LogsTableProps {
@@ -452,7 +454,8 @@ export function LogsTable({
     event.preventDefault();
     scrollTableColumnsForward();
   };
-  const activeFilterCount = filters.tools.length + filters.models.length + filters.machines.length + (filters.search ? 1 : 0);
+  const accountFilter = filters.providers ?? [];
+  const activeFilterCount = filters.tools.length + filters.models.length + filters.machines.length + accountFilter.length + (filters.search ? 1 : 0);
   // Same-view collision-shift for the tool dot: ranked by each tool's summed
   // effective tokens across the rows currently loaded (not just this page's
   // visual order), so the assignment stays stable as more rows load in via
@@ -616,6 +619,26 @@ export function LogsTable({
             </div>
           </form>
         </div>
+        {accountFilter.length > 0 && (
+          <div className="detail-account-filter" role="group" aria-label="账号筛选">
+            <span className="detail-filter-label">账号</span>
+            {accountFilter.map((provider) => (
+              <span key={provider} className="detail-account-chip">
+                {provider}
+                <button
+                  type="button"
+                  aria-label={`移除账号筛选：${provider}`}
+                  title="移除账号筛选"
+                  disabled={loading}
+                  onClick={() => onFilterChange('providers', accountFilter.filter((item) => item !== provider))}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+            <span className="detail-account-note">只含经网关记录的请求</span>
+          </div>
+        )}
       </section>
 
       {summary && (
