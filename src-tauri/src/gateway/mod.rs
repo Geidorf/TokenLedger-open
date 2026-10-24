@@ -722,9 +722,29 @@ impl Gateway {
 
     /// Probes every enabled provider once, a few at a time.
     pub async fn probe_providers(&self) {
-        use futures_util::StreamExt;
         let _round = self.prober.round().await;
         let generation = self.prober.generation();
+        self.probe_round(generation).await;
+    }
+
+    /// A timed round: it may wait behind a clicked one, so after taking the
+    /// round lock it runs only if probing is still on, model access is still
+    /// on and nothing was turned off or changed while it waited.
+    async fn probe_scheduled(&self) {
+        let due_at = self.prober.generation();
+        let _round = self.prober.round().await;
+        if !self.enabled.load(Ordering::SeqCst)
+            || !self.prober.settings().enabled
+            || self.prober.generation() != due_at
+        {
+            return;
+        }
+        self.probe_round(due_at).await;
+    }
+
+    /// Callers hold the round lock.
+    async fn probe_round(&self, generation: u64) {
+        use futures_util::StreamExt;
         let providers: Vec<ProviderRecord> =
             self.providers().into_iter().filter(|p| p.enabled).collect();
         let ids: Vec<String> = providers.iter().map(|p| p.id.clone()).collect();
@@ -772,7 +792,7 @@ impl Gateway {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 if gateway.enabled.load(Ordering::SeqCst) && gateway.prober.due() {
-                    gateway.probe_providers().await;
+                    gateway.probe_scheduled().await;
                 }
             }
         });
@@ -1392,6 +1412,38 @@ mod tests {
             .is_empty());
         // Probes never reach the usage ledger.
         assert!(gateway.recent_requests(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_timed_round_queued_behind_a_click_stops_once_probing_is_off() {
+        let harness = harness("probe-queued");
+        let gateway = &harness.gateway;
+        gateway
+            .set_health_probe(ProbeSettings {
+                enabled: true,
+                interval_mins: 15,
+            })
+            .unwrap();
+        tauri::async_runtime::block_on(async {
+            let held = gateway.prober.round().await;
+            let release = async move {
+                tokio::task::yield_now().await;
+                gateway
+                    .set_health_probe(ProbeSettings {
+                        enabled: false,
+                        interval_mins: 15,
+                    })
+                    .unwrap();
+                drop(held);
+            };
+            futures_util::join!(gateway.probe_scheduled(), release);
+        });
+        assert_eq!(
+            harness.seen.auth.lock().unwrap().as_deref(),
+            None,
+            "no request after probing was turned off"
+        );
+        assert!(gateway.prober.results().is_empty());
     }
 
     async fn post(harness: &Harness, path: &str, body: Value, token: &str) -> (u16, String) {
