@@ -23,6 +23,13 @@ const DEGRADED_BELOW: f64 = 0.9;
 /// Consecutive failed upstream calls, newest first, that mean `down`.
 const DOWN_STREAK: u32 = 3;
 
+/// Error prefixes the gateway writes (`server.rs` builds its messages from
+/// these), which tell upstream replies from transport and local failures.
+pub(super) const UPSTREAM_REPLY: &str = "上游返回";
+pub(super) const CONNECT_FAILED: &str = "连接上游失败";
+pub(super) const HEADERS_TIMEOUT: &str = "等待上游响应头";
+pub(super) const GATEWAY_STOPPED: &str = "未连接上游";
+
 /// Codes for local skips: the gateway never reached the upstream, so they
 /// are listed but left out of the success rate and latency.
 const LOCAL_CODES: &[&str] = &[
@@ -126,14 +133,14 @@ pub fn row_code(record: &LedgerRecord) -> Option<&'static str> {
         return Some("answered");
     }
     let error = record.error.as_deref().unwrap_or("");
-    if error.contains("未连接上游") {
+    if error.contains(GATEWAY_STOPPED) {
         // The gateway was stopping; says nothing about the provider.
         return None;
     }
-    if error.starts_with("连接上游失败") || error.starts_with("等待上游响应头") {
+    if error.starts_with(CONNECT_FAILED) || error.starts_with(HEADERS_TIMEOUT) {
         return Some("connect_failed");
     }
-    let from_upstream = error.starts_with("上游返回");
+    let from_upstream = error.starts_with(UPSTREAM_REPLY);
     Some(match record.status {
         429 if mentions_quota(Some(error)) => "quota_exhausted",
         402 => "quota_exhausted",
@@ -294,8 +301,50 @@ fn buckets(rows: &[(&LedgerRecord, &'static str)], now: DateTime<Utc>) -> Vec<He
     out
 }
 
+/// Masks API-key-looking fragments an upstream may echo back: `sk-…`
+/// tokens and whatever follows `Bearer`.
+fn redact(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut after_bearer = false;
+    for word in text.split_inclusive(char::is_whitespace) {
+        let body = word.trim_end();
+        let tail = &word[body.len()..];
+        if after_bearer && !body.is_empty() {
+            out.push_str("***");
+            out.push_str(tail);
+            after_bearer = false;
+            continue;
+        }
+        after_bearer = body.eq_ignore_ascii_case("bearer");
+        let key_at = body.match_indices("sk-").map(|(at, _)| at).find(|at| {
+            !body[..*at]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric())
+        });
+        match key_at {
+            Some(at) => {
+                let rest = &body[at + 3..];
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+                    .unwrap_or(rest.len());
+                out.push_str(&body[..at]);
+                out.push_str(if end >= 4 {
+                    "sk-***"
+                } else {
+                    &body[at..at + 3 + end]
+                });
+                out.push_str(&rest[end..]);
+                out.push_str(tail);
+            }
+            None => out.push_str(word),
+        }
+    }
+    out
+}
+
 fn clip(text: &str) -> String {
-    text.chars().take(ERROR_CHARS).collect()
+    redact(text).chars().take(ERROR_CHARS).collect()
 }
 
 /// Pure: summarises ledger rows (any order) from the last
@@ -506,6 +555,40 @@ mod tests {
             Some("credential_unavailable")
         );
         assert_eq!(code(502, Some("网关已停止，未连接上游。")), None);
+    }
+
+    #[test]
+    fn redacts_key_fragments() {
+        assert_eq!(
+            redact("上游返回 401：Incorrect API key provided: sk-proj-abc123XYZ. Use Bearer tok_9f2 here"),
+            "上游返回 401：Incorrect API key provided: sk-***. Use Bearer *** here"
+        );
+        assert_eq!(redact("task-sk-1 ok"), "task-sk-1 ok");
+        assert_eq!(redact("plain 错误"), "plain 错误");
+    }
+
+    #[test]
+    fn prefixes_match_what_the_server_writes() {
+        // server.rs formats its messages from these constants; pin the text so
+        // a reworded constant cannot silently reclassify old ledger rows.
+        assert_eq!(
+            (
+                UPSTREAM_REPLY,
+                CONNECT_FAILED,
+                HEADERS_TIMEOUT,
+                GATEWAY_STOPPED
+            ),
+            ("上游返回", "连接上游失败", "等待上游响应头", "未连接上游")
+        );
+        let server = include_str!("server.rs");
+        for used in [
+            "{UPSTREAM_REPLY} {status}",
+            "{CONNECT_FAILED}：",
+            "{HEADERS_TIMEOUT}超过",
+            "{GATEWAY_STOPPED}。",
+        ] {
+            assert!(server.contains(used), "server.rs no longer writes {used}");
+        }
     }
 
     #[test]

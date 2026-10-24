@@ -958,13 +958,17 @@ pub fn gateway_recent_route_decisions(
 
 /// Per-provider success rate, latency and error mix from the gateway's own
 /// ledger; main window only, never contacts an upstream.
+/// Parsing up to two 16 MiB files runs off the main thread.
 #[tauri::command]
-pub fn gateway_provider_health(
+pub async fn gateway_provider_health(
     window: tauri::WebviewWindow,
     gateway: tauri::State<'_, Arc<Gateway>>,
 ) -> Result<HealthReport, String> {
     ensure_main(&window)?;
-    gateway.provider_health()
+    let gateway = Arc::clone(&gateway);
+    tauri::async_runtime::spawn_blocking(move || gateway.provider_health())
+        .await
+        .map_err(|error| format!("读取健康度失败：{error}"))?
 }
 
 /// Group members currently cooling down after failures; main window only.

@@ -24,6 +24,7 @@ use super::anthropic;
 use super::context_size::{self, ContextApi, ContextSize};
 use super::convert::{chat_to_response, responses_to_chat, ChatStream, StreamConverter};
 use super::gemini::{self, GeminiPath, GeminiStream};
+use super::health::{CONNECT_FAILED, GATEWAY_STOPPED, HEADERS_TIMEOUT, UPSTREAM_REPLY};
 use super::ledger::{agent_from_user_agent, sse_data, LedgerRecord, SseLines, Usage};
 use super::policy;
 use super::routing::{
@@ -1096,7 +1097,7 @@ async fn attempt(
             .as_ref()
             .is_some_and(|gate| !gate.load(Ordering::SeqCst))
         {
-            return Err("网关已停止，未连接上游。".into());
+            return Err(format!("网关已停止，{GATEWAY_STOPPED}。"));
         }
         let mut builder = client.post(url);
         if provider.wire == WireApi::Anthropic {
@@ -1121,10 +1122,10 @@ async fn attempt(
             .body(payload.to_string())
             .send()
             .await
-            .map_err(|error| format!("连接上游失败：{}", error.without_url()))
+            .map_err(|error| format!("{CONNECT_FAILED}：{}", error.without_url()))
     })
     .await
-    .unwrap_or_else(|_| Err("等待上游响应头超过 60 秒。".to_string()));
+    .unwrap_or_else(|_| Err(format!("{HEADERS_TIMEOUT}超过 60 秒。")));
     let upstream = match sent {
         Ok(response) => response,
         Err(message) => {
@@ -1142,7 +1143,7 @@ async fn attempt(
     if !status.is_success() {
         let text = read_limited(upstream).await;
         let message = format!(
-            "上游返回 {status}：{}",
+            "{UPSTREAM_REPLY} {status}：{}",
             text.chars().take(200).collect::<String>()
         );
         let usage = serde_json::from_str::<Value>(&text)

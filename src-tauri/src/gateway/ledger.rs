@@ -295,19 +295,28 @@ impl Ledger {
     }
 
     /// Records whose `ts` parses to after `since`, oldest first. Reads the
-    /// rotated file too when the current one starts inside the window.
+    /// rotated file too when the current one starts inside the window. The
+    /// lock is held only to open both files, so appends never wait on the
+    /// parse; an open handle keeps reading the same file across a rotation,
+    /// and a half-written last line is skipped.
     pub fn since(&self, since: DateTime<Utc>) -> Result<Vec<LedgerRecord>, String> {
-        let _guard = self
-            .lock
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (current, rotated) = {
+            let _guard = self
+                .lock
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            (
+                open_existing(&self.path)?,
+                open_existing(&self.path.with_extension("jsonl.1"))?,
+            )
+        };
         let after = |record: &LedgerRecord| {
             DateTime::parse_from_rfc3339(&record.ts).is_ok_and(|ts| ts > since)
         };
-        let current = read_all(&self.path)?;
+        let current = read_all(current);
         let mut records = match current.first() {
             Some(first) if !after(first) => Vec::new(),
-            _ => read_all(&self.path.with_extension("jsonl.1"))?,
+            _ => read_all(rotated),
         };
         records.extend(current);
         records.retain(after);
@@ -315,17 +324,23 @@ impl Ledger {
     }
 }
 
-fn read_all(path: &Path) -> Result<Vec<LedgerRecord>, String> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error.to_string()),
+fn open_existing(path: &Path) -> Result<Option<fs::File>, String> {
+    match fs::File::open(path) {
+        Ok(file) => Ok(Some(file)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn read_all(file: Option<fs::File>) -> Vec<LedgerRecord> {
+    let Some(file) = file else {
+        return Vec::new();
     };
-    Ok(BufReader::new(file)
+    BufReader::new(file)
         .lines()
         .map_while(Result::ok)
         .filter_map(|line| serde_json::from_str(&line).ok())
-        .collect())
+        .collect()
 }
 
 /// "codex_cli_rs/0.48.0 (Mac OS 15.0; arm64)" → "codex".
@@ -553,7 +568,7 @@ mod tests {
         };
         assert_eq!(ids("2026-10-24T02:00:00Z"), ["r1", "r2", "r3"]);
         // The current file already covers the window: the rotated one is not read.
-        fs::write(&rotated, "garbage").unwrap();
+        fs::write(&rotated, line("2026-10-24T06:45:00Z", "never")).unwrap();
         assert_eq!(ids("2026-10-24T06:30:00Z"), ["r3"]);
         let _ = fs::remove_dir_all(&dir);
     }
