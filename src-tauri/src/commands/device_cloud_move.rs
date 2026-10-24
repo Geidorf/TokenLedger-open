@@ -8,12 +8,13 @@
 //! originals deleted (fenced by id and `updated_at`, so a row written or
 //! updated under the hostname meanwhile waits for the next sync instead of
 //! being lost). A failure in between
-//! leaves both; the retry copies again and then deletes. An aggregate already
-//! under the device id is never overwritten by an old copy. Once moved, a sync costs one empty read per old id.
+//! leaves both; the retry copies again and then deletes. Where the device id
+//! already has a row under the copy's key, the newer of the two is kept. Once moved, a sync costs one empty read per old id.
 
+use std::collections::HashMap;
 use std::path::Path;
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use serde_json::Value;
 
 use super::{gateway_cloud, supabase_api_error, CloudConfig, CloudSession, CloudSessionUseLease};
@@ -41,24 +42,26 @@ pub(super) fn moved_row(row: &Value, legacy: &str, device_id: &str) -> Option<Va
 /// The latest `updated_at` among copied rows. Rows changed after they were
 /// read carry a later one, so a delete fenced by it keeps them.
 pub(super) fn newest_update(rows: &[Value]) -> Option<DateTime<FixedOffset>> {
-    rows.iter()
-        .filter_map(|row| row.get("updated_at")?.as_str())
-        .filter_map(|value| DateTime::parse_from_rfc3339(value).ok())
-        .max()
+    rows.iter().filter_map(updated_at).max()
 }
 
-/// How a copy is written. An hourly aggregate gets a new key; when one
-/// already exists under it (uploaded by this computer since the switch, from
-/// its own ledger) that one is kept and the old copy is dropped with the
-/// rest. A row whose key has no machine in it is the same row, so it is
-/// renamed in place.
-pub(super) fn copy_preference(key_changed: bool) -> &'static str {
-    if key_changed {
-        "resolution=ignore-duplicates,return=minimal"
-    } else {
-        "resolution=merge-duplicates,return=minimal"
+fn updated_at(row: &Value) -> Option<DateTime<FixedOffset>> {
+    DateTime::parse_from_rfc3339(row.get("updated_at")?.as_str()?).ok()
+}
+
+/// Whether the copy of `source` is written over the row already under its
+/// new key (last written at `existing`). The newer one wins: a row this
+/// computer uploaded from its own ledger since the switch is kept, while a
+/// copy an earlier, interrupted move made is replaced when an old client
+/// has updated the source since.
+pub(super) fn copy_wins(source: &Value, existing: Option<DateTime<FixedOffset>>) -> bool {
+    match existing {
+        None => true,
+        Some(existing) => updated_at(source).is_some_and(|source| source > existing),
     }
 }
+
+const LOOKUP_SIZE: usize = 100;
 
 /// Returns how many cloud rows were moved for the signed-in account.
 pub(super) async fn move_legacy_cloud_rows(
@@ -172,26 +175,64 @@ async fn move_one(
         if copies.len() != rows.len() {
             return Err("云端数据格式无法识别，设备 ID 迁移已停止，请稍后重试。".to_string());
         }
-        let (renamed, kept): (Vec<_>, Vec<_>) = rows
+        // Rows under a renamed key may already exist under the device id.
+        let renamed: Vec<String> = rows
+            .iter()
+            .zip(&copies)
+            .filter(|(row, copy)| row.get("unique_key") != copy.get("unique_key"))
+            .filter_map(|(_, copy)| Some(copy.get("unique_key")?.as_str()?.to_string()))
+            .collect();
+        let mut existing: HashMap<String, DateTime<FixedOffset>> = HashMap::new();
+        for keys in renamed.chunks(LOOKUP_SIZE) {
+            session_lease.ensure_current(app)?;
+            let res = client
+                .get(&url)
+                .query(&[
+                    ("select", "unique_key,updated_at".to_string()),
+                    ("user_id", owner.clone()),
+                    ("unique_key", gateway_cloud::postgrest_in_filter(keys)),
+                ])
+                .header("apikey", &config.supabase_key)
+                .header("Authorization", format!("Bearer {}", session.access_token))
+                .send()
+                .await
+                .map_err(|e| format!("Cloud sync failed: {e}"))?;
+            session_lease.ensure_current(app)?;
+            if !res.status().is_success() {
+                let status = res.status();
+                let body = res.text().await.unwrap_or_default();
+                return Err(supabase_api_error(status, body));
+            }
+            let found: Vec<Value> = res
+                .json()
+                .await
+                .map_err(|e| format!("Cloud sync failed: {e}"))?;
+            for row in found {
+                if let Some(key) = row.get("unique_key").and_then(Value::as_str) {
+                    // An unreadable `updated_at` counts as old.
+                    let at = updated_at(&row).unwrap_or(DateTime::<Utc>::MIN_UTC.fixed_offset());
+                    existing.insert(key.to_string(), at);
+                }
+            }
+        }
+        let writes: Vec<Value> = rows
             .iter()
             .zip(copies)
-            .partition(|(row, copy)| row.get("unique_key") != copy.get("unique_key"));
-        for (batch, prefer) in [
-            (renamed, copy_preference(true)),
-            (kept, copy_preference(false)),
-        ] {
-            if batch.is_empty() {
-                continue;
-            }
-            let batch: Vec<Value> = batch.into_iter().map(|(_, copy)| copy).collect();
+            .filter(|(row, copy)| {
+                let key = copy.get("unique_key").and_then(Value::as_str);
+                copy_wins(row, key.and_then(|key| existing.get(key)).copied())
+            })
+            .map(|(_, copy)| copy)
+            .collect();
+        if !writes.is_empty() {
             session_lease.ensure_current(app)?;
             let res = client
                 .post(format!("{url}?on_conflict=user_id,unique_key"))
                 .header("apikey", &config.supabase_key)
                 .header("Authorization", format!("Bearer {}", session.access_token))
                 .header("Content-Type", "application/json")
-                .header("Prefer", prefer)
-                .json(&batch)
+                .header("Prefer", "resolution=merge-duplicates,return=minimal")
+                .json(&writes)
                 .send()
                 .await
                 .map_err(|e| format!("Cloud sync failed: {e}"))?;
@@ -262,15 +303,19 @@ mod tests {
     }
 
     #[test]
-    fn renamed_aggregates_never_overwrite_rows_already_under_the_device_id() {
-        assert_eq!(
-            copy_preference(true),
-            "resolution=ignore-duplicates,return=minimal"
+    fn the_newer_row_wins_when_the_device_id_already_has_the_hour() {
+        let at = |text: &str| Some(DateTime::parse_from_rfc3339(text).unwrap());
+        let source = json!({ "updated_at": "2026-10-24T10:00:00+00:00" });
+        assert!(copy_wins(&source, None), "a free key is copied");
+        assert!(
+            !copy_wins(&source, at("2026-10-24T11:00:00+00:00")),
+            "this computer's later upload is kept"
         );
-        assert_eq!(
-            copy_preference(false),
-            "resolution=merge-duplicates,return=minimal"
+        assert!(
+            copy_wins(&source, at("2026-10-24T09:00:00+00:00")),
+            "an earlier copy is refreshed when the source changed since"
         );
+        assert!(!copy_wins(&json!({}), at("2026-10-24T09:00:00+00:00")));
     }
 
     #[test]
@@ -286,6 +331,7 @@ mod tests {
             gateway_cloud::HourState {
                 fingerprint: "f".into(),
                 keys: vec!["agg_MY-PC_codex_m_2026-10-01 10:00:00".into()],
+                key_machine: None,
             },
         );
         let moved = gateway_cloud::move_state(&state, "u", "MY-PC", "tl-0123456789abcdef")
@@ -294,6 +340,10 @@ mod tests {
         assert_eq!(
             moved.hours["2026-10-01 10:00:00"].keys,
             vec!["agg_tl-0123456789abcdef_codex_m_2026-10-01 10:00:00".to_string()]
+        );
+        assert_eq!(
+            moved.hours["2026-10-01 10:00:00"].key_machine.as_deref(),
+            Some("MY-PC")
         );
         assert!(
             gateway_cloud::move_state(&state, "other", "MY-PC", "tl-0123456789abcdef").is_none()
