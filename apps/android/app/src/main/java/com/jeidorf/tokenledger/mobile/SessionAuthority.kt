@@ -49,9 +49,12 @@ internal class SessionAuthority(
     }
 
     /** Called synchronously at the start of logout/expiry, before any suspended cleanup. */
-    fun revokeNow() {
+    fun revokeNow(): MobileSession? {
+        // Reading is only for the server-side logout; it must never block the local tombstone.
+        val previous = runCatching { persistence.snapshot().session }.getOrNull()
         persistence.revoke()
         synchronized(knownSessions) { knownSessions.clear() }
+        return previous
     }
 
     // Fetch paths already persist a rotation before returning. A later caller may only confirm

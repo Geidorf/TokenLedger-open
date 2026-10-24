@@ -1,0 +1,76 @@
+name: User Guide Pages
+
+# 把 docs/guide/（中英双语用户手册）发布到 GitHub Pages。只发布手册，不发布 docs/ 其余内容。
+# PR 上只构建、不发布，用来提前发现 Jekyll 构建错误。
+# 首次使用前，仓库设置 › Pages › Source 需选「GitHub Actions」。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/guide/**'
+      - 'scripts/build-guide-site.mjs'
+      - 'scripts/build-guide-site.test.mjs'
+      - '.github/workflows/guide-pages.yml'
+  pull_request:
+    paths:
+      - 'docs/guide/**'
+      - 'scripts/build-guide-site.mjs'
+      - 'scripts/build-guide-site.test.mjs'
+      - '.github/workflows/guide-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tokenledger-guide-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build user guide site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # configure-pages 读取 Pages 站点设置。
+      pages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stage the guide
+        run: |
+          node --test scripts/build-guide-site.test.mjs
+          node scripts/build-guide-site.mjs _guide_site "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./_guide_site
+          destination: ./_site
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

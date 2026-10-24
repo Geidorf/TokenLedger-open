@@ -41,6 +41,35 @@ class SupabaseGateway(
     }
 
     /**
+     * Ends this device's server session so its refresh token can no longer be exchanged.
+     * `scope=local` leaves the user's other devices signed in. An expired access token is
+     * swapped for a fresh one first; the rotated token is never persisted and dies with the logout.
+     */
+    suspend fun revokeSession(session: MobileSession) = withContext(Dispatchers.IO) {
+        try {
+            logout(session.accessToken)
+        } catch (error: SupabaseHttpException) {
+            if (error.status != 401 && error.status != 403) throw error
+            logout(parseSession(
+                request(
+                    path = "/auth/v1/token?grant_type=refresh_token",
+                    method = "POST",
+                    body = JSONObject().put("refresh_token", session.refreshToken)
+                )
+            ).accessToken)
+        }
+    }
+
+    private fun logout(accessToken: String) {
+        request(
+            path = "/auth/v1/logout?scope=local",
+            method = "POST",
+            bearerToken = accessToken,
+            maxResponseBytes = SUPABASE_ERROR_MAX_RESPONSE_BYTES
+        )
+    }
+
+    /**
      * Reads the owner-scoped desktop projection. Quota deliberately stays outside Stats v2 and
      * this method never refreshes or persists a session; DashboardViewModel supplies a committed
      * access token so quota failure cannot take down the usage dashboard.
@@ -93,6 +122,16 @@ class SupabaseGateway(
                 maxResponseBytes = ACTIVITY_RHYTHM_MAX_RESPONSE_BYTES
             )
         }
+
+    suspend fun fetchBudgetSnapshots(session: MobileSession): String = withContext(Dispatchers.IO) {
+        request(
+            path = "/rest/v1/rpc/$BUDGET_SNAPSHOTS_READ_FUNCTION",
+            method = "POST",
+            bearerToken = session.accessToken,
+            body = JSONObject(),
+            maxResponseBytes = BUDGET_SNAPSHOTS_MAX_RESPONSE_BYTES
+        )
+    }
 
     suspend fun fetchDashboardStats(
         session: MobileSession,
@@ -851,6 +890,8 @@ internal const val ROUTING_SNAPSHOTS_READ_FUNCTION = "get_routing_snapshots_v1"
 // 两年按小时分桶再加按日 × 模型，留足余量；超出按读取失败处理。
 private const val ACTIVITY_RHYTHM_MAX_RESPONSE_BYTES = 4 * 1_024 * 1_024
 internal const val ACTIVITY_RHYTHM_READ_FUNCTION = "get_activity_rhythm_v1"
+internal const val BUDGET_SNAPSHOTS_READ_FUNCTION = "get_budget_snapshots_v1"
+private const val BUDGET_SNAPSHOTS_MAX_RESPONSE_BYTES = 128 * 1_024
 private const val SUPABASE_ERROR_MAX_RESPONSE_BYTES = 128 * 1_024
 
 internal class SupabaseResponseTooLargeException(maxBytes: Int) :

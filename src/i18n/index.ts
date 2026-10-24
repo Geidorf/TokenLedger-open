@@ -112,3 +112,15 @@ export function useT(): (key: MessageKey, vars?: Vars) => string {
   const current = useLang();
   return (key, vars) => t(key, vars, current);
 }
+
+/**
+ * A label table whose values are looked up on each read, so module-level maps
+ * such as `STATUS_LABEL[code]` follow the current language.
+ */
+export function localized<K extends string>(keys: Record<K, MessageKey>): Record<K, string> {
+  const table = {} as Record<K, string>;
+  for (const name of Object.keys(keys) as K[]) {
+    Object.defineProperty(table, name, { enumerable: true, get: () => t(keys[name]) });
+  }
+  return table;
+}

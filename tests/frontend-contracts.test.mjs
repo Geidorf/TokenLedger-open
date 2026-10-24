@@ -194,7 +194,8 @@ test('看板刷新入口根据本地或云端动作暴露准确的进行中文�
 
 test('顶栏云端同步入口在进行期间暴露动作级反馈并锁定重复工作', () => {
   const source = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  assert.match(source, /const syncActionAriaLabel = busy\.sync[\s\S]*?正在同步云端数据[\s\S]*?请先检查云端状态[\s\S]*?立即同步云端/);
+  assert.match(source, /const syncActionAriaLabel = busy\.sync[\s\S]*?t\('shell\.sync\.busy'\)[\s\S]*?t\('shell\.sync\.checkFirst'\)[\s\S]*?t\('shell\.sync\.now'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.sync\.busy': '正在同步云端数据'[\s\S]*'shell\.sync\.checkFirst': '请先检查云端状态'[\s\S]*'shell\.sync\.now': '立即同步云端'/);
   assert.match(source, /aria-label=\{syncActionAriaLabel\}[\s\S]*disabled=\{syncDisabled\}[\s\S]*aria-busy=\{busy\.sync \|\| undefined\}/);
   assert.match(source, /title=\{syncActionTitle\}/);
   assert.match(source, /<Cloud className=\{`h-4 w-4 \$\{busy\.sync \? 'animate-spin' : ''\}`\}/);
@@ -1777,7 +1778,8 @@ test('entity drill-down binds explicit tool identity and local scope drops cloud
   const logsTable = readSource(path.join(process.cwd(), 'src', 'components', 'LogsTable.tsx'));
   assert.match(entityHook, /getElementById\('details-page-title'\)/);
   assert.match(entityHook, /heading\.focus\(\{ preventScroll: true \}\)/);
-  assert.match(logsTable, /<h1 id="details-page-title" className="page-title" tabIndex=\{-1\}>消耗明细<\/h1>/);
+  assert.match(logsTable, /<h1 id="details-page-title" className="page-title" tabIndex=\{-1\}>\{t\('logs\.title'\)\}<\/h1>/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'logs\.title': '消耗明细'/);
 });
 
 test('multi-filter capability fails closed when query echo is absent or conflicting', () => {
@@ -1815,9 +1817,10 @@ test('dashboard defaults keep KPI then comparison trend while allowing stored mo
   const trend = source.indexOf('<TrendPanel');
   const contributorGrid = source.indexOf('<UsageSplitPanel');
   assert.ok(trend !== -1 && contributorGrid !== -1 && trend < contributorGrid);
-  const preferences = readSource(path.join(process.cwd(), 'src', 'utils', 'useDashboardDisplayPreferences.ts'));
-  assert.match(preferences, /DASHBOARD_MODULE_IDS = \['kpi', 'trend', 'quota', 'distribution', 'insights'\]/);
-  assert.match(source, /moduleOrder\.filter\(moduleVisible\)\.map/);
+  // 卡片顺序由当前布局决定（dashboardLayout.ts）；默认布局沿用改版前的顺序：统计条、额度要点、趋势、额度详情、拆分。
+  const layout = readSource(path.join(process.cwd(), 'src', 'utils', 'dashboardLayout.ts'));
+  assert.match(layout, /DASHBOARD_CARD_IDS = \[\s*'metrics',\s*'quotaHighlights',\s*'trend',\s*'quota',\s*'split',/);
+  assert.match(source, /<DashboardLayoutGrid[\s\S]*?cards=\{layoutCards\}/);
 });
 
 test('workbuddy 多维分析视图已作为死代码删除（T10.160），不应恢复', () => {
@@ -1855,7 +1858,7 @@ test('overview day drill opens a single-day review and model cost reports use ev
   assert.match(source, /<ModelCostDistributionPanel models=\{allModelsList\}/);
   assert.match(source, /<CostEfficiencyQuadrantPanel models=\{allModelsList\}/);
   // 模型排行并入用量拆分的模型维度（对齐 magpie Split by），同样看到全部模型。
-  assert.match(source, /<UsageSplitPanel key=\{module\} stats=\{stats\}/);
+  assert.match(source, /<UsageSplitPanel stats=\{stats\}/);
 });
 
 test('populated dashboard groups insight panels in a cache-economics then time-behavior narrative', () => {
@@ -2002,7 +2005,8 @@ test('device table actions expose a quiet reversible filter instead of a tall in
   const source = readSource(path.join(process.cwd(), 'src', 'components', 'LogsTable.tsx'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
   assert.match(source, /aria-pressed=\{machineSelected\}/);
-  assert.match(source, /从设备筛选中移除 \$\{machine\}/);
+  assert.match(source, /t\('logs\.machine\.removeAria', \{ machine \}\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'logs\.machine\.removeAria': '从设备筛选中移除 \{machine\}'/);
   assert.match(source, /machines\.filter\(\(item\) => item !== machine\)/);
   assert.match(source, /<Monitor[\s\S]*aria-hidden="true"/);
   assert.match(source, /className="machine-filter-surface"/);
@@ -3242,10 +3246,11 @@ test('settings switches expose their visible labels to assistive technology', ()
   const source = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'SettingsPrimitives.tsx'));
   const toggle = source.slice(source.indexOf('function SettingsToggleRow'), source.indexOf('function SettingsActionRow'));
-  assert.match(toggle, /const actionLabel = busy \? `\$\{label\}，保存中` : label/);
+  assert.match(toggle, /const actionLabel = busy \? t\('settings\.toggle\.savingAria', \{ label \}\) : label/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'settings\.toggle\.savingAria': '\{label\}，保存中'[\s\S]*'settings\.toggle\.saving': '保存中…'/);
   assert.match(toggle, /role="switch"[\s\S]*aria-label=\{actionLabel\}[\s\S]*aria-describedby=\{hint \? hintId : undefined\}[\s\S]*aria-checked=\{checked\}/);
   assert.match(toggle, /aria-busy=\{busy \|\| undefined\}/);
-  assert.match(toggle, /settings-toggle-feedback[\s\S]*保存中…/);
+  assert.match(toggle, /settings-toggle-feedback[\s\S]*t\('settings\.toggle\.saving'\)/);
 });
 
 test('settings switches share the saved-state busy signal across system and quota sections', () => {
@@ -3461,7 +3466,8 @@ test('top bar status changes are announced without making action buttons live co
 
 test('top bar scan action exposes a visible and accessible busy state', () => {
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  assert.match(sidebar, /const scanActionAriaLabel = busy\.scan \? '正在扫描本地各 AI 工具日志' : '扫描本地日志';/);
+  assert.match(sidebar, /const scanActionAriaLabel = busy\.scan \? t\('shell\.scan\.busy'\) : t\('shell\.scan\.aria'\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.scan\.busy': '正在扫描本地各 AI 工具日志'[\s\S]*'shell\.scan\.aria': '扫描本地日志'/);
   assert.match(sidebar, /aria-label=\{scanActionAriaLabel\}[\s\S]*disabled=\{busy\.scan\}[\s\S]*aria-busy=\{busy\.scan \|\| undefined\}/);
   assert.match(sidebar, /aria-label=\{scanActionAriaLabel\}[\s\S]*data-tooltip=\{scanActionTitle\}/);
   assert.match(sidebar, /<RefreshCw className=\{`h-4 w-4 \$\{busy\.scan \? 'animate-spin' : ''\}`\}/);
@@ -3483,10 +3489,15 @@ test('看板同步与恢复入口共享进行中语义', () => {
 test('保留旧画面时页头提示的范围写法与顶栏范围控件一致（T10.181 R-46，GLB-01）', () => {
   const header = readSource(path.join(process.cwd(), 'src', 'components', 'RangeControls.tsx'));
   const optionsStart = header.indexOf('const RANGE_OPTIONS');
-  const options = [...header.slice(optionsStart, header.indexOf('];', optionsStart)).matchAll(/\['(\w+)', '([^']+)'\]/g)];
+  const zhCopy = readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts'));
+  const options = [...header.slice(optionsStart, header.indexOf('];', optionsStart)).matchAll(/\['(\w+)', '(range\.\w+)'\]/g)];
   assert.equal(options.length, 5);
-  for (const [, key, label] of options) assert.equal(rangeControlLabel(key, null), label, `${key} 与范围控件不同写法`);
-  assert.match(header, /const customRangeLabel = customRange \? formatCustomRangeLabel\(customRange\.start, customRange\.end\) : '自定义';/);
+  for (const [, key, messageKey] of options) {
+    const label = zhCopy.match(new RegExp(`'${messageKey.replace('.', '\\.')}': '([^']+)'`))?.[1];
+    assert.equal(rangeControlLabel(key, null), label, `${key} 与范围控件不同写法`);
+  }
+  assert.match(header, /const customRangeLabel = customRange \? formatCustomRangeLabel\(customRange\.start, customRange\.end\) : t\('range\.custom'\);/);
+  assert.match(zhCopy, /'range\.custom': '自定义'/);
   assert.equal(rangeControlLabel('custom', { start: '2026-07-08', end: '2026-07-14' }), '7月8日—7月14日');
   assert.equal(rangeControlLabel('custom', null), '自定义');
   assert.equal(heldRangeNoticeCopy('本周', '今日'), '正在加载「本周」，下方暂为「今日」的数据');
@@ -3518,8 +3529,9 @@ test('看板恢复动作按失败种类给出且都有 44px 目标（T10.200，T
   assert.equal((dashboard.match(/\{renderStatsRecoveryActions\('(?:panel|banner)'\)\}/g) || []).length, 3);
   assert.doesNotMatch(dashboard, /onClick=\{onRelogin\}>重新登录<\/button>/);
   // 「选择预设范围」把焦点移到范围控件：选择器依赖 RangeControl 这一组的无障碍名称。
-  assert.match(dashboard, /const RANGE_CONTROL_GROUP_SELECTOR = '\[role="group"\]\[aria-label="统计时间范围"\]';/);
-  assert.match(header, /className="segmented range-control tl-seg" role="group" aria-label="统计时间范围"/);
+  // 选择器用 data-range-control，不依赖会随界面语言变化的无障碍名称。
+  assert.match(dashboard, /const RANGE_CONTROL_GROUP_SELECTOR = '\[role="group"\]\[data-range-control\]';/);
+  assert.match(header, /className="segmented range-control tl-seg" role="group" data-range-control aria-label=\{t\('range\.groupAria'\)\}/);
   // 动作只用这三种按钮类，它们在触控下限列表里（min-block-size: 44px）。
   assert.match(dashboard, /\? variant === 'panel' \? 'primary-inline' : 'secondary-inline'\n\s*: action === 'view-local' \? 'ghost-inline' : 'secondary-inline';/);
   assert.match(css, /\n\.nav-item,\n\.primary-inline,\n\.secondary-inline,\n\.ghost-inline,[^{]*\{\n\s*min-block-size: 44px;/);
@@ -3571,10 +3583,11 @@ test('top bar segments and icon actions preserve a 44px target (GLB-03)', () => 
   // The visible thumb, track and hover fill are drawn inset, not the hit area.
   assert.match(shell, /--seg-inset-y: 8px;/);
   assert.match(shell, /\.topbar-icon-btn::after,\n\.topbar-text-btn::after \{[^}]*inset: 8px 7px;/);
-  assert.match(sidebar, /role="group" aria-label="快捷工具与战报"/);
-  assert.match(sidebar, /aria-label="生成数据战报卡片"[\s\S]*title="生成数据战报卡片"/);
-  assert.match(sidebar, /aria-label=\{wallpaperBusy \? '正在设置桌面壁纸' : '一键设置桌面壁纸'\}/);
-  assert.match(sidebar, /aria-label=\{wallpaperBusy \? '正在设置锁屏壁纸' : '一键设置锁屏壁纸'\}/);
+  assert.match(sidebar, /role="group" aria-label=\{t\('shell\.tools'\)\}/);
+  assert.match(sidebar, /aria-label=\{t\('shell\.shareCard'\)\}[\s\S]*title=\{t\('shell\.shareCard'\)\}/);
+  assert.match(sidebar, /aria-label=\{wallpaperBusy \? t\('shell\.wallpaper\.desktopBusy'\) : t\('shell\.wallpaper\.desktopAction'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.tools': '快捷工具与战报'[\s\S]*'shell\.shareCard': '生成数据战报卡片'/);
+  assert.match(sidebar, /aria-label=\{wallpaperBusy \? t\('shell\.wallpaper\.lockscreenBusy'\) : t\('shell\.wallpaper\.lockscreenAction'\)\}/);
   assert.match(sidebar, /className="topbar-status-label" aria-hidden="true"/);
   assert.match(sidebar, /title=\{cloudStatusLabel\}/);
   assert.match(sidebar, /aria-label=\{syncActionAriaLabel\}[\s\S]*data-tooltip=\{syncActionTitle\}/);
@@ -3749,7 +3762,8 @@ test('ID copy actions expose in-progress semantics and block duplicate clicks', 
   assert.match(logsSource, /status: 'copying'/);
   assert.match(logsSource, /disabled=\{isSessionCopying\}/);
   assert.match(logsSource, /aria-busy=\{isSessionCopying \|\| undefined\}/);
-  assert.match(logsSource, /'正在复制 Session ID'/);
+  assert.match(logsSource, /t\('logs\.copy\.busy'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'logs\.copy\.busy': '正在复制 Session ID'/);
   assert.match(entityTest, /复制进行中显示忙碌语义并阻止重复点击/);
   assert.match(logsTest, /Session ID 复制进行中显示忙碌语义并阻止重复点击/);
 });
@@ -3759,9 +3773,9 @@ test('detail model links and expanded IDs remain readable and selectable', () =>
   const logs = readSource(path.join(process.cwd(), 'src', 'components', 'LogsTable.tsx'));
   assert.match(css, /\.table-model-link\s*\{[\s\S]*-webkit-line-clamp:\s*2;[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*white-space:\s*normal;/);
   assert.match(css, /\.log-detail-grid code\s*\{[\s\S]*overflow:\s*visible;[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*text-overflow:\s*clip;[\s\S]*white-space:\s*normal;/);
-  assert.match(logs, /<span>模型 ID<\/span><code title=\{log\.model\}>\{log\.model\}<\/code>/);
+  assert.match(logs, /<span>\{t\('logs\.detail\.modelId'\)\}<\/span><code title=\{log\.model\}>\{log\.model\}<\/code>/);
   assert.match(logs, /<span>Session ID<\/span><code title=\{log\.sessionId \|\| '—'\}>\{log\.sessionId \|\| '—'\}<\/code>/);
-  assert.match(logs, /<span>完整时间<\/span><code title=\{log\.timestamp\}>\{log\.timestamp\}<\/code>/);
+  assert.match(logs, /<span>\{t\('logs\.detail\.fullTime'\)\}<\/span><code title=\{log\.timestamp\}>\{log\.timestamp\}<\/code>/);
 });
 
 test('entity dashboard titles keep long identities readable across viewport sizes', () => {
@@ -3798,7 +3812,8 @@ test('detail granularity distinguishes aggregated rows from per-request rows', (
   const entityTest = readSource(path.join(process.cwd(), 'src', 'components', 'EntityDashboardModal.test.tsx'));
   assert.match(logs, /import \{ detailGranularityLabel, rowGranularityLabel \} from '\.\.\/utils\/detailGranularity'/);
   assert.match(granularity, /export function detailGranularityLabel\(details: DetailGranularitySource \| null \| undefined\)/);
-  assert.match(granularity, /details\.items\.some\(\(item\) => \(item\.requests \?\? 1\) > 1\) \? '日志聚合' : '逐次请求'/);
+  assert.match(granularity, /details\.items\.some\(\(item\) => \(item\.requests \?\? 1\) > 1\) \? t\('granularity\.logAggregate'\) : t\('granularity\.perRequest'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'granularity\.logAggregate': '日志聚合'[\s\S]*'granularity\.perRequest': '逐次请求'/);
   assert.match(granularity, /export function rowGranularityLabel\(/);
   assert.match(entity, /import \{ detailGranularityLabel \} from '\.\.\/utils\/detailGranularity'/);
   assert.match(entity, /const granularityLabel = detailGranularityLabel\(data\?\.historyPage\)/);
@@ -3810,10 +3825,11 @@ test('phone detail tables announce horizontally hidden fields and expose a keybo
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
   const logs = readSource(path.join(process.cwd(), 'src', 'components', 'LogsTable.tsx'));
   const phoneBlock = css.slice(css.indexOf('@media (max-width: 600px)'));
-  assert.match(logs, /role="region"[\s\S]*aria-label="明细记录表格，可横向滚动查看更多字段"[\s\S]*tabIndex=\{0\}/);
+  assert.match(logs, /role="region"[\s\S]*aria-label=\{t\('logs\.table\.aria'\)\}[\s\S]*tabIndex=\{0\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'logs\.table\.aria': '明细记录表格，可横向滚动查看更多字段'/);
   assert.match(logs, /scrollWidth - element\.clientWidth - element\.scrollLeft > 2/);
   assert.match(logs, /className=\{`log-table-scroll-cue\$\{hasMoreTableColumns \? ' is-visible' : ''\}`\}/);
-  assert.match(logs, /aria-label="向右查看更多字段"[\s\S]*aria-controls="detail-log-table"/);
+  assert.match(logs, /aria-label=\{t\('logs\.table\.moreAria'\)\}[\s\S]*aria-controls="detail-log-table"/);
   assert.match(logs, /onClick=\{scrollTableColumnsForward\}[\s\S]*onKeyDown=\{handleTableScrollCueKeyDown\}/);
   assert.match(logs, /event\.key !== 'Enter' && event\.key !== ' '/);
   assert.match(logs, /aria-hidden=\{!hasMoreTableColumns\}[\s\S]*tabIndex=\{hasMoreTableColumns \? 0 : -1\}/);
@@ -3830,7 +3846,8 @@ test('phone detail rows surface effective tokens, cost and time before expansion
   const phoneBlock = css.slice(css.indexOf('@media (max-width: 600px)'));
   const narrowPhoneBlock = css.slice(css.indexOf('@media (max-width: 340px)'));
   // T10.154 D46：窄屏摘要的「成本」改为「费用」，金额按单条记录精度，未知写「不可得」。
-  assert.match(logs, /className="log-mobile-summary"[\s\S]*?有效 Token[\s\S]*?formatEstimatedUsd\(log\.cost, 'record'\)[\s\S]*?费用[\s\S]*?缓存/);
+  assert.match(logs, /className="log-mobile-summary"[\s\S]*?t\('logs\.effectiveTokens'\)[\s\S]*?formatEstimatedUsd\(log\.cost, 'record'\)[\s\S]*?t\('logs\.row\.cost'\)[\s\S]*?t\('logs\.row\.cache'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'logs\.effectiveTokens': '有效 Token'[\s\S]*'logs\.row\.cost': '费用'[\s\S]*'logs\.row\.cache': '缓存'/);
   assert.match(logs, /<time className="log-mobile-time font-mono" dateTime=\{log\.timestamp\}>\{formatTimestamp\(log\.timestamp\)\}<\/time>/);
   assert.match(logs, /<td colSpan=\{10\}>/);
   assert.match(phoneBlock, /\.log-table \{[\s\S]*?min-width:\s*680px;[\s\S]*?table-layout:\s*auto;/);
@@ -3857,14 +3874,15 @@ test('phone-width toolbar keeps commands in a contained horizontal strip', () =>
   assert.match(phoneBlock, /\.header-controls::-webkit-scrollbar \{[\s\S]*display:\s*none;/);
   assert.match(header, /className="header-controls"[\s\S]*role="group"[\s\S]*aria-label=\{headerControlsLabel\}/);
   // 范围、设备与战报都在用量页内工具行（T10.276；请求并入用量后顶栏不再托管任何一项）。
-  assert.match(header, /aria-label="数据范围"/);
+  assert.match(header, /aria-label=\{t\('header\.scope\.aria'\)\}/);
   assert.doesNotMatch(header, /<ShareCardButton|<CloudDeviceSelect|<RangeControl/);
   assert.match(header, /function scrollHeaderElement\(element: HTMLElement, left: number, behavior: ScrollBehavior\)[\s\S]*typeof element\.scrollTo === 'function'[\s\S]*element\.scrollTo\(\{ left, behavior \}\)[\s\S]*element\.scrollLeft = left/);
   assert.match(header, /scrollHeaderElement\(controls, 0, 'auto'\)[\s\S]*\}, \[activeTab\]\);/);
-  assert.match(header, /headerControlsLabel[\s\S]*顶部控制器，可横向滚动查看更多命令/);
-  assert.match(header, /headerControlsLabel[\s\S]*主题设置/);
+  assert.match(header, /headerControlsLabel[\s\S]*t\('header\.controls\.usage'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'header\.controls\.usage': '顶部控制器，可横向滚动查看更多命令'/);
+  assert.match(header, /headerControlsLabel[\s\S]*t\('header\.controls\.settings'\)/);
   assert.match(phoneBlock, /\.header-controls-shell \{[\s\S]*position:\s*relative;[\s\S]*width:\s*100%;/);
-  assert.match(header, /className=\{`header-controls-scroll-cue[\s\S]*type="button"[\s\S]*aria-label="向右查看更多顶部命令"[\s\S]*onClick=\{scrollHeaderControlsForward\}/);
+  assert.match(header, /className=\{`header-controls-scroll-cue[\s\S]*type="button"[\s\S]*aria-label=\{t\('header\.moreControls'\)\}[\s\S]*onClick=\{scrollHeaderControlsForward\}/);
   assert.match(header, /onKeyDown=\{handleHeaderControlsCueKeyDown\}/);
   assert.match(header, /event\.key !== 'Enter' && event\.key !== ' '/);
   assert.match(header, /aria-hidden=\{!hasMoreHeaderControls\}[\s\S]*tabIndex=\{hasMoreHeaderControls \? 0 : -1\}/);
@@ -3986,8 +4004,9 @@ test('cloud status and remote quota reads require an explicit user check', () =>
   assert.match(native, /quota::retry_quota_providers/);
   assert.match(native, /quota::retry_local_quota_providers/);
   assert.match(native, /quota::get_local_quota_providers/);
-  assert.match(sidebar, /本地就绪 · 云端状态待检查/);
-  assert.match(sidebar, /请先在设置与云端检查云端状态/);
+  assert.match(sidebar, /t\('shell\.cloud\.unknown'\)/);
+  assert.match(sidebar, /t\('shell\.sync\.checkInSettings'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.cloud\.unknown': '本地就绪 · 云端状态待检查'[\s\S]*'shell\.sync\.checkInSettings': '请先在设置与云端检查云端状态'/);
   assert.match(sidebar, /onCheckCloudStatus\?: \(\) => void/);
   assert.match(sidebar, /if \(!cloudStatusKnown && onCheckCloudStatus\)/);
   assert.match(cloudSection, /查看登录状态会读取本机钥匙串，仅在你主动点击后执行/);
@@ -6253,7 +6272,7 @@ test('弹窗与模态遮罩使用 Portal 挂载至根节点并保持最高层级
 // T10.115 replaces the long-page scrollspy with one visible settings destination.
 // Rendering, focus, history and retained form state are exercised in SettingsTab.test.tsx.
 test('settings destinations stay reachable through user language and unique stable hashes', () => {
-  assert.equal(new Set(SETTINGS_DESTINATIONS.map((item) => item.id)).size, 8);
+  assert.equal(new Set(SETTINGS_DESTINATIONS.map((item) => item.id)).size, 9);
   assert.equal(findSettingsDestinations('')[0].id, 'settings-scan');
   assert.equal(findSettingsDestinations('壁纸')[0].id, 'settings-wallpaper');
   assert.equal(findSettingsDestinations('不存在的设置关键词').length, 0);
@@ -6263,6 +6282,9 @@ test('settings destinations stay reachable through user language and unique stab
   assert.equal(findSettingsDestinations('小组件')[0].id, 'settings-widget');
   // U-112：模型接入总开关有独立分区，搜「网关」直达。
   assert.equal(findSettingsDestinations('网关')[0].id, 'settings-model-access');
+  // 预算与超支提醒有独立分区，搜「预算」「超支」直达。
+  assert.equal(findSettingsDestinations('预算')[0].id, 'settings-budget');
+  assert.equal(findSettingsDestinations('超支')[0].id, 'settings-budget');
   // T10.272（U-99）：旧「API 配置」分区已下线，由侧栏模型接入四页取代。
   assert.equal(findSettingsDestinations('API endpoint').length, 0);
   assert.ok(!SETTINGS_DESTINATIONS.some((item) => item.id === 'settings-api-profiles'));

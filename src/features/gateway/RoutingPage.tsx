@@ -8,6 +8,7 @@ import { deleteRoutingGroup, errorText, listProviders, listRoutingGroups, recent
 import {
   ATTEMPT_OUTCOME_LABEL,
   DECISION_REASON_LABEL,
+  decisionDetail,
   defaultCondition,
   MAX_WEIGHT,
   memberWeight,
@@ -22,12 +23,14 @@ import {
   ttlLabel,
   weightShare,
 } from './helpers';
-import type { CoolingMember, ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
+import { HealthBadge, useProviderHealth } from './ProviderHealth';
+import type { CoolingMember, ProviderHealth, ProviderView, RouteDecision, RoutingGroup, RoutingRule, RoutingStrategy, RuleCondition, RuleKind } from './types';
 import { Sheet } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 import { RoutingStage, RoutingStageEmpty } from './RoutingStage';
 import { DecisionTrace } from './DecisionTrace';
 import { readExternalGateway, useRoutingLive } from './useRoutingLive';
+import { t, useLang } from '../../i18n';
 
 interface PageProps {
   onNotify: (type: ToastType, text: string) => void;
@@ -38,23 +41,23 @@ const STRATEGIES = Object.keys(STRATEGY_LABEL) as RoutingStrategy[];
 const RULE_KINDS = Object.keys(RULE_KIND_LABEL) as RuleKind[];
 
 function splitList(text: string): string[] {
-  return text.split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean);
+  return text.split(/[\s,\uff0c]+/).map((item) => item.trim()).filter(Boolean);
 }
 
 function ConditionFields({ condition, onChange }: { condition: RuleCondition; onChange: (next: RuleCondition) => void }) {
   switch (condition.kind) {
     case 'inputCharsOver':
-      return <input type="number" min={1} aria-label="字符数" value={condition.chars} onChange={(event) => onChange({ kind: 'inputCharsOver', chars: Math.max(1, Number(event.target.value) || 1) })} />;
+      return <input type="number" min={1} aria-label={t('routing.cond.chars')} value={condition.chars} onChange={(event) => onChange({ kind: 'inputCharsOver', chars: Math.max(1, Number(event.target.value) || 1) })} />;
     case 'reasoningEffort':
-      return <input aria-label="推理强度" value={condition.efforts.join(',')} onChange={(event) => onChange({ kind: 'reasoningEffort', efforts: splitList(event.target.value) })} placeholder="high,xhigh" />;
+      return <input aria-label={t('routing.ruleKind.reasoningEffort')} value={condition.efforts.join(',')} onChange={(event) => onChange({ kind: 'reasoningEffort', efforts: splitList(event.target.value) })} placeholder="high,xhigh" />;
     case 'agent':
       return <input aria-label="Agent" value={condition.agents.join(',')} onChange={(event) => onChange({ kind: 'agent', agents: splitList(event.target.value) })} placeholder="codex" />;
     case 'timeWindow':
       return (
         <>
-          <input type="time" aria-label="开始时间" value={condition.start} onChange={(event) => onChange({ ...condition, start: event.target.value })} />
-          <span className="mw-faint">至</span>
-          <input type="time" aria-label="结束时间" value={condition.end} onChange={(event) => onChange({ ...condition, end: event.target.value })} />
+          <input type="time" aria-label={t('routing.cond.start')} value={condition.start} onChange={(event) => onChange({ ...condition, start: event.target.value })} />
+          <span className="mw-faint">{t('routing.cond.to')}</span>
+          <input type="time" aria-label={t('routing.cond.end')} value={condition.end} onChange={(event) => onChange({ ...condition, end: event.target.value })} />
         </>
       );
     default:
@@ -104,10 +107,10 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
 
   return (
     <form className="mw-editor" onSubmit={submit}>
-      <label className="mw-field"><span>名称</span><input value={group.name} onChange={(event) => set({ name: event.target.value })} required /></label>
-      {isNew && <label className="mw-field"><span>ID</span><input value={group.id} onChange={(event) => set({ id: event.target.value })} required /><small>Agent 里写作 group/{group.id || 'ID'}，保存后不能改</small></label>}
+      <label className="mw-field"><span>{t('routing.editor.name')}</span><input value={group.name} onChange={(event) => set({ name: event.target.value })} required /></label>
+      {isNew && <label className="mw-field"><span>ID</span><input value={group.id} onChange={(event) => set({ id: event.target.value })} required /><small>{t('routing.editor.idHint', { id: group.id || 'ID' })}</small></label>}
       <label className="mw-field">
-        <span>分配方式</span>
+        <span>{t('routing.editor.strategy')}</span>
         <select className="mw-native-select" value={group.strategy} onChange={(event) => set({ strategy: event.target.value as RoutingStrategy })}>
           {STRATEGIES.map((strategy) => <option key={strategy} value={strategy}>{STRATEGY_LABEL[strategy]}</option>)}
         </select>
@@ -115,81 +118,89 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
       </label>
 
       <section className="mw-field">
-        <span>成员（按优先顺序）</span>
-        {group.members.length === 0 && <small>至少添加一个成员。</small>}
+        <span>{t('routing.editor.members')}</span>
+        {group.members.length === 0 && <small>{t('routing.editor.membersEmpty')}</small>}
         <ol className="mw-members">
           {group.members.map((member, index) => (
             <li key={member}>
               <span className="mw-member-n">{index + 1}</span>
               <div className="mw-member-main"><strong className="mw-mono-text">{member}</strong></div>
               {group.strategy === 'manual' && (
-                <button type="button" role="radio" aria-checked={group.manualMember === member} aria-label={`只用 ${member}`} className={`mw-radio ${group.manualMember === member ? 'is-on' : ''}`} onClick={() => set({ manualMember: member })}><span /></button>
+                <button type="button" role="radio" aria-checked={group.manualMember === member} aria-label={t('routing.editor.onlyUse', { member })} className={`mw-radio ${group.manualMember === member ? 'is-on' : ''}`} onClick={() => set({ manualMember: member })}><span /></button>
               )}
               {group.strategy === 'weighted' && (
                 <label className="mw-weight">
-                  <input type="number" min={1} max={MAX_WEIGHT} aria-label={`${member} 的权重`} value={memberWeight(group, member)} onChange={(event) => setWeight(member, Number(event.target.value))} />
+                  <input type="number" min={1} max={MAX_WEIGHT} aria-label={t('routing.editor.weightOf', { member })} value={memberWeight(group, member)} onChange={(event) => setWeight(member, Number(event.target.value))} />
                   <span className="mw-faint">{weightShare(group, member)}%</span>
                 </label>
               )}
-              <button type="button" className="mw-icon-btn" aria-label={`上移 ${member}`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp className="h-3.5 w-3.5" /></button>
-              <button type="button" className="mw-icon-btn" aria-label={`下移 ${member}`} disabled={index === group.members.length - 1} onClick={() => move(index, 1)}><ArrowDown className="h-3.5 w-3.5" /></button>
-              <button type="button" className="mw-icon-btn" aria-label={`移除 ${member}`} onClick={() => removeMember(member)}><Trash2 className="h-3.5 w-3.5" /></button>
+              <button type="button" className="mw-icon-btn" aria-label={t('routing.editor.moveUp', { member })} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp className="h-3.5 w-3.5" /></button>
+              <button type="button" className="mw-icon-btn" aria-label={t('routing.editor.moveDown', { member })} disabled={index === group.members.length - 1} onClick={() => move(index, 1)}><ArrowDown className="h-3.5 w-3.5" /></button>
+              <button type="button" className="mw-icon-btn" aria-label={t('routing.editor.remove', { member })} onClick={() => removeMember(member)}><Trash2 className="h-3.5 w-3.5" /></button>
             </li>
           ))}
         </ol>
         <div className="mw-editor-row">
-          <select className="mw-native-select is-compact" aria-label="选择成员" value={candidate} onChange={(event) => setCandidate(event.target.value)}>
-            <option value="">选择 供应商/模型 或子路由组…</option>
+          <select className="mw-native-select is-compact" aria-label={t('routing.editor.pickMember')} value={candidate} onChange={(event) => setCandidate(event.target.value)}>
+            <option value="">{t('routing.editor.pickMemberPlaceholder')}</option>
             {available.map((option) => <option key={option.value} value={option.value}>{option.value}</option>)}
           </select>
-          <button type="button" className="mw-btn is-ghost" disabled={!candidate} onClick={() => { set({ members: [...group.members, candidate] }); setCandidate(''); }}><Plus className="h-3.5 w-3.5" />添加成员</button>
+          <button type="button" className="mw-btn is-ghost" disabled={!candidate} onClick={() => { set({ members: [...group.members, candidate] }); setCandidate(''); }}><Plus className="h-3.5 w-3.5" />{t('routing.editor.addMember')}</button>
         </div>
       </section>
 
       <section className="mw-field">
-        <span>规则{group.strategy === 'manual' ? '（固定一个时暂停）' : ''}</span>
-        <small>一轮对话开始时按顺序判断，第一条命中的生效，优先于会话保持；其余成员留作后备。</small>
+        <span>{t(group.strategy === 'manual' ? 'routing.editor.rulesPaused' : 'routing.editor.rules')}</span>
+        <small>{t('routing.editor.rulesHint')}</small>
         {group.rules.map((rule, index) => (
           <div key={index} className="mw-rule-edit">
-            <span>当</span>
-            <select className="mw-native-select is-compact" aria-label="规则条件" value={rule.condition.kind} onChange={(event) => setRule(index, { ...rule, condition: defaultCondition(event.target.value as RuleKind) })}>
+            <span>{t('routing.editor.when')}</span>
+            <select className="mw-native-select is-compact" aria-label={t('routing.editor.ruleCondition')} value={rule.condition.kind} onChange={(event) => setRule(index, { ...rule, condition: defaultCondition(event.target.value as RuleKind) })}>
               {RULE_KINDS.map((kind) => <option key={kind} value={kind}>{RULE_KIND_LABEL[kind]}</option>)}
             </select>
             <ConditionFields condition={rule.condition} onChange={(condition) => setRule(index, { ...rule, condition })} />
-            <span>→ 先用</span>
-            <select className="mw-native-select is-compact" aria-label="规则成员" value={rule.member} onChange={(event) => setRule(index, { ...rule, member: event.target.value })}>
+            <span>{t('routing.editor.useFirst')}</span>
+            <select className="mw-native-select is-compact" aria-label={t('routing.editor.ruleMember')} value={rule.member} onChange={(event) => setRule(index, { ...rule, member: event.target.value })}>
               {group.members.map((member) => <option key={member} value={member}>{member}</option>)}
             </select>
-            <button type="button" className="mw-icon-btn" aria-label="删除规则" onClick={() => set({ rules: group.rules.filter((_, i) => i !== index) })}><Trash2 className="h-3.5 w-3.5" /></button>
+            <button type="button" className="mw-icon-btn" aria-label={t('routing.editor.deleteRule')} onClick={() => set({ rules: group.rules.filter((_, i) => i !== index) })}><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
         ))}
         <div className="mw-editor-row">
-          <button type="button" className="mw-btn is-ghost" disabled={group.members.length === 0} onClick={() => set({ rules: [...group.rules, { condition: defaultCondition('hasImage'), member: group.members[0] }] })}><Plus className="h-3.5 w-3.5" />添加规则</button>
+          <button type="button" className="mw-btn is-ghost" disabled={group.members.length === 0} onClick={() => set({ rules: [...group.rules, { condition: defaultCondition('hasImage'), member: group.members[0] }] })}><Plus className="h-3.5 w-3.5" />{t('routing.editor.addRule')}</button>
         </div>
       </section>
 
       <label className="mw-field">
-        <span>会话保持</span>
+        <span>{t('routing.editor.affinity')}</span>
         <select className="mw-native-select" value={group.sessionTtlSecs} onChange={(event) => set({ sessionTtlSecs: Number(event.target.value) })}>
           {TTL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           {!TTL_OPTIONS.some((option) => option.value === group.sessionTtlSecs) && <option value={group.sessionTtlSecs}>{ttlLabel(group.sessionTtlSecs)}</option>}
         </select>
-        <small>同一会话在这段时间内固定用同一个成员；失败时仍会切换。</small>
+        <small>{t('routing.editor.affinityHint')}</small>
       </label>
 
       <div className="mw-form-actions">
-        <button type="submit" className="mw-btn is-primary" disabled={busy || group.members.length === 0}>{busy ? '保存中…' : '保存'}</button>
+        <button type="submit" className="mw-btn is-primary" disabled={busy || group.members.length === 0}>{busy ? t('routing.editor.saving') : t('routing.editor.save')}</button>
       </div>
     </form>
   );
 }
 
 function coolingLabel(item: CoolingMember): string {
-  const time = item.remainingSecs >= 60 ? `${Math.ceil(item.remainingSecs / 60)} 分钟` : `${item.remainingSecs} 秒`;
-  return `冷却中 · 约 ${time}`;
+  const time = item.remainingSecs >= 60
+    ? t('routing.cooling.minutes', { count: Math.ceil(item.remainingSecs / 60) })
+    : t('routing.cooling.seconds', { count: item.remainingSecs });
+  return t('routing.cooling.label', { time });
 }
 
-function GroupCard({ group, busy, cooling, onEdit, onToggle, onDelete }: { group: RoutingGroup; busy: boolean; cooling: Map<string, CoolingMember>; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
+/** Health of the provider behind a `provider/model` member; groups have none. */
+function memberHealth(health: Map<string, ProviderHealth>, member: string): ProviderHealth | undefined {
+  if (member.startsWith('group/')) return undefined;
+  return health.get(member.split('/')[0]);
+}
+
+function GroupCard({ group, busy, cooling, health, onEdit, onToggle, onDelete }: { group: RoutingGroup; busy: boolean; cooling: Map<string, CoolingMember>; health: Map<string, ProviderHealth>; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
   return (
     <div className={`mw-card mw-group ${group.enabled ? '' : 'is-off'}`}>
       <div className="mw-group-head">
@@ -197,18 +208,19 @@ function GroupCard({ group, busy, cooling, onEdit, onToggle, onDelete }: { group
         <div className="mw-group-title"><strong>{group.name}</strong><span className="mw-mono-text">group/{group.id}</span></div>
         <span className="mw-chip">{STRATEGY_LABEL[group.strategy]}</span>
         <span className="mw-flex" />
-        <button type="button" className="mw-icon-btn" aria-label={`编辑 ${group.name}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></button>
-        <button type="button" className="mw-icon-btn" aria-label={`删除 ${group.name}`} disabled={busy} onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></button>
-        <button type="button" role="switch" aria-checked={group.enabled} aria-label={`启用 ${group.name}`} disabled={busy} className={`mw-switch ${group.enabled ? 'is-on' : ''}`} onClick={onToggle}><span /></button>
+        <button type="button" className="mw-icon-btn" aria-label={t('routing.card.edit', { name: group.name })} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></button>
+        <button type="button" className="mw-icon-btn" aria-label={t('routing.card.delete', { name: group.name })} disabled={busy} onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></button>
+        <button type="button" role="switch" aria-checked={group.enabled} aria-label={t('routing.card.enable', { name: group.name })} disabled={busy} className={`mw-switch ${group.enabled ? 'is-on' : ''}`} onClick={onToggle}><span /></button>
       </div>
       <ol className="mw-members">
         {group.members.map((member, index) => (
           <li key={member}>
             <span className="mw-member-n">{index + 1}</span>
+            <HealthBadge health={memberHealth(health, member)} compact />
             <div className="mw-member-main"><strong className="mw-mono-text">{member}</strong></div>
-            {group.strategy === 'manual' && group.manualMember === member && <span className="mw-chip is-success">固定使用</span>}
-            {group.strategy === 'weighted' && <span className="mw-chip">权重 {memberWeight(group, member)} · {weightShare(group, member)}%</span>}
-            {cooling.has(member) && <span className="mw-chip is-warning" title={`连续失败 ${cooling.get(member)?.failures} 次，暂时排到其余成员之后`}>{coolingLabel(cooling.get(member) as CoolingMember)}</span>}
+            {group.strategy === 'manual' && group.manualMember === member && <span className="mw-chip is-success">{t('routing.card.pinned')}</span>}
+            {group.strategy === 'weighted' && <span className="mw-chip">{t('routing.card.weight', { weight: memberWeight(group, member), share: weightShare(group, member) })}</span>}
+            {cooling.has(member) && <span className="mw-chip is-warning" title={t('routing.cooling.failures', { count: cooling.get(member)?.failures ?? 0 })}>{coolingLabel(cooling.get(member) as CoolingMember)}</span>}
           </li>
         ))}
       </ol>
@@ -216,15 +228,15 @@ function GroupCard({ group, busy, cooling, onEdit, onToggle, onDelete }: { group
         <div className={`mw-rules ${group.strategy === 'manual' ? 'is-paused' : ''}`}>
           {group.rules.map((rule, index) => (
             <div key={index} className="mw-rule">
-              <span className="mw-rule-when">当 <b>{ruleSummary(rule.condition)}</b></span>
-              <span className="mw-rule-arrow">→ 先用</span>
+              <span className="mw-rule-when">{t('routing.editor.when')} <b>{ruleSummary(rule.condition)}</b></span>
+              <span className="mw-rule-arrow">{t('routing.editor.useFirst')}</span>
               <span className="mw-rule-use mw-mono-text">{rule.member}</span>
             </div>
           ))}
         </div>
       )}
       <div className="mw-group-foot">
-        <span className="mw-foot-item">会话保持 {ttlLabel(group.sessionTtlSecs)}</span>
+        <span className="mw-foot-item">{t('routing.card.affinity', { ttl: ttlLabel(group.sessionTtlSecs) })}</span>
       </div>
     </div>
   );
@@ -234,17 +246,17 @@ function LiveRoutingCard() {
   const { scene, loaded } = useRoutingLive({ readExternal: readExternalGateway });
   const live = scene.sources.some((source) => source.reachable);
   return (
-    <section className="mw-card rs-card" aria-label="实时路由">
+    <section className="mw-card rs-card" aria-label={t('routing.live.title')}>
       <div className="mw-panel-head rs-card-head">
-        <h2>实时路由</h2>
+        <h2>{t('routing.live.title')}</h2>
         <span className={`rs-livedot ${live ? 'is-on' : ''}`} aria-hidden="true" />
-        <span className="mw-caption">{live ? '网关怎么分配每个请求，失败时切到哪个成员' : '未连接'}</span>
+        <span className="mw-caption">{t(live ? 'routing.live.caption' : 'routing.live.disconnected')}</span>
         <span className="mw-flex" />
         {scene.empty === null && (
-          <dl className="rs-stats" aria-label="最近记录统计">
-            <div><dt>在途</dt><dd>{scene.stats.inflight}</dd></div>
-            <div><dt>已改道</dt><dd>{scene.stats.rerouted}</dd></div>
-            <div><dt>失败</dt><dd>{scene.stats.failed}</dd></div>
+          <dl className="rs-stats" aria-label={t('routing.live.stats')}>
+            <div><dt>{t('routing.live.inflight')}</dt><dd>{scene.stats.inflight}</dd></div>
+            <div><dt>{t('routing.live.rerouted')}</dt><dd>{scene.stats.rerouted}</dd></div>
+            <div><dt>{t('routing.live.failed')}</dt><dd>{scene.stats.failed}</dd></div>
           </dl>
         )}
       </div>
@@ -254,7 +266,7 @@ function LiveRoutingCard() {
 }
 
 function DecisionList({ decisions }: { decisions: RouteDecision[] }) {
-  if (decisions.length === 0) return <p className="mw-caption">还没有路由决策。Agent 使用 group/… 模型后，这里会显示网关的选择。</p>;
+  if (decisions.length === 0) return <p className="mw-caption">{t('routing.decisions.empty')}</p>;
   return (
     <ul>
       {decisions.map((decision) => (
@@ -263,11 +275,11 @@ function DecisionList({ decisions }: { decisions: RouteDecision[] }) {
             <span className="mw-decision-time">{shortTime(decision.ts)}</span>
             <span className="mw-mono-text mw-decision-identity" tabIndex={0} title={`group/${decision.group}`}>group/{decision.group}</span>
             <span className="mw-faint">→</span>
-            <strong className="mw-mono-text mw-decision-identity" tabIndex={0} title={decision.chosen ?? undefined}>{decision.chosen ?? '无可用成员'}</strong>
+            <strong className="mw-mono-text mw-decision-identity" tabIndex={0} title={decision.chosen ?? undefined}>{decision.chosen ?? t('routing.decisions.noMember')}</strong>
           </div>
           <div className="mw-decision-why">
             <span className="mw-chip">{DECISION_REASON_LABEL[decision.reason] ?? decision.reason}</span>
-            {decision.detail !== (DECISION_REASON_LABEL[decision.reason] ?? decision.reason) && <span>{decision.detail}</span>}
+            {decisionDetail(decision) && <span>{decision.detail}</span>}
           </div>
           {decision.attempts.length > 1 && (
             <div className="mw-decision-attempts">
@@ -280,7 +292,7 @@ function DecisionList({ decisions }: { decisions: RouteDecision[] }) {
           )}
           {decision.trace && decision.trace.length > 0 && (
             <details className="mw-trace-toggle">
-              <summary>为什么这样选（{decision.trace.length} 个成员）</summary>
+              <summary>{t('routing.decisions.why', { count: decision.trace.length })}</summary>
               <DecisionTrace decision={decision} />
             </details>
           )}
@@ -298,6 +310,8 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<{ group: RoutingGroup; isNew: boolean } | null>(null);
+  // Labels here read the current language directly; subscribing re-renders the page when it changes.
+  const lang = useLang();
 
   const load = useCallback(async () => {
     try {
@@ -321,9 +335,11 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
     }, cooling.length > 0 ? 10_000 : 30_000);
     return () => window.clearInterval(timer);
   }, [cooling.length]);
+  const health = useProviderHealth();
   const coolingByMember = useMemo(() => new Map(cooling.map((item) => [item.member, item])), [cooling]);
 
-  const options = useMemo(() => modelOptions(providers, groups ?? []), [providers, groups]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `lang` re-derives the translated section labels
+  const options = useMemo(() => modelOptions(providers, groups ?? []), [providers, groups, lang]);
 
   const save = async (group: RoutingGroup, success: string) => {
     setBusy(true);
@@ -340,12 +356,12 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
   };
 
   const remove = async (group: RoutingGroup) => {
-    const confirmed = await onConfirm({ title: `删除路由组 ${group.name}？`, description: `仍在使用 group/${group.id} 的 Agent 请求会失败，需要改选模型。`, confirmLabel: '删除', tone: 'danger' });
+    const confirmed = await onConfirm({ title: t('routing.delete.title', { name: group.name }), description: t('routing.delete.description', { id: group.id }), confirmLabel: t('routing.delete.confirm'), tone: 'danger' });
     if (!confirmed) return;
     setBusy(true);
     try {
       setGroups(await deleteRoutingGroup(group.id));
-      onNotify('success', `${group.name} 已删除`);
+      onNotify('success', t('routing.toast.deleted', { name: group.name }));
     } catch (error) {
       onNotify('error', errorText(error));
     } finally {
@@ -364,24 +380,22 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
         <LiveRoutingCard />
         <div className="mw-toolbar">
           <span className="mw-caption">
-            {groups?.length ?? 0} 个路由组
-            <InfoTip label="路由组说明">
-              <span>在 Agent 与网关模型目录里显示为 group/…。</span>
-              <span>失败时：还没回复才换下一个成员，流式开始后不再切换。</span>
+            {t('routing.toolbar.count', { count: groups?.length ?? 0 })}
+            <InfoTip label={t('routing.toolbar.info')}>
+              <span>{t('routing.toolbar.infoCatalog')}</span>
+              <span>{t('routing.toolbar.infoFailover')}</span>
             </InfoTip>
           </span>
-          <button type="button" className="mw-btn is-primary" disabled={options.length === 0} title={options.length === 0 ? '先在供应商页启用供应商并列出模型' : undefined} onClick={createNew}><Plus className="h-4 w-4" />新建路由组</button>
+          <button type="button" className="mw-btn is-primary" disabled={options.length === 0} title={options.length === 0 ? t('routing.toolbar.needProviders') : undefined} onClick={createNew}><Plus className="h-4 w-4" />{t('routing.toolbar.new')}</button>
         </div>
-        {loadError && <p className="mw-note is-danger" role="alert">读取路由组失败：{loadError}</p>}
+        {loadError && <p className="mw-note is-danger" role="alert">{t('routing.loadError', { error: loadError })}</p>}
         {groups && groups.length === 0 && (
           <EmptyState
             icon={Split}
-            title="还没有路由组"
-            description={options.length === 0
-              ? '路由组把多个供应商的模型合成一个虚拟模型。先在供应商页启用至少一个供应商，再回来新建。'
-              : '把多个供应商的模型合成一个虚拟模型：失败自动切换，也能按图片、上下文长度等规则选择。'}
+            title={t('empty.routing.title')}
+            description={t(options.length === 0 ? 'empty.routing.needProviders' : 'empty.routing.description')}
           >
-            {options.length > 0 && <button type="button" className="mw-btn is-primary" onClick={createNew}><Plus className="h-4 w-4" />新建第一个路由组</button>}
+            {options.length > 0 && <button type="button" className="mw-btn is-primary" onClick={createNew}><Plus className="h-4 w-4" />{t('empty.routing.action')}</button>}
           </EmptyState>
         )}
         {groups?.map((group) => (
@@ -390,36 +404,37 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
             group={group}
             busy={busy}
             cooling={coolingByMember}
+            health={health}
             onEdit={() => setEditing({ group, isNew: false })}
-            onToggle={() => void save({ ...group, enabled: !group.enabled }, group.enabled ? `${group.name} 已停用` : `${group.name} 已启用`)}
+            onToggle={() => void save({ ...group, enabled: !group.enabled }, t(group.enabled ? 'routing.toast.disabled' : 'routing.toast.enabled', { name: group.name }))}
             onDelete={() => void remove(group)}
           />
         ))}
       </div>
-      <section className="mw-card mw-decisions" aria-label="最近路由决策">
-        <div className="mw-panel-head"><h2>最近决策</h2><button type="button" className="mw-btn is-ghost" onClick={() => void load()}>刷新</button></div>
+      <section className="mw-card mw-decisions" aria-label={t('routing.decisions.region')}>
+        <div className="mw-panel-head"><h2>{t('routing.decisions.title')}</h2><button type="button" className="mw-btn is-ghost" onClick={() => void load()}>{t('routing.decisions.refresh')}</button></div>
         {cooling.length > 0 && (
-          <section className="mw-cooling" aria-label="冷却中的成员">
-            <h3>冷却中</h3>
+          <section className="mw-cooling" aria-label={t('routing.cooling.region')}>
+            <h3>{t('routing.cooling.title')}</h3>
             <ul>
               {cooling.map((item) => (
                 <li key={item.member}><span className="mw-mono-text">{item.member}</span><span className="mw-chip is-warning">{coolingLabel(item)}</span></li>
               ))}
             </ul>
-            <small>失败过的成员暂时排到其余成员之后，成功一次即恢复。</small>
+            <small>{t('routing.cooling.hint')}</small>
           </section>
         )}
         <DecisionList decisions={decisions} />
       </section>
       {editing && (
-        <Sheet title={editing.isNew ? '新建路由组' : editing.group.name} subtitle={editing.isNew ? '多个供应商的模型合成一个虚拟模型' : `group/${editing.group.id}`} icon={<GroupIcon size={36} />} onClose={() => setEditing(null)}>
+        <Sheet title={editing.isNew ? t('routing.toolbar.new') : editing.group.name} subtitle={editing.isNew ? t('routing.sheet.newSubtitle') : `group/${editing.group.id}`} icon={<GroupIcon size={36} />} onClose={() => setEditing(null)}>
           <GroupEditor
             key={editing.group.id}
             initial={editing.group}
             isNew={editing.isNew}
             options={options}
             busy={busy}
-            onSave={(group) => void save(group, editing.isNew ? `${group.name} 已创建` : `${group.name} 已保存`).then((ok) => { if (ok) setEditing(null); })}
+            onSave={(group) => void save(group, t(editing.isNew ? 'routing.toast.created' : 'routing.toast.saved', { name: group.name })).then((ok) => { if (ok) setEditing(null); })}
           />
         </Sheet>
       )}

@@ -1260,3 +1260,35 @@ fn upstream_error_text_never_carries_the_presented_key() {
     assert_eq!(redact_key("error abc", "abc"), "error abc");
     assert_eq!(redact_key("plain", ""), "plain");
 }
+
+#[test]
+fn upstream_error_text_masks_anything_shaped_like_a_credential() {
+    let cases = [
+        "Incorrect API key provided: sk-proj-AbCdEf0123456789xyz.",
+        "invalid x-api-key sk-ant-api03-AbCdEf0123456789_xyz",
+        "Authorization: Bearer abcdefABCDEF0123456789",
+        "key AIzaSyA0123456789abcdefghijklmnop is invalid",
+        "token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlLXZhbHVl expired",
+        "gsk_0123456789abcdefABCDEF rejected",
+    ];
+    for text in cases {
+        let redacted = redact_key(text, "another-key-entirely");
+        assert!(
+            redacted.contains("[已隐去 API key]"),
+            "{text} -> {redacted}"
+        );
+        for secret in ["0123456789", "AbCdEf0123", "abcdefABCDEF"] {
+            assert!(!redacted.contains(secret), "{text} -> {redacted}");
+        }
+    }
+    // Ordinary error text is left alone.
+    for text in [
+        "model not found: gpt-4o-mini",
+        "rate limit exceeded, retry after 20s",
+        "task-scheduler busy",
+        "error code key_not_found_in_request",
+        "sk-short",
+    ] {
+        assert_eq!(redact_key(text, ""), text);
+    }
+}

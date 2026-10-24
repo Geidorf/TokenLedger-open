@@ -8,10 +8,11 @@ import type { ToastType } from '../../types';
 import { deleteProvider, errorText, listProviders, setProviderKey, upsertProvider } from './api';
 import { parseModels, slugId } from './helpers';
 import { hostOf, PROVIDER_PRESET_GROUPS, type ProviderPreset } from './presets';
-import type { ProviderRecord, ProviderView, WireApi } from './types';
+import { HealthBadge, HealthDetail, HealthSpark, useProviderHealth } from './ProviderHealth';
+import type { ProviderHealth, ProviderRecord, ProviderView, WireApi } from './types';
 import { beginProviderSave, clearProviderDraft, endProviderSave, readProviderDraft, useProviderSaving, writeProviderDraft } from './providerDrafts';
 import { ProviderIcon, Sheet } from './ui';
-import { useT } from '../../i18n';
+import { t, useLang } from '../../i18n';
 
 interface PageProps {
   onNotify: (type: ToastType, text: string) => void;
@@ -28,17 +29,17 @@ const WIRE_OPTIONS: { value: WireApi; label: string }[] = [
 const WIRE_SHORT: Record<WireApi, string> = { chat: 'Chat', responses: 'Responses', anthropic: 'Anthropic' };
 
 function KeyState({ provider }: { provider: ProviderView }) {
-  if (provider.authMode === 'none') return <span className="mw-chip">无需 key</span>;
-  if (provider.hasKey) return <span className="mw-chip is-success">已设置 key</span>;
-  return <span className="mw-chip is-warning">未设置 key</span>;
+  if (provider.authMode === 'none') return <span className="mw-chip">{t('providers.key.none')}</span>;
+  if (provider.hasKey) return <span className="mw-chip is-success">{t('providers.key.set')}</span>;
+  return <span className="mw-chip is-warning">{t('providers.key.missing')}</span>;
 }
 
 const OFFICIAL_BALANCE_HOSTS = new Set(['api.moonshot.cn', 'api.moonshot.ai', 'api.deepseek.com', 'openrouter.ai', 'api.siliconflow.cn', 'api.siliconflow.com']);
 
 export function balanceEntryHint(baseUrl: string): string {
   return OFFICIAL_BALANCE_HOSTS.has(hostOf(baseUrl).toLowerCase())
-    ? '可读取官方余额，用这里的 key，在「订阅额度」里开启'
-    : '中转站可在「订阅额度」里配置同源余额地址';
+    ? t('providers.balance.official')
+    : t('providers.balance.relay');
 }
 
 function openBalanceSettings() {
@@ -52,24 +53,28 @@ function BalanceEntry({ provider }: { provider: ProviderView }) {
   return (
     <div className="mw-key-row">
       <Wallet className="h-4 w-4" aria-hidden="true" />
-      <span>余额 · {balanceEntryHint(provider.baseUrl)}</span>
-      <button type="button" className="mw-btn is-ghost" onClick={openBalanceSettings} aria-label={`查看 ${provider.name} 余额`}>查看余额</button>
+      <span>{t('providers.balance.label', { hint: balanceEntryHint(provider.baseUrl) })}</span>
+      <button type="button" className="mw-btn is-ghost" onClick={openBalanceSettings} aria-label={t('providers.balance.aria', { name: provider.name })}>{t('providers.balance.view')}</button>
     </div>
   );
 }
 
-function ProviderRow({ provider, onOpen, onToggle, busy }: { provider: ProviderView; onOpen: () => void; onToggle: () => void; busy: boolean }) {
+function ProviderRow({ provider, health, onOpen, onToggle, busy }: { provider: ProviderView; health?: ProviderHealth; onOpen: () => void; onToggle: () => void; busy: boolean }) {
   return (
     <div className={`mw-row ${provider.enabled ? '' : 'is-off'}`}>
       <button type="button" className="mw-row-main" onClick={onOpen}>
         <ProviderIcon provider={provider} size={28} />
         <span className="mw-row-title">
           <strong>{provider.name}</strong>
-          <small>{hostOf(provider.baseUrl)} · {provider.models.length} 个模型 · {WIRE_SHORT[provider.wire] ?? provider.wire}</small>
+          <small>{t('providers.row.meta', { host: hostOf(provider.baseUrl), count: provider.models.length, wire: WIRE_SHORT[provider.wire] ?? provider.wire })}</small>
         </span>
-        <span className="mw-row-meta"><KeyState provider={provider} /></span>
+        <span className="mw-row-meta">
+          {health && health.stats.requests > 0 && <HealthSpark buckets={health.buckets} label={provider.name} />}
+          {provider.enabled && <HealthBadge health={health} />}
+          <KeyState provider={provider} />
+        </span>
       </button>
-      <button type="button" role="switch" aria-checked={provider.enabled} aria-label={`启用 ${provider.name}`} disabled={busy} className={`mw-switch ${provider.enabled ? 'is-on' : ''}`} onClick={onToggle}><span /></button>
+      <button type="button" role="switch" aria-checked={provider.enabled} aria-label={t('providers.row.enableAria', { name: provider.name })} disabled={busy} className={`mw-switch ${provider.enabled ? 'is-on' : ''}`} onClick={onToggle}><span /></button>
       <ChevronRight className="mw-row-arrow" aria-hidden="true" />
     </div>
   );
@@ -112,32 +117,32 @@ function ProviderForm({ target, initial, isNew, hasKey, busy, onSubmit, onBack, 
   return (
     <form className="mw-add-form" onSubmit={submit}>
       <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'contents' }}>
-      <label className="mw-field"><span>名称</span><input value={form.name} onChange={(event) => set({ name: event.target.value })} placeholder="例如：公司中转" required /></label>
-      {isNew && <label className="mw-field"><span>ID</span><input value={form.id} onChange={(event) => set({ id: event.target.value })} required /><small>模型写作「ID/模型名」，保存后不能改</small></label>}
-      <label className="mw-field"><span>接口地址</span><input value={form.baseUrl} onChange={(event) => set({ baseUrl: event.target.value })} placeholder="https://relay.example.com/v1" required /><small>{form.wire === 'anthropic' ? 'Anthropic 兼容地址，如 https://api.deepseek.com/anthropic 或以 /v1 结尾' : 'OpenAI 兼容地址，通常以 /v1 结尾'}</small></label>
+      <label className="mw-field"><span>{t('providers.form.name')}</span><input value={form.name} onChange={(event) => set({ name: event.target.value })} placeholder={t('providers.form.namePlaceholder')} required /></label>
+      {isNew && <label className="mw-field"><span>ID</span><input value={form.id} onChange={(event) => set({ id: event.target.value })} required /><small>{t('providers.form.idHint')}</small></label>}
+      <label className="mw-field"><span>{t('providers.form.baseUrl')}</span><input value={form.baseUrl} onChange={(event) => set({ baseUrl: event.target.value })} placeholder="https://relay.example.com/v1" required /><small>{t(form.wire === 'anthropic' ? 'providers.form.baseUrlAnthropic' : 'providers.form.baseUrlOpenai')}</small></label>
       <label className="mw-field">
-        <span>上游协议</span>
+        <span>{t('providers.form.wire')}</span>
         <select className="mw-native-select" value={form.wire} onChange={(event) => set({ wire: event.target.value as WireApi })}>
           {WIRE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
-        <small>Chat 上游支持转换基础 Responses 与 Anthropic 请求；无法保真的高级工具或内容会在转发前拒绝。需要完整协议能力时，请选原生 Responses 或 Anthropic 上游。</small>
+        <small>{t('providers.form.wireHint')}</small>
       </label>
-      <label className="mw-field"><span>上游认证</span><select className="mw-native-select" value={form.authMode ?? 'key'} onChange={(event) => set({ authMode: event.target.value as 'key' | 'none' })}><option value="key">API key</option><option value="none">本机免密</option></select><small>免密仅允许 127.0.0.1 或 ::1；远程供应商必须设置 key。</small></label>
-      <label className="mw-field"><span>模型</span><textarea rows={3} value={form.models} onChange={(event) => set({ models: event.target.value })} placeholder="每行或用逗号分隔，例如 deepseek-chat" /><small>只有列出的模型会出现在 Agent 与路由组的选择器里</small></label>
+      <label className="mw-field"><span>{t('providers.form.auth')}</span><select className="mw-native-select" value={form.authMode ?? 'key'} onChange={(event) => set({ authMode: event.target.value as 'key' | 'none' })}><option value="key">API key</option><option value="none">{t('providers.form.authNone')}</option></select><small>{t('providers.form.authHint')}</small></label>
+      <label className="mw-field"><span>{t('providers.form.models')}</span><textarea rows={3} value={form.models} onChange={(event) => set({ models: event.target.value })} placeholder={t('providers.form.modelsPlaceholder')} /><small>{t('providers.form.modelsHint')}</small></label>
       {form.authMode !== 'none' && (
         <label className="mw-field">
-          <span>API key {hasKey && <span className="mw-chip is-success">已设置</span>}</span>
-          <input type="password" autoComplete="off" value={form.key} onChange={(event) => set({ key: event.target.value })} placeholder={hasKey ? '留空则保持不变' : 'sk-…'} />
-          <small>保存在系统钥匙串，只由 TokenLedger 网关读取；界面不会再显示它</small>
+          <span>API key {hasKey && <span className="mw-chip is-success">{t('providers.form.keySet')}</span>}</span>
+          <input type="password" autoComplete="off" value={form.key} onChange={(event) => set({ key: event.target.value })} placeholder={hasKey ? t('providers.form.keyKeep') : 'sk-…'} />
+          <small>{t('providers.form.keyHint')}</small>
         </label>
       )}
       {form.authMode !== 'none' && hasKey && onDeleteKey && (
-        <div className="mw-key-row"><KeyRound className="h-4 w-4" aria-hidden="true" /><span>已设置 key</span><button type="button" className="mw-btn is-ghost" disabled={busy} onClick={onDeleteKey}>删除 key</button></div>
+        <div className="mw-key-row"><KeyRound className="h-4 w-4" aria-hidden="true" /><span>{t('providers.key.set')}</span><button type="button" className="mw-btn is-ghost" disabled={busy} onClick={onDeleteKey}>{t('providers.form.deleteKey')}</button></div>
       )}
       <div className="mw-form-actions">
-        {onBack && <button type="button" className="mw-btn is-ghost" onClick={onBack}>返回</button>}
-        <button type="button" className="mw-btn is-ghost" disabled={disabled} onClick={() => { clearProviderDraft(target); setForm({ ...initial, key: '' }); }}>放弃草稿</button>
-        <button type="submit" className="mw-btn is-primary" disabled={disabled}>{disabled ? '保存中…' : '保存'}</button>
+        {onBack && <button type="button" className="mw-btn is-ghost" onClick={onBack}>{t('providers.form.back')}</button>}
+        <button type="button" className="mw-btn is-ghost" disabled={disabled} onClick={() => { clearProviderDraft(target); setForm({ ...initial, key: '' }); }}>{t('providers.form.discard')}</button>
+        <button type="submit" className="mw-btn is-primary" disabled={disabled}>{disabled ? t('providers.form.saving') : t('providers.form.save')}</button>
       </div>
       </fieldset>
     </form>
@@ -156,7 +161,7 @@ function PresetPicker({ onPick }: { onPick: (preset: ProviderPreset) => void }) 
     <>
       <label className="mw-search">
         <Search className="h-4 w-4" aria-hidden="true" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索供应商或接口地址" aria-label="搜索供应商" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('providers.search.placeholder')} aria-label={t('providers.search.aria')} />
       </label>
       <div className="mw-preset-groups">
         {groups.map((group) => (
@@ -166,7 +171,7 @@ function PresetPicker({ onPick }: { onPick: (preset: ProviderPreset) => void }) 
               {group.presets.map((preset) => (
                 <button key={preset.id} type="button" className="mw-preset" onClick={() => onPick(preset)}>
                   <BrandIcon id={preset.icon} fallback={preset.monogram} size={22} />
-                  <span><strong>{preset.name}</strong><small>{preset.keyless ? '本地 · 无需 key' : preset.custom ? '填写接口地址' : hostOf(preset.baseUrl)}</small></span>
+                  <span><strong>{preset.name}</strong><small>{preset.keyless ? t('providers.preset.local') : preset.custom ? t('providers.preset.custom') : hostOf(preset.baseUrl)}</small></span>
                 </button>
               ))}
             </div>
@@ -178,7 +183,7 @@ function PresetPicker({ onPick }: { onPick: (preset: ProviderPreset) => void }) 
 }
 
 export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
-  const t = useT();
+  useLang();
   const [providers, setProviders] = useState<ProviderView[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -189,6 +194,7 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
   const [showOff, setShowOff] = useState(false);
   const [adding, setAdding] = useState<ProviderPreset | 'pick' | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const health = useProviderHealth();
 
   const load = useCallback(async () => {
     try {
@@ -237,12 +243,12 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
             await setProviderKey(record.id, form.key.trim());
           } catch (error) {
             setProviders(next);
-            throw new Error(`供应商已保存，但 key 未写入：${errorText(error)}`);
+            throw new Error(t('providers.toast.keyFailed', { error: errorText(error) }));
           }
           return listProviders();
         }
         return next;
-      }, existing ? `${record.name} 已保存` : `${record.name} 已添加`);
+      }, t(existing ? 'providers.toast.saved' : 'providers.toast.added', { name: record.name }));
       if (ok) {
         clearProviderDraft(target);
         if (mounted.current && editSession.current === session) {
@@ -259,14 +265,14 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
   };
 
   const removeKey = async (provider: ProviderView) => {
-    const confirmed = await onConfirm({ title: `删除 ${provider.name} 的 key？`, description: '会从系统钥匙串中删除，之后经网关转到这个供应商的请求会失败。', confirmLabel: '删除 key', tone: 'danger' });
-    if (confirmed) await run(() => setProviderKey(provider.id, ''), 'key 已删除');
+    const confirmed = await onConfirm({ title: t('providers.confirm.deleteKeyTitle', { name: provider.name }), description: t('providers.confirm.deleteKeyBody'), confirmLabel: t('providers.form.deleteKey'), tone: 'danger' });
+    if (confirmed) await run(() => setProviderKey(provider.id, ''), t('providers.toast.keyDeleted'));
   };
 
   const remove = async (provider: ProviderView) => {
-    const confirmed = await onConfirm({ title: `删除供应商 ${provider.name}？`, description: '同时删除钥匙串里的 key。引用它的路由组成员与 Agent 配置需要另行调整。', confirmLabel: '删除', tone: 'danger' });
+    const confirmed = await onConfirm({ title: t('providers.confirm.deleteTitle', { name: provider.name }), description: t('providers.confirm.deleteBody'), confirmLabel: t('providers.confirm.delete'), tone: 'danger' });
     if (!confirmed) return;
-    if (await run(() => deleteProvider(provider.id), `${provider.name} 已删除`)) setEditingId(null);
+    if (await run(() => deleteProvider(provider.id), t('providers.toast.deleted', { name: provider.name }))) setEditingId(null);
   };
 
   const takenIds = useMemo(() => providers?.map((provider) => provider.id) ?? [], [providers]);
@@ -278,10 +284,10 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
   return (
     <>
       <div className="mw-toolbar">
-        <span className="mw-caption">{on.length} 个启用{missingKey > 0 ? ` · ${missingKey} 个未设置 key` : ''} · key 存在系统钥匙串，只由网关读取</span>
-        <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />添加供应商</button>
+        <span className="mw-caption">{t('providers.toolbar.enabled', { count: on.length })}{missingKey > 0 ? t('providers.toolbar.missing', { count: missingKey }) : ''}{t('providers.toolbar.keychain')}</span>
+        <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />{t('providers.add')}</button>
       </div>
-      {loadError && <p className="mw-note is-danger" role="alert">读取供应商失败：{loadError} <button type="button" className="mw-btn is-ghost" onClick={() => void load()}>重试</button></p>}
+      {loadError && <p className="mw-note is-danger" role="alert">{t('providers.loadFailed', { error: loadError })} <button type="button" className="mw-btn is-ghost" onClick={() => void load()}>{t('providers.retry')}</button></p>}
       {providers && providers.length === 0 && (
         <EmptyState icon={Plug} title={t('empty.providers.title')} description={t('empty.providers.description')}>
           <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />{t('empty.providers.action')}</button>
@@ -289,13 +295,13 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
       )}
       {on.length > 0 && (
         <div className="mw-card mw-rows">
-          {on.map((provider) => <ProviderRow key={provider.id} provider={provider} busy={busy || saving} onOpen={() => { editSession.current++; setEditingId(provider.id); }} onToggle={() => toggle(provider)} />)}
+          {on.map((provider) => <ProviderRow key={provider.id} provider={provider} health={health.get(provider.id)} busy={busy || saving} onOpen={() => { editSession.current++; setEditingId(provider.id); }} onToggle={() => toggle(provider)} />)}
         </div>
       )}
       {off.length > 0 && (
         <>
           <button type="button" className="mw-collapse" aria-expanded={showOff} onClick={() => setShowOff((value) => !value)}>
-            <ChevronDown className={`h-4 w-4 ${showOff ? '' : 'is-closed'}`} />已停用的供应商（{off.length}）
+            <ChevronDown className={`h-4 w-4 ${showOff ? '' : 'is-closed'}`} />{t('providers.disabled', { count: off.length })}
           </button>
           {showOff && <div className="mw-card mw-rows">{off.map((provider) => <ProviderRow key={provider.id} provider={provider} busy={busy || saving} onOpen={() => { editSession.current++; setEditingId(provider.id); }} onToggle={() => toggle(provider)} />)}</div>}
         </>
@@ -303,8 +309,8 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
 
       {adding && (
         <Sheet
-          title={adding === 'pick' ? '添加供应商' : adding.name}
-          subtitle={adding === 'pick' ? '选一个预设，贴上 key 就能用' : adding.custom ? `填写 ${adding.wire === 'anthropic' ? 'Anthropic' : 'OpenAI'} 兼容接口地址` : hostOf(adding.baseUrl)}
+          title={adding === 'pick' ? t('providers.add') : adding.name}
+          subtitle={adding === 'pick' ? t('providers.add.subtitle') : adding.custom ? t('providers.add.customSubtitle', { wire: adding.wire === 'anthropic' ? 'Anthropic' : 'OpenAI' }) : hostOf(adding.baseUrl)}
           icon={adding === 'pick' ? <span className="mw-head-icon"><Plus className="h-4 w-4" /></span> : <BrandIcon id={adding.icon} fallback={adding.monogram} size={36} />}
           onClose={() => { editSession.current++; setAdding(null); }}
         >
@@ -336,7 +342,8 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
             onDeleteKey={() => void removeKey(editing)}
           />
           {editing.authMode !== 'none' && <BalanceEntry provider={editing} />}
-          <footer className="mw-sheet-foot"><button type="button" className="mw-btn is-danger-ghost" disabled={busy || saving} onClick={() => void remove(editing)}>删除供应商</button></footer>
+          <HealthDetail health={health.get(editing.id)} name={editing.name} />
+          <footer className="mw-sheet-foot"><button type="button" className="mw-btn is-danger-ghost" disabled={busy || saving} onClick={() => void remove(editing)}>{t('providers.delete')}</button></footer>
         </Sheet>
       )}
     </>

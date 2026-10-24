@@ -107,6 +107,16 @@ class SessionAuthorityTest {
     }
 
     @Test
+    fun revokeNowHandsBackTheCommittedSessionForServerLogout() {
+        val storage = MemoryStorage()
+        val authority = SessionAuthority(storage, { error("unexpected refresh") }, { now })
+        assertTrue(authority.activate(old, authority.generation()))
+        assertEquals(old, authority.revokeNow())
+        assertNull(authority.restore())
+        assertNull(authority.revokeNow())
+    }
+
+    @Test
     fun failedTombstoneCommitRemainsVisibleToCaller() {
         val storage = MemoryStorage()
         val authority = SessionAuthority(storage, { error("unexpected refresh") }, { now })

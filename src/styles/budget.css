@@ -1,0 +1,46 @@
+/* 设置 › 预算提醒：每条预算一行，下面一条用量进度。 */
+.budget-rule + .budget-rule { border-top: 1px solid var(--color-border-faint); }
+.budget-rule .settings-row { padding-bottom: 8px; }
+.budget-rule .settings-row-hint { font-variant-numeric: tabular-nums; }
+.budget-rule-level {
+  flex: 0 0 auto;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.budget-rule[data-level="warn"] .budget-rule-level { color: var(--color-warning); }
+.budget-rule[data-level="over"] .budget-rule-level { color: var(--color-danger-text); }
+.budget-rule-meter {
+  margin: 0 16px 12px 50px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover-strong);
+  overflow: hidden;
+}
+.budget-rule-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  transition: width var(--motion-gentle) var(--ease-out-expo);
+}
+.budget-rule[data-level="warn"] .budget-rule-meter > span { background: var(--color-warning); }
+.budget-rule[data-level="over"] .budget-rule-meter > span { background: var(--color-danger); }
+.budget-rule[data-level="unavailable"] .budget-rule-meter > span { background: var(--color-text-tertiary); }
+.budget-rule[data-enabled="false"] .budget-rule-meter,
+.budget-rule[data-enabled="false"] .settings-row-hint { opacity: 0.55; }
+.budget-form-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.budget-form-fields > .settings-select,
+.budget-form-fields > .settings-input {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .budget-rule-meter > span { transition: none; }
+}
