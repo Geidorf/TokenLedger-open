@@ -23,8 +23,14 @@ const MAX_RULES: usize = 32;
 const MAX_TTL_SECS: u64 = 7 * 24 * 3600;
 const MAX_AFFINITY_ENTRIES: usize = 10_000;
 const MAX_DECISIONS: usize = 200;
+/// A member that failed (connect error, 5xx, 429) moves behind the others
+/// for 30 s, doubling per consecutive failure up to 5 min.
+const COOLDOWN_BASE_SECS: u64 = 30;
+const COOLDOWN_MAX_SECS: u64 = 300;
 const MAX_SCAN_DEPTH: usize = 64;
 const MAX_WEIGHT: u32 = 100;
+/// Group levels below the requested one: group → subgroup → sub-subgroup.
+const MAX_NEST_DEPTH: usize = 2;
 /// Codex's local compaction prompt; seen in codex-cli 0.160.
 const COMPACT_MARKERS: &[&str] = &["CONTEXT CHECKPOINT COMPACTION"];
 const IMAGE_TYPES: &[&str] = &["input_image", "image_url", "image"];
@@ -254,6 +260,27 @@ impl Features {
     }
 }
 
+/// A conversation key from the body, for clients that send no session
+/// header: Responses `prompt_cache_key`, or the session inside Anthropic
+/// `metadata.user_id` (a JSON object with `session_id`, or a legacy
+/// `…_session_<id>` string). Only used to pin routing, never recorded.
+pub fn body_session(payload: &Value) -> Option<String> {
+    let clip = |text: &str| -> Option<String> {
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.chars().take(128).collect())
+    };
+    if let Some(key) = payload.get("prompt_cache_key").and_then(Value::as_str) {
+        return clip(key);
+    }
+    let user = payload
+        .pointer("/metadata/user_id")
+        .and_then(Value::as_str)?;
+    if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(user) {
+        return map.get("session_id").and_then(Value::as_str).and_then(clip);
+    }
+    user.rsplit_once("_session_").and_then(|(_, id)| clip(id))
+}
+
 fn parse_minutes(text: &str) -> Option<u32> {
     let (hour, minute) = text.split_once(':')?;
     if hour.len() != 2 || minute.len() != 2 {
@@ -337,7 +364,10 @@ impl RuleCondition {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Plan {
+    /// `provider/model` leaves once [`Router::plan`] has expanded subgroups.
     pub candidates: Vec<String>,
+    /// Per candidate, the innermost subgroup it came from (`None` = direct).
+    pub via: Vec<Option<String>>,
     pub reason: &'static str,
     pub detail: String,
     /// Members dropped before any try; the trace explains each one.
@@ -417,6 +447,7 @@ pub fn plan_members(
         }
     };
     Plan {
+        via: vec![None; candidates.len()],
         candidates,
         reason,
         detail,
@@ -489,6 +520,9 @@ pub fn build_trace(
             } else {
                 "fallback"
             }];
+            if plan.via.get(index).is_some_and(Option::is_some) {
+                reasons.push("nested");
+            }
             let attempt = attempts.iter().find(|attempt| attempt.member == *member);
             let (verdict, detail) = match attempt {
                 Some(attempt) => {
@@ -520,7 +554,9 @@ pub fn build_trace(
         })
         .collect();
     for member in &group.members {
-        if plan.candidates.contains(member) {
+        let excluded = plan.excluded.iter().any(|item| item.member == *member);
+        // An expanded subgroup shows up as its leaves above.
+        if plan.candidates.contains(member) || (subgroup_id(member).is_some() && !excluded) {
             continue;
         }
         let (reason, detail) = match plan.excluded.iter().find(|item| item.member == *member) {
@@ -538,7 +574,58 @@ pub fn build_trace(
             detail,
         });
     }
+    // Exclusions from inside subgroups, which are not members here.
+    for item in &plan.excluded {
+        if !trace.iter().any(|row| row.member == item.member) {
+            trace.push(MemberTrace {
+                member: item.member.clone(),
+                rank: None,
+                verdict: "excluded",
+                reasons: vec![item.reason],
+                detail: item.detail.as_deref().map(clip),
+            });
+        }
+    }
     trace
+}
+
+fn subgroup_id(member: &str) -> Option<&str> {
+    member.strip_prefix(GROUP_PREFIX)
+}
+
+/// Checks the nesting across a whole set of groups: every `group/<id>`
+/// member exists, there is no cycle, and no chain is deeper than
+/// [`MAX_NEST_DEPTH`].
+pub fn validate_nesting(groups: &[RoutingGroup]) -> Result<(), String> {
+    fn depth<'a>(
+        groups: &'a [RoutingGroup],
+        group: &'a RoutingGroup,
+        path: &mut Vec<&'a str>,
+    ) -> Result<usize, String> {
+        if path.contains(&group.id.as_str()) {
+            path.push(&group.id);
+            return Err(format!("路由组嵌套成环：{}。", path.join(" → ")));
+        }
+        path.push(&group.id);
+        let mut deepest = 0;
+        for id in group.members.iter().filter_map(|m| subgroup_id(m)) {
+            let Some(sub) = groups.iter().find(|g| g.id == id) else {
+                return Err(format!("成员「group/{id}」指向的路由组不存在。"));
+            };
+            deepest = deepest.max(1 + depth(groups, sub, path)?);
+        }
+        path.pop();
+        Ok(deepest)
+    }
+    for group in groups {
+        if depth(groups, group, &mut Vec::new())? > MAX_NEST_DEPTH {
+            return Err(format!(
+                "路由组「{}」嵌套超过 {MAX_NEST_DEPTH} 层。",
+                group.name
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub fn validate_group(group: &RoutingGroup, provider_ids: &[String]) -> Result<(), String> {
@@ -553,6 +640,18 @@ pub fn validate_group(group: &RoutingGroup, provider_ids: &[String]) -> Result<(
         return Err(format!("路由组需要 1–{MAX_MEMBERS} 个成员。"));
     }
     for (index, member) in group.members.iter().enumerate() {
+        if group.members[..index].contains(member) {
+            return Err(format!("成员「{member}」重复。"));
+        }
+        if let Some(id) = subgroup_id(member) {
+            if !valid_id(id) {
+                return Err(format!("成员「{member}」不是有效的路由组。"));
+            }
+            if id == group.id {
+                return Err("路由组不能包含自己。".to_string());
+            }
+            continue;
+        }
         let Some((provider, model)) = member.split_once('/') else {
             return Err(format!("成员「{member}」需要写成 供应商ID/模型。"));
         };
@@ -564,9 +663,6 @@ pub fn validate_group(group: &RoutingGroup, provider_ids: &[String]) -> Result<(
         }
         if !provider_ids.iter().any(|id| id == provider) {
             return Err(format!("成员「{member}」的供应商不存在。"));
-        }
-        if group.members[..index].contains(member) {
-            return Err(format!("成员「{member}」重复。"));
         }
     }
     match (&group.strategy, &group.manual_member) {
@@ -611,6 +707,8 @@ pub struct Router {
     groups: RwLock<Vec<RoutingGroup>>,
     affinity: Mutex<HashMap<(String, String), (String, Instant)>>,
     rotation: Mutex<HashMap<String, usize>>,
+    /// Member → (cooling until, consecutive failures).
+    cooldown: Mutex<HashMap<String, (Instant, u32)>>,
     decisions: Mutex<VecDeque<RouteDecision>>,
     pub load_error: Option<String>,
 }
@@ -633,6 +731,7 @@ impl Router {
             groups: RwLock::new(groups),
             affinity: Mutex::new(HashMap::new()),
             rotation: Mutex::new(HashMap::new()),
+            cooldown: Mutex::new(HashMap::new()),
             decisions: Mutex::new(VecDeque::new()),
             load_error,
         }
@@ -679,6 +778,7 @@ impl Router {
         } else {
             next.push(group);
         }
+        validate_nesting(&next)?;
         *groups = self.save(next)?;
         Ok(groups.clone())
     }
@@ -692,12 +792,24 @@ impl Router {
         if next.len() == groups.len() {
             return Err("找不到这个路由组。".to_string());
         }
+        if let Some(parent) = next
+            .iter()
+            .find(|g| g.members.iter().any(|m| subgroup_id(m) == Some(id)))
+        {
+            return Err(format!(
+                "路由组「{}」还把它当成员，先从那里移除。",
+                parent.name
+            ));
+        }
         *groups = self.save(next)?;
         lock(&self.affinity).retain(|(group, _), _| group != id);
         lock(&self.rotation).remove(id);
         Ok(groups.clone())
     }
 
+    /// Picks for `group` and expands `group/<id>` members into their own
+    /// plans in place. The session pins a leaf: it beats the strategy at any
+    /// level, but never a rule of the requested group.
     pub fn plan(&self, group: &RoutingGroup, features: &Features, session: Option<&str>) -> Plan {
         let affinity = session
             .filter(|_| group.session_ttl_secs > 0)
@@ -713,15 +825,195 @@ impl Router {
                     None => None,
                 }
             });
+        // A dry run first: when the session pin decides, no rotation or
+        // weighted turn is spent at any level, so pinned sessions do not
+        // skew the shares of new ones.
+        let mut plan = self.plan_level(
+            group,
+            features,
+            affinity.as_deref(),
+            &mut vec![group.id.clone()],
+            false,
+        );
+        let pinned = affinity.clone().filter(|leaf| {
+            !plan.is_rule()
+                && (plan.reason == "affinity" || plan.candidates.iter().any(|m| m == leaf))
+        });
+        let Some(leaf) = pinned else {
+            let mut plan = self.plan_level(
+                group,
+                features,
+                affinity.as_deref(),
+                &mut vec![group.id.clone()],
+                true,
+            );
+            self.demote_cooling(&mut plan);
+            return plan;
+        };
+        if plan.reason != "affinity" {
+            if let Some(index) = plan.candidates.iter().position(|m| *m == leaf) {
+                let member = plan.candidates.remove(index);
+                let via = plan.via.remove(index);
+                plan.detail = match &via {
+                    Some(sub) => format!("同一会话沿用上次成员（经 group/{sub}）"),
+                    None => "同一会话沿用上次成员".to_string(),
+                };
+                plan.candidates.insert(0, member);
+                plan.via.insert(0, via);
+                plan.reason = "affinity";
+            }
+        }
+        self.demote_cooling(&mut plan);
+        plan
+    }
+
+    /// Moves cooling members behind the rest, keeping both orders; they stay
+    /// as a last resort rather than being dropped.
+    fn demote_cooling(&self, plan: &mut Plan) {
+        let now = Instant::now();
+        let cooling: Vec<bool> = {
+            let map = lock(&self.cooldown);
+            plan.candidates
+                .iter()
+                .map(|m| map.get(m).is_some_and(|(until, _)| *until > now))
+                .collect()
+        };
+        if !cooling.contains(&true) || !cooling.contains(&false) {
+            return;
+        }
+        let first_cooling = cooling[0].then(|| plan.candidates[0].clone());
+        let (mut candidates, mut via, mut tail, mut tail_via) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for ((member, from), cool) in plan
+            .candidates
+            .drain(..)
+            .zip(plan.via.drain(..))
+            .zip(cooling)
+        {
+            if cool {
+                tail.push(member);
+                tail_via.push(from);
+            } else {
+                candidates.push(member);
+                via.push(from);
+            }
+        }
+        candidates.extend(tail);
+        via.extend(tail_via);
+        plan.candidates = candidates;
+        plan.via = via;
+        if let Some(member) = first_cooling {
+            plan.detail = format!("{}；{member} 冷却中，已后移", plan.detail);
+        }
+    }
+
+    /// Called after a retryable failure of `member`.
+    pub fn cool(&self, member: &str) {
+        let mut map = lock(&self.cooldown);
+        if map.len() >= MAX_AFFINITY_ENTRIES {
+            map.clear();
+        }
+        let strikes = map.get(member).map_or(0, |(_, strikes)| *strikes) + 1;
+        let secs = COOLDOWN_BASE_SECS
+            .saturating_mul(1 << (strikes - 1).min(16))
+            .min(COOLDOWN_MAX_SECS);
+        map.insert(
+            member.to_string(),
+            (Instant::now() + Duration::from_secs(secs), strikes),
+        );
+    }
+
+    /// Called after `member` answered; ends its cooldown.
+    pub fn recover(&self, member: &str) {
+        lock(&self.cooldown).remove(member);
+    }
+
+    #[cfg(test)]
+    fn cooldown_secs(&self, member: &str) -> Option<u64> {
+        lock(&self.cooldown)
+            .get(member)
+            .map(|(until, _)| until.saturating_duration_since(Instant::now()).as_secs() + 1)
+    }
+
+    fn plan_level(
+        &self,
+        group: &RoutingGroup,
+        features: &Features,
+        affinity: Option<&str>,
+        path: &mut Vec<String>,
+        advance: bool,
+    ) -> Plan {
         // A turn is spent only when the strategy picked the primary, so
         // pinned sessions and rule hits do not skew rotation or weights.
-        let mut counters = lock(&self.rotation);
-        let counter = counters.entry(group.id.clone()).or_insert(0);
-        let plan = plan_members(group, features, affinity.as_deref(), *counter);
-        if matches!(plan.reason, "rotate" | "weighted") {
-            *counter = counter.wrapping_add(1);
+        let plan = {
+            let mut counters = lock(&self.rotation);
+            let counter = counters.entry(group.id.clone()).or_insert(0);
+            let plan = plan_members(group, features, affinity, *counter);
+            if advance && matches!(plan.reason, "rotate" | "weighted") {
+                *counter = counter.wrapping_add(1);
+            }
+            plan
+        };
+        if !plan.candidates.iter().any(|m| subgroup_id(m).is_some()) {
+            return plan;
         }
-        plan
+        let mut expanded = Plan {
+            candidates: Vec::new(),
+            via: Vec::new(),
+            reason: plan.reason,
+            detail: plan.detail,
+            excluded: plan.excluded,
+        };
+        for (index, member) in plan.candidates.into_iter().enumerate() {
+            let Some(id) = subgroup_id(&member) else {
+                if !expanded.candidates.contains(&member) {
+                    expanded.candidates.push(member);
+                    expanded.via.push(None);
+                }
+                continue;
+            };
+            // Disabled, missing, cyclic or too deep subgroups are skipped.
+            let Some(sub) = self
+                .enabled_group(id)
+                .filter(|_| path.len() <= MAX_NEST_DEPTH && !path.iter().any(|p| p == id))
+            else {
+                expanded.excluded.push(Exclusion {
+                    member: member.clone(),
+                    reason: "disabled",
+                    detail: Some("子路由组未启用或嵌套过深".to_string()),
+                });
+                continue;
+            };
+            path.push(sub.id.clone());
+            // Only the primary subgroup spends a turn; fallbacks that are
+            // listed but may never be reached keep their rotation.
+            let inner = self.plan_level(&sub, features, None, path, advance && index == 0);
+            path.pop();
+            if index == 0 && inner.is_rule() && !expanded.is_rule() {
+                expanded.reason = "rule";
+                expanded.detail = format!("{}：{}", sub.name, inner.detail);
+            }
+            if inner.candidates.is_empty() {
+                let gone: Vec<&str> = inner
+                    .excluded
+                    .iter()
+                    .map(|item| item.member.as_str())
+                    .collect();
+                expanded.excluded.push(Exclusion {
+                    member: member.clone(),
+                    reason: "nested",
+                    detail: Some(format!("子路由组没有可用成员（{}）", gone.join("、"))),
+                });
+            }
+            expanded.excluded.extend(inner.excluded);
+            for (leaf, via) in inner.candidates.into_iter().zip(inner.via) {
+                if !expanded.candidates.contains(&leaf) {
+                    expanded.candidates.push(leaf);
+                    expanded.via.push(via.or_else(|| Some(sub.id.clone())));
+                }
+            }
+        }
+        expanded
     }
 
     /// Pins the session to the member that actually answered.
@@ -962,6 +1254,43 @@ mod tests {
     }
 
     #[test]
+    fn body_session_reads_cache_key_and_metadata() {
+        assert_eq!(
+            body_session(
+                &json!({"prompt_cache_key": "conv-1", "metadata": {"user_id": "x_session_y"}})
+            ),
+            Some("conv-1".into())
+        );
+        assert_eq!(
+            body_session(&json!({"metadata": {"user_id": "user_ab_account_cd_session_5e6f"}})),
+            Some("5e6f".into())
+        );
+        assert_eq!(
+            body_session(
+                &json!({"metadata": {"user_id": "{\"device_id\":\"d\",\"session_id\":\"s-9\"}"}})
+            ),
+            Some("s-9".into())
+        );
+        assert_eq!(
+            body_session(&json!({"metadata": {"user_id": "user_only"}})),
+            None
+        );
+        assert_eq!(
+            body_session(&json!({"metadata": {"user_id": "{\"device_id\":\"d\"}"}})),
+            None
+        );
+        assert_eq!(body_session(&json!({"prompt_cache_key": "  "})), None);
+        assert_eq!(body_session(&json!({"input": "hi"})), None);
+        let long = "k".repeat(300);
+        assert_eq!(
+            body_session(&json!({"prompt_cache_key": long}))
+                .unwrap()
+                .len(),
+            128
+        );
+    }
+
+    #[test]
     fn features_read_responses_and_chat_bodies() {
         let responses = json!({
             "instructions": "be brief",
@@ -1096,6 +1425,200 @@ mod tests {
         assert!(validate_group(&bad, &providers).is_err());
         bad.weights = BTreeMap::from([("a/m1".into(), 100)]);
         assert!(validate_group(&bad, &providers).is_ok());
+    }
+
+    fn nested(id: &str, strategy: Strategy, members: &[&str]) -> RoutingGroup {
+        RoutingGroup {
+            id: id.into(),
+            name: id.into(),
+            members: members.iter().map(|m| m.to_string()).collect(),
+            manual_member: None,
+            ..group(strategy, vec![])
+        }
+    }
+
+    #[test]
+    fn fallback_subgroups_keep_their_turn_and_nested_exclusions_surface() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-fallback-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let providers = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let router = Router::new(&dir);
+        let left = nested("left", Strategy::Rotate, &["a/m1", "a/m2"]);
+        let right = nested("right", Strategy::Rotate, &["b/m1", "b/m2"]);
+        let top = nested("top", Strategy::Rotate, &["group/left", "group/right"]);
+        for g in [&left, &right, &top] {
+            router.upsert(g.clone(), &providers).unwrap();
+        }
+        let none = Features::default();
+        let firsts: Vec<String> = (0..4)
+            .map(|_| router.plan(&top, &none, None).candidates[0].clone())
+            .collect();
+        assert_eq!(
+            firsts,
+            ["a/m1", "b/m1", "a/m2", "b/m2"],
+            "every leaf gets primary turns"
+        );
+
+        let low = nested("low", Strategy::Failover, &["c/m3"]);
+        let mid = nested("mid", Strategy::Failover, &["group/low"]);
+        let chain = nested("chain", Strategy::Failover, &["group/mid"]);
+        for g in [&low, &mid, &chain] {
+            router.upsert(g.clone(), &providers).unwrap();
+        }
+        let mut off = low.clone();
+        off.enabled = false;
+        router.upsert(off, &providers).unwrap();
+        let plan = router.plan(&chain, &none, None);
+        assert!(plan.candidates.is_empty());
+        let trace = build_trace(&chain, &plan, &[]);
+        let row = |member: &str| trace.iter().find(|row| row.member == member).unwrap();
+        assert_eq!(row("group/mid").reasons, ["nested"]);
+        assert!(row("group/mid")
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains("group/low"));
+        assert_eq!(row("group/low").reasons, ["disabled"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn nesting_validation_rejects_missing_cycles_and_depth() {
+        let leaf = |id: &str| nested(id, Strategy::Failover, &["a/m1"]);
+        let ok = [
+            nested("top", Strategy::Failover, &["group/mid", "b/m2"]),
+            nested("mid", Strategy::Rotate, &["group/low"]),
+            leaf("low"),
+        ];
+        assert!(validate_nesting(&ok).is_ok());
+        let missing = [nested("top", Strategy::Failover, &["group/none"])];
+        assert!(validate_nesting(&missing).unwrap_err().contains("不存在"));
+        let cycle = [
+            nested("x", Strategy::Failover, &["group/y"]),
+            nested("y", Strategy::Failover, &["group/x"]),
+        ];
+        assert!(validate_nesting(&cycle).unwrap_err().contains("x → y → x"));
+        let deep = [
+            nested("l0", Strategy::Failover, &["group/l1"]),
+            nested("l1", Strategy::Failover, &["group/l2"]),
+            nested("l2", Strategy::Failover, &["group/l3"]),
+            leaf("l3"),
+        ];
+        assert!(validate_nesting(&deep).unwrap_err().contains("嵌套超过"));
+        let providers = vec!["a".to_string(), "b".to_string()];
+        let own = nested("top", Strategy::Failover, &["group/top"]);
+        assert!(validate_group(&own, &providers).is_err());
+        assert!(validate_group(&ok[0], &providers).is_ok());
+    }
+
+    #[test]
+    fn router_expands_subgroups_and_pins_nested_leaves() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-nested-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let providers = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let router = Router::new(&dir);
+        let pool = nested("pool", Strategy::Rotate, &["b/m2", "c/m3"]);
+        let top = nested("top", Strategy::Failover, &["group/pool", "a/m1", "c/m3"]);
+        assert!(
+            router.upsert(top.clone(), &providers).is_err(),
+            "pool missing"
+        );
+        router.upsert(pool.clone(), &providers).unwrap();
+        router.upsert(top.clone(), &providers).unwrap();
+        assert!(router.delete("pool").unwrap_err().contains("top"));
+
+        let none = Features::default();
+        let first = router.plan(&top, &none, Some("s1"));
+        assert_eq!(first.candidates, ["b/m2", "c/m3", "a/m1"], "deduped leaves");
+        let trace = build_trace(&top, &first, &[]);
+        assert_eq!(trace.len(), 3, "the subgroup shows as its leaves");
+        assert_eq!(
+            trace[0].reasons,
+            ["strategy_first", "nested", "not_reached"]
+        );
+        assert_eq!(
+            first.via,
+            [Some("pool".to_string()), Some("pool".to_string()), None]
+        );
+        assert_eq!(first.reason, "failover");
+        let second = router.plan(&top, &none, None);
+        assert_eq!(second.candidates[0], "c/m3", "subgroup keeps rotating");
+
+        router.remember(&top, Some("s1"), "b/m2");
+        for _ in 0..3 {
+            let plan = router.plan(&top, &none, Some("s1"));
+            assert_eq!(plan.candidates[0], "b/m2");
+            assert_eq!(plan.reason, "affinity");
+            assert!(plan.detail.contains("group/pool"));
+        }
+        assert_eq!(
+            router.plan(&top, &none, None).candidates[0],
+            "b/m2",
+            "pinned turns leave the subgroup's rotation alone"
+        );
+
+        let mut ruled = pool.clone();
+        ruled.rules = vec![rule(RuleCondition::HasImage, "c/m3")];
+        router.upsert(ruled, &providers).unwrap();
+        let image = Features {
+            has_image: true,
+            ..Features::default()
+        };
+        let plan = router.plan(&top, &image, None);
+        assert_eq!((plan.candidates[0].as_str(), plan.reason), ("c/m3", "rule"));
+
+        let mut off = pool.clone();
+        off.enabled = false;
+        router.upsert(off, &providers).unwrap();
+        let skipped = router.plan(&top, &none, None);
+        assert_eq!(skipped.candidates, ["a/m1", "c/m3"]);
+        let trace = build_trace(&top, &skipped, &[]);
+        let pool_row = trace.iter().find(|row| row.member == "group/pool").unwrap();
+        assert_eq!(
+            (pool_row.verdict, pool_row.reasons.as_slice()),
+            ("excluded", ["disabled"].as_slice())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_members_cool_down_behind_the_rest() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-cool-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let router = Router::new(&dir);
+        let g = group(Strategy::Failover, vec![]);
+        let none = Features::default();
+        router.cool("a/m1");
+        let plan = router.plan(&g, &none, None);
+        assert_eq!(plan.candidates, ["b/m2", "c/m3", "a/m1"]);
+        assert!(plan.detail.contains("a/m1 冷却中"));
+        assert_eq!(router.cooldown_secs("a/m1"), Some(30));
+        router.cool("a/m1");
+        assert_eq!(router.cooldown_secs("a/m1"), Some(60));
+        for _ in 0..10 {
+            router.cool("a/m1");
+        }
+        assert_eq!(router.cooldown_secs("a/m1"), Some(300));
+
+        router.cool("c/m3");
+        assert_eq!(
+            router.plan(&g, &none, None).candidates,
+            ["b/m2", "a/m1", "c/m3"]
+        );
+        router.cool("b/m2");
+        let all = router.plan(&g, &none, None);
+        assert_eq!(
+            all.candidates,
+            ["a/m1", "b/m2", "c/m3"],
+            "all cooling: order kept"
+        );
+        router.recover("a/m1");
+        router.recover("c/m3");
+        assert_eq!(
+            router.plan(&g, &none, None).candidates,
+            ["a/m1", "c/m3", "b/m2"]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -1906,6 +1906,17 @@ mod tests {
                 (1, 1),
                 "rotation"
             );
+            let before = (h.hits("a"), h.hits("b"));
+            for _ in 0..3 {
+                let body =
+                    json!({"model": "group/mix", "input": "hi", "prompt_cache_key": "conv-7"});
+                assert_eq!(send(&h, body, None).await.0, 200);
+            }
+            let moved = (h.hits("a") - before.0, h.hits("b") - before.1);
+            assert!(
+                moved == (3, 0) || moved == (0, 3),
+                "a body cache key pins without a session header"
+            );
             let image = json!({"model": "group/mix", "input": [{"role": "user", "content": [
                 {"type": "input_image", "image_url": "data:image/png;base64,AAAA"}]}]});
             let b_before = h.hits("b");

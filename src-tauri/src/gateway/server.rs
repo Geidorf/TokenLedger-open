@@ -25,7 +25,9 @@ use super::convert::{chat_to_response, responses_to_chat, ChatStream, StreamConv
 use super::gemini::{self, GeminiPath, GeminiStream};
 use super::ledger::{agent_from_user_agent, sse_data, LedgerRecord, SseLines, Usage};
 use super::policy;
-use super::routing::{build_trace, Features, RouteAttempt, RouteDecision, GROUP_PREFIX};
+use super::routing::{
+    body_session, build_trace, Features, RouteAttempt, RouteDecision, GROUP_PREFIX,
+};
 use super::store::{provider_account, validate_auth_mode, AuthMode, ProviderRecord, WireApi};
 use super::Shared;
 
@@ -874,9 +876,11 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
     };
     ctx.group = Some(group.id.clone());
     let features = Features::extract(payload, ctx.agent.as_deref(), local_minutes());
+    // Header sessions are recorded; a body-derived key only pins routing.
+    let affinity_key = ctx.session.clone().or_else(|| body_session(payload));
     let plan = shared
         .router
-        .plan(&group, &features, ctx.session.as_deref());
+        .plan(&group, &features, affinity_key.as_deref());
     let mut attempts = Vec::new();
     let mut chosen = None;
     let mut last = None;
@@ -891,11 +895,12 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
                     error: None,
                 });
                 if ok {
+                    shared.router.recover(member);
                     chosen = Some(member.clone());
                     if !plan.is_rule() {
                         shared
                             .router
-                            .remember(&group, ctx.session.as_deref(), member);
+                            .remember(&group, affinity_key.as_deref(), member);
                     }
                 }
                 last = Some(response);
@@ -907,6 +912,9 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
                 status,
                 error,
             } => {
+                if outcome == "failed" {
+                    shared.router.cool(member);
+                }
                 attempts.push(RouteAttempt {
                     member: member.clone(),
                     outcome,

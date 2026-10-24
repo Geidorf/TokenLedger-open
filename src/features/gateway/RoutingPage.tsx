@@ -71,7 +71,8 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
   const [group, setGroup] = useState(initial);
   const [candidate, setCandidate] = useState('');
   const set = (patch: Partial<RoutingGroup>) => setGroup((current) => ({ ...current, ...patch }));
-  const available = options.filter((option) => !option.value.startsWith('group/') && !group.members.includes(option.value));
+  // Subgroups are allowed; cycles and depth are checked when saving.
+  const available = options.filter((option) => option.value !== `group/${group.id}` && !group.members.includes(option.value));
 
   const setWeight = (member: string, value: number) => set({
     weights: { ...group.weights, [member]: Math.min(MAX_WEIGHT, Math.max(1, Math.round(value) || 1)) },
@@ -137,7 +138,7 @@ function GroupEditor({ initial, isNew, options, busy, onSave }: {
         </ol>
         <div className="mw-editor-row">
           <select className="mw-native-select is-compact" aria-label="选择成员" value={candidate} onChange={(event) => setCandidate(event.target.value)}>
-            <option value="">选择 供应商/模型…</option>
+            <option value="">选择 供应商/模型 或子路由组…</option>
             {available.map((option) => <option key={option.value} value={option.value}>{option.value}</option>)}
           </select>
           <button type="button" className="mw-btn is-ghost" disabled={!candidate} onClick={() => { set({ members: [...group.members, candidate] }); setCandidate(''); }}><Plus className="h-3.5 w-3.5" />添加成员</button>
@@ -303,7 +304,7 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const options = useMemo(() => modelOptions(providers, []), [providers]);
+  const options = useMemo(() => modelOptions(providers, groups ?? []), [providers, groups]);
 
   const save = async (group: RoutingGroup, success: string) => {
     setBusy(true);
