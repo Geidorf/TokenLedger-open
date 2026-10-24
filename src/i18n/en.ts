@@ -133,6 +133,7 @@ export const en: Record<MessageKey, string> = {
   'routing.trace.manual_only': 'Pinned to one member',
   'routing.trace.cooling_down': 'Cooling down',
   'routing.trace.unhealthy': 'Failed health check',
+  'routing.trace.probe_unsupported': 'Probe not supported',
   'routing.trace.disabled': 'Disabled',
   'routing.trace.not_planned': 'Not a candidate',
   'routing.ttl.off': 'Off',

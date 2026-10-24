@@ -136,6 +136,7 @@ export const zh = {
   'routing.trace.manual_only': '固定分配只用一个',
   'routing.trace.cooling_down': '冷却中',
   'routing.trace.unhealthy': '健康检查未过',
+  'routing.trace.probe_unsupported': '不支持探活',
   'routing.trace.disabled': '已停用',
   'routing.trace.not_planned': '未排入候选',
   'routing.ttl.off': '关闭',

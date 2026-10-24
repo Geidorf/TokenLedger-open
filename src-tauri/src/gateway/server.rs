@@ -595,7 +595,7 @@ fn upstream_url(provider: &ProviderRecord) -> Result<Url, String> {
     .map_err(|_| "供应商接口地址无效。".to_string())
 }
 
-async fn upstream_client(url: &Url) -> Result<reqwest::Client, String> {
+pub(super) async fn upstream_client(url: &Url) -> Result<reqwest::Client, String> {
     let upstream = policy::resolve(url).await?;
     if upstream.fake_ip {
         log::warn!(

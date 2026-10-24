@@ -14,6 +14,7 @@ mod health;
 mod ledger;
 mod legacy_restore;
 mod policy;
+mod probe;
 mod routing;
 mod server;
 mod store;
@@ -35,6 +36,8 @@ pub use health::HealthReport;
 pub(crate) use ledger::accounting;
 use ledger::Ledger;
 pub use ledger::{ContextSize, LedgerRecord};
+pub use probe::ProbeSettings;
+use probe::Prober;
 use routing::Router;
 pub use routing::{CoolingMember, RouteDecision, RoutingGroup};
 #[cfg(test)]
@@ -80,6 +83,7 @@ pub struct Gateway {
     enabled: AtomicBool,
     /// Taken and aborted under the `state` lock.
     listener: Mutex<Option<ListenerRun>>,
+    prober: Prober,
 }
 
 #[derive(Debug, Serialize)]
@@ -230,6 +234,7 @@ impl Gateway {
             load_error,
             enabled: AtomicBool::new(true),
             listener: Mutex::new(None),
+            prober: Prober::new(dir),
         }
     }
 
@@ -671,8 +676,55 @@ impl Gateway {
             &records,
             &known,
             &self.shared.router.cooling(),
+            &self.prober.results(),
+            self.prober.settings(),
             now,
         ))
+    }
+
+    pub fn set_health_probe(&self, settings: ProbeSettings) -> Result<ProbeSettings, String> {
+        self.prober.set(settings)
+    }
+
+    /// Probes every enabled provider once, one after another.
+    pub async fn probe_providers(&self) {
+        let providers: Vec<ProviderRecord> =
+            self.providers().into_iter().filter(|p| p.enabled).collect();
+        let ids: Vec<String> = providers.iter().map(|p| p.id.clone()).collect();
+        self.prober.retain(&ids);
+        for provider in providers {
+            let key = if provider.auth_mode == AuthMode::None {
+                None
+            } else {
+                let secrets = self.shared.secrets.clone();
+                let account = provider_account(&provider.id);
+                match tauri::async_runtime::spawn_blocking(move || secrets.get(&account)).await {
+                    Ok(Ok(Some(key))) => Some(key),
+                    // No key: the passive report already says so; never probe keyless.
+                    _ => continue,
+                }
+            };
+            let Ok(url) = probe::models_url(&provider) else {
+                continue;
+            };
+            let client = server::upstream_client(&url);
+            let result = probe::probe(&provider, key.as_deref(), client, url.clone()).await;
+            self.prober.record(&provider.id, result);
+        }
+    }
+
+    /// Timed probes while model access is on; checks once a minute whether
+    /// a round is due. Does nothing while the probe is off (the default).
+    pub fn spawn_probe_loop(self: &Arc<Self>) {
+        let gateway = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                if gateway.enabled.load(Ordering::SeqCst) && gateway.prober.due() {
+                    gateway.probe_providers().await;
+                }
+            }
+        });
     }
 
     pub fn recent_route_decisions(&self, limit: usize) -> Vec<RouteDecision> {
@@ -971,6 +1023,36 @@ pub async fn gateway_provider_health(
         .map_err(|error| format!("读取健康度失败：{error}"))?
 }
 
+/// Turns the optional active probe on or off and sets its interval.
+#[tauri::command]
+pub fn gateway_set_health_probe(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+    enabled: bool,
+    interval_mins: u32,
+) -> Result<ProbeSettings, String> {
+    ensure_main(&window)?;
+    gateway.set_health_probe(ProbeSettings {
+        enabled,
+        interval_mins,
+    })
+}
+
+/// 「立即探活」: one `GET …/models` per enabled provider with its stored
+/// key, then the refreshed report. Only on an explicit click.
+#[tauri::command]
+pub async fn gateway_probe_providers(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+) -> Result<HealthReport, String> {
+    ensure_main(&window)?;
+    let gateway = Arc::clone(&gateway);
+    gateway.probe_providers().await;
+    tauri::async_runtime::spawn_blocking(move || gateway.provider_health())
+        .await
+        .map_err(|error| format!("读取健康度失败：{error}"))?
+}
+
 /// Group members currently cooling down after failures; main window only.
 #[tauri::command]
 pub fn gateway_routing_cooldowns(
@@ -1049,6 +1131,14 @@ mod tests {
                                 *seen.api_key.lock().unwrap() = header("x-api-key");
                                 *seen.anthropic_version.lock().unwrap() =
                                     header("anthropic-version");
+                                if path == "/v1/models" {
+                                    // Active health probe: an empty model list.
+                                    return Ok::<_, Infallible>(hyper::Response::new(Full::new(
+                                        Bytes::from(
+                                            json!({"object": "list", "data": []}).to_string(),
+                                        ),
+                                    )));
+                                }
                                 let body = request.into_body().collect().await.unwrap().to_bytes();
                                 let body: Value = serde_json::from_slice(&body).unwrap();
                                 let stream = body["stream"] == true;
@@ -1184,6 +1274,35 @@ mod tests {
             token,
             dir,
         }
+    }
+
+    #[test]
+    fn probe_lists_models_with_the_stored_key_and_skips_keyless() {
+        let harness = harness("probe-models");
+        let gateway = &harness.gateway;
+        gateway
+            .upsert_provider(provider("nokey", 1, WireApi::Chat))
+            .unwrap();
+        tauri::async_runtime::block_on(gateway.probe_providers());
+        assert_eq!(
+            harness.seen.auth.lock().unwrap().as_deref(),
+            Some("Bearer sk-chat"),
+            "the probe sends the provider's own key"
+        );
+        let report = gateway.provider_health().unwrap();
+        assert!(!report.probe.enabled, "probing is off unless turned on");
+        let by_id = |id: &str| report.providers.iter().find(|p| p.provider == id).unwrap();
+        for id in ["resp", "chat"] {
+            let probes = &by_id(id).probes;
+            assert_eq!(
+                (probes.len(), probes[0].ok, probes[0].status),
+                (1, true, Some(200))
+            );
+            assert_eq!(by_id(id).status, "healthy");
+        }
+        assert!(by_id("nokey").probes.is_empty());
+        // Probes never reach the usage ledger.
+        assert!(gateway.recent_requests(10).unwrap().is_empty());
     }
 
     async fn post(harness: &Harness, path: &str, body: Value, token: &str) -> (u16, String) {

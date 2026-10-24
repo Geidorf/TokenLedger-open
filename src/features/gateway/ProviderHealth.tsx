@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { providerHealth } from './api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { errorText, probeProviders, providerHealth, setHealthProbe } from './api';
 import { traceReasonLabel } from './helpers';
-import type { HealthBucket, HealthReport, HealthStats, HealthStatus, ProviderHealth } from './types';
+import type { HealthBucket, HealthReport, HealthStats, HealthStatus, ProbeResult, ProbeSettings, ProviderHealth } from './types';
 import './providerHealth.css';
 
 export const HEALTH_LABEL: Record<HealthStatus, string> = { healthy: '健康', degraded: '降级', down: '故障', idle: '无流量' };
 const HEALTH_TONE: Record<HealthStatus, string> = { healthy: 'is-success', degraded: 'is-warning', down: 'is-danger', idle: '' };
 const POLL_MS = 30_000;
 
-/** Health of every provider, refreshed every 30 s while the window is visible. */
-export function useProviderHealth(): Map<string, ProviderHealth> {
+/** The health report, refreshed every 30 s while the window is visible. */
+export function useHealthReport(): [HealthReport | null, (next: HealthReport) => void] {
   const [report, setReport] = useState<HealthReport | null>(null);
   useEffect(() => {
     let alive = true;
@@ -21,7 +21,69 @@ export function useProviderHealth(): Map<string, ProviderHealth> {
     }, POLL_MS);
     return () => { alive = false; window.clearInterval(timer); };
   }, []);
-  return useMemo(() => new Map((report?.providers ?? []).map((item) => [item.provider, item])), [report]);
+  return [report, setReport];
+}
+
+export function healthByProvider(report: HealthReport | null): Map<string, ProviderHealth> {
+  return new Map((report?.providers ?? []).map((item) => [item.provider, item]));
+}
+
+/** Health of every provider, refreshed every 30 s while the window is visible. */
+export function useProviderHealth(): Map<string, ProviderHealth> {
+  const [report] = useHealthReport();
+  return useMemo(() => healthByProvider(report), [report]);
+}
+
+export const PROBE_INTERVALS = [5, 15, 30, 60, 120];
+
+/** Optional active probe: off by default; a click probes once even while off. */
+export function ProbeBar({ settings, onReport, onNotify }: { settings: ProbeSettings | undefined; onReport: (next: HealthReport) => void; onNotify: (type: 'success' | 'error', text: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [local, setLocal] = useState<ProbeSettings | null>(null);
+  const current = local ?? settings ?? { enabled: false, intervalMins: 15 };
+  const save = useCallback(async (next: ProbeSettings) => {
+    setBusy(true);
+    try {
+      setLocal(await setHealthProbe(next));
+      onReport(await providerHealth());
+    } catch (error) {
+      onNotify('error', `保存探活设置失败：${errorText(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [onNotify, onReport]);
+  const probeNow = async () => {
+    setBusy(true);
+    try {
+      onReport(await probeProviders());
+      onNotify('success', '已探活一次');
+    } catch (error) {
+      onNotify('error', `探活失败：${errorText(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mw-probe-bar" role="group" aria-label="主动探活">
+      <button type="button" role="switch" aria-checked={current.enabled} aria-label="定时主动探活" disabled={busy} className={`mw-switch ${current.enabled ? 'is-on' : ''}`} onClick={() => void save({ ...current, enabled: !current.enabled })}><span /></button>
+      <span className="mw-probe-text">
+        <strong>定时主动探活</strong>
+        <small>开启后用已设置的 key 请求各供应商公开的模型列表接口，不发对话、不消耗 token；没设 key 的供应商不探。</small>
+      </span>
+      <label className="mw-probe-interval">
+        <span>间隔</span>
+        <select className="mw-select" value={current.intervalMins} disabled={busy || !current.enabled} onChange={(event) => void save({ ...current, intervalMins: Number(event.target.value) })}>
+          {PROBE_INTERVALS.map((mins) => <option key={mins} value={mins}>{mins} 分钟</option>)}
+        </select>
+      </label>
+      <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => void probeNow()}>立即探活</button>
+    </div>
+  );
+}
+
+function probeLine(probe: ProbeResult): string {
+  if (probe.ok) return `最近探活 ${clock(probe.ts)} 正常 · ${formatMs(probe.latencyMs)}`;
+  return `最近探活 ${clock(probe.ts)} ${traceReasonLabel(probe.code)}${probe.status ? `（HTTP ${probe.status}）` : ''}`;
 }
 
 export function formatMs(ms: number | null): string {
@@ -40,7 +102,7 @@ export function healthSummary(health: ProviderHealth): string {
   const { stats } = health;
   const reasons = health.reasons.map(traceReasonLabel).join('、');
   if (health.status === 'idle') return '近 24 小时没有经网关的请求';
-  if (stats.requests === 0) return reasons || '请求都没有发到上游';
+  if (stats.requests === 0) return reasons || (health.probes?.[0]?.ok ? '近 24 小时没有经网关的请求，探活正常' : '请求都没有发到上游');
   const base = `近 24 小时 ${stats.requests} 次 · 成功 ${formatRate(stats.successRate)} · P95 ${formatMs(stats.p95Ms)}`;
   return reasons ? `${base} · ${reasons}` : base;
 }
@@ -105,7 +167,8 @@ export function HealthDetail({ health, name }: { health: ProviderHealth | undefi
         <span className="mw-flex" />
         <HealthSpark buckets={health.buckets} label={name} />
       </div>
-      <p className="mw-health-note">{healthSummary(health)}。只统计经本机网关的请求，不额外访问供应商。</p>
+      <p className="mw-health-note">{healthSummary(health)}。{health.probes?.length ? '另含主动探活结果。' : '只统计经本机网关的请求，不额外访问供应商。'}</p>
+      {health.probes?.[0] && <p className={`mw-health-note ${health.probes[0].ok ? '' : 'is-warning'}`}>{probeLine(health.probes[0])}</p>}
       {health.status !== 'idle' && <StatGrid stats={stats} />}
       {stats.codes.length > 0 && (
         <div className="mw-health-codes" aria-label="错误分布">

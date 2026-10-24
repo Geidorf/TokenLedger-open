@@ -66,6 +66,8 @@ fn main() {
         "gateway_recent_route_decisions",
         "gateway_routing_cooldowns",
         "gateway_provider_health",
+        "gateway_set_health_probe",
+        "gateway_probe_providers",
         "gateway_routing_feed",
         "gateway_external_feed",
         "gateway_reveal_local_token",

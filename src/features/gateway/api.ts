@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AppSettings } from '../../types';
-import type { AgentApplyResult, AgentInspection, AgentPreview, AgentRestoreResult, CodexInspection, CoolingMember, GatewayStatus, HealthReport, LedgerRecord, ProviderRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
+import type { AgentApplyResult, AgentInspection, AgentPreview, AgentRestoreResult, CodexInspection, CoolingMember, GatewayStatus, HealthReport, ProbeSettings, LedgerRecord, ProviderRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
 
 export const gatewayStatus = () => invoke<GatewayStatus>('gateway_status');
 
@@ -31,6 +31,11 @@ export const upsertRoutingGroup = (group: RoutingGroup) =>
 export const deleteRoutingGroup = (id: string) => invoke<RoutingGroup[]>('gateway_delete_routing_group', { id });
 
 export const providerHealth = () => invoke<HealthReport>('gateway_provider_health');
+
+export const setHealthProbe = (settings: ProbeSettings) =>
+  invoke<ProbeSettings>('gateway_set_health_probe', { enabled: settings.enabled, intervalMins: settings.intervalMins });
+
+export const probeProviders = () => invoke<HealthReport>('gateway_probe_providers');
 
 export const routingCooldowns = () => invoke<CoolingMember[]>('gateway_routing_cooldowns');
 

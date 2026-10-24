@@ -27,6 +27,8 @@
     "allow-gateway-recent-route-decisions",
     "allow-gateway-routing-cooldowns",
     "allow-gateway-provider-health",
+    "allow-gateway-set-health-probe",
+    "allow-gateway-probe-providers",
     "allow-gateway-reveal-local-token"
   ]
 }

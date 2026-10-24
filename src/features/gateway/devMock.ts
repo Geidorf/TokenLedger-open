@@ -1,6 +1,6 @@
 // In-memory gateway backend for the browser dev preview only. Keys are
 // tracked as a boolean, matching the real backend's write-only contract.
-import type { AgentInspection, AgentPreview, CodexInspection, HealthBucket, HealthReport, HealthStats, LedgerRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
+import type { AgentInspection, AgentPreview, CodexInspection, HealthBucket, HealthReport, HealthStats, ProbeResult, ProbeSettings, LedgerRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
 
 const PORT = 3462;
 const minutesAgo = (minutes: number) => new Date(Date.UTC(2026, 9, 3, 16, 30 - minutes, 12)).toISOString();
@@ -177,6 +177,17 @@ function mockBuckets(base: number, failEvery: number, p95: number): HealthBucket
   });
 }
 
+let probeSettings: ProbeSettings = { enabled: false, intervalMins: 15 };
+let probeResults: Record<string, ProbeResult[]> = {};
+
+function mockProbe(): void {
+  probeResults = {};
+  for (const provider of providers.filter((item) => item.enabled && (item.hasKey || item.authMode === 'none'))) {
+    const ok = provider.id !== 'deepseek';
+    probeResults[provider.id] = [{ ts: minutesAgo(0), ok, status: ok ? 200 : 503, latencyMs: ok ? 320 : 1840, code: ok ? 'answered' : 'upstream_failed', error: ok ? null : '上游返回 503 Service Unavailable' }];
+  }
+}
+
 /** Deterministic health for the preview: one healthy, one degraded, one never-used provider. */
 function mockHealth(): HealthReport {
   const shapes: Record<string, { status: HealthReport['providers'][number]['status']; base: number; failEvery: number; p50: number; p95: number }> = {
@@ -224,7 +235,7 @@ function mockHealth(): HealthReport {
   });
   const rank = { down: 0, degraded: 1, healthy: 2, idle: 3 };
   report.sort((a, b) => rank[a.status] - rank[b.status] || a.provider.localeCompare(b.provider));
-  return { generatedAt: new Date(NOW).toISOString(), windowHours: 24, providers: report };
+  return { generatedAt: new Date(NOW).toISOString(), windowHours: 24, probe: probeSettings, providers: report.map((item) => ({ ...item, probes: probeResults[item.provider] ?? [] })) };
 }
 
 /** Returns undefined when the command is not a gateway command. */
@@ -279,6 +290,13 @@ export function handleGatewayMock(cmd: string, payload: Record<string, unknown>)
     case 'gateway_routing_cooldowns':
       return [];
     case 'gateway_provider_health':
+      return mockHealth();
+    case 'gateway_set_health_probe':
+      probeSettings = { enabled: Boolean(payload.enabled), intervalMins: Math.min(120, Math.max(5, Number(payload.intervalMins) || 15)) };
+      if (!probeSettings.enabled) probeResults = {};
+      return probeSettings;
+    case 'gateway_probe_providers':
+      mockProbe();
       return mockHealth();
     case 'gateway_routing_feed': {
       const running = providers.some((provider) => provider.enabled);
