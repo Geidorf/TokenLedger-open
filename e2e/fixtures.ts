@@ -98,8 +98,29 @@ export async function openPage(page: Page, hash: string) {
   await expect(page.locator('main').first()).toBeVisible();
 }
 
+/**
+ * 等懒加载的分区模块都取完再重新加载。WebKit 在动态 import 进行中被 reload 打断时会抛
+ * 「Importing a module script failed」，被守卫当成页面异常。
+ */
+export async function reloadSettled(page: Page) {
+  await page.waitForLoadState('networkidle');
+  await page.reload();
+  await expect(page.locator('main').first()).toBeVisible();
+}
+
 /** 断言页面在当前视口宽度下没有横向滚动。 */
 export async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow, '页面不应出现横向滚动').toBeLessThanOrEqual(1);
+}
+
+/**
+ * 读 devMockTauri 对某命令的内置回包（页面已打开、该命令尚未覆盖时调用），
+ * 用例在它上面改几个字段再 `ipc.override`，不必手写整份统计。
+ */
+export async function builtInIpc<T>(page: Page, cmd: string, args?: Record<string, unknown>): Promise<T> {
+  return page.evaluate(([name, payload]) => {
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    return internals.invoke(name as string, payload ?? {});
+  }, [cmd, args] as const) as Promise<T>;
 }

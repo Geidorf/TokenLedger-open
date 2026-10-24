@@ -1,6 +1,7 @@
 import { emit } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { ChevronDown, ChevronRight, KeyRound, Plus, Search, Wallet } from 'lucide-react';
+import { ChevronDown, ChevronRight, KeyRound, Plug, Plus, Search, Wallet } from 'lucide-react';
+import { EmptyState } from '../../components/EmptyState';
 import { BrandIcon } from '../../prototypes/prototypeKit';
 import type { RequestConfirmation } from '../../utils/confirmation';
 import type { ToastType } from '../../types';
@@ -279,7 +280,11 @@ export function ProvidersPage({ onNotify, onConfirm, onChanged }: PageProps) {
         <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />添加供应商</button>
       </div>
       {loadError && <p className="mw-note is-danger" role="alert">读取供应商失败：{loadError} <button type="button" className="mw-btn is-ghost" onClick={() => void load()}>重试</button></p>}
-      {providers && providers.length === 0 && <div className="mw-card mw-empty"><p>还没有供应商。添加一个并填入 API key，模型就会出现在 Agent 与路由组的选择器里。</p></div>}
+      {providers && providers.length === 0 && (
+        <EmptyState icon={Plug} title="还没有供应商" description="选一个预设（OpenAI、DeepSeek、OpenRouter、本机 Ollama 等）或填任意兼容地址，再填入 API key。启用后网关自动启动，模型会出现在 Agent 与路由组的选择器里。">
+          <button type="button" className="mw-btn is-primary" onClick={() => { editSession.current++; setAdding('pick'); }}><Plus className="h-4 w-4" />添加第一个供应商</button>
+        </EmptyState>
+      )}
       {on.length > 0 && (
         <div className="mw-card mw-rows">
           {on.map((provider) => <ProviderRow key={provider.id} provider={provider} busy={busy || saving} onOpen={() => { editSession.current++; setEditingId(provider.id); }} onToggle={() => toggle(provider)} />)}

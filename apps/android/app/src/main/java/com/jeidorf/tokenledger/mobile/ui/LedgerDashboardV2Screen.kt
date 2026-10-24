@@ -47,8 +47,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -126,6 +129,15 @@ import com.jeidorf.tokenledger.mobile.ui.settings.V2SettingsPage
 import com.jeidorf.tokenledger.mobile.ui.me.V2MeActions
 import com.jeidorf.tokenledger.mobile.ui.me.V2MePage
 import com.jeidorf.tokenledger.mobile.ui.me.v2MeItems
+import com.jeidorf.tokenledger.mobile.ui.onboarding.LocalOpenFirstRunGuide
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2EmptyAction
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2EmptyState
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2FirstRunGuide
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2OnboardingStore
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2OnboardingVisibility
+import com.jeidorf.tokenledger.mobile.ui.onboarding.v2DesktopData
+import com.jeidorf.tokenledger.mobile.ui.onboarding.v2HasDesktopData
+import com.jeidorf.tokenledger.mobile.ui.onboarding.v2ShouldAutoOpenGuide
 import com.jeidorf.tokenledger.mobile.ui.sources.V2EntityContent
 import com.jeidorf.tokenledger.mobile.ui.sources.V2PaginationErrorCard
 import com.jeidorf.tokenledger.mobile.ui.sources.V2SourceAnalysis
@@ -168,7 +180,8 @@ internal fun LedgerDashboardV2Screen(
     initialDestination: MobileDestination = MobileDestination.Usage,
     initialInsightPane: InsightPane = InsightPane.Overview,
     initialSettingsVisible: Boolean = false,
-    initialMePage: V2MePage = V2MePage.Root
+    initialMePage: V2MePage = V2MePage.Root,
+    initialGuideVisible: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -279,6 +292,21 @@ internal fun LedgerDashboardV2Screen(
 
     var preferredCurrency by rememberSaveable { mutableStateOf(PrivacyStore.getPreferredCurrency(context)) }
 
+    // 首次启动引导：从没见过、且云端一次桌面数据都没有时自动打开（与桌面端「账本为空才弹」一致）。
+    var showGuide by rememberSaveable { mutableStateOf(initialGuideVisible) }
+    val inspection = LocalInspectionMode.current
+    val desktopData = v2DesktopData(state, displayedData)
+    LaunchedEffect(desktopData, inspection) {
+        if (!inspection && v2ShouldAutoOpenGuide(V2OnboardingStore.read(context), desktopData)) showGuide = true
+    }
+    val closeGuide: (Boolean) -> Unit = { completed ->
+        V2OnboardingStore.write(
+            context,
+            if (completed) V2OnboardingVisibility.Completed else V2OnboardingVisibility.Dismissed
+        )
+        showGuide = false
+    }
+
     CompositionLocalProvider(
         LocalCostMaskEnabled provides costMasked,
         LocalToggleCostMask provides {
@@ -289,7 +317,8 @@ internal fun LedgerDashboardV2Screen(
         LocalSetDashboardCurrency provides { unit ->
             preferredCurrency = unit
             PrivacyStore.setPreferredCurrency(context, unit)
-        }
+        },
+        LocalOpenFirstRunGuide provides { showGuide = true }
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -445,6 +474,17 @@ internal fun LedgerDashboardV2Screen(
                     modifier = Modifier.align(Alignment.CenterStart)
                 )
             }
+            if (showGuide) {
+                // 后注册的返回回调先拿到返回键：引导盖在看板上时，返回只关引导。
+                BackHandler { closeGuide(false) }
+                V2FirstRunGuide(
+                    palette = palette,
+                    state = state,
+                    stats = displayedData,
+                    onRefresh = onRefresh,
+                    onClose = closeGuide
+                )
+            }
         }
 
         if (filterSheet != null) {
@@ -586,17 +626,13 @@ internal fun V2DestinationContent(
             palette, destination, insightPane, state.query, state.dayReviewReturn != null,
             onRangeChange, onRequestCustomRange, onInsightPaneChange, onReturnFromDay
         ) {
-            V2FullState(
-                palette,
-                if (destination == MobileDestination.Usage && insightPane == InsightPane.Overview) {
-                    "这个范围还没有可解释的消耗记录"
-                } else {
-                    "还没有消耗数据"
-                },
-                if (state.hasActiveFilters) "当前筛选没有匹配记录。" else "桌面端同步后，这里会显示完整看板。",
-                if (state.hasActiveFilters) "清除筛选" else "刷新",
-                if (state.hasActiveFilters) onClearFilters else onRefresh
-            )
+            if (state.hasActiveFilters) {
+                V2FullState(palette, "没有匹配的消耗记录", "当前筛选没有匹配记录。", "清除筛选", onClearFilters)
+            } else {
+                Box(Modifier.fillMaxSize().padding(14.dp)) {
+                    V2NoDesktopDataState(palette, destination == MobileDestination.Quota, onRefresh, state.dashboardLoading)
+                }
+            }
         }
         else -> AnimatedContent(
             targetState = destination to insightPane,
@@ -653,7 +689,8 @@ internal fun V2DestinationContent(
                         onOpenInsights,
                         onOpenQuota,
                         onOpenTool,
-                        onRequestCustomRange
+                        onRequestCustomRange,
+                        onRefresh
                     ) else v2InsightsItems(
                         palette,
                         state,
@@ -672,7 +709,8 @@ internal fun V2DestinationContent(
                         onReturnFromDay,
                         calendarOpenedDate,
                         trendMetric, trendCurrency,
-                        { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis
+                        { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
+                        onRefresh
                     )
                     MobileDestination.Routing -> v2RoutingItems(palette, routingFeed)
                     MobileDestination.Quota -> v2QuotaItems(
@@ -734,13 +772,21 @@ internal fun LazyListScope.v2OverviewItems(
     onOpenInsights: (InsightPane) -> Unit,
     onOpenQuota: () -> Unit,
     onOpenTool: (String) -> Unit,
-    onRequestCustomRange: () -> Unit
+    onRequestCustomRange: () -> Unit,
+    onRefresh: () -> Unit = {}
 ) {
     item(key = "overview-tabs", contentType = "controls") {
         V2InsightStrip(palette, InsightPane.Overview, onOpenInsights)
     }
     item(key = "overview-range", contentType = "controls") {
         V2GlobalRangeControl(palette, state.query, onRangeChange, onRequestCustomRange)
+    }
+    // 新账户：云端还没有任何桌面数据，全零的英雄卡说明不了什么，换成接入说明。
+    if (v2HasDesktopData(stats, state.hasActiveFilters) == false) {
+        item(key = "overview-no-desktop", contentType = "status") {
+            V2NoDesktopDataState(palette, quota = false, onRefresh = onRefresh, refreshing = state.dashboardLoading)
+        }
+        return
     }
 
     item(key = "overview-hero", contentType = "hero") {
@@ -785,9 +831,16 @@ internal fun LazyListScope.v2InsightsItems(
     onTrendMetricChange: (ReportMetricMode) -> Unit,
     onTrendCurrencyChange: (CurrencyUnit) -> Unit,
     onOpenTrendDay: (String, InsightPane) -> Unit,
-    calendarAxis: InsightCalendarAxis
+    calendarAxis: InsightCalendarAxis,
+    onRefresh: () -> Unit = {}
 ) {
     item(key = "insights-tabs", contentType = "controls") { V2InsightStrip(palette, pane, onPaneChange) }
+    if (pane != InsightPane.Overview && v2HasDesktopData(stats, state.hasActiveFilters) == false) {
+        item(key = "insights-no-desktop", contentType = "status") {
+            V2NoDesktopDataState(palette, quota = false, onRefresh = onRefresh, refreshing = state.dashboardLoading)
+        }
+        return
+    }
     when (pane) {
         // 概览由 v2OverviewItems 渲染，调用方不会以概览进入这里。
         InsightPane.Overview -> Unit
@@ -897,4 +950,29 @@ internal fun LazyListScope.v2InsightsItems(
             }
         }
     }
+}
+
+/**
+ * 云端还没有任何桌面数据时用量各页（与额度页的整页兜底）显示的卡：说清手机的数据从哪来、
+ * 去桌面哪里打开，再给「查看接入步骤」与「刷新」。
+ */
+@Composable
+internal fun V2NoDesktopDataState(
+    palette: MobileV2Palette,
+    quota: Boolean,
+    onRefresh: () -> Unit,
+    refreshing: Boolean
+) {
+    V2EmptyState(
+        palette = palette,
+        icon = Icons.Default.CloudSync,
+        title = "还没有收到桌面端的数据",
+        body = if (quota) {
+            "额度来自桌面端读取的订阅窗口。在电脑上用同一个账户开启「设置 › 云端同步」后，这里会显示各窗口的剩余额度。"
+        } else {
+            "手机显示的是桌面端同步到云端的用量。在电脑上打开 TokenLedger，到「设置 › 云端同步」" +
+                "登录同一个账户并完成首次同步，这里几分钟内就会出现数据。"
+        },
+        secondary = V2EmptyAction(if (refreshing) "刷新中…" else "刷新", enabled = !refreshing, onClick = onRefresh)
+    )
 }

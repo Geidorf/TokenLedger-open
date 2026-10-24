@@ -15,4 +15,6 @@
     <string name="widget_bar_description">单行紧凑消耗卡片，展示有效 Token、预估费用与数据时间</string>
     <string name="widget_combo_label">TokenLedger · 综合看板 (4×2)</string>
     <string name="widget_combo_description">双栏全量卡片，同时展示来源额度与 Token 消耗及预估费用</string>
+    <string name="widget_quota_label">TokenLedger · 额度条 (4×3)</string>
+    <string name="widget_quota_description">每个额度窗口一行，显示可用百分比与多久后重置，可附最近一次网关路由</string>
 </resources>

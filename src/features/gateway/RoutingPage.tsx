@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Plus, Split, Trash2 } from 'lucide-react';
+import { EmptyState } from '../../components/EmptyState';
 import { GroupIcon } from '../../prototypes/prototypeKit';
 import type { ToastType } from '../../types';
 import type { RequestConfirmation } from '../../utils/confirmation';
@@ -372,7 +373,17 @@ export function RoutingPage({ onNotify, onConfirm }: PageProps) {
           <button type="button" className="mw-btn is-primary" disabled={options.length === 0} title={options.length === 0 ? '先在供应商页启用供应商并列出模型' : undefined} onClick={createNew}><Plus className="h-4 w-4" />新建路由组</button>
         </div>
         {loadError && <p className="mw-note is-danger" role="alert">读取路由组失败：{loadError}</p>}
-        {groups && groups.length === 0 && <div className="mw-card mw-empty"><p>还没有路由组。把多个供应商的模型合成一个虚拟模型，失败自动切换，也能按图片、上下文长度等规则选择。</p></div>}
+        {groups && groups.length === 0 && (
+          <EmptyState
+            icon={Split}
+            title="还没有路由组"
+            description={options.length === 0
+              ? '路由组把多个供应商的模型合成一个虚拟模型。先在供应商页启用至少一个供应商，再回来新建。'
+              : '把多个供应商的模型合成一个虚拟模型：失败自动切换，也能按图片、上下文长度等规则选择。'}
+          >
+            {options.length > 0 && <button type="button" className="mw-btn is-primary" onClick={createNew}><Plus className="h-4 w-4" />新建第一个路由组</button>}
+          </EmptyState>
+        )}
         {groups?.map((group) => (
           <GroupCard
             key={group.id}

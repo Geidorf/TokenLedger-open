@@ -57,7 +57,7 @@
                 android:resource="@xml/token_ledger_widget_info" />
         </receiver>
 
-        <!-- 桌面小组件家族：选择器只公开三个固定产品形态，配置页只改来源/周期/主题。 -->
+        <!-- 桌面小组件家族：选择器只公开四个固定产品形态，配置页只改来源/周期/主题。 -->
         <receiver
             android:name=".widget.TokenLedgerRingWidgetReceiver"
             android:exported="true"
@@ -95,6 +95,20 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/token_ledger_combo_widget_info" />
+        </receiver>
+
+        <!-- 额度条（4×3）：一个额度窗口一行，可附最近一次网关路由。 -->
+        <receiver
+            android:name=".widget.TokenLedgerQuotaWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_quota_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/token_ledger_quota_widget_info" />
         </receiver>
 
         <!-- 锁屏动态壁纸（routing-snapshot-v1）：近实时网关路由动画，数据经云端中转。 -->

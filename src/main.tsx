@@ -5,6 +5,7 @@ import './index.css';
 import './styles/shell.css';
 import './styles/surfaces.css';
 import './styles/settings-pages.css';
+import './styles/onboarding.css';
 import { initializeTheme } from './utils/useTheme';
 
 async function bootstrap() {

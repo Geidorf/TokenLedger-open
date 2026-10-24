@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  额度条：一个额度窗口一行（可用百分比 + 重置倒计时），可附最近一次网关路由。
+  4×3 为主要形态，最小 4×2；放不下的窗口写「+N 个窗口」。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="200dp"
+    android:minHeight="100dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="100dp"
+    android:maxResizeHeight="320dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:configure="com.jeidorf.tokenledger.mobile.widget.WidgetConfigureActivity"
+    android:widgetFeatures="reconfigurable"
+    android:description="@string/widget_quota_description"
+    android:previewImage="@drawable/ic_widget_quota_preview"
+    android:previewLayout="@layout/widget_quota_preview_layout"
+    android:initialLayout="@layout/glance_default_loading_layout" />

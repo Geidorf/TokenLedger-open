@@ -24,6 +24,9 @@ import com.jeidorf.tokenledger.mobile.QuotaTransportSnapshot
 import com.jeidorf.tokenledger.mobile.QuotaRepository
 import com.jeidorf.tokenledger.mobile.RangeKey
 import com.jeidorf.tokenledger.mobile.SupabaseHttpException
+import com.jeidorf.tokenledger.mobile.routing.RoutingReadFailure
+import com.jeidorf.tokenledger.mobile.routing.RoutingRepository
+import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshotSource
 import java.io.IOException
 import java.util.TimeZone
 import java.util.UUID
@@ -55,7 +58,7 @@ internal object WidgetRefreshWriter {
     /** @return 是否发生**瞬时**失败（网络/5xx/限流），供 Worker 决定退避重试。 */
     suspend fun refresh(context: Context, lease: SessionSnapshot): Boolean {
         val appContext = context.applicationContext
-        return refresh(
+        val transient = refresh(
             lease = lease,
             persistence = SessionStore(appContext),
             quotaRepository = QuotaRepository(),
@@ -66,6 +69,43 @@ internal object WidgetRefreshWriter {
             quotaIdentity = nextQuotaWriteIdentity(appContext, lease.generation),
             timezoneId = TimeZone.getDefault().id.ifBlank { "UTC" }
         )
+        // 路由行只是附加信息：读失败不触发退避重试，免得为它把额度与用量再拉一遍。
+        if (runCatching { WidgetConfigStore.routingRequested(appContext) }.getOrDefault(false)) {
+            refreshRouting(
+                lease = lease,
+                persistence = SessionStore(appContext),
+                source = RoutingRepository(),
+                save = { summary -> WidgetRoutingStore.save(appContext, summary) }
+            )
+        }
+        return transient
+    }
+
+    /**
+     * 读一次实时路由快照，摘要写进 [WidgetRoutingStore]。写入与额度缓存一样在会话撤销锁内复验，
+     * 退出或换账号后迟到的结果不落盘。网络或格式问题保留上一份摘要（它会按年龄如实变旧）。
+     */
+    internal suspend fun refreshRouting(
+        lease: SessionSnapshot,
+        persistence: SessionPersistence,
+        source: RoutingSnapshotSource,
+        save: (WidgetRoutingSummary) -> Unit,
+        nowMillis: () -> Long = System::currentTimeMillis
+    ) {
+        val session = lease.session ?: return
+        val guard = SessionWriteGuard(persistence, lease)
+        val summary = try {
+            widgetRoutingSummary(session.userId, source.fetch(session), nowMillis())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            widgetRoutingFailureSummary(session.userId, RoutingReadFailure.classify(error), nowMillis())
+        } ?: return
+        try {
+            guard.commit { save(summary) }
+        } catch (_: SessionRevokedException) {
+            // 会话已变更：丢弃迟到的结果。
+        }
     }
 
     /** The production fetch-to-cache chain; injectable sources allow controlled race verification. */

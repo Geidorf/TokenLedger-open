@@ -12,13 +12,14 @@ import com.jeidorf.tokenledger.mobile.quotaAvailablePercent
 import kotlin.math.roundToLong
 
 /**
- * 小组件呈现模式。前三项是当前公开 Provider 的固定样式；[MultiBar] 仅用于读取旧实例，
+ * 小组件呈现模式。前四项是当前公开 Provider 的固定样式；[MultiBar] 仅用于读取旧实例，
  * 不再出现在新增/重新配置流程中。
  */
 internal enum class WidgetMode(val storageValue: String, val label: String, val description: String) {
     MultiRing("multi_ring", "额度圆环", "Codex、Claude、Antigravity 并列，适合 4×2"),
     SingleUsage("single_usage", "单行消耗", "有效 Token、预估费用与数据时间，适合 4×1"),
     BarUsage("bar_usage", "额度与消耗", "额度横条 + 有效 Token 与预估费用，适合 4×2"),
+    QuotaBars("quota_bars", "额度条", "每个额度窗口一行：可用百分比与重置倒计时，可附实时路由，适合 4×3"),
     MultiBar("multi_bar", "旧版额度横条", "仅为已有桌面实例保留的兼容样式");
 
     companion object {
@@ -27,6 +28,7 @@ internal enum class WidgetMode(val storageValue: String, val label: String, val 
             "single_usage", "usage" -> SingleUsage
             "multi_bar" -> MultiBar
             "bar_usage", "combo" -> BarUsage
+            "quota_bars" -> QuotaBars
             else -> BarUsage
         }
     }
@@ -68,7 +70,9 @@ internal data class WidgetConfig(
     val mode: WidgetMode = WidgetMode.BarUsage,
     val providerId: String? = null,
     val range: WidgetRange = WidgetRange.Today,
-    val theme: WidgetThemeMode = WidgetThemeMode.System
+    val theme: WidgetThemeMode = WidgetThemeMode.System,
+    /** 仅 [WidgetMode.QuotaBars] 使用：底部附一行最近的网关路由（数据经云端中转，默认关）。 */
+    val showRouting: Boolean = false
 )
 
 /**
@@ -82,12 +86,16 @@ internal sealed interface WidgetState {
 
     data class Ready(
         val quota: WidgetQuota?,
-        val usage: WidgetUsage?
+        val usage: WidgetUsage?,
+        /** 只有开了「显示实时路由」的额度条实例才读取；其余为 null。 */
+        val routing: WidgetRoutingSummary? = null
     ) : WidgetState
 }
 
 internal data class WidgetQuota(
-    val providers: List<WidgetQuotaProvider>
+    val providers: List<WidgetQuotaProvider>,
+    /** 额度条用：每个可绘制窗口一行（外加没有窗口的待处理来源），见 [WidgetQuotaBarRow]。 */
+    val rows: List<WidgetQuotaBarRow> = emptyList()
 )
 
 internal data class WidgetQuotaProvider(

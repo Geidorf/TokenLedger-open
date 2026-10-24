@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { CalendarDays, Check, ChevronDown, ChevronRight, Copy, Download, Filter, History, LoaderCircle, Monitor, RotateCcw, Search, Undo2, X } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, ChevronRight, Copy, Download, Filter, FolderSearch, History, LoaderCircle, Monitor, RefreshCw, RotateCcw, Search, Undo2, X } from 'lucide-react';
+import { EmptyState } from './EmptyState';
 import type { DayDrillCopy } from '../hooks/useDayDrill';
 import type { CustomDateRange, DataScope, LogHistoryItem, RangeKey, UsageDetailsResponse } from '../types';
 import { colorForTool, isEstimatedLogItem, toolColorMap } from '../types';
@@ -53,6 +54,10 @@ interface LogsTableProps {
   /** 导出当前范围与筛选下的全部行为 CSV（不只是已加载的页）；不传则不显示入口。 */
   onExportCsv?: () => void;
   exporting?: boolean;
+  /** The local ledger has no rows at all: the empty state offers a scan instead of clearing filters. */
+  ledgerEmpty?: boolean;
+  onScan?: () => void;
+  scanBusy?: boolean;
 }
 
 export interface DetailActionCopy {
@@ -334,6 +339,9 @@ export function LogsTable({
   hasPageTitle = false,
   onExportCsv,
   exporting = false,
+  ledgerEmpty = false,
+  onScan,
+  scanBusy = false,
 }: LogsTableProps) {
   const { effective } = useTheme();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -735,6 +743,15 @@ export function LogsTable({
             <LoaderCircle className="h-5 w-5 animate-spin" />
             <span>正在读取完整明细与可用筛选项…</span>
           </div>
+        ) : ledgerEmpty && activeFilterCount === 0 && (!details || details.items.length === 0) ? (
+          <EmptyState variant="inset" icon={FolderSearch} title="本机还没有请求记录" description="扫描本机日志后，每一次调用的时间、模型、Token 与费用都会列在这里，可以按工具、模型和设备筛选。">
+            {onScan && (
+              <button className="primary-inline" type="button" onClick={onScan} disabled={scanBusy} aria-busy={scanBusy || undefined}>
+                <RefreshCw className={`h-4 w-4 ${scanBusy ? 'animate-spin' : ''}`} />
+                扫描本机日志
+              </button>
+            )}
+          </EmptyState>
         ) : !details || details.items.length === 0 ? (
           <div className="details-state">
             <strong>没有匹配记录</strong>

@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Search } from 'lucide-react';
+import { Bot, Boxes, RefreshCw, Search } from 'lucide-react';
+import { EmptyState } from '../../components/EmptyState';
 import { GroupIcon, Seg } from '../../prototypes/prototypeKit';
 import { formatTokens } from '../../utils/format';
 import { errorText, gatewayStatus, listProviders, listRoutingGroups, recentRequests, recentRouteDecisions, revealLocalToken } from './api';
@@ -42,7 +43,7 @@ function CatalogIcon({ option, providers }: { option: ModelOption; providers: Pr
   return <span className="mw-brand is-fallback" style={{ width: 22, height: 22, fontSize: 9 }} aria-hidden="true">{option.section.slice(0, 2).toUpperCase()}</span>;
 }
 
-export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
+export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { onOpenRouting: () => void; onOpenProviders?: () => void; onOpenAgents?: () => void }) {
   const [data, setData] = useState<GatewayData | null>(null);
   const [loadError, setLoadError] = useState('');
   const [api, setApi] = useState<SampleApi>('responses');
@@ -133,7 +134,11 @@ export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
             <CopyButton text={options.map((option) => option.value).join('\n')} label="复制全部模型 ID">复制全部 ID</CopyButton>
           </div>
         </div>
-        {catalog.length === 0 ? <p className="mw-caption">{options.length === 0 ? '还没有可用模型：在供应商页启用供应商并列出模型。' : '没有匹配的模型。'}</p> : (
+        {catalog.length === 0 ? (options.length === 0 ? (
+          <EmptyState variant="inset" icon={Boxes} title="还没有可用模型" description="在供应商页启用供应商并列出模型，这里就会出现可直接复制的模型 ID。">
+            {onOpenProviders && <button type="button" className="secondary-inline" onClick={onOpenProviders}>去添加供应商</button>}
+          </EmptyState>
+        ) : <p className="mw-caption">没有匹配的模型。</p>) : (
           <ul className="mw-catalog">
             {catalog.map((option) => (
               <li key={option.value}>
@@ -157,7 +162,11 @@ export function GatewayPage({ onOpenRouting }: { onOpenRouting: () => void }) {
           <h2>最近请求<InfoTip label="请求记录说明">记录保存在本机，最多显示最近 50 条。</InfoTip></h2>
           <span>有效 Token = 输入 + 输出，缓存读写单列</span>
         </div>
-        {data && data.requests.length === 0 ? <p className="mw-caption">还没有经过网关的请求。</p> : (
+        {data && data.requests.length === 0 ? (
+          <EmptyState variant="inset" icon={Bot} title="还没有经过网关的请求" description="在 Agent 页把 Codex、Claude Code 等接到网关，或在自己的代码里用上面的地址和 token，每次请求都会出现在这里。">
+            {onOpenAgents && <button type="button" className="secondary-inline" onClick={onOpenAgents}>去接入 Agent</button>}
+          </EmptyState>
+        ) : (
           <div className="mw-table-wrap">
             <table className="mw-table" aria-label="最近请求">
               <thead>

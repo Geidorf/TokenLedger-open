@@ -70,6 +70,9 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
+import com.jeidorf.tokenledger.mobile.ui.foundation.v2Palette
+import com.jeidorf.tokenledger.mobile.ui.onboarding.V2LoginIntro
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
@@ -311,6 +314,7 @@ private fun TokenLedgerApp(
                 .imePadding()
         ) {
             LoginScreen(
+                palette = v2Palette(appearance),
                 loading = state.loginLoading,
                 error = state.userVisibleError,
                 onLogin = viewModel::signIn
@@ -410,6 +414,7 @@ private fun ConfigMissingScreen() {
 
 @Composable
 private fun LoginScreen(
+    palette: MobileV2Palette,
     loading: Boolean,
     error: String?,
     onLogin: (String, String) -> Unit
@@ -509,6 +514,7 @@ private fun LoginScreen(
                     Text(if (loading) stringResource(R.string.login_loading) else stringResource(R.string.login_action))
                 }
                 ErrorText(error)
+                V2LoginIntro(palette)
             }
         }
     }
