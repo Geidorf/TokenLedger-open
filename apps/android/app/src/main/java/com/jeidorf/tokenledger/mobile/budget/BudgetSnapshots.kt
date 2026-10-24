@@ -90,7 +90,9 @@ object BudgetSnapshots {
     private fun parseBudget(device: String, value: JSONObject?): BudgetItem? {
         value ?: return null
         val id = value.optString("id").takeIf { BUDGET_ID.matches(it) } ?: return null
-        val label = value.optString("label").trim().takeIf { it.isNotEmpty() && it.length <= 32 } ?: return null
+        // 契约按字符计 32，与桌面 chars().count()、服务器 char_length 一致；emoji 在 UTF-16 里占两个单位。
+        val label = value.optString("label").trim()
+            .takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 32 } ?: return null
         val period = BudgetPeriod.fromWire(value.optString("period")) ?: return null
         val metric = BudgetMetric.fromWire(value.optString("metric")) ?: return null
         val periodStart = value.optString("periodStart").takeIf { DATE.matches(it) } ?: return null

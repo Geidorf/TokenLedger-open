@@ -107,4 +107,14 @@ class BudgetAlertPlannerTest {
         assertTrue(again.ledger.size <= 1_024)
         assertTrue(primed.ledger.keys.all { it in again.ledger })
     }
+
+    @Test
+    fun labelLimitCountsCharactersNotUtf16Units() {
+        val fits = "预".repeat(31) + "\uD83D\uDE80"
+        val tooLong = fits + "x"
+        val parsed = BudgetSnapshots.parse(
+            body(budget("1111111111111111", "warn", 85, label = fits), budget("2222222222222222", "warn", 85, label = tooLong))
+        )
+        assertEquals(listOf(fits), parsed[0].budgets.map { it.label })
+    }
 }
