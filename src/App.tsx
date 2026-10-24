@@ -46,12 +46,14 @@ import { useProjectDimension } from './hooks/useProjectDimension';
 import { requestProjectDimensionFocus } from './utils/projectDimension';
 import { legacySettingsRedirect } from './utils/settingsNavigation';
 import { directTabFromHash, useHashNavigation } from './hooks/useHashNavigation';
+import { openSessionDetail, useSessionDetailRoute } from './features/sessionDetail/sessionDetailRoute';
 import { dayDrillCopy, useDayDrill } from './hooks/useDayDrill';
 import type { ConfirmationRequest, RequestConfirmation } from './utils/confirmation';
 
 const AndroidDashboardPrototype = lazy(() => import('./prototypes/AndroidDashboardPrototype'));
 const ModelWorkspacePrototype = lazy(() => import('./prototypes/ModelWorkspacePrototype'));
 const EntityDashboardModal = lazy(() => import('./components/EntityDashboardModal'));
+const SessionDetailPage = lazy(() => import('./features/sessionDetail/SessionDetailPage'));
 const LiveWallpaperView = lazy(() => import('./components/LiveWallpaperView').then((module) => ({ default: module.LiveWallpaperView })));
 const LogsTable = lazy(() => import('./components/LogsTable'));
 const ModelWorkspaceContent = lazy(() => import('./features/gateway/ModelWorkspace'));
@@ -194,6 +196,7 @@ function MainApp() {
   }, [changeTab]);
 
   useHashNavigation(changeTab);
+  const sessionDetail = useSessionDetailRoute(activeTab, changeTab);
 
   // 1. Cloud Hook
   const clearCloudScopedState = useCallback(() => {
@@ -608,6 +611,17 @@ function MainApp() {
     window.requestAnimationFrame(focusDetailsHeading);
   }, [changeRange, changeTab, setDetailFilters]);
 
+  // 会话排行的行打开会话详情；详情里的「在请求明细中查看」再按会话筛选明细。
+  const openBehaviorSession = useCallback((drill: { session: { id: string; tool: string } }) => {
+    openSessionDetail({ sessionId: drill.session.id, tool: drill.session.tool });
+  }, []);
+  const openSessionRequests = useCallback((target: { sessionId: string; tool: string | null; range: { start: string; end: string } | null }) => {
+    openBehaviorSessionDetails({
+      filters: { tools: target.tool ? [target.tool] : [], models: [], machines: [], search: target.sessionId },
+      range: target.range,
+    });
+  }, [openBehaviorSessionDetails]);
+
   const syncCloudStatus = cloud.cloudStatus;
   const syncCloudStatusKnown = cloud.cloudStatusKnown;
   const syncCloudSetup = cloud.cloudSetup;
@@ -848,7 +862,16 @@ function MainApp() {
                 />
                 </Suspense>
               )}
-              sessions={activeTab === 'behavior' && (
+              sessions={activeTab === 'behavior' && (sessionDetail.ref ? (
+                <Suspense fallback={null}>
+                  <SessionDetailPage
+                    sessionRef={sessionDetail.ref}
+                    timezone={currentTimezone()}
+                    onBack={sessionDetail.close}
+                    onOpenRequests={openSessionRequests}
+                  />
+                </Suspense>
+              ) : (
                 <BehaviorAnalysisView
                   hasPageTitle
                   data={behaviorAnalysis.data}
@@ -856,7 +879,7 @@ function MainApp() {
                   refreshing={behaviorAnalysis.refreshing}
                   updatedAt={behaviorAnalysis.updatedAt}
                   onOpenTool={openBehaviorTool}
-                  onOpenSession={openBehaviorSessionDetails}
+                  onOpenSession={openBehaviorSession}
                   error={behaviorAnalysis.error}
                   scope={statsHook.dataScope}
                   range={statsHook.range}
@@ -882,7 +905,7 @@ function MainApp() {
                     changeTab('logs', true);
                   }}
                 />
-              )}
+              ))}
               allowances={activeTab === 'allowances' && (
                 <UsageAllowancesView
                   providers={quota.quotaProviders}
