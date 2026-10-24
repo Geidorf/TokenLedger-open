@@ -231,7 +231,7 @@ impl<'p> PriceMemo<'p> {
         self.rates_at(
             &row.tool,
             &row.model,
-            &row.timestamp,
+            row.price_timestamp(),
             prompt_tokens(
                 row.input_tokens,
                 row.cache_read_tokens(),
@@ -294,6 +294,7 @@ mod row_price_tests {
     /// `tool-x`/`model-y` 在价格表里查不到型号，也没有工具兜底键，会落到 `default`。
     fn row(cost_usd: Option<f64>, cache: (i64, i64), tokens: (i64, i64)) -> StatRow {
         StatRow {
+            pricing_timestamp: None,
             id: 1,
             tool: "tool-x".to_string(),
             model: "model-y".to_string(),

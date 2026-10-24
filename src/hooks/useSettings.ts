@@ -67,6 +67,11 @@ export interface UseSettingsProps {
   setBusy: (fn: (p: any) => any) => void;
 }
 
+/** 后端 `ensure_editor_revision` 的拒收：编辑器里的表比当前默认价旧。 */
+function isStalePriceTableError(error: unknown) {
+  return String(error).includes('编辑框里还是第');
+}
+
 export function useSettings({
   showMessage,
   confirm,
@@ -280,7 +285,10 @@ export function useSettings({
       showMessage(res.warning || res.repricing_pending ? 'warning' : 'success', res.warning || res.message);
       await Promise.all([loadPrices(), loadStats()]);
     } catch (err) {
-      showMessage('error', `保存价格表失败: ${err}`);
+      const message = `保存价格表失败: ${err}`;
+      // 编辑器载入后价格表已在线更新：亮出「重新读取」，草稿之外的自定义价格都保留。
+      if (isStalePriceTableError(err)) setPricesLoadError(message);
+      showMessage('error', message);
     } finally {
       setBusy((p: any) => ({ ...p, prices: false }));
     }
@@ -361,6 +369,7 @@ export function useSettings({
       await Promise.all([loadPrices(), loadStats()]);
       return true;
     } catch (error) {
+      if (isStalePriceTableError(error)) setPricesLoadError(`保存价格表失败: ${error}`);
       showMessage('error', `导入 models.dev 价格失败: ${error}`);
       return false;
     } finally {

@@ -424,6 +424,7 @@ mod tests {
 
         fn row(tool: &str, model: &str, timestamp: &str, input: i64, cached: i64) -> StatRow {
             StatRow {
+                pricing_timestamp: None,
                 id: 1,
                 tool: tool.to_string(),
                 model: model.to_string(),
@@ -451,6 +452,28 @@ mod tests {
                 row.cache_read_tokens(),
                 row.cache_write_tokens,
             )
+        }
+
+        #[test]
+        fn a_query_timezone_shift_keeps_the_price_of_the_original_instant() {
+            let prices = default_prices();
+            // 2026-07-29 23:00 UTC：调价（07-30 00:00 UTC）之前；换成上海时间是 07-30 07:00。
+            let stored = chrono::DateTime::parse_from_rfc3339("2026-07-29T23:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            let original = row("codex", "gpt-5.6-terra", &stored, 100_000, 0);
+            let shifted = super::super::super::rows_in_timezone(
+                std::slice::from_ref(&original),
+                chrono_tz::Asia::Shanghai,
+            )
+            .unwrap()
+            .remove(0);
+            assert!(shifted.timestamp.starts_with("2026-07-30 07:00"));
+            let mut memo = PriceMemo::new(&prices);
+            assert_eq!(memo.row_price(&shifted).cost, at(&prices, &original));
+            assert!((at(&prices, &original) - (0.25 + 15.0)).abs() < 1e-9);
         }
 
         #[test]

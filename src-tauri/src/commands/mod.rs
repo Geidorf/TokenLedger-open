@@ -2360,12 +2360,21 @@ struct StatRow {
     cache_write_known: Option<bool>,
     usage_provenance: Option<String>,
     timestamp: String,
+    /// The stored timestamp when `timestamp` was shifted into a query
+    /// timezone (`rows_in_timezone`): prices are chosen by the instant the
+    /// record happened, not by the shifted wall clock.
+    pricing_timestamp: Option<String>,
     session_id: String,
     cost_usd: Option<f64>,
     machine_id: String,
 }
 
 impl StatRow {
+    /// The timestamp that picks this record's price (price table schema 2).
+    fn price_timestamp(&self) -> &str {
+        self.pricing_timestamp.as_deref().unwrap_or(&self.timestamp)
+    }
+
     fn cache_split_is_proven(&self) -> bool {
         if let Some(known) = self.cache_write_known {
             return known
@@ -6231,8 +6240,13 @@ fn rows_in_timezone(rows: &[StatRow], timezone: Tz) -> Result<Vec<StatRow>, Stri
     rows.iter()
         .map(|row| {
             let mut row = row.clone();
-            row.timestamp =
+            let shifted =
                 storage_timestamp(timestamp_in_timezone(&row.timestamp, timezone)?.naive_local());
+            if row.pricing_timestamp.is_none() {
+                row.pricing_timestamp = Some(std::mem::replace(&mut row.timestamp, shifted));
+            } else {
+                row.timestamp = shifted;
+            }
             Ok(row)
         })
         .collect()
@@ -6828,6 +6842,7 @@ fn append_stats_filters_with_entity(
 
 fn map_stat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StatRow> {
     Ok(StatRow {
+        pricing_timestamp: None,
         id: row.get(0)?,
         tool: row.get(1)?,
         model: row.get(2)?,
@@ -7855,7 +7870,7 @@ impl<'p, 'r> BehaviorPricer<'p, 'r> {
                 let price = price_schedule::entry_for_record(
                     price,
                     &row.tool,
-                    &row.timestamp,
+                    row.price_timestamp(),
                     prompt_tokens(
                         row.input_tokens,
                         row.cache_read_tokens(),
@@ -11435,6 +11450,7 @@ fn for_each_ledger_row(
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
         // 看板汇总用的行结构，逐行估价才能直接复用 `PriceMemo::row_price`。
         let log = StatRow {
+            pricing_timestamp: None,
             id: row.get(0).unwrap_or(0),
             tool: row.get(1).unwrap_or_default(),
             model: row.get(2).unwrap_or_default(),
@@ -12051,6 +12067,7 @@ mod csv_export_tests {
         // 不经 SQLite、直接交给估价器的 NaN 同样写空。
         let mut estimator = CsvCostEstimator::new(&prices);
         let nan_row = StatRow {
+            pricing_timestamp: None,
             id: 1,
             tool: "opencode".to_string(),
             model: "gpt-5".to_string(),

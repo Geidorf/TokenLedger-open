@@ -100,6 +100,7 @@ fn entity_query(tool: Option<&str>, model: Option<&str>) -> EntityDashboardQuery
 
 fn local_stat_row(id: i64, timestamp: &str, input: i64, output: i64, cost: f64) -> StatRow {
     StatRow {
+        pricing_timestamp: None,
         id,
         tool: "codex".to_string(),
         model: "gpt-5".to_string(),
