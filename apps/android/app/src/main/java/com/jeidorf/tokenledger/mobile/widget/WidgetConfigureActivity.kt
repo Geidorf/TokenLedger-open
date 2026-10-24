@@ -2,6 +2,7 @@ package com.jeidorf.tokenledger.mobile.widget
 
 import android.app.Activity
 import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -45,12 +46,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,6 +63,9 @@ import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.lifecycle.lifecycleScope
+import com.jeidorf.tokenledger.mobile.R
 import com.jeidorf.tokenledger.mobile.LedgerAppearance
 import com.jeidorf.tokenledger.mobile.QuotaCache
 import com.jeidorf.tokenledger.mobile.QuotaCacheKey
@@ -68,13 +74,16 @@ import com.jeidorf.tokenledger.mobile.TokenLedgerTheme
 import com.jeidorf.tokenledger.mobile.localizedDisplayName
 import com.jeidorf.tokenledger.mobile.orderedQuotaProvidersForDisplay
 import androidx.core.view.WindowCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
 /**
  * 小组件配置 Activity（T8.5a）。桌面添加实例时由系统 AppWidgetHost 拉起：用户选初始模式、
  * 额度 provider、统计范围 → 写 [WidgetConfigStore] → setResult(RESULT_OK) 并首次渲染。
+ * 实时路由实例只提供逐实例主题选择，并在保存后主动刷新当前 Glance 实例。
  * 视觉沿用应用 [TokenLedgerTheme]，深浅色跟随应用外观设置。中途退出（返回键）保持初始
  * setResult(RESULT_CANCELED)，系统不落地实例。
  */
@@ -100,12 +109,12 @@ internal class WidgetConfigureActivity : ComponentActivity() {
             getSharedPreferences(APPEARANCE_PREFS, Context.MODE_PRIVATE).getString(APPEARANCE_KEY, null),
             fallback = LedgerAppearance.Dark
         )
-        val lockedMode = providerLockedWidgetMode(
-            AppWidgetManager.getInstance(applicationContext)
-                .getAppWidgetInfo(appWidgetId)
-                ?.provider
-                ?.className
-        )
+        val provider = AppWidgetManager.getInstance(applicationContext)
+            .getAppWidgetInfo(appWidgetId)
+            ?.provider
+        val routingWidget =
+            provider == ComponentName(applicationContext, RoutingLiveWidgetReceiver::class.java)
+        val lockedMode = providerLockedWidgetMode(provider?.className)
         val initialConfig = WidgetConfigStore
             .load(applicationContext, appWidgetId, defaultMode = lockedMode ?: WidgetMode.BarUsage)
             .let { stored -> lockedMode?.let { stored.copy(mode = it) } ?: stored }
@@ -132,24 +141,77 @@ internal class WidgetConfigureActivity : ComponentActivity() {
                             .consumeWindowInsets(insets),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        WidgetConfigureScreen(
-                            initialConfig = initialConfig,
-                            lockedMode = lockedMode,
-                            onConfirm = { config -> confirm(appWidgetId, config) },
-                            onCancel = { finish() }
-                        )
+                        if (routingWidget) {
+                            RoutingWidgetConfigureScreen(
+                                initialTheme = initialConfig.theme,
+                                onConfirm = { theme ->
+                                    confirm(
+                                        appWidgetId = appWidgetId,
+                                        config = initialConfig.copy(theme = theme),
+                                        routingWidget = true
+                                    )
+                                },
+                                onCancel = { finish() }
+                            )
+                        } else {
+                            WidgetConfigureScreen(
+                                initialConfig = initialConfig,
+                                lockedMode = lockedMode,
+                                onConfirm = { config -> confirm(appWidgetId, config) },
+                                onCancel = { finish() }
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    private fun confirm(appWidgetId: Int, config: WidgetConfig) {
+    private fun confirm(appWidgetId: Int, config: WidgetConfig, routingWidget: Boolean = false) {
+        if (routingWidget && AppWidgetManager.getInstance(applicationContext)
+                .getAppWidgetInfo(appWidgetId)?.provider !=
+            ComponentName(applicationContext, RoutingLiveWidgetReceiver::class.java)
+        ) {
+            finish()
+            return
+        }
         WidgetConfigStore.save(applicationContext, appWidgetId, config)
-        // 配置 Activity 返回 RESULT_OK 后，系统会自动向 provider 投递首个 APPWIDGET_UPDATE，
-        // 触发 Glance 用刚写入的配置首次渲染——无需在此显式 updateAll。
         runCatching { WidgetScheduler.ensurePeriodicRefresh(applicationContext) }
+        if (routingWidget) {
+            // 路由配置保存后只主动重绘当前 Glance 实例，不连带刷新额度组件或改写会话。
+            val glanceId = runCatching {
+                GlanceAppWidgetManager(applicationContext).getGlanceIdBy(appWidgetId)
+            }.getOrNull()
+            if (glanceId == null) {
+                requestRoutingWidgetUpdate(appWidgetId)
+            } else {
+                lifecycleScope.launch {
+                    try {
+                        RoutingLiveWidget().update(applicationContext, glanceId)
+                        finishConfirmed(appWidgetId)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        requestRoutingWidgetUpdate(appWidgetId)
+                    }
+                }
+            }
+            return
+        }
         runCatching { WidgetScheduler.enqueueOneTimeRefresh(applicationContext) }
+        finishConfirmed(appWidgetId)
+    }
+
+    private fun requestRoutingWidgetUpdate(appWidgetId: Int) {
+        sendBroadcast(
+            Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE)
+                .setComponent(ComponentName(applicationContext, RoutingLiveWidgetReceiver::class.java))
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+        )
+        finishConfirmed(appWidgetId)
+    }
+
+    private fun finishConfirmed(appWidgetId: Int) {
         setResult(Activity.RESULT_OK, resultIntent(appWidgetId))
         finish()
     }
@@ -161,6 +223,82 @@ internal class WidgetConfigureActivity : ComponentActivity() {
         // 与 MainActivity 同源（其常量为 private），此处复用同一 prefs 读取应用外观。
         const val APPEARANCE_PREFS = "tokenledger_appearance"
         const val APPEARANCE_KEY = "ledger_appearance"
+    }
+}
+
+@Composable
+internal fun RoutingWidgetConfigureScreen(
+    initialTheme: WidgetThemeMode,
+    onConfirm: (WidgetThemeMode) -> Unit,
+    onCancel: () -> Unit
+) {
+    var themeValue by rememberSaveable { mutableStateOf(initialTheme.storageValue) }
+    val theme = WidgetThemeMode.fromStorage(themeValue)
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 20.dp)
+        ) {
+            Text(
+                stringResource(R.string.routing_widget_config_title),
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.routing_widget_config_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            SectionLabel(stringResource(R.string.routing_widget_config_theme_section))
+            Column(modifier = Modifier.selectableGroup()) {
+                WidgetThemeMode.entries.forEach { option ->
+                    val label = stringResource(
+                        when (option) {
+                            WidgetThemeMode.System -> R.string.routing_widget_config_theme_system
+                            WidgetThemeMode.Light -> R.string.routing_widget_config_theme_light
+                            WidgetThemeMode.Dark -> R.string.routing_widget_config_theme_dark
+                        }
+                    )
+                    val description = stringResource(
+                        when (option) {
+                            WidgetThemeMode.System -> R.string.routing_widget_config_theme_system_description
+                            WidgetThemeMode.Light -> R.string.routing_widget_config_theme_light_description
+                            WidgetThemeMode.Dark -> R.string.routing_widget_config_theme_dark_description
+                        }
+                    )
+                    OptionRow(
+                        label = label,
+                        description = description,
+                        selected = theme == option,
+                        onClick = { themeValue = option.storageValue }
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .imePadding(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) { Text(stringResource(R.string.routing_widget_config_cancel)) }
+            Spacer(Modifier.width(12.dp))
+            Button(
+                onClick = { onConfirm(theme) },
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) { Text(stringResource(R.string.routing_widget_config_save)) }
+        }
     }
 }
 

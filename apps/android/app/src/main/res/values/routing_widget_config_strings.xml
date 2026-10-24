@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_widget_config_title">配置实时路由卡片</string>
+    <string name="routing_widget_config_subtitle">仅调整当前卡片，不影响其他组件或应用外观。</string>
+    <string name="routing_widget_config_theme_section">组件主题</string>
+    <string name="routing_widget_config_theme_system">跟随系统</string>
+    <string name="routing_widget_config_theme_system_description">随设备深浅色模式自动切换</string>
+    <string name="routing_widget_config_theme_light">明亮</string>
+    <string name="routing_widget_config_theme_light_description">始终使用高亮浅色卡片</string>
+    <string name="routing_widget_config_theme_dark">黑暗</string>
+    <string name="routing_widget_config_theme_dark_description">始终使用低眩光深色卡片</string>
+    <string name="routing_widget_config_cancel">取消</string>
+    <string name="routing_widget_config_save">保存</string>
+</resources>

@@ -25,6 +25,7 @@ import androidx.glance.LocalSize
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.appWidgetBackground
@@ -60,19 +61,25 @@ import kotlinx.coroutines.withContext
 /**
  * 「实时路由」桌面小组件（4×3，最小 4×2）：上面一帧路由图（Agent → 网关 → 供应商/模型，10 分钟内的
  * 调用按结果点亮），下面最近 3 条调用。Glance 不能逐帧动画，所以是「近实时静态帧」：数据由
- * [RoutingLiveScheduler] 每几分钟读一次，卡头如实写多久前读的。主题跟随系统。
+ * [RoutingLiveScheduler] 每几分钟读一次，卡头如实写多久前读的。主题按实例配置读取。
  */
 internal class RoutingLiveWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val appContext = context.applicationContext
+        val appWidgetId = runCatching {
+            GlanceAppWidgetManager(appContext).getAppWidgetId(id)
+        }.getOrNull()
+        val theme = appWidgetId
+            ?.let { WidgetConfigStore.load(appContext, it).theme }
+            ?: WidgetThemeMode.System
         val state = withContext(Dispatchers.IO) {
             val session = runCatching { SessionStore(appContext).load() }.getOrNull()
             if (session == null) RoutingLiveWidgetState.NeedLogin
             else RoutingLiveWidgetState.Ready(RoutingLiveStore.load(appContext, session.userId))
         }
-        provideContent { RoutingLiveBody(state, System.currentTimeMillis()) }
+        provideContent { RoutingLiveBody(state, theme, System.currentTimeMillis()) }
     }
 }
 
@@ -100,6 +107,11 @@ internal class RoutingLiveWidgetReceiver : GlanceAppWidgetReceiver() {
         runCatching { RoutingLiveScheduler.enqueueNow(context) }
     }
 
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        appWidgetIds.forEach { WidgetConfigStore.remove(context, it) }
+    }
+
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
         runCatching { RoutingLiveScheduler.cancel(context) }
@@ -112,8 +124,8 @@ internal class RoutingLiveWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 @Composable
-private fun RoutingLiveBody(state: RoutingLiveWidgetState, nowEpochMs: Long) {
-    val colors = rememberWidgetColors(WidgetThemeMode.System)
+private fun RoutingLiveBody(state: RoutingLiveWidgetState, theme: WidgetThemeMode, nowEpochMs: Long) {
+    val colors = rememberWidgetColors(theme)
     val size = LocalSize.current
     val fontScale = LocalContext.current.resources.configuration.fontScale
     val view = (state as? RoutingLiveWidgetState.Ready)?.let { routingLiveView(it.snapshot, nowEpochMs) }
