@@ -8,8 +8,9 @@ import { formatEstimatedUsd, formatTokens } from '../../utils/format';
 import { t, useLang } from '../../i18n';
 import { errorText, exportRequestLog, requestLog } from './api';
 import { DecisionTrace } from './DecisionTrace';
+import { HealthBadge, useProviderHealth } from './ProviderHealth';
 import { ATTEMPT_OUTCOME_LABEL, DECISION_REASON_LABEL, effectiveTokens, shortTime, traceHeadline } from './helpers';
-import type { RequestLogAttempt, RequestLogEntry, RequestLogPage as LogPage, RequestLogQuery } from './types';
+import type { ProviderHealth, RequestLogAttempt, RequestLogEntry, RequestLogPage as LogPage, RequestLogQuery } from './types';
 import './requestLog.css';
 
 const PAGE_SIZE = 50;
@@ -131,7 +132,7 @@ function ContextBars({ entry }: { entry: RequestLogEntry }) {
   );
 }
 
-function EntryDetail({ entry }: { entry: RequestLogEntry }) {
+function EntryDetail({ entry, health }: { entry: RequestLogEntry; health: Map<string, ProviderHealth> }) {
   return (
     <div className="mw-log-detail">
       <section aria-label={t('requestLog.section.attempts')}>
@@ -140,7 +141,7 @@ function EntryDetail({ entry }: { entry: RequestLogEntry }) {
           {entry.attempts.map((attempt, index) => (
             <li key={attempt.requestId} className={attempt.ok ? 'is-ok' : 'is-failed'}>
               <span className="mw-log-attempt-rank" aria-hidden="true">{index + 1}</span>
-              <span className="mw-mono-text">{memberOf(attempt)}</span>
+              <span className="mw-mono-text mw-log-attempt-member">{memberOf(attempt)}<HealthBadge compact health={health.get(attempt.provider)} /></span>
               <span className={`mw-chip ${attempt.ok ? 'is-success' : 'is-warning'}`}>{attempt.status} · {attemptOutcome(attempt, index, entry.attempts.length)}</span>
               <span className="mw-log-attempt-meta">
                 {t('requestLog.attempt.latency', { value: formatMs(attempt.latencyMs) })}
@@ -192,6 +193,8 @@ function EntryDetail({ entry }: { entry: RequestLogEntry }) {
 export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text: string) => void }) {
   // Subscribing re-renders the page when the language changes.
   useLang();
+  // 尝试行旁显示该供应商当前（近 24 小时）的健康度，便于判断失败是偶发还是持续。
+  const health = useProviderHealth();
   const [filters, setFilters] = useState<LogFilters>(EMPTY_FILTERS);
   const [searchText, setSearchText] = useState('');
   const [offset, setOffset] = useState(0);
@@ -372,7 +375,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
                       </tr>
                       {expanded && (
                         <tr className="mw-log-detail-row">
-                          <td colSpan={10}><EntryDetail entry={entry} /></td>
+                          <td colSpan={10}><EntryDetail entry={entry} health={health} /></td>
                         </tr>
                       )}
                     </Fragment>

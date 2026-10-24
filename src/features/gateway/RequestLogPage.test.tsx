@@ -7,8 +7,13 @@ import * as api from './api';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
-  return { ...actual, requestLog: vi.fn(), exportRequestLog: vi.fn() };
+  return { ...actual, requestLog: vi.fn(), exportRequestLog: vi.fn(), providerHealth: vi.fn() };
 });
+
+function health(provider: string, status: 'healthy' | 'degraded' | 'down' | 'idle') {
+  const stats = { requests: 10, ok: 7, successRate: 0.7, p50Ms: 400, p95Ms: 2000, rateLimited: 3, skipped: 0, codes: [], statuses: [], lastOkAt: null, lastFailureAt: null };
+  return { provider, status, reasons: ['rate_limited'], stats, models: [], buckets: [], recentFailures: [], cooling: [] };
+}
 
 const NOW = Date.parse('2026-10-24T02:00:00Z');
 const base = { agent: 'codex', session: 's1', endpoint: '/v1/responses', requestedModel: 'group/coding', wire: 'chat', stream: true, cacheRead: 0, cacheWrite: 0, group: 'coding' };
@@ -50,6 +55,7 @@ describe('RequestLogPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.requestLog).mockImplementation(async (query: RequestLogQuery) => mockRequestLog(records, decisions, { ...query, since: null }));
+    vi.mocked(api.providerHealth).mockResolvedValue({ generatedAt: '2026-10-24T02:00:00Z', windowHours: 24, providers: [health('openai', 'degraded')] });
     vi.mocked(api.exportRequestLog).mockResolvedValue({ message: '已导出 2 条请求', path: '/data/tokenledger_gateway_requests.csv' });
   });
   afterEach(() => vi.useRealTimers());
@@ -66,6 +72,9 @@ describe('RequestLogPage', () => {
     expect(attempts[0]).toHaveTextContent('openai/gpt-5');
     expect(attempts[0]).toHaveTextContent('429 · 失败已切换');
     expect(attempts[1]).toHaveTextContent('首字 200 ms');
+    // 尝试行旁带上该供应商当前健康度；没有健康数据的供应商不显示。
+    expect(within(attempts[0]).getByRole('img', { name: '健康度：降级' })).toBeInTheDocument();
+    expect(within(attempts[1]).queryByRole('img')).toBeNull();
     const trace = within(screen.getByRole('list', { name: 'group/coding 成员决策' })).getAllByRole('listitem');
     expect(trace[0]).toHaveTextContent('限流');
     expect(screen.getByRole('list', { name: 'Context 构成' })).toHaveTextContent('对话历史 60%');
