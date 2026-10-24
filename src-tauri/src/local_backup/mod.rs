@@ -196,12 +196,18 @@ fn read_table(conn: &Connection, table: &str) -> Result<LedgerTable, String> {
     Ok(LedgerTable { columns, rows })
 }
 
+/// Both tables from one read snapshot: a scan committing in between would
+/// otherwise pair older rows with a newer baseline, and the tokens between
+/// them would never be recorded after a restore.
 fn read_ledger(db_path: &Path) -> Result<(LedgerTable, LedgerTable), String> {
-    let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
-    Ok((
-        read_table(&conn, LEDGER_TABLE)?,
-        read_table(&conn, CUMULATIVE_TABLE)?,
-    ))
+    let mut conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let tables = (
+        read_table(&tx, LEDGER_TABLE)?,
+        read_table(&tx, CUMULATIVE_TABLE)?,
+    );
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(tables)
 }
 
 /// Everything a backup of this computer holds right now.
@@ -888,8 +894,11 @@ fn import_ledger(db_path: &Path, table: &LedgerTable) -> Result<usize, String> {
 }
 
 /// Restores the scanner's cumulative-source state: a key this computer lacks
-/// is added, and one it has is replaced only by a later reset generation, so
-/// the next scan continues the numbering instead of reusing a dedupe key.
+/// is added, and one it has is replaced by a later reset generation, or within
+/// the same generation by a higher baseline. Totals only grow within a
+/// generation and the restored ledger holds the rows up to the higher one, so
+/// the next scan continues from there instead of counting them again or
+/// reusing a dedupe key.
 fn import_cumulative(db_path: &Path, table: &LedgerTable) -> Result<(), String> {
     if table.rows.is_empty() || !table.columns.iter().any(|column| column == "unique_key") {
         return Ok(());
@@ -914,9 +923,34 @@ fn import_cumulative(db_path: &Path, table: &LedgerTable) -> Result<(), String> 
             .map(|name| format!("\"{name}\"=excluded.\"{name}\""))
             .collect::<Vec<_>>()
             .join(",");
+        let totals = [
+            "input_tokens",
+            "output_tokens",
+            "cached_tokens",
+            "cache_write_tokens",
+        ];
+        let same_generation = if totals
+            .iter()
+            .all(|total| names.iter().any(|name| name == total))
+        {
+            let sum = |side: &str| {
+                totals
+                    .iter()
+                    .map(|total| format!("{side}.{total}"))
+                    .collect::<Vec<_>>()
+                    .join("+")
+            };
+            format!(
+                " OR (excluded.generation = {CUMULATIVE_TABLE}.generation AND {} > {})",
+                sum("excluded"),
+                sum(CUMULATIVE_TABLE)
+            )
+        } else {
+            String::new()
+        };
         format!(
             " ON CONFLICT(unique_key) DO UPDATE SET {updates}
-              WHERE excluded.generation > {CUMULATIVE_TABLE}.generation"
+              WHERE excluded.generation > {CUMULATIVE_TABLE}.generation{same_generation}"
         )
     } else {
         " ON CONFLICT(unique_key) DO NOTHING".to_string()
@@ -1302,6 +1336,15 @@ pub async fn local_backup_apply(
     })
     .await?;
     emit_stats_updated(&app_handle);
+    if result.settings_restored {
+        // Open settings pages reload, so a later edit does not save the
+        // pre-restore values back over the restored ones.
+        use tauri::Emitter;
+        let _ = app_handle.emit(
+            "settings-updated",
+            serde_json::json!({ "source": "local-backup" }),
+        );
+    }
     Ok(result)
 }
 

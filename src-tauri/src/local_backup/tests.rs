@@ -680,12 +680,15 @@ fn cumulative_scan_state_travels_with_the_ledger() {
     put(&old, "src-a", 50, 2);
     put(&old, "src-b", 70, 1);
     put(&old, "src-c", 90, 3);
+    put(&old, "src-d", 80, 0);
+    put(&old, "src-e", 5, 0);
     let bundle = sealed_roundtrip(&old.export());
-    assert_eq!(bundle.scan_cumulative.rows.len(), 3);
+    assert_eq!(bundle.scan_cumulative.rows.len(), 5);
 
     let new = Computer::new("new");
     put(&new, "src-b", 10, 4);
     put(&new, "src-c", 20, 1);
+    put(&new, "src-d", 30, 0);
     apply(
         &new.app,
         &new.gateway,
@@ -698,6 +701,18 @@ fn cumulative_scan_state_travels_with_the_ledger() {
     assert_eq!(state(&new, "src-a"), Some((50, 2)));
     assert_eq!(state(&new, "src-b"), Some((10, 4)));
     assert_eq!(state(&new, "src-c"), Some((90, 3)));
+    // Same generation: the higher baseline wins, whichever side has it.
+    assert_eq!(state(&new, "src-d"), Some((80, 0)));
+    put(&new, "src-e", 40, 0);
+    apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(state(&new, "src-e"), Some((40, 0)));
 }
 
 #[test]
