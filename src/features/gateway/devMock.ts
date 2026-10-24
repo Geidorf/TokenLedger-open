@@ -1,7 +1,7 @@
 // In-memory gateway backend for the browser dev preview only. Keys are
 // tracked as a boolean, matching the real backend's write-only contract.
 import { mockRequestLog } from './requestLogMock';
-import type { AgentInspection, AgentPreview, CodexInspection, HealthBucket, HealthReport, HealthStats, LedgerRecord, ProbeResult, ProbeSettings, ProviderView, RequestLogQuery, RouteDecision, RoutingGroup } from './types';
+import type { AgentInspection, AgentPreview, CodexInspection, ContentSample, ContentSamplingInput, ContentSamplingStatus, HealthBucket, HealthReport, HealthStats, LedgerRecord, ProbeResult, ProbeSettings, ProviderView, RequestLogQuery, RouteDecision, RoutingGroup } from './types';
 
 const PORT = 3462;
 const minutesAgo = (minutes: number) => new Date(Date.UTC(2026, 9, 3, 16, 30 - minutes, 12)).toISOString();
@@ -198,6 +198,66 @@ function mockBuckets(base: number, failEvery: number, p95: number): HealthBucket
 
 let probeSettings: ProbeSettings = { enabled: false, intervalMins: 15 };
 let probeResults: Record<string, ProbeResult[]> = {};
+let contentSampling: ContentSamplingStatus = {
+  mode: 'off',
+  remaining: null,
+  expiresAt: null,
+  agent: null,
+  group: null,
+  failuresOnly: false,
+  sampleIds: [],
+  storedCount: 0,
+  storedBytes: 0,
+  error: null,
+};
+
+const sampleFixture: Record<string, ContentSample> = {
+  r6: {
+    id: 'r6',
+    createdAt: minutesAgo(1),
+    status: 200,
+    stream: true,
+    truncated: false,
+    request: JSON.stringify({
+      model: 'group/coding',
+      messages: [
+        { role: 'system', content: 'You are a careful coding assistant.' },
+        { role: 'user', content: 'Review this call with api_key: sk-live-1234567890abcdef.' },
+      ],
+      attachments: [{ type: 'image/png', size: 48213 }],
+    }, null, 2),
+    response: 'The request uses Authorization: Bearer abcdef1234567890 and should be redacted by default.',
+  },
+};
+
+function contentSamplingInput(input: ContentSamplingInput): ContentSamplingStatus {
+  if (input.mode === 'off') {
+    const keep = input.deleteExisting === false;
+    return contentSampling = {
+      ...(keep ? contentSampling : { storedCount: 0, storedBytes: 0, sampleIds: [] }),
+      mode: 'off',
+      remaining: null,
+      expiresAt: null,
+      agent: null,
+      group: null,
+      failuresOnly: false,
+      error: null,
+    };
+  }
+  const count = input.mode === 'next' ? Math.max(1, Math.min(200, input.count ?? 20)) : null;
+  return contentSampling = {
+    mode: input.mode,
+    remaining: count,
+    expiresAt: input.mode === 'filter' ? new Date(Date.now() + Math.max(1, Math.min(24, input.durationHours ?? 24)) * 3_600_000).toISOString() : null,
+    agent: input.agent ?? null,
+    group: input.group ?? null,
+    failuresOnly: Boolean(input.failuresOnly),
+    sampleIds: ['r6'],
+    storedCount: 1,
+    storedBytes: 8642,
+    error: null,
+  };
+}
 
 function mockProbe(): void {
   probeResults = {};
@@ -311,6 +371,25 @@ export function handleGatewayMock(cmd: string, payload: Record<string, unknown>)
     case 'gateway_request_log_export': {
       const page = mockRequestLog(requestLogRecords(), decisions, { ...(payload.query ?? {}) as RequestLogQuery, offset: 0, limit: 200 });
       return { message: `已导出 ${page.total} 条请求`, path: '~/TokenLedger/tokenledger_gateway_requests.csv' };
+    }
+    case 'gateway_content_sampling_status':
+      return contentSampling;
+    case 'gateway_set_content_sampling':
+      return contentSamplingInput((payload.input ?? {}) as ContentSamplingInput);
+    case 'gateway_read_content_sample': {
+      const id = String(payload.id ?? '');
+      const sample = sampleFixture[id];
+      return sample && contentSampling.sampleIds.includes(id) ? sample : fail('找不到这条请求的采样内容。');
+    }
+    case 'gateway_delete_content_samples': {
+      const ids = payload.ids as string[] | null | undefined;
+      if (ids === null) contentSampling = { ...contentSampling, sampleIds: [], storedCount: 0, storedBytes: 0 };
+      else if (ids) contentSampling = {
+        ...contentSampling,
+        sampleIds: contentSampling.sampleIds.filter((id) => !ids.includes(id)),
+        storedCount: contentSampling.storedCount - contentSampling.sampleIds.filter((id) => ids.includes(id)).length,
+      };
+      return contentSampling;
     }
     case 'gateway_routing_cooldowns':
       return [];

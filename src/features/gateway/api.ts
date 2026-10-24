@@ -76,3 +76,17 @@ export function errorText(error: unknown): string {
 export const legacyInspect = () => invoke<import('./types').LegacyInspection>('gateway_legacy_inspect');
 export const legacyRestore = (receiptId: string, expectedVersion: string, keepCurrent = false) =>
   invoke<import('./types').LegacyInspection>('gateway_legacy_restore', { input: { receiptId, expectedVersion, keepCurrent } });
+
+// 内容采样只返回给主窗口。读取结果不进入日志、缓存或持久化存储。
+export const contentSamplingStatus = () =>
+  invoke<import('./types').ContentSamplingStatus>('gateway_content_sampling_status');
+
+export const setContentSampling = (input: import('./types').ContentSamplingInput) =>
+  invoke<import('./types').ContentSamplingStatus>('gateway_set_content_sampling', { input });
+
+export const readContentSample = (id: string) =>
+  invoke<import('./types').ContentSample>('gateway_read_content_sample', { id });
+
+/** `null` 删除全部已有样本。 */
+export const deleteContentSamples = (ids: string[] | null) =>
+  invoke<import('./types').ContentSamplingStatus>('gateway_delete_content_samples', { ids });

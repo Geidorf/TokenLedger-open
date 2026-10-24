@@ -204,6 +204,7 @@ pub async fn gateway_request_log_export(
 mod tests {
     use super::*;
     use crate::gateway::request_log::{RequestLogAttempt, StoredDecision, StoredTrace};
+    use std::path::Path;
 
     fn entry() -> RequestLogEntry {
         let attempt = |provider: &str, status: u16, output: u64| RequestLogAttempt {
@@ -309,6 +310,35 @@ mod tests {
         assert!(lines[1].contains("p1/unknown-model-x:429 > p2/unknown-model-x:200"));
         assert!(lines[1].contains("p1/unknown-model-x=failed[strategy_first+rate_limited]"));
         assert!(lines[1].contains("\"'=cmd|"), "{}", lines[1]);
+    }
+
+    #[test]
+    fn content_sample_files_never_reach_the_request_log_csv() {
+        let root = std::env::temp_dir().join(format!(
+            "tokenledger_request_log_samples_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let app = AppContext::for_test(root.clone());
+        let gateway = Gateway::new(
+            &app.app_data_dir().join("gateway"),
+            Arc::new(crate::gateway::MemorySecrets::default()),
+            0,
+        );
+        let samples = gateway.dir().join("samples-v1");
+        fs::create_dir_all(&samples).unwrap();
+        fs::write(
+            samples.join("0000000000000000.bin"),
+            b"request-log-sample-sentinel",
+        )
+        .unwrap();
+
+        let result = export_request_log(&app, &gateway, &RequestLogQuery::default()).unwrap();
+        let path = Path::new(result["path"].as_str().unwrap());
+        let csv = fs::read_to_string(path).unwrap();
+        assert!(!csv.contains("request-log-sample-sentinel"));
+        assert_eq!(csv.lines().count(), 1);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

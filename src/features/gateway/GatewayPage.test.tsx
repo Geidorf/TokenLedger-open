@@ -13,6 +13,7 @@ vi.mock('./api', async (importOriginal) => {
     recentRequests: vi.fn(),
     recentRouteDecisions: vi.fn(),
     revealLocalToken: vi.fn(),
+    contentSamplingStatus: vi.fn(),
   };
 });
 
@@ -26,6 +27,7 @@ describe('GatewayPage', () => {
     vi.mocked(api.listProviders).mockResolvedValue([{ id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', wire: 'chat', models: ['deepseek-chat'], enabled: true, hasKey: true }]);
     vi.mocked(api.listRoutingGroups).mockResolvedValue([{ id: 'coding', name: '编码', strategy: 'failover', members: ['deepseek/deepseek-chat'], rules: [], sessionTtlSecs: 3600, enabled: true }]);
     vi.mocked(api.recentRequests).mockResolvedValue([{ ts: '2026-10-03T16:00:00Z', requestId: 'r1', agent: 'codex', session: null, endpoint: '/v1/responses', provider: 'deepseek', requestedModel: 'group/coding', upstreamModel: 'deepseek-chat', wire: 'chat', stream: true, status: 200, ok: true, input: 1000, output: 500, cacheRead: 4000, cacheWrite: 0, latencyMs: 1200, group: 'coding', member: 'deepseek/deepseek-chat' }]);
+    vi.mocked(api.contentSamplingStatus).mockResolvedValue({ mode: 'off', remaining: null, expiresAt: null, agent: null, group: null, failuresOnly: false, sampleIds: [], storedCount: 0, storedBytes: 0, error: null });
     vi.mocked(api.recentRouteDecisions).mockResolvedValue([{ ts: '2026-10-03T16:00:00Z', requestId: 'r1', group: 'coding', reason: 'rule', detail: '含图片输入', chosen: 'deepseek/deepseek-chat', attempts: [{ member: 'deepseek/deepseek-chat', outcome: 'ok', status: 200 }], trace: [
       { member: 'deepseek/deepseek-chat', rank: 0, verdict: 'chosen', reasons: ['rule_match', 'answered'], detail: '含图片输入' },
       { member: 'openai/gpt-5', rank: 1, verdict: 'not_reached', reasons: ['fallback', 'not_reached'] },

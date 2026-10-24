@@ -4,7 +4,7 @@
 
 ## 不做的事
 
-- **不存内容**：只读写元数据。请求与回复正文、提示词、工具参数、附件一律不落盘、不进日志、不进导出。Context 构成只有各部分序列化后的字节数与条数（见 [request-context-composition-v1](request-context-composition-v1.md)）。可选的内容采样另见 [gateway-content-sampling-proposal-v1](gateway-content-sampling-proposal-v1.md)，**未实现**，方向已评审认可，实现另开 B 级 PR。
+- **诊断日志不存内容**：只读写元数据。请求与回复正文、提示词、工具参数、附件不进入诊断日志或导出。Context 构成只有各部分序列化后的字节数与条数（见 [request-context-composition-v1](request-context-composition-v1.md)）。用户可另行显式开启有数量、时间和容量上限的本机加密内容采样，见 [gateway-content-sampling-proposal-v1](gateway-content-sampling-proposal-v1.md)。样本独立保存，只在主窗口按需解密，不改变诊断日志或同步口径。
 - **不进挂件**：两个新命令只允许主窗口调用；挂件继续只读脱敏的 `gateway_routing_feed`。
 - **不记没选出上游的拒绝**：本地 token 不对、请求体解析失败、直连的 `供应商/模型` 不存在或已停用、路由组不存在或未启用时，网关直接返回 401 / 400 / 404，既没有账本行也没有路由决策，请求日志里看不到。为它们补账本行会让会计账本的请求数多出不存在的上游请求，v1 不做；排查这类问题看客户端收到的错误说明。（组内成员被跳过的情况有路由决策，照常显示，见下文。）
 - **不改记账**：费用与 Token 合计仍以 `usage-accounting-v1.sqlite3` 和用量页为准；请求日志读的是会轮转的诊断日志，最多约 32 MB（当前与上一份 `usage-v1.jsonl`），更早的请求只留在用量统计里，页面写明「本机保留 N 条（最早 …）」。

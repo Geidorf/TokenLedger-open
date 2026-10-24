@@ -7,6 +7,9 @@ mod agent_config;
 mod agents;
 mod anthropic;
 mod codex_config;
+mod content_capture;
+mod content_sampling;
+pub(crate) mod content_sampling_commands;
 mod context_size;
 mod convert;
 mod gemini;
@@ -34,6 +37,9 @@ pub(crate) use codex_config::{atomic_write, line_diff, version};
 pub use codex_config::{
     CodexApplyResult, CodexConfig, CodexInspection, CodexPreview, CodexRestoreResult,
 };
+#[cfg(test)]
+pub use content_sampling::SamplingMode;
+pub use content_sampling::{ContentSample, SamplingInput, SamplingStatus};
 pub use health::HealthReport;
 pub(crate) use ledger::accounting;
 pub(crate) use ledger::attempt_outcomes_since;
@@ -66,6 +72,7 @@ pub struct Shared {
     router: Router,
     routing_health: RoutingHealth,
     prober: Arc<Prober>,
+    sampling: Arc<content_sampling::ContentSampling>,
 }
 
 enum RunState {
@@ -241,6 +248,10 @@ impl Gateway {
         Self {
             shared: Arc::new(Shared {
                 providers: RwLock::new(providers),
+                sampling: Arc::new(content_sampling::ContentSampling::new(
+                    dir,
+                    Arc::clone(&secrets),
+                )),
                 secrets,
                 ledger: Ledger::new(dir),
                 router,
@@ -825,12 +836,37 @@ impl Gateway {
         let gateway = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                let sampling = Arc::clone(&gateway.shared.sampling);
+                let _ = tauri::async_runtime::spawn_blocking(move || sampling.status()).await;
                 if gateway.enabled.load(Ordering::SeqCst) && gateway.prober.due() {
                     gateway.probe_scheduled().await;
                 }
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             }
         });
+    }
+
+    pub fn content_sampling_status(&self) -> SamplingStatus {
+        self.shared.sampling.status()
+    }
+
+    pub fn content_sampling_active(&self) -> bool {
+        self.shared.sampling.active()
+    }
+
+    pub fn set_content_sampling(&self, input: SamplingInput) -> Result<SamplingStatus, String> {
+        self.shared.sampling.configure(input)
+    }
+
+    pub fn read_content_sample(&self, id: &str) -> Result<ContentSample, String> {
+        self.shared.sampling.read(id)
+    }
+
+    pub fn delete_content_samples(
+        &self,
+        ids: Option<Vec<String>>,
+    ) -> Result<SamplingStatus, String> {
+        self.shared.sampling.delete(ids)
     }
 
     pub fn recent_route_decisions(&self, limit: usize) -> Vec<RouteDecision> {

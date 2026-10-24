@@ -430,6 +430,63 @@ fn gateway_snapshot_ignores_same_hour_external_revision_change() {
 }
 
 #[test]
+fn content_sample_files_never_change_the_cloud_collection() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    insert_scan(
+        &db_path,
+        "scan-with-samples",
+        "s1",
+        "2026-10-04 10:00:09",
+        None,
+    );
+    let end = Local
+        .with_ymd_and_hms(2026, 10, 4, 10, 0, 10)
+        .single()
+        .unwrap();
+    let line = json!({
+        "ts": end.with_timezone(&Utc).to_rfc3339(), "requestId": "g-sample", "agent": "codex",
+        "session": "s1", "endpoint": "responses", "provider": "openai",
+        "requestedModel": "gpt-5.5", "upstreamModel": "gpt-5.5", "wire": "responses",
+        "stream": true, "status": 200, "ok": true, "input": 200, "output": 80,
+        "cacheRead": 0, "cacheWrite": 0, "latencyMs": 900, "error": null
+    });
+    let dir = gateway_overlay::gateway_dir(&db_path);
+    let samples = dir.join("samples-v1");
+    fs::create_dir_all(&samples).unwrap();
+    fs::write(dir.join("usage-v1.jsonl"), format!("{line}\n")).unwrap();
+    fs::write(
+        samples.join("0000000000000000.bin"),
+        b"cloud-sample-sentinel-one",
+    )
+    .unwrap();
+
+    let before = collect_hours(&db_path, "user-a", "mac").unwrap();
+    fs::write(
+        samples.join("0000000000000001.bin"),
+        b"cloud-sample-sentinel-two",
+    )
+    .unwrap();
+    let after = collect_hours(&db_path, "user-a", "mac").unwrap();
+
+    assert_eq!(before, after);
+    let upload = plan(&before, &CloudState::default(), "user-a", "mac", &cost);
+    assert!(!upload.upserts.is_empty());
+    let payload = serde_json::to_vec(
+        &upload
+            .upserts
+            .iter()
+            .map(|aggregate| aggregate.payload("user-a"))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    assert!(!payload
+        .windows(b"cloud-sample-sentinel".len())
+        .any(|window| window == b"cloud-sample-sentinel"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn no_ledger_means_no_hours_and_no_state_file() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);

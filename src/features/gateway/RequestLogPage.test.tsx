@@ -4,10 +4,18 @@ import { formatMs, formatTps, RequestLogPage, TAIL_INTERVAL_MS, toQuery } from '
 import { groupRecords, mockRequestLog } from './requestLogMock';
 import type { LedgerRecord, RequestLogQuery, RouteDecision } from './types';
 import * as api from './api';
+import { contentSamplingApi } from './contentSamplingApi';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
   return { ...actual, requestLog: vi.fn(), exportRequestLog: vi.fn(), providerHealth: vi.fn() };
+});
+vi.mock('./contentSamplingApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./contentSamplingApi')>();
+  return {
+    ...actual,
+    contentSamplingApi: { status: vi.fn(), set: vi.fn(), read: vi.fn(), remove: vi.fn() },
+  };
 });
 
 function health(provider: string, status: 'healthy' | 'degraded' | 'down' | 'idle') {
@@ -57,6 +65,7 @@ describe('RequestLogPage', () => {
     vi.mocked(api.requestLog).mockImplementation(async (query: RequestLogQuery) => mockRequestLog(records, decisions, { ...query, since: null }));
     vi.mocked(api.providerHealth).mockResolvedValue({ generatedAt: '2026-10-24T02:00:00Z', windowHours: 24, providers: [health('openai', 'degraded')] });
     vi.mocked(api.exportRequestLog).mockResolvedValue({ message: '已导出 2 条请求', path: '/data/tokenledger_gateway_requests.csv' });
+    vi.mocked(contentSamplingApi.status).mockResolvedValue({ mode: 'off', remaining: null, expiresAt: null, agent: null, group: null, failuresOnly: false, sampleIds: [], storedCount: 0, storedBytes: 0, error: null });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -168,5 +177,25 @@ describe('RequestLogPage', () => {
     fireEvent.click(button);
     expect(window.location.hash).toBe('#session/codex/s1');
     expect(screen.getByText('打开后查看本机完整会话，范围可能超出当前报告或请求。')).toBeInTheDocument();
+  });
+
+  it('只有采样 ID 命中当前逻辑请求时才显示内容分区，且展开后仍不自动读取', async () => {
+    vi.mocked(contentSamplingApi.status).mockResolvedValue({
+      mode: 'next', remaining: 18, expiresAt: null, agent: null, group: null, failuresOnly: false,
+      sampleIds: ['L1'], storedCount: 1, storedBytes: 2048, error: null,
+    });
+    render(<RequestLogPage />);
+    const table = await screen.findByRole('table', { name: '网关请求日志' });
+    const rows = within(table).getAllByRole('row');
+    fireEvent.click(within(rows[1]).getByRole('button', { name: /展开/ }));
+    expect(await screen.findByRole('region', { name: '采样内容' })).toBeInTheDocument();
+    expect(contentSamplingApi.read).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '读取样本' }));
+    await waitFor(() => expect(contentSamplingApi.read).toHaveBeenCalledWith('L1'));
+    fireEvent.click(screen.getByRole('button', { name: /收起/ }));
+    expect(screen.queryByRole('region', { name: '采样内容' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(table).getAllByRole('row')[2].querySelector('button')!);
+    expect(screen.queryByRole('region', { name: '采样内容' })).not.toBeInTheDocument();
   });
 });
