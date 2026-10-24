@@ -187,9 +187,12 @@ class DashboardRepository(context: Context) : DashboardDataSource {
     /**
      * Background readers (the live wallpaper) use the stored session through the same authority:
      * refreshed when close to expiry and once more on a 401. Null when nobody is signed in.
+     * [onAccount] gets the stored session's user id before any network call, so a caller still knows
+     * whose read it was when the read itself fails.
      */
-    suspend fun <T> readWithStoredSession(read: suspend (MobileSession) -> T): T? {
+    suspend fun <T> readWithStoredSession(onAccount: (String) -> Unit = {}, read: suspend (MobileSession) -> T): T? {
         val session = withContext(Dispatchers.IO) { sessionAuthority.restore() } ?: return null
+        onAccount(session.userId)
         val lease = sessionAuthority.lease(session)
         var freshSession = sessionAuthority.ensureFresh(lease)
         val result = try {

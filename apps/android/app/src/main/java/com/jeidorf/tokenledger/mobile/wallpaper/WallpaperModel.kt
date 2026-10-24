@@ -11,14 +11,18 @@ import com.jeidorf.tokenledger.mobile.routing.RoutingScene
 import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshots
 import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshotsResult
 
-/** 一次读取云端快照的结果。时间用 `SystemClock.elapsedRealtime()`，不受手机改时间影响。 */
+/**
+ * 一次读取云端快照的结果。时间用 `SystemClock.elapsedRealtime()`，不受手机改时间影响。
+ * [account] 是这次读取用的已保存登录的用户 id；读取失败时也带上（读不到登录本身时为 null），
+ * 换了账号就丢掉上一个账号留下的画面。
+ */
 internal sealed interface WallpaperRead {
-    data class Ok(val result: RoutingSnapshotsResult, val readAtElapsedMs: Long) : WallpaperRead
+    data class Ok(val result: RoutingSnapshotsResult, val readAtElapsedMs: Long, val account: String) : WallpaperRead
     /** 手机上没有登录云端账户。 */
     data object SignedOut : WallpaperRead
     /** 这个安装包没有配置云端地址。 */
     data object NotConfigured : WallpaperRead
-    data class Failed(val reason: RoutingReadFailure) : WallpaperRead
+    data class Failed(val reason: RoutingReadFailure, val account: String? = null) : WallpaperRead
 }
 
 internal enum class StatusTone { Live, Neutral, Warning }
@@ -43,9 +47,9 @@ internal data class WallpaperFrame(
     val caption: String?,
     /** 最近一条点亮连线还要多久熄灭。 */
     val nextLingerEndMs: Long?,
-) {
-    val playing: Boolean get() = active != null
-}
+    /** 还有一条流没播完；段与段之间的间隔里 [active] 为 null，但仍要继续排帧。 */
+    val playing: Boolean,
+)
 
 /**
  * 壁纸的状态机：吃进每次读取的结果，按契约 §5 决定播放什么，再按需要吐出一帧。
@@ -64,6 +68,7 @@ internal class WallpaperModel(
     private data class Lit(val flow: RoutingFlow, val ok: Boolean, val finishedAtMs: Long)
 
     private var latest: WallpaperRead? = null
+    private var account: String? = null
     private var lastGood: WallpaperRead.Ok? = null
     private var queue = RoutingPlaybackQueue()
     private var playing: Playing? = null
@@ -71,6 +76,16 @@ internal class WallpaperModel(
 
     fun accept(read: WallpaperRead, nowElapsedMs: Long) {
         latest = read
+        val readAccount = when (read) {
+            is WallpaperRead.Ok -> read.account
+            is WallpaperRead.Failed -> read.account
+            else -> null
+        }
+        // 壁纸不可见期间换了账号时收不到 SignedOut：按读取所用的账号判断，先清掉旧账号的画面。
+        if (readAccount != null && readAccount != account) {
+            clear()
+            account = readAccount
+        }
         when (read) {
             is WallpaperRead.Ok -> {
                 lastGood = read
@@ -78,7 +93,10 @@ internal class WallpaperModel(
                 queue.offer(tracker.takeNew(scene, serverNow(nowElapsedMs)))
             }
             // 换账号或退出登录：旧账号的数据不能再画。
-            WallpaperRead.SignedOut, WallpaperRead.NotConfigured -> clear()
+            WallpaperRead.SignedOut, WallpaperRead.NotConfigured -> {
+                clear()
+                account = null
+            }
             is WallpaperRead.Failed -> if (read.reason == RoutingReadFailure.NotDeployed) clear()
         }
     }
@@ -117,6 +135,7 @@ internal class WallpaperModel(
             inflight = inflight,
             caption = caption(scene, active, serverNow),
             nextLingerEndMs = nextLingerEnd,
+            playing = playing != null,
         )
     }
 

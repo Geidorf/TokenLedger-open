@@ -10,6 +10,7 @@ import android.graphics.Typeface
 import androidx.compose.ui.graphics.toArgb
 import com.jeidorf.tokenledger.mobile.routing.RoutingFlow
 import com.jeidorf.tokenledger.mobile.routing.RoutingFlowPhase
+import com.jeidorf.tokenledger.mobile.routing.RoutingHop
 import com.jeidorf.tokenledger.mobile.routing.RoutingHopOutcome
 import com.jeidorf.tokenledger.mobile.routing.RoutingNode
 import com.jeidorf.tokenledger.mobile.routing.RoutingNodeState
@@ -99,8 +100,18 @@ internal class RoutingWallpaperRenderer(private val density: Float) {
         layout.agents.values.forEach { (x, y) -> drawWire(canvas, x + layout.nodeWidth / 2f, y, layout.hubX - layout.hubRadius, layout.hubY) }
         layout.targets.values.forEach { (x, y) -> drawWire(canvas, layout.hubX + layout.hubRadius, layout.hubY, x - layout.nodeWidth / 2f, y) }
 
-        // 停留：按结果点亮（成功绿色、失败危险色虚线）。
-        frame.lit.forEach { lit -> drawFlowWires(canvas, layout, scene, lit.flow, if (lit.ok) colors.success.toArgb() else colors.danger.toArgb(), dashed = !lit.ok, phase = 0f) }
+        // 停留：按结果点亮（成功绿色、失败危险色虚线）。上游连线各按自己那次尝试的结果画，
+        // 失败后改道成功时，失败的那条仍是危险色虚线。
+        frame.lit.forEach { lit ->
+            drawFlowWires(canvas, layout, scene, lit.flow, if (lit.ok) colors.success.toArgb() else colors.danger.toArgb(), dashed = !lit.ok, phase = 0f) { hop ->
+                when (hop.outcome) {
+                    RoutingHopOutcome.Ok -> colors.success.toArgb() to false
+                    RoutingHopOutcome.Failed, RoutingHopOutcome.Rejected -> colors.danger.toArgb() to true
+                    RoutingHopOutcome.Skipped -> colors.faint.toArgb() to true
+                    RoutingHopOutcome.Pending -> colors.warning.toArgb() to true
+                }
+            }
+        }
 
         // 在途：两段连线虚线流动，网关外圈脉冲。
         val dashPhase = (nowElapsedMs % WallpaperTimeline.DASH_PERIOD_MS).toFloat() / WallpaperTimeline.DASH_PERIOD_MS
@@ -197,13 +208,30 @@ internal class RoutingWallpaperRenderer(private val density: Float) {
         }
     }
 
-    /** 一条流经过的连线：Agent→网关，以及网关→它尝试过的每个成员（折叠的落到 +N）。 */
-    private fun drawFlowWires(canvas: Canvas, layout: Layout, scene: RoutingScene, flow: RoutingFlow, color: Int, dashed: Boolean, phase: Float) {
+    /**
+     * 一条流经过的连线：Agent→网关，以及网关→它尝试过的每个成员（折叠的落到 +N）。
+     * [hopStyle] 给每条上游连线单独定颜色与是否虚线；默认与 Agent 那段相同。
+     */
+    private fun drawFlowWires(
+        canvas: Canvas,
+        layout: Layout,
+        scene: RoutingScene,
+        flow: RoutingFlow,
+        color: Int,
+        dashed: Boolean,
+        phase: Float,
+        hopStyle: (RoutingHop) -> Pair<Int, Boolean> = { color to dashed },
+    ) {
+        fun style(wireColor: Int, wireDashed: Boolean) {
+            stroke.color = wireColor
+            stroke.pathEffect = if (wireDashed) DashPathEffect(floatArrayOf(dp(6f), dp(5f)), -phase * dp(11f)) else null
+        }
         stroke.strokeWidth = dp(2f)
-        stroke.color = color
-        stroke.pathEffect = if (dashed) DashPathEffect(floatArrayOf(dp(6f), dp(5f)), -phase * dp(11f)) else null
+        style(color, dashed)
         agentPoint(layout, scene, flow)?.let { (x, y) -> drawWire(canvas, x + layout.nodeWidth / 2f, y, layout.hubX - layout.hubRadius, layout.hubY) }
         flow.hops.forEach { hop ->
+            val (hopColor, hopDashed) = hopStyle(hop)
+            style(hopColor, hopDashed)
             targetPoint(layout, scene, hop.target)?.let { (x, y) -> drawWire(canvas, layout.hubX + layout.hubRadius, layout.hubY, x - layout.nodeWidth / 2f, y) }
         }
         stroke.pathEffect = null
