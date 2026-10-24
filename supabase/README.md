@@ -33,11 +33,11 @@
 | `20261010170540_quota_recovery_metadata_and_write_guards` | 额度清空恢复元数据与写入防护 |
 | `20261024010000_routing_snapshot_sync` | 实时路由快照中转（Android 动态壁纸） |
 | `20261024030000_cloud_heatmap_metrics_and_activity_rhythm` | 云端热力图逐日记录数与费用、活动节律 RPC |
-| `20261024050000_usage_dimensions_cloud_v1` | 云端用量维度：会话、账号白名单、Context 构成（保留 90 天） |
+| `20261024060000_usage_dimensions_cloud_v1` | 云端用量维度：会话、账号白名单、Context 构成（保留 90 天） |
 
 ## 2026-10-24 云端用量维度：会话、账号、Context 构成（usage-dimensions-cloud-v1）
 
-迁移 `migrations/20261024050000_usage_dimensions_cloud_v1.sql`，契约 `docs/contracts/usage-dimensions-cloud-v1.md` §2–§4：
+迁移 `migrations/20261024060000_usage_dimensions_cloud_v1.sql`，契约 `docs/contracts/usage-dimensions-cloud-v1.md` §2–§4：
 - 新表（`private`，客户端无表权限，RLS 开启并强制，仅 select-own 策略作纵深防御，`user_id` 级联删除到 `auth.users`）：`usage_session_days`、`usage_provider_days`、`usage_context_days`，每用户每设备每本地日一组行。
 - 新 RPC（仅 `authenticated`，所有者为 `auth.uid()`）：`sync_usage_dimensions_v1(jsonb)` 按「设备 × 日 × 维度」整体替换（严格校验、账号名白名单、日期窗口为 UTC 今天 −90 到 +1 天，失败为 22023 `usage_dimensions_<原因>`，顺带删除本人过期行）；`clear_usage_dimension_v1(text)` 删除本人某一维度在所有设备上的行；`get_usage_dimensions_v1(jsonb)` 复用 Stats v2 查询校验，返回会话前 100、账号拆分与 Context 构成，带模型筛选或搜索时三项为 `filtered`，带工具筛选时账号与 Context 为 `filtered`。
 - 保留：读取只看最近 90 天；`pg_cron` 任务 `tokenledger-usage-dimensions-daily-purge`（每天 03:23 UTC）调用 `private.purge_expired_usage_dimensions_v1()` 删除所有用户的过期行。
