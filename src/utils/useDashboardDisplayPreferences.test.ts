@@ -46,8 +46,8 @@ describe('dashboard display preferences', () => {
 
   it('persists, resets, and applies cross-window storage clearing', () => {
     const { result } = renderHook(() => useDashboardDisplayPreferences());
-    act(() => result.current.moveModule('trend', -1));
-    expect(JSON.parse(window.localStorage.getItem(DASHBOARD_DISPLAY_PREFERENCES_KEY)!)).toMatchObject({ moduleOrder: expect.arrayContaining(['trend', 'kpi']) });
+    act(() => result.current.setQuotaSourceVisible('codex:consumer', false, ['codex:consumer', 'claude:consumer']));
+    expect(JSON.parse(window.localStorage.getItem(DASHBOARD_DISPLAY_PREFERENCES_KEY)!)).toMatchObject({ hiddenQuotaSourceIds: ['codex:consumer'] });
     act(() => result.current.reset());
     expect(window.localStorage.getItem(DASHBOARD_DISPLAY_PREFERENCES_KEY)).toBeNull();
     window.localStorage.setItem(DASHBOARD_DISPLAY_PREFERENCES_KEY, JSON.stringify({ version: 1, moduleOrder: ['quota'] }));
@@ -62,8 +62,8 @@ describe('dashboard display preferences', () => {
     const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
     try {
       const { result } = renderHook(() => useDashboardDisplayPreferences());
-      act(() => result.current.moveModule('trend', -1));
-      expect(result.current.preferences.moduleOrder.slice(0, 2)).toEqual(['trend', 'kpi']);
+      act(() => result.current.moveQuotaSource('claude:consumer', -1, ['codex:consumer', 'claude:consumer']));
+      expect(result.current.preferences.quotaSourceOrder).toEqual(['claude:consumer', 'codex:consumer']);
     } finally { spy.mockRestore(); }
   });
 });

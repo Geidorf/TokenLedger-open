@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Cloud, FolderSearch, RefreshCw, Settings, SlidersHorizontal, Sparkles, TriangleAlert } from 'lucide-react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { Cloud, FolderSearch, LayoutGrid, RefreshCw, Settings, SlidersHorizontal, Sparkles, TriangleAlert } from 'lucide-react';
 import { requestOpenOnboarding } from '../features/onboarding/onboardingState';
 import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
@@ -18,6 +18,8 @@ import { QuotaHighlights } from './QuotaHighlights';
 import { providerDisplayName } from '../utils/quotaOverview';
 import { DashboardDisplayPreferencesDialog } from './DashboardDisplayPreferencesDialog';
 import { DashboardContextBar } from './DashboardContextBar';
+import { DashboardLayoutGrid } from './dashboard/DashboardLayoutGrid';
+import { DashboardLayoutSwitcher, DashboardLayoutToolbar } from './dashboard/DashboardLayoutBar';
 import type { DayDrillUnavailable } from '../hooks/useDayDrill';
 import { projectActiveTools, projectAllModels, projectTopModels } from '../hooks/useStats';
 import type { CustomDateRange, ModelStat, QuotaProviderEnvelope, QuotaSyncStatus, RangeKey, StatsData, StatsErrorAction, ToolStat } from '../types';
@@ -27,7 +29,13 @@ import { deriveInsightTimeContext } from '../utils/insightRules';
 import { classifyCloudFailure, customRangeSpanDays, type CloudFailureKind } from '../utils/frontendContracts';
 import { formatCustomRangeLabel } from '../utils/rangeDisplay';
 import { useTheme } from '../utils/useTheme';
-import { effectiveVisibleQuotaSourceKeys, orderQuotaSourceKeys, quotaSourceKey, useDashboardDisplayPreferences, type DashboardModuleId } from '../utils/useDashboardDisplayPreferences';
+import { effectiveVisibleQuotaSourceKeys, orderQuotaSourceKeys, quotaSourceKey, useDashboardDisplayPreferences } from '../utils/useDashboardDisplayPreferences';
+import { DASHBOARD_CARDS, DASHBOARD_CARD_IDS, type DashboardCardId } from '../utils/dashboardLayout';
+import { useDashboardLayouts } from '../utils/useDashboardLayouts';
+import '../styles/dashboardLayout.css';
+
+// 预算卡片读设置页的预算文案，只在卡片可见时才加载那部分代码。
+const BudgetOverviewCard = lazy(() => import('./dashboard/BudgetOverviewCard').then(module => ({ default: module.BudgetOverviewCard })));
 
 interface DashboardTabProps {
   /** 用量外壳已提供页面标题。 */
@@ -87,6 +95,8 @@ interface DashboardTabProps {
    * 不再在概览里重复渲染完整额度面板与恢复入口。
    */
   onOpenAllowances?: () => void;
+  /** 预算卡片的「设置预算」：打开设置 › 预算提醒。 */
+  onOpenBudgetSettings?: () => void;
 }
 
 export function cloudSyncRecoveryCopy(setup: {
@@ -367,6 +377,7 @@ export function DashboardTab({
   onSelectDate,
   dateDrillUnavailable = null,
   onOpenAllowances,
+  onOpenBudgetSettings,
 }: DashboardTabProps) {
   const quotaSectionRef = useRef<HTMLDivElement>(null);
   // 用量拆分（Split by）的维度、指标与焦点：焦点同时决定热力图画哪一项。
@@ -377,6 +388,15 @@ export function DashboardTab({
   const closePreferences = useCallback(() => setPreferencesOpen(false), []);
   const openPreferences = useCallback(() => setPreferencesOpen(true), []);
   const displayPreferences = useDashboardDisplayPreferences();
+  const [editingLayout, setEditingLayout] = useState(false);
+  // 当前能渲染的卡片：额度详情在额度子页时不在概览里；用量异常尚未接入。
+  const availableCards = useMemo(
+    () => new Set<DashboardCardId>(DASHBOARD_CARD_IDS.filter(id => id !== 'anomaly' && !(id === 'quota' && onOpenAllowances))),
+    [onOpenAllowances],
+  );
+  const dashboardLayouts = useDashboardLayouts(availableCards);
+  const layoutCards = dashboardLayouts.layout.cards.filter(item => availableCards.has(item.id));
+  const cardVisible = (id: DashboardCardId) => layoutCards.some(item => item.id === id && item.visible);
   const { effective } = useTheme(); // Screen-wide tool colour assignment below must recompute on theme toggle.
   // 首屏揭示（指标上浮、条形生长）只属于切页（DESIGN §4.4）。切换口径时 stats 先清空，
   // 内容卸载后再挂载；切到未缓存的范围时内容虽然留着（见下），之后新挂载的行也不该再播揭示。
@@ -542,20 +562,22 @@ export function DashboardTab({
       };
     });
   }, [quotaProviders, displayPreferences.preferences]);
-  const moduleOptions = displayPreferences.preferences.moduleOrder.map(id => ({
-    id,
-    label: ({ kpi: '核心指标', trend: '趋势', quota: '订阅额度', distribution: '工具与模型分布', insights: '消费洞察' } as Record<DashboardModuleId, string>)[id],
-    visible: !displayPreferences.preferences.hiddenModuleIds.includes(id),
+  const moduleOptions = layoutCards.map(item => ({
+    id: item.id,
+    label: DASHBOARD_CARDS[item.id].label,
+    visible: item.visible,
+    width: item.width,
+    widths: DASHBOARD_CARDS[item.id].widths,
   }));
-  const moduleVisible = (id: DashboardModuleId) => !displayPreferences.preferences.hiddenModuleIds.includes(id);
   const preferencesDialog = <DashboardDisplayPreferencesDialog
     open={preferencesOpen}
     modules={moduleOptions}
     sources={sourceOptions}
     onClose={closePreferences}
-    onReset={displayPreferences.reset}
-    onModuleVisible={(id, visible) => displayPreferences.setModuleVisible(id, visible)}
-    onModuleMove={(id, direction) => displayPreferences.moveModule(id, direction)}
+    onReset={() => { displayPreferences.reset(); dashboardLayouts.resetLayout(); }}
+    onModuleVisible={(id, visible) => dashboardLayouts.setCardVisible(id, visible)}
+    onModuleMove={(id, direction) => dashboardLayouts.moveCard(id, layoutCards.findIndex(item => item.id === id) + direction)}
+    onModuleWidth={(id, width) => dashboardLayouts.setCardWidth(id, width)}
     onSourceVisible={(id, visible) => displayPreferences.setQuotaSourceVisible(id, visible, sourceOptions.map(source => source.id))}
     onSourceMove={(id, direction) => displayPreferences.moveQuotaSource(id, direction, sourceOptions.map(source => source.id))}
   />;
@@ -683,14 +705,14 @@ export function DashboardTab({
             {renderStatsRecoveryActions('banner')}
           </div>
         )}
-        {moduleVisible('quota') && !onOpenAllowances && quotaError && (
+        {cardVisible('quota') && quotaError && (
           <QuotaRecoveryCue
             busy={quotaRecoveryBusy}
             onRefresh={onRefreshQuotas}
             onOpenSettings={onOpenQuotaSettings}
           />
         )}
-        {moduleVisible('quota') && !onOpenAllowances && <QuotaPanel
+        {cardVisible('quota') && <QuotaPanel
           providers={quotaProviders}
           loading={quotaLoading}
           error={quotaError}
@@ -805,6 +827,10 @@ export function DashboardTab({
           {heldRangeStatus}
         </div>
         <div className="dashboard-refresh-status">
+          <DashboardLayoutSwitcher layouts={dashboardLayouts.state.layouts} activeId={dashboardLayouts.layout.id} onSwitch={dashboardLayouts.switchLayout} />
+          <button className="ghost-inline" type="button" aria-pressed={editingLayout} onClick={() => setEditingLayout(value => !value)}>
+            <LayoutGrid className="h-4 w-4" />{editingLayout ? '完成布局' : '编辑布局'}
+          </button>
           <button className="ghost-inline" type="button" onClick={openPreferences}><SlidersHorizontal className="h-4 w-4" />调整显示</button>
           <button
             className="secondary-inline"
@@ -864,57 +890,93 @@ export function DashboardTab({
         </div>
       )}
 
-      {displayPreferences.preferences.moduleOrder.filter(moduleVisible).map((module) => {
-        if (module === 'kpi') return <div key={module} className="dashboard-preference-module">
-          <MetricsGrid summary={stats.summary} showTotalTokens={showTotalTokens} comparison={stats.comparison} meta={stats.meta} range={range} scope={scope} />
-          {moduleVisible('quota') && <QuotaHighlights
-            providers={quotaProviders.filter(provider => sourceOptions.some(source => source.id === quotaSourceKey(provider) && source.visible))}
-            refreshFailed={Boolean(quotaError)}
-            onOpen={onOpenAllowances ?? (() => {
-              quotaSectionRef.current?.focus({ preventScroll: true });
-              quotaSectionRef.current?.scrollIntoView({ block: 'start' });
-            })} />}
-        </div>;
-        if (module === 'trend') return <TrendPanel key={module} trends={stats.trends} activeTools={activeToolsList} comparison={stats.comparison} range={range} scope={scope}
-          overviewStats={stats} pendingUploads={unsyncedRecords} />;
-        if (module === 'quota') return onOpenAllowances ? null : <div key={module} ref={quotaSectionRef} tabIndex={-1} aria-label="订阅额度详情" className="dashboard-preference-module quota-details-anchor">
-          {quotaError && <QuotaRecoveryCue busy={quotaRecoveryBusy} onRefresh={onRefreshQuotas} onOpenSettings={onOpenQuotaSettings} />}
-          <QuotaPanel providers={quotaProviders} loading={quotaLoading} error={quotaError} showRecoveryActions={false}
-            quotaSyncStatus={quotaSyncStatus} onRefresh={onRefreshQuotas} onSyncNow={onQuotaSyncNow}
-            onOpenSettings={onOpenQuotaSettings} onNotify={onQuotaNotify}
-            sourceOrder={displayPreferences.preferences.quotaSourceOrder} hiddenSourceIds={displayPreferences.preferences.hiddenQuotaSourceIds} />
-        </div>;
-        if (module === 'distribution') return <UsageSplitPanel key={module} stats={stats}
-          dimension={activeSplitDimension}
-          metric={splitMetric} focus={activeSplitFocus}
-          deviceAvailable={showDeviceDistribution} showTotalTokens={showTotalTokens}
-          onDimensionChange={setSplitDimension} onMetricChange={setSplitMetric} onFocusChange={setSplitFocus}
-          onOpenEntity={(kind, id) => {
-            if (kind === 'tool') { const tool = stats.tools[id]; if (tool) onToolClick?.(tool); }
-            else { const model = allModelsList.find((item) => item.name === id); if (model) onModelClick?.(model); }
-          }} />;
-        return <section key={module} className="dashboard-preference-module" aria-labelledby="dashboard-insights-title">
-          <h2 id="dashboard-insights-title" className="insight-group-title">消费洞察 · 缓存与模型经济</h2>
-          <CacheFlowPanel summary={stats.summary} />
-          <AverageContextPanel totals={stats.contextComposition} />
-          <ModelCostDistributionPanel models={allModelsList} totalCost={stats.summary.totalCost} onModelClick={onModelClick} />
-          {allModelsList.length > 1 && <CostEfficiencyQuadrantPanel models={allModelsList} onModelClick={onModelClick} toolColors={toolColors} />}
-          <TemporalInsightsSection trends={stats.trends} context={insightTimeContext} comparison={stats.comparison ?? null} onSelectDate={onSelectDate} dateDrillUnavailable={dateDrillUnavailable} />
-          {/* Cloud scope cannot open a single day: calendar cells stay static
-              (the reason text there is still open, see T10.158 log). */}
-          {showHeatmap && <HeatmapSection heatmap={heatmapView.heatmap} subject={heatmapView.focused && activeSplitFocus ? activeSplitFocus.id : undefined}
-            subjectUnavailable={activeSplitFocus && !heatmapView.focused ? activeSplitFocus.id : undefined}
-            metric={heatmapView.metric} metricFallback={heatmapView.metricFallback}
-            onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (heatmapView.focused && activeSplitFocus
-              ? onSelectDate(date, {
-                tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [],
-                models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [],
-                ...(activeSplitFocus.dimension === 'account' ? { providers: [activeSplitFocus.id] } : {}),
-              })
-              : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} />}
-          <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />
-        </section>;
-      })}
+      {editingLayout && <DashboardLayoutToolbar
+        layout={dashboardLayouts.layout}
+        layoutCount={dashboardLayouts.state.layouts.length}
+        onRename={name => dashboardLayouts.renameLayout(dashboardLayouts.layout.id, name)}
+        onAdd={dashboardLayouts.addLayout}
+        onDelete={() => dashboardLayouts.deleteLayout(dashboardLayouts.layout.id)}
+        onReset={dashboardLayouts.resetLayout}
+        onDone={() => setEditingLayout(false)}
+      />}
+
+      <DashboardLayoutGrid
+        cards={layoutCards}
+        editing={editingLayout}
+        onMove={dashboardLayouts.moveCard}
+        onVisible={dashboardLayouts.setCardVisible}
+        onWidth={dashboardLayouts.setCardWidth}
+        onEdit={() => setEditingLayout(true)}
+        emptyNote={(id) => id === 'heatmap'
+          ? '当前范围不显示热力图：选「今年」「全部」或超过 31 天的自定义范围时出现。'
+          : id === 'context' ? '只统计经本机网关、记下请求构成的请求；当前范围还没有。' : '当前范围没有可显示的内容。'}
+        renderCard={(id) => {
+          switch (id) {
+            case 'metrics':
+              return <MetricsGrid summary={stats.summary} showTotalTokens={showTotalTokens} comparison={stats.comparison} meta={stats.meta} range={range} scope={scope} />;
+            case 'quotaHighlights':
+              return <QuotaHighlights
+                providers={quotaProviders.filter(provider => sourceOptions.some(source => source.id === quotaSourceKey(provider) && source.visible))}
+                refreshFailed={Boolean(quotaError)}
+                onOpen={onOpenAllowances ?? (() => {
+                  if (!cardVisible('quota')) { onOpenQuotaSettings(); return; }
+                  quotaSectionRef.current?.focus({ preventScroll: true });
+                  quotaSectionRef.current?.scrollIntoView({ block: 'start' });
+                })} />;
+            case 'trend':
+              return <TrendPanel trends={stats.trends} activeTools={activeToolsList} comparison={stats.comparison} range={range} scope={scope}
+                overviewStats={stats} pendingUploads={unsyncedRecords} />;
+            case 'quota':
+              return <div ref={quotaSectionRef} tabIndex={-1} aria-label="订阅额度详情" className="dashboard-preference-module quota-details-anchor">
+                {quotaError && <QuotaRecoveryCue busy={quotaRecoveryBusy} onRefresh={onRefreshQuotas} onOpenSettings={onOpenQuotaSettings} />}
+                <QuotaPanel providers={quotaProviders} loading={quotaLoading} error={quotaError} showRecoveryActions={false}
+                  quotaSyncStatus={quotaSyncStatus} onRefresh={onRefreshQuotas} onSyncNow={onQuotaSyncNow}
+                  onOpenSettings={onOpenQuotaSettings} onNotify={onQuotaNotify}
+                  sourceOrder={displayPreferences.preferences.quotaSourceOrder} hiddenSourceIds={displayPreferences.preferences.hiddenQuotaSourceIds} />
+              </div>;
+            case 'split':
+              return <UsageSplitPanel stats={stats}
+                dimension={activeSplitDimension}
+                metric={splitMetric} focus={activeSplitFocus}
+                deviceAvailable={showDeviceDistribution} showTotalTokens={showTotalTokens}
+                onDimensionChange={setSplitDimension} onMetricChange={setSplitMetric} onFocusChange={setSplitFocus}
+                onOpenEntity={(kind, entityId) => {
+                  if (kind === 'tool') { const tool = stats.tools[entityId]; if (tool) onToolClick?.(tool); }
+                  else { const model = allModelsList.find((item) => item.name === entityId); if (model) onModelClick?.(model); }
+                }} />;
+            case 'budget':
+              return <Suspense fallback={null}><BudgetOverviewCard scope={scope} onOpenSettings={onOpenBudgetSettings} /></Suspense>;
+            case 'insights':
+              return <section className="dashboard-preference-module" aria-labelledby="dashboard-insights-title">
+                <h2 id="dashboard-insights-title" className="insight-group-title">消费洞察 · 缓存与模型经济</h2>
+                <CacheFlowPanel summary={stats.summary} />
+                <ModelCostDistributionPanel models={allModelsList} totalCost={stats.summary.totalCost} onModelClick={onModelClick} />
+                {allModelsList.length > 1 && <CostEfficiencyQuadrantPanel models={allModelsList} onModelClick={onModelClick} toolColors={toolColors} />}
+              </section>;
+            case 'context':
+              return (stats.contextComposition?.requests ?? 0) > 0 ? <AverageContextPanel totals={stats.contextComposition} /> : null;
+            case 'temporal':
+              return <TemporalInsightsSection trends={stats.trends} context={insightTimeContext} comparison={stats.comparison ?? null} onSelectDate={onSelectDate} dateDrillUnavailable={dateDrillUnavailable} />;
+            case 'heatmap':
+              // Cloud scope cannot open a single day: calendar cells stay static
+              // (the reason text there is still open, see T10.158 log).
+              return showHeatmap ? <HeatmapSection heatmap={heatmapView.heatmap} subject={heatmapView.focused && activeSplitFocus ? activeSplitFocus.id : undefined}
+                subjectUnavailable={activeSplitFocus && !heatmapView.focused ? activeSplitFocus.id : undefined}
+                metric={heatmapView.metric} metricFallback={heatmapView.metricFallback}
+                onSelectDate={dateDrillUnavailable || !onSelectDate ? undefined : (date) => (heatmapView.focused && activeSplitFocus
+                  ? onSelectDate(date, {
+                    tools: activeSplitFocus.dimension === 'agent' ? [activeSplitFocus.id] : [],
+                    models: activeSplitFocus.dimension === 'model' ? [activeSplitFocus.id] : [],
+                    ...(activeSplitFocus.dimension === 'account' ? { providers: [activeSplitFocus.id] } : {}),
+                  })
+                  : onSelectDate(date))} range={range} customRange={customRange} timeContext={insightTimeContext} /> : null;
+            case 'tools':
+              return <ToolStrip activeTools={activeToolsList} onToolClick={onToolClick} showTotalTokens={showTotalTokens} />;
+            default:
+              return null;
+          }
+        }}
+      />
 
       <p className="text-xs text-faint" title={`数据时间 ${lastUpdated}`}>
         当前显示：{showTotalTokens ? `总计 ${formatTokens(summaryEffectiveTokens(stats.summary) + stats.summary.cachedTokens)}` : `有效 ${formatTokens(summaryEffectiveTokens(stats.summary))}`} Tokens
