@@ -147,6 +147,18 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('行为分析：范围栏、指标、图表与排行是英文', async ({ page }) => {
+    await openEnglish(page, 'behavior');
+    await expect(page.getByRole('group', { name: 'Behavior analysis time range' })).toContainText('Last 7 days');
+    await expect(page.getByText('Effective tokens', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Active days', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Daily activity/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Top tools/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Top sessions/ })).toBeVisible();
+    await expect(page.getByText(/^Local coverage:/)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('设置：云端账户与壁纸是英文', async ({ page }) => {
     await openEnglish(page, 'settings-cloud');
     await expect(page.getByRole('heading', { name: 'Cloud account' })).toBeVisible();
