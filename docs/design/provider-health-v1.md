@@ -19,11 +19,11 @@
 | `rateLimited` | 非额度原因的 429 次数 |
 | `skipped` | 网关本地就拦下、没发到上游的次数（未设置 Key、协议不支持、凭据不可用），不计入成功率与耗时 |
 | `codes` / `statuses` | 失败的原因码分布与 HTTP 状态码分布，按次数降序 |
-| `buckets` | 24 个整点小时桶：请求数、失败数、成功请求 P95 |
+| `buckets` | 24 个滚动小时桶（从 24 小时前起，最后一桶截至此刻，与统计窗口一致）：请求数、失败数、成功请求 P95 |
 | `recentFailures` | 最近 5 次失败：时间、模型、状态码、原因码、错误前 160 字 |
 | `cooling` | 该供应商此刻在路由组里冷却中的成员 |
 
-原因码沿用解释链码表：上游回复（错误正文以「上游返回 <状态码>」开头）按状态码分 `rate_limited`、`quota_exhausted`、`auth_failed`、`upstream_failed`、`upstream_rejected`；连接失败与等待响应头超时为 `connect_failed`；本地拦下的为 `key_missing`、`protocol_unsupported`、`credential_unavailable`。网关停止时被中止的请求不计。
+原因码沿用解释链码表：上游回复（错误正文以「上游返回 <状态码>」开头）按状态码分 `rate_limited`、`quota_exhausted`、`auth_failed`、`upstream_failed`、`upstream_rejected`；连接失败与等待响应头超时为 `connect_failed`；本地拦下的为 `key_missing`、`protocol_unsupported`、`credential_unavailable`。网关停止时被中止的请求、Agent 中途断开或不再读取响应（错误以「客户端」开头）不计，它们与供应商无关。
 
 ## 状态判定
 
@@ -40,4 +40,4 @@
 
 - 供应商页：每行在 Key 状态前显示 24 小时趋势条（柱高为请求量，红色顶部为失败占比）与状态徽标（启用的供应商才显示），悬停说明近 24 小时次数、成功率、P95 与原因。详情抽屉底部「健康度」一节列出统计、错误分布、冷却成员、各模型对比与最近失败。
 - 路由页：路由组卡片每个成员前有所属供应商的健康圆点，子组成员没有。
-- 两页每 30 秒刷新一次，窗口隐藏时跳过。
+- 两页每 30 秒刷新一次，窗口隐藏时跳过；刷新失败时撤下徽标与统计，不把旧数据当成当前状态。

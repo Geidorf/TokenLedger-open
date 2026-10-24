@@ -13,7 +13,8 @@ export function useProviderHealth(): Map<string, ProviderHealth> {
   const [report, setReport] = useState<HealthReport | null>(null);
   useEffect(() => {
     let alive = true;
-    const load = () => providerHealth().then((next) => { if (alive) setReport(next); }).catch(() => undefined);
+    // A failed refresh drops the old report instead of showing it as current.
+    const load = () => providerHealth().then((next) => { if (alive) setReport(next); }).catch(() => { if (alive) setReport(null); });
     void load();
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'hidden') void load();

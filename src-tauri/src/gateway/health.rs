@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Duration, DurationRound, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 
 use super::ledger::LedgerRecord;
@@ -29,6 +29,8 @@ pub(super) const UPSTREAM_REPLY: &str = "上游返回";
 pub(super) const CONNECT_FAILED: &str = "连接上游失败";
 pub(super) const HEADERS_TIMEOUT: &str = "等待上游响应头";
 pub(super) const GATEWAY_STOPPED: &str = "未连接上游";
+/// The Agent stopped reading or hung up mid-stream; not the provider's fault.
+pub(super) const CLIENT_GONE: &str = "客户端";
 
 /// Codes for local skips: the gateway never reached the upstream, so they
 /// are listed but left out of the success rate and latency.
@@ -133,8 +135,9 @@ pub fn row_code(record: &LedgerRecord) -> Option<&'static str> {
         return Some("answered");
     }
     let error = record.error.as_deref().unwrap_or("");
-    if error.contains(GATEWAY_STOPPED) {
-        // The gateway was stopping; says nothing about the provider.
+    if error.contains(GATEWAY_STOPPED) || error.starts_with(CLIENT_GONE) {
+        // The gateway was stopping or the Agent hung up; says nothing about
+        // the provider.
         return None;
     }
     if error.starts_with(CONNECT_FAILED) || error.starts_with(HEADERS_TIMEOUT) {
@@ -269,8 +272,8 @@ fn parse_ts(ts: &str) -> Option<DateTime<Utc>> {
 }
 
 fn buckets(rows: &[(&LedgerRecord, &'static str)], now: DateTime<Utc>) -> Vec<HealthBucket> {
-    let first =
-        now.duration_trunc(Duration::hours(1)).unwrap_or(now) - Duration::hours(WINDOW_HOURS - 1);
+    // Rolling hours ending now, so the buckets cover exactly the report window.
+    let first = now - Duration::hours(WINDOW_HOURS);
     let mut latencies: Vec<Vec<u64>> = vec![Vec::new(); WINDOW_HOURS as usize];
     let mut out: Vec<HealthBucket> = (0..WINDOW_HOURS)
         .map(|hour| HealthBucket {
@@ -282,8 +285,9 @@ fn buckets(rows: &[(&LedgerRecord, &'static str)], now: DateTime<Utc>) -> Vec<He
         let Some(at) = parse_ts(&record.ts) else {
             continue;
         };
-        let index = (at - first).num_hours();
-        if at < first || !(0..WINDOW_HOURS).contains(&index) || is_local(code) {
+        // A row stamped exactly `now` belongs to the last bucket.
+        let index = (at - first).num_hours().min(WINDOW_HOURS - 1);
+        if at <= first || index < 0 || is_local(code) {
             continue;
         }
         let bucket = &mut out[index as usize];
@@ -555,6 +559,8 @@ mod tests {
             Some("credential_unavailable")
         );
         assert_eq!(code(502, Some("网关已停止，未连接上游。")), None);
+        assert_eq!(code(200, Some("客户端提前断开。")), None);
+        assert_eq!(code(200, Some("客户端连续 30 秒未读取响应。")), None);
     }
 
     #[test]
@@ -576,9 +582,16 @@ mod tests {
                 UPSTREAM_REPLY,
                 CONNECT_FAILED,
                 HEADERS_TIMEOUT,
-                GATEWAY_STOPPED
+                GATEWAY_STOPPED,
+                CLIENT_GONE
             ),
-            ("上游返回", "连接上游失败", "等待上游响应头", "未连接上游")
+            (
+                "上游返回",
+                "连接上游失败",
+                "等待上游响应头",
+                "未连接上游",
+                "客户端"
+            )
         );
         let server = include_str!("server.rs");
         for used in [
@@ -586,6 +599,8 @@ mod tests {
             "{CONNECT_FAILED}：",
             "{HEADERS_TIMEOUT}超过",
             "{GATEWAY_STOPPED}。",
+            "{CLIENT_GONE}提前断开",
+            "{CLIENT_GONE}连续",
         ] {
             assert!(server.contains(used), "server.rs no longer writes {used}");
         }
@@ -665,10 +680,16 @@ mod tests {
             .collect();
         assert_eq!(models, vec![("m1", "healthy", 18), ("m2", "degraded", 2)]);
         assert_eq!(a.buckets.len(), 24);
-        assert!(a.buckets[23].start.starts_with("2026-10-24T12:00:00"));
-        assert_eq!((a.buckets[23].requests, a.buckets[23].failed), (10, 0));
-        assert_eq!((a.buckets[22].requests, a.buckets[22].failed), (10, 2));
-        assert_eq!(a.buckets[23].p95_ms, Some(1000));
+        assert!(a.buckets[0].start.starts_with("2026-10-23T12:30:00"));
+        assert!(a.buckets[23].start.starts_with("2026-10-24T11:30:00"));
+        assert_eq!((a.buckets[23].requests, a.buckets[23].failed), (18, 0));
+        assert_eq!((a.buckets[22].requests, a.buckets[22].failed), (2, 2));
+        assert_eq!(a.buckets[23].p95_ms, Some(1800));
+        let in_buckets: u64 = a.buckets.iter().map(|b| b.requests).sum();
+        assert_eq!(
+            in_buckets, a.stats.requests,
+            "the trend covers the whole window"
+        );
         let idle = &report.providers[1];
         assert_eq!((idle.provider.as_str(), idle.status), ("idle", "idle"));
         assert!(idle.buckets.iter().all(|b| b.requests == 0));
