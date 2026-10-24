@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Cloud, FolderSearch, RefreshCw, Settings, SlidersHorizontal, Sparkles, TriangleAlert } from 'lucide-react';
 import { requestOpenOnboarding } from '../features/onboarding/onboardingState';
 import { CacheFlowPanel } from './CacheFlowPanel';
+import { UsageAnomalyPanel } from './UsageAnomalyPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
 import { AverageContextPanel } from './usage/AverageContextPanel';
@@ -895,6 +896,8 @@ export function DashboardTab({
           }} />;
         return <section key={module} className="dashboard-preference-module" aria-labelledby="dashboard-insights-title">
           <h2 id="dashboard-insights-title" className="insight-group-title">消费洞察 · 缓存与模型经济</h2>
+          {/* Anomalies read this computer's ledger only; the cloud scope has no equivalent. */}
+          {scope === 'local' && <UsageAnomalyPanel onSelectDate={dateDrillUnavailable ? undefined : onSelectDate} />}
           <CacheFlowPanel summary={stats.summary} />
           <AverageContextPanel totals={stats.contextComposition} />
           <ModelCostDistributionPanel models={allModelsList} totalCost={stats.summary.totalCost} onModelClick={onModelClick} />
