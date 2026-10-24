@@ -232,5 +232,31 @@ export function useBudgetStatus(revision: unknown) {
     };
   }, [reload]);
 
+  // 周期按本地日历走：窗口重新可见、跨日、或每 5 分钟（网关用量不发 stats-updated）重读一次，
+  // 页面不会停在昨天的读数上，与托盘一致。
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    let day = new Date().toDateString();
+    let lastLoad = Date.now();
+    const reconcile = (force: boolean) => {
+      if (document.visibilityState !== 'visible') return;
+      const today = new Date().toDateString();
+      if (force || today !== day || Date.now() - lastLoad >= BUDGET_STATUS_REFRESH_MS) {
+        day = today;
+        lastLoad = Date.now();
+        reload();
+      }
+    };
+    const onVisibility = () => reconcile(true);
+    const timer = setInterval(() => reconcile(false), 60_000);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [reload]);
+
   return { report, error, reload };
 }
+
+export const BUDGET_STATUS_REFRESH_MS = 5 * 60_000;

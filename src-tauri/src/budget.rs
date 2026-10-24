@@ -297,9 +297,32 @@ pub(crate) fn load_settings(app_data_dir: &Path) -> BudgetSettings {
     crate::quota::read_private_app_data_file(app_data_dir, SETTINGS_FILE, MAX_SETTINGS_BYTES)
         .ok()
         .flatten()
-        .and_then(|bytes| serde_json::from_slice::<BudgetSettings>(&bytes).ok())
-        .map(BudgetSettings::sanitized)
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .map(|value| settings_from_value(&value))
         .unwrap_or_default()
+}
+
+/// Each rule is parsed on its own: one row an older or newer build cannot
+/// read is dropped without hiding the other rules or the notify choice.
+fn settings_from_value(value: &Value) -> BudgetSettings {
+    let rules = value
+        .get("rules")
+        .and_then(Value::as_array)
+        .map(|rules| {
+            rules
+                .iter()
+                .filter_map(|rule| serde_json::from_value::<BudgetRule>(rule.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    BudgetSettings {
+        notify: value
+            .get("notify")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        rules,
+    }
+    .sanitized()
 }
 
 pub(crate) fn save_settings(app_data_dir: &Path, settings: &BudgetSettings) -> Result<(), String> {
@@ -480,6 +503,13 @@ pub(crate) fn plan_alerts(
     if !settings.notify {
         return Vec::new();
     }
+    // Only the current period of each evaluated rule can still fire, so older
+    // periods go first; a month's entries never get evicted by daily churn.
+    state.fired.retain(|entry| {
+        statuses.iter().any(|status| {
+            status.rule_id == entry.rule_id && status.period_start == entry.period_start
+        })
+    });
 
     // Over first, then the fullest budgets, so a capped hour reports the
     // budgets that matter most.
@@ -907,6 +937,63 @@ mod tests {
         settings.rules = vec![moved.clone()];
         let over = statuses_for(std::slice::from_ref(&moved), &[12.0], "2026-10-01");
         assert_eq!(plan_alerts(&settings, &mut state, &over, now).len(), 1);
+    }
+
+    #[test]
+    fn one_unreadable_rule_keeps_the_others_and_the_notify_choice() {
+        let settings = settings_from_value(&json!({
+            "notify": true,
+            "rules": [
+                { "id": "bad", "period": "year", "metric": "cost", "scopeKind": "all", "limit": 1 },
+                { "id": "nolimit", "period": "day", "metric": "cost", "scopeKind": "all" },
+                { "id": "ok", "period": "day", "metric": "cost", "scopeKind": "all", "limit": 2 },
+            ]
+        }));
+        assert!(settings.notify);
+        let ids: Vec<_> = settings.rules.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["ok"]);
+        assert_eq!(settings_from_value(&json!([])), BudgetSettings::default());
+    }
+
+    #[test]
+    fn daily_churn_never_evicts_a_monthly_entry_still_in_its_period() {
+        let monthly = rule("month", BudgetPeriod::Month, BudgetMetric::Cost, 10.0);
+        let dailies: Vec<_> = (0..8)
+            .map(|i| rule(&format!("d{i}"), BudgetPeriod::Day, BudgetMetric::Cost, 1.0))
+            .collect();
+        let mut rules = vec![monthly.clone()];
+        rules.extend(dailies.iter().cloned());
+        let settings = BudgetSettings {
+            notify: true,
+            rules: rules.clone(),
+        };
+        let mut state = AlertState::default();
+        let start = at("2026-10-01T08:00:00Z");
+        let mut monthly_alerts = 0;
+        for day in 1..=30u32 {
+            let date = format!("2026-10-{day:02}");
+            let mut statuses = vec![status_for(&monthly, Some(12.0), day_of("2026-10-01"))];
+            statuses.extend(
+                dailies
+                    .iter()
+                    .map(|rule| status_for(rule, Some(2.0), day_of(&date))),
+            );
+            // Several checks a day, spread past the hourly cap.
+            for hour in 0..4 {
+                let now = start + Duration::days(i64::from(day) - 1) + Duration::hours(hour * 2);
+                let sent = plan_alerts(&settings, &mut state, &statuses, now);
+                monthly_alerts += sent.iter().filter(|alert| alert.rule_id == "month").count();
+            }
+            assert!(state.fired.len() <= rules.len() * 2);
+        }
+        assert_eq!(
+            monthly_alerts, 1,
+            "the monthly budget alerts once per month"
+        );
+    }
+
+    fn day_of(value: &str) -> NaiveDate {
+        day(value)
     }
 
     #[test]

@@ -164,4 +164,26 @@ describe('BudgetSection', () => {
     await waitFor(() => expect(screen.getByText('已超出')).toBeInTheDocument());
     expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '100');
   });
+
+  it('rereads usage when the window becomes visible again or the day changes', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'], shouldAdvanceTime: true });
+    try {
+      render(<BudgetSection />);
+      await screen.findByRole('meter');
+      const statusCalls = () => vi.mocked(invoke).mock.calls.filter(([name]) => name === 'get_budget_status').length;
+      const before = statusCalls();
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await waitFor(() => expect(statusCalls()).toBe(before + 1));
+
+      vi.setSystemTime(new Date(Date.now() + 24 * 60 * 60 * 1000));
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      await waitFor(() => expect(statusCalls()).toBe(before + 2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
