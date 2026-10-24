@@ -9,6 +9,7 @@ use super::kimi::*;
 use super::minimax::*;
 use super::other_tools::*;
 use super::pi::*;
+use super::qwen::*;
 use super::reasonix::*;
 use super::types::{
     AntigravityRecordProvenance, AntigravityUsageProvenance, CoordinatedScanOutcome, LogRecord,
@@ -142,6 +143,7 @@ pub(crate) fn model_discovery_key(model: &str) -> Option<String> {
         "gemini-unknown",
         "antigravity-unknown",
         "pi-unknown",
+        "qwen-unknown",
     ];
     if PLACEHOLDERS.contains(&key.as_str())
         || key == "auto"
@@ -228,6 +230,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         kimi_checkpoints,
         kimidesktop_checkpoints,
         pi_checkpoints,
+        qwen_checkpoints,
     ) = {
         let conn = crate::db::get_connection(db_path)?;
         (
@@ -242,6 +245,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
             crate::db::load_scan_checkpoints(&conn, KIMI_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, KIMI_DESKTOP_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, PI_CHECKPOINT_SOURCE_KIND)?,
+            crate::db::load_scan_checkpoints(&conn, QWEN_CODE_CHECKPOINT_SOURCE_KIND)?,
         )
     };
     let mut pending_cursors = Vec::new();
@@ -366,6 +370,10 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     timed_scan_step!(
         "pi",
         scan_pi(&mut logs, &pi_checkpoints, &mut pending_checkpoints)
+    );
+    timed_scan_step!(
+        "qwen",
+        scan_qwen(&mut logs, &qwen_checkpoints, &mut pending_checkpoints)
     );
 
     let mut outcome = timed_scan_step!(
