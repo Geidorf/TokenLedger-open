@@ -112,6 +112,23 @@ describe('FirstRunGuide', () => {
     expect(props.onOpenGateway).toHaveBeenCalledTimes(1);
   });
 
+  it('轮询与切回窗口的读取重叠时，只采用最新一次的网关状态', async () => {
+    type Status = Awaited<ReturnType<typeof api.gatewayStatus>>;
+    const resolvers: Array<(status: Status) => void> = [];
+    vi.mocked(api.gatewayStatus).mockImplementation(() => new Promise<Status>((resolve) => { resolvers.push(resolve); }));
+    renderGuide({}, { totalRecords: 3, modelAccessEnabled: true });
+    act(() => requestOpenOnboarding());
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(resolvers).toHaveLength(2);
+
+    await act(async () => resolvers[1]({ running: true, port: 3462, providerCount: 1, enabledCount: 1 }));
+    expect(await screen.findByText(/网关运行中/)).toBeInTheDocument();
+    await act(async () => resolvers[0]({ running: false, port: 3462, providerCount: 1, enabledCount: 1, error: '旧的回包' }));
+    expect(screen.getByText(/网关运行中/)).toBeInTheDocument();
+    expect(screen.queryByText(/旧的回包/)).not.toBeInTheDocument();
+  });
+
   it('不读取任何订阅凭据：只调用网关状态与模型接入两个命令', () => {
     renderGuide();
     expect(screen.getByText(/不读取任何订阅账号的登录凭据/)).toBeInTheDocument();

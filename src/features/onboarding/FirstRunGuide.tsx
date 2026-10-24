@@ -91,10 +91,14 @@ export function FirstRunGuide(props: FirstRunGuideProps) {
       return undefined;
     }
     let cancelled = false;
+    // Polls and focus reads can overlap; only the newest request may write.
+    let latest = 0;
     const read = () => {
+      const seq = ++latest;
+      const current = () => !cancelled && seq === latest;
       gatewayStatus()
-        .then((status) => { if (!cancelled) setGateway({ enabledProviders: status.enabledCount, running: status.running, error: status.error ?? null }); })
-        .catch(() => { if (!cancelled) setGateway(null); });
+        .then((status) => { if (current()) setGateway({ enabledProviders: status.enabledCount, running: status.running, error: status.error ?? null }); })
+        .catch(() => { if (current()) setGateway(null); });
     };
     read();
     const timer = window.setInterval(read, GATEWAY_POLL_MS);
