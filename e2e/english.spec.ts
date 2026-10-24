@@ -119,4 +119,13 @@ test.describe('英文界面', () => {
     await expect(page.getByText('Shared usage from other computers')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Show computers sharing usage' })).toBeVisible();
   });
+
+  test('设置：预算提醒、外部网关同步与按项目统计是英文', async ({ page }) => {
+    await openEnglish(page, 'settings-budget');
+    await expect(page.getByRole('switch', { name: 'Alert when nearing or over budget' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add budget' })).toBeVisible();
+    await openEnglish(page, 'settings-data');
+    await expect(page.getByText('External gateway WebDAV sync')).toBeVisible();
+    await expect(page.getByRole('switch', { name: 'Count local usage by project' })).toBeVisible();
+  });
 });

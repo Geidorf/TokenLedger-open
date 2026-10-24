@@ -29,6 +29,11 @@ const FULLY_LOCALIZED = [
   'src/components/RangeControls.tsx',
   'src/components/FilterMultiSelect.tsx',
   'src/utils/detailGranularity.ts',
+  'src/components/settings/BudgetSection.tsx',
+  'src/hooks/useBudget.ts',
+  'src/components/settings/SettingsPrimitives.tsx',
+  'src/components/settings/PeerSyncCard.tsx',
+  'src/components/settings/ProjectDimensionCard.tsx',
 ];
 
 // 英文文案里允许出现中文的键：语言名用它自己的文字写。

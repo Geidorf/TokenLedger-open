@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, ShieldCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { t, useLang } from '../../i18n';
 
 interface SettingsSectionProps {
   id: string;
@@ -86,8 +87,9 @@ interface SettingsToggleRowProps {
 }
 
 export function SettingsToggleRow({ label, hint, icon, checked, disabled, busy = false, onChange }: SettingsToggleRowProps) {
+  useLang();
   const hintId = useId();
-  const actionLabel = busy ? `${label}，保存中` : label;
+  const actionLabel = busy ? t('settings.toggle.savingAria', { label }) : label;
   return (
     <SettingsRow label={label} hint={hint} hintId={hint ? hintId : undefined} icon={icon} busy={busy}>
       <div className="settings-toggle-control">
@@ -99,11 +101,11 @@ export function SettingsToggleRow({ label, hint, icon, checked, disabled, busy =
           aria-describedby={hint ? hintId : undefined}
           aria-checked={checked}
           aria-busy={busy || undefined}
-          title={busy ? `${label}：保存中…` : undefined}
+          title={busy ? t('settings.toggle.savingTitle', { label }) : undefined}
           disabled={disabled}
           onClick={() => onChange(!checked)}
         />
-        {busy && <span className="settings-toggle-feedback" role="status" aria-live="polite">保存中…</span>}
+        {busy && <span className="settings-toggle-feedback" role="status" aria-live="polite">{t('settings.toggle.saving')}</span>}
       </div>
     </SettingsRow>
   );
@@ -154,7 +156,7 @@ interface DisclosurePanelProps {
   decorative?: boolean;
 }
 
-export function DisclosurePanel({ title = '权限与数据边界', ariaLabel, children, openSignal, decorative }: DisclosurePanelProps) {
+export function DisclosurePanel({ title = t('settings.disclosure.default'), ariaLabel, children, openSignal, decorative }: DisclosurePanelProps) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   const lastSignal = useRef(openSignal);
@@ -187,7 +189,7 @@ export function DisclosurePanel({ title = '权限与数据边界', ariaLabel, ch
   );
 }
 
-export function DangerZone({ title = '危险区', children }: { title?: string; children: React.ReactNode }) {
+export function DangerZone({ title = t('settings.danger.default'), children }: { title?: string; children: React.ReactNode }) {
   return (
     <div className="settings-danger-zone">
       <div className="settings-danger-zone-title">{title}</div>

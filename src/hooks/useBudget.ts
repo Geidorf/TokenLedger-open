@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { beginRequest, isCurrentRequest } from '../utils/contracts/statsQuery';
+import { localized, t } from '../i18n';
 
 /**
  * 预算与超支提醒（`src-tauri/src/budget.rs`）。预算只看已经发生的用量，按今日 / 本周 /
@@ -59,14 +60,14 @@ export interface BudgetStatusReport {
 export const DEFAULT_BUDGET_SETTINGS: BudgetSettings = { notify: false, rules: [] };
 export const EMPTY_BUDGET_CHOICES: BudgetChoices = { tools: [], models: [], providers: [], providersAvailable: false };
 
-export const BUDGET_PERIOD_LABELS: Record<BudgetPeriod, string> = { day: '今日', week: '本周', month: '本月' };
-export const BUDGET_METRIC_LABELS: Record<BudgetMetric, string> = { cost: '预估费用', tokens: '有效 Token' };
-export const BUDGET_SCOPE_LABELS: Record<BudgetScopeKind, string> = {
-  all: '全部用量',
-  tool: 'Agent',
-  model: '模型',
-  provider: '账号',
-};
+export const BUDGET_PERIOD_LABELS = localized<BudgetPeriod>({ day: 'budget.period.day', week: 'budget.period.week', month: 'budget.period.month' });
+export const BUDGET_METRIC_LABELS = localized<BudgetMetric>({ cost: 'budget.metric.cost', tokens: 'budget.metric.tokens' });
+export const BUDGET_SCOPE_LABELS = localized<BudgetScopeKind>({
+  all: 'budget.scope.all',
+  tool: 'budget.scope.tool',
+  model: 'budget.scope.model',
+  provider: 'budget.scope.provider',
+});
 
 const oneOf = <T extends string>(values: readonly T[], value: unknown): T | null =>
   typeof value === 'string' && (values as readonly string[]).includes(value) ? (value as T) : null;
@@ -160,7 +161,7 @@ export function useBudgetSettings() {
         if (active) setSettings(parseBudgetSettings(value));
       })
       .catch(() => {
-        if (active) setError('读取预算设置失败');
+        if (active) setError(t('budget.error.load'));
       })
       .finally(() => {
         if (active) setLoaded(true);
@@ -183,7 +184,7 @@ export function useBudgetSettings() {
     } catch {
       if (!isCurrentRequest(saveId, requestId)) return false;
       setSettings(previous);
-      setError('预算设置未保存，请重试');
+      setError(t('budget.error.save'));
       return false;
     } finally {
       if (isCurrentRequest(saveId, requestId)) setSaving(false);
@@ -206,10 +207,10 @@ export function useBudgetStatus(revision: unknown) {
         if (!isCurrentRequest(loadId, requestId)) return;
         const parsed = parseBudgetStatusReport(value);
         setReport(parsed);
-        setError(parsed ? '' : '预算用量读取失败');
+        setError(parsed ? '' : t('budget.error.status'));
       })
       .catch(() => {
-        if (isCurrentRequest(loadId, requestId)) setError('预算用量读取失败');
+        if (isCurrentRequest(loadId, requestId)) setError(t('budget.error.status'));
       });
   }, []);
 
