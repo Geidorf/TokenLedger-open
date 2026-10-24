@@ -9,6 +9,7 @@ import { useTheme } from '../utils/useTheme';
 import { escapeHtml } from '../utils/frontendContracts';
 import { CHART_FONT_FAMILY, getChartAnimation, getChartGrid, getChartThemeTokens, getChartTooltip } from '../utils/chartTheme';
 import '../styles/overviewDrill.css';
+import { t, useLang } from '../i18n';
 
 interface CostEfficiencyQuadrantProps {
   models: ModelStat[];
@@ -17,7 +18,7 @@ interface CostEfficiencyQuadrantProps {
   toolColors?: Map<string, string>;
 }
 
-type DistributionZone = '高用量 · 高费用' | '低用量 · 高费用' | '高用量 · 低费用' | '低用量 · 低费用';
+type DistributionZone = 'quadrant.zone.highHigh' | 'quadrant.zone.lowHigh' | 'quadrant.zone.highLow' | 'quadrant.zone.lowLow';
 
 interface DistributionItem {
   model: ModelStat;
@@ -70,29 +71,31 @@ export function partitionQuadrantModels(models: ModelStat[]): { plottable: Model
 
 function exclusionReasons(excluded: QuadrantExclusions): string[] {
   return [
-    excluded.noBreakdown > 0 ? `${excluded.noBreakdown} 个缺少输入/输出拆分` : null,
-    excluded.unknownCost > 0 ? `${excluded.unknownCost} 个预估费用不可得` : null,
-    excluded.inactive > 0 ? `${excluded.inactive} 个本期没有有效 Token 与费用` : null,
+    excluded.noBreakdown > 0 ? t('quadrant.excluded.noBreakdown', { n: excluded.noBreakdown }) : null,
+    excluded.unknownCost > 0 ? t('quadrant.excluded.unknownCost', { n: excluded.unknownCost }) : null,
+    excluded.inactive > 0 ? t('quadrant.excluded.inactive', { n: excluded.inactive }) : null,
   ].filter((reason): reason is string => reason !== null);
 }
 
 /** 脚注：写明本期模型总数、进图数，以及每类未纳入的原因与数量。 */
 export function quadrantCoverageNote(total: number, plotted: number, excluded: QuadrantExclusions): string {
   const reasons = exclusionReasons(excluded);
-  if (reasons.length === 0) return `本期 ${total} 个模型全部进图。`;
-  return `本期 ${total} 个模型中 ${plotted} 个进图；未纳入：${reasons.join('，')}。`;
+  if (reasons.length === 0) return t('quadrant.coverage.all', { total });
+  return t('quadrant.coverage.partial', { total, plotted, reasons: reasons.join(t('quadrant.reasonJoin')) });
 }
 
 /** 空态的前提说明：比较至少要两个点。 */
-export const QUADRANT_EMPTY_REQUIREMENT = '至少需要 2 个有预估费用和输入/输出拆分的模型，才能比较用量与预估费用。';
+export function quadrantEmptyRequirement(): string {
+  return t('quadrant.emptyRequirement');
+}
 
 /** 少于 2 个模型可进图时的空态细节：不整卡消失，如实写出数量与未纳入原因（评审 P3-6）。 */
 export function quadrantEmptyNote(total: number, plottable: number, excluded: QuadrantExclusions): string {
   const reasons = exclusionReasons(excluded);
   const count = plottable === 0
-    ? `本期 ${total} 个模型都无法进图`
-    : `本期 ${total} 个模型中只有 ${plottable} 个可进图`;
-  return reasons.length === 0 ? `${count}。` : `${count}；未纳入：${reasons.join('，')}。`;
+    ? t('quadrant.empty.none', { total })
+    : t('quadrant.empty.some', { total, plottable });
+  return reasons.length === 0 ? t('quadrant.empty.end', { count }) : t('quadrant.empty.withReasons', { count, reasons: reasons.join(t('quadrant.reasonJoin')) });
 }
 
 /**
@@ -102,6 +105,7 @@ export function quadrantEmptyNote(total: number, plottable: number, excluded: Qu
  * ScatterChart/MarkLineComponent 后得到空白画布。
  */
 function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: CostEfficiencyQuadrantProps) {
+  const lang = useLang();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCompact, setIsCompact] = useState(() => (
     typeof window !== 'undefined'
@@ -136,8 +140,8 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
       const highTokens = effective >= averageTokens;
       const highCost = cost >= averageCost;
       const zone: DistributionZone = highTokens
-        ? highCost ? '高用量 · 高费用' : '高用量 · 低费用'
-        : highCost ? '低用量 · 高费用' : '低用量 · 低费用';
+        ? highCost ? 'quadrant.zone.highHigh' : 'quadrant.zone.highLow'
+        : highCost ? 'quadrant.zone.lowHigh' : 'quadrant.zone.lowLow';
       return {
         model,
         effective,
@@ -190,17 +194,17 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
           return `
             <div style="font-size: 12px; line-height: 1.6;">
               <div style="font-weight: 700; margin-bottom: 4px; font-size: 13px;">${escapeHtml(item.name)}</div>
-              <div>预估费用: <b style="color: ${theme.success};">${formatEstimatedUsd(cost)}</b></div>
-              <div>有效 Token: <b>${formatTokens(tokens)}</b></div>
-              <div style="color: ${theme.textSecondary};">记录数: ${formatNum(requests)} 条${requests > 0 ? ` · 每条均耗 ≈${formatTokens(averagePerRequest)}` : ''}</div>
+              <div>${t('quadrant.tip.cost')}: <b style="color: ${theme.success};">${formatEstimatedUsd(cost)}</b></div>
+              <div>${t('quadrant.tip.tokens')}: <b>${formatTokens(tokens)}</b></div>
+              <div style="color: ${theme.textSecondary};">${t('quadrant.tip.records', { n: formatNum(requests) })}${requests > 0 ? t('quadrant.tip.perRecord', { tokens: formatTokens(averagePerRequest) }) : ''}</div>
               <div style="color: ${theme.textTertiary}; font-size: 11px; margin-top: 2px;">${unitCostLabel()}: ${escapeHtml(unitCost)}</div>
-              ${canDrill ? `<div style="margin-top: 4px; border-top: 1px solid ${theme.borderStrong}; padding-top: 4px; font-size: 10px; color: ${theme.primary};">点击圆点打开专属看板</div>` : ''}
+              ${canDrill ? `<div style="margin-top: 4px; border-top: 1px solid ${theme.borderStrong}; padding-top: 4px; font-size: 10px; color: ${theme.primary};">${t('quadrant.tip.drill')}</div>` : ''}
             </div>
           `;
         },
       }),
       xAxis: {
-        name: '有效 Token 消耗',
+        name: t('quadrant.axis.tokens'),
         nameLocation: 'middle' as const,
         nameGap: 24,
         nameTextStyle: { color: theme.textTertiary, fontSize: 11 },
@@ -211,7 +215,7 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
         axisLine: { lineStyle: { color: theme.borderFaint } },
       },
       yAxis: {
-        name: '预估费用（USD）',
+        name: t('quadrant.axis.cost'),
         nameLocation: 'end' as const,
         nameTextStyle: { color: theme.textTertiary, fontSize: 11 },
         type: 'value',
@@ -222,7 +226,7 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
       },
       series: [
         {
-          name: '模型',
+          name: t('quadrant.series.models'),
           type: 'line',
           data: pointData,
           showSymbol: true,
@@ -230,7 +234,7 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
           lineStyle: { opacity: 0 },
         },
         {
-          name: '用量均值线',
+          name: t('quadrant.series.usageAvg'),
           type: 'line',
           data: [[distribution.averageTokens, 0], [distribution.averageTokens, maxCost * 1.12]],
           symbol: 'none',
@@ -239,7 +243,7 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
           lineStyle: { color: theme.borderStrong, type: 'dotted' as const, width: 1.5 },
         },
         {
-          name: '费用均值线',
+          name: t('quadrant.series.costAvg'),
           type: 'line',
           data: [[0, distribution.averageCost], [maxTokens * 1.08, distribution.averageCost]],
           symbol: 'none',
@@ -249,7 +253,9 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
         },
       ],
     };
-  }, [isExpanded, distribution, canDrill, effectiveTheme, toolColors]);
+  // 图例与提示框文字随界面语言变化。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpanded, distribution, canDrill, effectiveTheme, toolColors, lang]);
 
   const onEvents = useMemo(() => ({
     click: (params: { data?: { value?: [number, number, number, ModelStat] } }) => {
@@ -263,15 +269,15 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
     // Fewer than two plottable models: nothing to compare, but say why instead
     // of vanishing together with the per-reason counts (review P3-6).
     return (
-      <section className="panel cost-efficiency-quadrant-panel" aria-label="模型用量与费用分布">
+      <section className="panel cost-efficiency-quadrant-panel" aria-label={t('quadrant.title')}>
         <div className="panel-header">
           <span className="panel-title">
             <Compass className="h-4 w-4 text-primary" aria-hidden="true" />
-            <span>模型用量与费用分布</span>
+            <span>{t('quadrant.title')}</span>
           </span>
         </div>
         <div className="quadrant-empty">
-          <p className="quadrant-empty-requirement">{QUADRANT_EMPTY_REQUIREMENT}</p>
+          <p className="quadrant-empty-requirement">{quadrantEmptyRequirement()}</p>
           <p className="quadrant-empty-detail">{quadrantEmptyNote(models.length, plottable.length, excluded)}</p>
         </div>
       </section>
@@ -279,7 +285,7 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
   }
 
   return (
-    <section className="panel cost-efficiency-quadrant-panel" aria-label="模型用量与费用分布">
+    <section className="panel cost-efficiency-quadrant-panel" aria-label={t('quadrant.title')}>
       <button
         className="panel-header quadrant-disclosure"
         type="button"
@@ -289,17 +295,17 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
       >
         <span className="panel-title">
           <Compass className="h-4 w-4 text-primary" />
-          <span>模型用量与费用分布</span>
+          <span>{t('quadrant.title')}</span>
         </span>
         <span className="quadrant-disclosure-copy">
           {/* U-102：收起时只留箭头，展开后才给读图提示。 */}
           {isExpanded ? (
             <span className="text-xs text-muted">
               {isCompact
-                ? `文字摘要 = 本期均值分区${canDrill ? ' · 点击模型下钻' : ''}`
-                : `圆点大小 = 记录数 · 虚线 = 本期均值${canDrill ? ' · 点击圆点下钻' : ''}`}
+                ? `${t('quadrant.hint.compact')}${canDrill ? t('quadrant.hint.compactDrill') : ''}`
+                : `${t('quadrant.hint.chart')}${canDrill ? t('quadrant.hint.chartDrill') : ''}`}
             </span>
-          ) : <span className="sr-only">展开比较模型用量与预估费用</span>}
+          ) : <span className="sr-only">{t('quadrant.expandSr')}</span>}
           <ChevronDown
             className="h-4 w-4 text-tertiary"
             style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}
@@ -314,17 +320,17 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
               <EChart
                 option={option}
                 onEvents={onEvents}
-                ariaLabel={`模型用量与费用分布图：横轴有效 Token，纵轴预估费用，本期均值线形成四个规模与费用分区，共 ${distribution.items.length} 个模型。`}
+                ariaLabel={t('quadrant.chartAria', { n: distribution.items.length })}
               />
             </div>
           )}
-          <p className="quadrant-mobile-note">窄屏隐藏坐标图；以下文字结论使用相同数据与本期均值。</p>
-          <div className="quadrant-model-summary" aria-label="模型用量与费用分区摘要">
+          <p className="quadrant-mobile-note">{t('quadrant.mobileNote')}</p>
+          <div className="quadrant-model-summary" aria-label={t('quadrant.summaryAria')}>
             {distribution.items.slice(0, 5).map((item) => {
               const content = (
                 <>
                   <strong>{item.model.name}</strong>
-                  <span>{item.zone}</span>
+                  <span>{t(item.zone)}</span>
                   <span className="num">{formatTokens(item.effective)} · {formatEstimatedUsd(item.cost)}</span>
                 </>
               );
@@ -334,7 +340,7 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
                   key={item.model.name}
                   type="button"
                   onClick={() => onModelClick(item.model)}
-                  aria-label={`打开 ${item.model.name} 专属看板；${item.zone}；${formatTokens(item.effective)} Tokens；预估费用 ${formatEstimatedUsd(item.cost)}`}
+                  aria-label={t('quadrant.rowAria', { model: item.model.name, zone: t(item.zone), tokens: formatTokens(item.effective), cost: formatEstimatedUsd(item.cost) })}
                 >
                   {content}
                 </button>
@@ -345,9 +351,9 @@ function CostEfficiencyQuadrantComponent({ models, onModelClick, toolColors }: C
           </div>
           <div className="quadrant-legend-footer">
             <span>{isCompact
-              ? '文字分区只比较本期模型的用量与预估费用，不表示模型好坏。'
-              : '虚线仅表示本期模型均值；点色用于区分工具，不表示分区好坏。'}</span>
-            {distribution.items.length > 5 && <span>文字摘要仅列费用最高的前 5 个模型。</span>}
+              ? t('quadrant.legend.compact')
+              : t('quadrant.legend.chart')}</span>
+            {distribution.items.length > 5 && <span>{t('quadrant.legend.top5')}</span>}
             <span>{quadrantCoverageNote(models.length, distribution.items.length, excluded)}</span>
           </div>
         </div>

@@ -181,6 +181,22 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('概览：模型费用分布与模型专属看板是英文', async ({ page }) => {
+    await openEnglish(page, 'dashboard');
+    const open = page.getByRole('button', { name: /^Open the .+ dashboard$/ }).first();
+    await open.scrollIntoViewIfNeeded();
+    await open.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('Model dashboard');
+    await expect(dialog).toContainText(/Period: /);
+    await expect(dialog).toContainText('Active days');
+    await expect(dialog.getByRole('group', { name: 'Breakdown measure' })).toBeVisible();
+    await expect(dialog).toContainText('Recent records');
+    await expect(dialog).not.toContainText(/[\u4e00-\u9fff]/);
+    await dialog.getByRole('button', { name: 'Close dashboard' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test('设置：云端账户与壁纸是英文', async ({ page }) => {
     await openEnglish(page, 'settings-cloud');
     await expect(page.getByRole('heading', { name: 'Cloud account' })).toBeVisible();

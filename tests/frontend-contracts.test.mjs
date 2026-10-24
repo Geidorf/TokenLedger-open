@@ -1898,7 +1898,8 @@ test('populated dashboard groups insight panels in a cache-economics then time-b
   assert.match(rhythmCss, /\.rhythm-cell\[data-level='5'\],\s*\.rhythm-legend i\[data-level='5'\] \{ background: var\(--color-primary\)/);
   assert.match(rhythmCss, /\.rhythm-tooltip-anchor \{[\s\S]*?pointer-events: none;/);
   const entitySource = readSource(path.join(process.cwd(), 'src', 'components', 'EntityDashboardModal.tsx'));
-  assert.match(entitySource, /aria-label="分布对比口径"/);
+  assert.match(entitySource, /aria-label=\{t\('entity\.metricLabel'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.metricLabel': '分布对比口径'/);
   assert.match(entitySource, /describeCompositionItem\(item, metric, total\)/);
   // 最近记录是单条记录，按记录精度显示（T10.154 §4.1、D41）。
   assert.match(entitySource, /describeCost\(item\.cost, 'record'\)\} · \{formatDateTime\(item\.timestamp\)\}/);
@@ -1973,7 +1974,8 @@ test('dashboard visual hierarchy keeps contributor panels aligned and trend metr
   assert.match(css, /\.entity-modal-actions > \.ghost-inline,[\s\S]*\.entity-modal-actions > \.secondary-inline \{[\s\S]*white-space:\s*nowrap;/);
   assert.match(css, /\.entity-copy-fallback \{[\s\S]*border:\s*1px solid var\(--color-danger-soft-border\);[\s\S]*background:\s*var\(--color-danger-soft-bg\);/);
   assert.match(entity, /clipboard unavailable/);
-  assert.match(entity, /模型 ID（手动复制）/);
+  assert.match(entity, /t\('entity\.manualCopyAria'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.manualCopyAria': '模型 ID（手动复制）'/);
   assert.match(css, /Responsive KPI density[\s\S]*@media \(min-width: 341px\) and \(max-width: 860px\) \{\s*\.metrics-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(css, /Responsive KPI density[\s\S]*\.metric-card \{[\s\S]*grid-template-columns: 28px minmax\(0, 1fr\);[\s\S]*padding: 12px;/);
   assert.match(css, /Responsive KPI density[\s\S]*\.metric-value \{[\s\S]*font-size: 20px;[\s\S]*white-space: nowrap;/);
@@ -3685,7 +3687,8 @@ test('phone model ranking exposes every drilldown item without a hidden scrollba
   assert.match(phoneBlock, /\.model-cost-row-btn \{[\s\S]*display:\s*grid;[\s\S]*grid-template-areas:/);
   assert.match(phoneBlock, /\.model-cost-name \{[\s\S]*overflow-wrap:\s*anywhere;/);
   // T10.154 D27：副标题换成统一叫法，未知仍排最后、不按 0 处理。
-  assert.match(modelCost, /按预估费用排序 · 不可得的排在最后 · 展开行查看缓存构成/);
+  assert.match(modelCost, /t\('modelCost\.info'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'modelCost\.info': '按预估费用排序 · 不可得的排在最后 · 展开行查看缓存构成'/);
   assert.match(modelCost, /LayoutDashboard[\s\S]*model-cost-drilldown-label/);
   assert.match(css, /\.model-cost-drilldown-btn \{[\s\S]*min-width:\s*64px;[\s\S]*min-height:\s*44px;/);
   assert.match(css, /\.model-cost-row-btn\s*\{[\s\S]*min-block-size:\s*44px;/);
@@ -3767,8 +3770,9 @@ test('entity dashboard retry exposes loading feedback and a duplicate-click guar
   const entityTest = readSource(path.join(process.cwd(), 'src', 'components', 'EntityDashboardModal.test.tsx'));
   assert.match(entitySource, /aria-busy=\{loading\}/);
   assert.match(entitySource, /disabled=\{loading\}/);
-  assert.match(entitySource, /loading \? '重新加载中…' : '重新加载'/);
-  assert.match(entitySource, /title=\{loading \? '正在重新加载专属看板' : '重新加载专属看板'\}/);
+  assert.match(entitySource, /loading \? t\('entity\.reloading'\) : t\('entity\.reload'\)/);
+  assert.match(entitySource, /title=\{loading \? t\('entity\.reloadingTitle'\) : t\('entity\.reloadTitle'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.reloading': '重新加载中…'/);
   assert.match(entityTest, /实体看板失败恢复入口在重试期间显示进行中反馈并阻止重复点击/);
 });
 
@@ -3780,7 +3784,8 @@ test('ID copy actions expose in-progress semantics and block duplicate clicks', 
   assert.match(entitySource, /modelCopyState === 'copying'/);
   assert.match(entitySource, /disabled=\{modelCopyState === 'copying'\}/);
   assert.match(entitySource, /aria-busy=\{modelCopyState === 'copying' \|\| undefined\}/);
-  assert.match(entitySource, /'正在复制模型 ID'/);
+  assert.match(entitySource, /t\('entity\.copy\.copyingAria'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'entity\.copy\.copyingAria': '正在复制模型 ID'/);
   assert.match(logsSource, /status: 'copying'/);
   assert.match(logsSource, /disabled=\{isSessionCopying\}/);
   assert.match(logsSource, /aria-busy=\{isSessionCopying \|\| undefined\}/);

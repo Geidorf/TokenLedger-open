@@ -123,7 +123,7 @@ export function generateVisualDigestHtml(options: VisualDigestOptions): string {
   assertExportableSummary(stats);
   const nowStr = options.generatedAt || new Date().toLocaleString('zh-CN');
   const effectiveCustomRange = resolveEffectiveCustomRange(options);
-  const rangeName = rangeDisplayName(range, effectiveCustomRange);
+  const rangeName = rangeDisplayName(range, effectiveCustomRange, 'zh');
   const scopeName = scope === 'cloud' ? '已同步账本' : '本机账本';
   const layout = options.layout && Object.prototype.hasOwnProperty.call(DIGEST_THEMES, options.layout) ? options.layout : 'scorecard';
   const theme = DIGEST_THEMES[layout];
