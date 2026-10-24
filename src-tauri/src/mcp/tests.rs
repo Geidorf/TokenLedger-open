@@ -389,3 +389,18 @@ fn pace_prompt_levels_follow_threshold() {
     );
     assert_eq!(bad["error"]["code"], json!(INVALID_PARAMS));
 }
+
+#[test]
+fn pacing_uses_the_most_severe_budget_not_the_fullest() {
+    // 79% 但提醒线 80%，与 60% 但提醒线 50%：后者已到提醒线。
+    let budget = json!({ "statuses": [
+        { "ruleId": "a", "level": "ok", "percent": 79.0 },
+        { "ruleId": "b", "level": "warn", "percent": 60.0 },
+        { "ruleId": "c", "level": "unavailable" },
+    ]});
+    let pressing = most_pressing_budget(&budget);
+    assert_eq!(pressing["ruleId"], json!("b"));
+    let text = pace_text(&json!({ "budget": pressing }), &Value::Null, 20.0);
+    assert!(text.contains("Level: watch"), "{text}");
+    assert!(most_pressing_budget(&json!({ "statuses": [] })).is_null());
+}

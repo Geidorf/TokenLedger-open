@@ -293,8 +293,11 @@ impl<'a> Server<'a> {
             "threshold must be a number from 1 to 90".to_string(),
         ))?;
         let quota = (self.sources.quota)(self.app);
-        let status =
+        let mut status =
             crate::cli::status_from(self.app, Some(&quota)).map_err(|error| (-32603, error))?;
+        // 摘要里只留用得最多的那条预算；节制要看级别最重的那条（各预算提醒线可以不同）。
+        let budget = crate::cli::budget_json(self.app).map_err(|error| (-32603, error))?;
+        status["budget"] = most_pressing_budget(&budget);
         let text = pace_text(&status, &status["quota"], threshold);
         Ok(json!({
             "description": "Usage pacing guidance based on current quota and budget",
@@ -587,6 +590,30 @@ pub(crate) fn anomalies_view(mut report: Value) -> Value {
 
 // ---------------------------------------------------------------- 节制提示
 
+/// 级别最重的预算（over > warn > ok），同级取用得多的；读不到的预算不参与。
+pub(crate) fn most_pressing_budget(budget: &Value) -> Value {
+    let rank = |status: &Value| match status["level"].as_str() {
+        Some("over") => 2,
+        Some("warn") => 1,
+        _ => 0,
+    };
+    budget["statuses"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|status| status["percent"].is_number())
+        .max_by(|a, b| {
+            rank(a).cmp(&rank(b)).then_with(|| {
+                a["percent"]
+                    .as_f64()
+                    .partial_cmp(&b["percent"].as_f64())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        })
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
 /// 按最紧的额度窗口与预算给出节制建议。阈值以下为 conserve，两倍阈值以下为 watch。
 pub(crate) fn pace_text(status: &Value, tightest_quota: &Value, threshold: f64) -> String {
     let quota_left = tightest_quota["remainingPercent"].as_f64();
@@ -618,7 +645,7 @@ pub(crate) fn pace_text(status: &Value, tightest_quota: &Value, threshold: f64) 
     }
     if let Some(percent) = budget_percent {
         facts.push(format!(
-            "- Tightest budget: {percent:.0}% used (level {budget_level})."
+            "- Most pressing budget: {percent:.0}% used (level {budget_level})."
         ));
     } else {
         facts.push("- No budget is set.".to_string());
