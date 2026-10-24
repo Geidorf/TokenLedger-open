@@ -7,6 +7,7 @@ pub mod codex;
 pub mod copilot;
 pub mod dsh;
 pub mod gemini;
+pub mod goose;
 pub mod grok;
 pub mod helpers;
 pub mod kimi;
