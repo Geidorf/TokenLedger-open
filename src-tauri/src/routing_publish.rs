@@ -559,24 +559,10 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
         // on launch. Only the marker file is checked first: people who never turned the
         // switch on do not touch the secure session store at startup.
         let marker = app.app_data_dir().join(CLEAR_MARKER);
-        let stored_target = || {
-            stored_user(&app)
-                .filter(|user| !user.is_empty())
-                .map(|user| Published {
-                    device: device_id(&user, &machine),
-                    user,
-                    key: String::new(),
-                    at: Instant::now(),
-                })
-        };
-        let mut pending_clear = if marker.exists() {
-            stored_target()
-        } else {
-            None
-        };
-        if pending_clear.is_none() {
-            let _ = std::fs::remove_file(&marker);
-        }
+        let mut pending_clear: Option<Published> = None;
+        // The target still has to be derived from the stored account. An unreadable store
+        // keeps this set (and the marker on disk) so a later tick tries again.
+        let mut recover = marker.exists();
         let mut was_enabled = false;
         let mut backoff = TICK;
         let mut delay = TICK;
@@ -588,7 +574,24 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
                 // Switching off always targets a clear, even when no publish was confirmed:
                 // one may have committed on the server before its response was lost.
                 if std::mem::take(&mut was_enabled) {
-                    pending_clear = published.take().or_else(stored_target);
+                    pending_clear = published.take();
+                    recover = pending_clear.is_none();
+                }
+                if recover {
+                    match stored_user(&app) {
+                        None => {}
+                        Some(user) => {
+                            recover = false;
+                            if !user.is_empty() {
+                                pending_clear = Some(Published {
+                                    device: device_id(&user, &machine),
+                                    user,
+                                    key: String::new(),
+                                    at: Instant::now(),
+                                });
+                            }
+                        }
+                    }
                 }
                 // Signed out or switched (read locally, so an outage does not count): the row
                 // is no longer this session's to delete; reads hide it after 15 minutes and
@@ -618,7 +621,7 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
                         }
                     }
                 }
-                if pending_clear.is_none() {
+                if pending_clear.is_none() && !recover {
                     let _ = std::fs::remove_file(&marker);
                 }
                 set_status(|status| {
@@ -631,6 +634,7 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             }
 
             pending_clear = None;
+            recover = false;
             if !std::mem::replace(&mut was_enabled, true) {
                 let _ = std::fs::write(&marker, b"");
             }
