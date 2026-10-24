@@ -38,7 +38,7 @@ ab_glyph = "0.2"
 tauri = { version = "2.0.0", features = ["custom-protocol", "tray-icon", "macos-private-api"] }
 tauri-plugin-single-instance = "2.4.3"
 tauri-plugin-notification = "2.4.0"
-keyring = { version = "3.6", features = ["windows-native", "apple-native", "linux-native"] }
+keyring = { version = "3.6", features = ["windows-native", "apple-native", "linux-native-sync-persistent", "crypto-rust"] }
 portable-pty = "0.9"
 sha2 = "0.10"
 # 外部网关同步格式（PBKDF2-SHA256 + AES-256-GCM）；ring 已是 rustls 的依赖，不新增 crate。
