@@ -413,16 +413,30 @@ impl Gateway {
     }
 
     pub fn upsert_provider(&self, record: ProviderRecord) -> Result<Vec<ProviderView>, String> {
-        {
+        let id = record.id.clone();
+        let moved = {
             let mut providers = self
                 .shared
                 .providers
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let moved = providers
+                .iter()
+                .find(|old| old.id == id)
+                .is_some_and(|old| {
+                    old.base_url != record.base_url
+                        || old.wire != record.wire
+                        || old.auth_mode != record.auth_mode
+                });
             let mut next = providers.clone();
             store::upsert(&mut next, record)?;
             self.store.save(&next)?;
             *providers = next;
+            moved
+        };
+        if moved {
+            // Probe results were for the old endpoint.
+            self.prober.invalidate(&id);
         }
         self.start_if_needed();
         self.list_providers()
@@ -439,7 +453,7 @@ impl Gateway {
         let key = input.key.trim();
         let account = provider_account(&input.id);
         // Probe results were for the old key.
-        self.prober.forget(&input.id);
+        self.prober.invalidate(&input.id);
         if key.is_empty() {
             return self.shared.secrets.delete(&account);
         }
@@ -472,7 +486,7 @@ impl Gateway {
             *providers = next;
         }
         self.shared.secrets.delete(&provider_account(id))?;
-        self.prober.forget(id);
+        self.prober.invalidate(id);
         self.list_providers()
     }
 
@@ -1324,6 +1338,28 @@ mod tests {
             assert_eq!(by_id(id).status, "healthy");
         }
         assert!(by_id("nokey").probes.is_empty());
+        // Editing only the name keeps the probe; moving the endpoint drops it.
+        let mut resp = gateway
+            .providers()
+            .into_iter()
+            .find(|p| p.id == "resp")
+            .unwrap();
+        resp.name = "Renamed".into();
+        gateway.upsert_provider(resp.clone()).unwrap();
+        let probes_of = |id: &str| {
+            gateway
+                .provider_health()
+                .unwrap()
+                .providers
+                .into_iter()
+                .find(|p| p.provider == id)
+                .unwrap()
+                .probes
+        };
+        assert_eq!(probes_of("resp").len(), 1);
+        resp.base_url = "http://127.0.0.1:9/v1".into();
+        gateway.upsert_provider(resp).unwrap();
+        assert!(probes_of("resp").is_empty());
         // Removing a key forgets that provider's earlier probe.
         gateway
             .set_provider_key(SetProviderKeyInput {

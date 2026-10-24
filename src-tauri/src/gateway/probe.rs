@@ -76,8 +76,8 @@ pub struct Prober {
     last_round: Mutex<Option<Instant>>,
 }
 
-/// Results plus a generation that turning the probe off bumps, so a round
-/// still in flight at that moment cannot write its results back.
+/// Results plus a generation that turning the probe off (or changing a
+/// provider) bumps, so a round still in flight cannot write stale results.
 #[derive(Default)]
 struct Results {
     generation: u64,
@@ -165,9 +165,17 @@ impl Prober {
             .retain(|id, _| ids.contains(id));
     }
 
-    /// Drops one provider's results, e.g. after its key changed or went away.
+    /// Drops one provider's results, e.g. when a round skipped it.
     pub fn forget(&self, provider: &str) {
         lock(&self.results).by_provider.remove(provider);
+    }
+
+    /// After a provider's key, address or protocol changed: drops its
+    /// results and keeps rounds already in flight from writing any back.
+    pub fn invalidate(&self, provider: &str) {
+        let mut results = lock(&self.results);
+        results.generation += 1;
+        results.by_provider.remove(provider);
     }
 
     /// True when a timed round is due now; marks it started.
@@ -390,6 +398,13 @@ mod tests {
         );
         prober.forget("a");
         assert!(prober.results().is_empty());
+        let before = prober.generation();
+        prober.invalidate("a");
+        prober.record(before, "a", result(true));
+        assert!(
+            prober.results().is_empty(),
+            "a round from before a provider change cannot write back"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
