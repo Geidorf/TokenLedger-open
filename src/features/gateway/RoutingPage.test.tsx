@@ -51,13 +51,13 @@ describe('RoutingPage', () => {
     expect(await screen.findByText('编码主力')).toBeInTheDocument();
     expect(screen.getByText('请求带图片')).toBeInTheDocument();
     expect(screen.getByText('会话保持 1 小时')).toBeInTheDocument();
-    const panel = screen.getByRole('complementary', { name: '最近路由决策' });
+    const panel = screen.getByRole('region', { name: '最近路由决策' });
     await waitFor(() => expect(within(panel).getByText(/失败已切换 429/)).toBeInTheDocument());
   });
 
   it('最近决策可展开每个成员为何被选或被跳过', async () => {
     render(<RoutingPage onNotify={vi.fn()} onConfirm={vi.fn()} />);
-    const panel = screen.getByRole('complementary', { name: '最近路由决策' });
+    const panel = screen.getByRole('region', { name: '最近路由决策' });
     const toggle = await within(panel).findByText('为什么这样选（2 个成员）');
     fireEvent.click(toggle);
     const trace = within(panel).getByRole('list', { name: 'group/coding 成员决策' });

@@ -1983,7 +1983,7 @@ test('device table actions expose a quiet reversible filter instead of a tall in
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
   assert.match(source, /aria-pressed=\{machineSelected\}/);
   assert.match(source, /从设备筛选中移除 \$\{machine\}/);
-  assert.match(source, /filters\.machines\.filter\(\(item\) => item !== machine\)/);
+  assert.match(source, /machines\.filter\(\(item\) => item !== machine\)/);
   assert.match(source, /<Monitor[\s\S]*aria-hidden="true"/);
   assert.match(source, /className="machine-filter-surface"/);
   assert.match(css, /\.machine-filter-surface \{[\s\S]*min-height: 26px;[\s\S]*border-radius: var\(--radius-full\)/);
