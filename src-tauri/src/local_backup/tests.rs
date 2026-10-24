@@ -850,3 +850,96 @@ fn only_changed_prices_travel_and_merge_by_model() {
         2
     );
 }
+
+fn put_state(pc: &Computer, key: &str, input: i64, generation: i64) {
+    pc.conn()
+        .execute(
+            "INSERT OR REPLACE INTO scan_cumulative_state
+                 (unique_key, input_tokens, output_tokens, cached_tokens, cache_write_tokens, cost_usd, generation)
+             VALUES (?1, ?2, 0, 0, 0, NULL, ?3)",
+            params![key, input, generation],
+        )
+        .unwrap();
+}
+
+fn family_input(pc: &Computer, source: &str) -> i64 {
+    pc.conn()
+        .query_row(
+            "SELECT COALESCE(SUM(input_tokens), 0) FROM token_logs
+              WHERE unique_key = ?1 OR substr(unique_key, 1, length(?1) + 1) = ?1 || '#'",
+            [source],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn a_cumulative_source_scanned_on_both_sides_is_not_counted_twice() {
+    // The backup saw the source at 100 and then 200; this computer scanned
+    // the same source once, at 200.
+    let old = Computer::new("old");
+    old.insert("src", 100);
+    old.insert("src#t200_0_0", 100);
+    old.insert("plain", 5);
+    put_state(&old, "src", 200, 0);
+    let bundle = sealed_roundtrip(&old.export());
+
+    let new = Computer::new("new");
+    new.insert("src", 200);
+    put_state(&new, "src", 200, 0);
+    let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
+    assert_eq!((plan.ledger.new, plan.ledger.known), (1, 2));
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(result.ledger_added, 1);
+    assert_eq!(family_input(&new, "src"), 200);
+    assert_eq!(new.input_of("plain"), 5);
+}
+
+#[test]
+fn a_lost_cumulative_row_comes_back_on_the_next_scan_after_a_rebuild() {
+    let pc = Computer::new("pc");
+    // The delta row of a source at 200 was lost; only the base row of 100 read.
+    pc.insert("src", 100);
+    put_state(&pc, "src", 200, 0);
+    // After a reset the generation and baseline stay as they are.
+    pc.insert("reset", 100);
+    put_state(&pc, "reset", 30, 1);
+    health::lower_cumulative_baselines(&pc.conn()).unwrap();
+    let state = |key: &str| -> (i64, i64) {
+        pc.conn()
+            .query_row(
+                "SELECT input_tokens, generation FROM scan_cumulative_state WHERE unique_key = ?1",
+                [key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap()
+    };
+    assert_eq!(state("src"), (100, 0));
+    assert_eq!(state("reset"), (30, 1));
+}
+
+#[test]
+fn pruning_keeps_the_newest_backup_written_in_the_same_second() {
+    let pc = Computer::new("pc");
+    let dir = pc.root.join("auto-same-second");
+    fs::create_dir_all(&dir).unwrap();
+    for name in [
+        "TokenLedger-auto-20261024-010000.tlbackup",
+        "TokenLedger-auto-20261024-010000-2.tlbackup",
+        "TokenLedger-auto-20261024-010000-10.tlbackup",
+        "TokenLedger-auto-20261023-235959.tlbackup",
+    ] {
+        fs::write(dir.join(name), b"x").unwrap();
+    }
+    assert_eq!(auto::prune(&dir, 1), 3);
+    assert!(dir
+        .join("TokenLedger-auto-20261024-010000-10.tlbackup")
+        .exists());
+}

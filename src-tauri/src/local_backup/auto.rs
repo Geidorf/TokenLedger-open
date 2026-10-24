@@ -172,6 +172,19 @@ pub fn save(
     view(app, secrets)
 }
 
+fn prune_order(name: &str) -> (String, u32) {
+    let stem = name
+        .trim_start_matches(AUTO_PREFIX)
+        .trim_end_matches(&format!(".{EXTENSION}"));
+    // `YYYYMMDD-HHMMSS` is 15 characters.
+    let (stamp, rest) = stem.split_at(stem.len().min(15));
+    let suffix = rest
+        .strip_prefix('-')
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(1);
+    (stamp.to_string(), suffix)
+}
+
 /// Removes the oldest scheduled backups beyond `keep`.
 pub fn prune(dir: &Path, keep: usize) -> usize {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -183,8 +196,9 @@ pub fn prune(dir: &Path, keep: usize) -> usize {
         .map(|entry| entry.file_name().to_string_lossy().to_string())
         .filter(|name| name.starts_with(AUTO_PREFIX) && name.ends_with(&format!(".{EXTENSION}")))
         .collect();
-    // The time stamp in the name sorts in time order.
-    names.sort();
+    // Time stamp first, then the `-2`, `-3` suffix of a file written in the
+    // same second; plain name order would put `-2` before the original.
+    names.sort_by_key(|name| prune_order(name));
     let excess = names.len().saturating_sub(keep);
     names
         .into_iter()

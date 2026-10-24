@@ -537,7 +537,52 @@ fn unique_key_index(columns: &[String]) -> Result<usize, String> {
         .ok_or_else(|| "备份里的账本缺少去重键。".to_string())
 }
 
-fn ledger_counts(db_path: &Path, table: &LedgerTable) -> Result<RowCounts, String> {
+/// The cumulative source a ledger row belongs to: its key before any
+/// `#<totals>` delta suffix.
+fn source_key(unique_key: &str) -> &str {
+    unique_key.split('#').next().unwrap_or(unique_key)
+}
+
+/// Cumulative sources (keys of the backup's `scanCumulative`) that this
+/// computer has also scanned. Their rows split the same usage at other
+/// checkpoints (a backup scanned at 100 then 200 holds `k` = 100 and a delta
+/// of 100; a fresh scan at 200 holds `k` = 200), so merging row by row would
+/// count it twice. Such a source keeps this computer's rows and state.
+fn shared_cumulative_sources(
+    conn: &Connection,
+    cumulative: &LedgerTable,
+) -> Result<BTreeSet<String>, String> {
+    let Some(key) = cumulative
+        .columns
+        .iter()
+        .position(|column| column == "unique_key")
+    else {
+        return Ok(BTreeSet::new());
+    };
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT 1 FROM {LEDGER_TABLE}
+              WHERE unique_key = ?1 OR substr(unique_key, 1, length(?1) + 1) = ?1 || '#'
+              LIMIT 1"
+        ))
+        .map_err(|error| error.to_string())?;
+    let mut shared = BTreeSet::new();
+    for row in &cumulative.rows {
+        let Some(Value::String(source)) = row.get(key) else {
+            continue;
+        };
+        if stmt.exists([source]).map_err(|error| error.to_string())? {
+            shared.insert(source.clone());
+        }
+    }
+    Ok(shared)
+}
+
+fn ledger_counts(
+    db_path: &Path,
+    table: &LedgerTable,
+    cumulative: &LedgerTable,
+) -> Result<RowCounts, String> {
     let mut counts = RowCounts {
         total: table.rows.len(),
         ..RowCounts::default()
@@ -547,6 +592,7 @@ fn ledger_counts(db_path: &Path, table: &LedgerTable) -> Result<RowCounts, Strin
     }
     let key = unique_key_index(&table.columns)?;
     let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
+    let shared = shared_cumulative_sources(&conn, cumulative)?;
     let mut stmt = conn
         .prepare(&format!(
             "SELECT 1 FROM {LEDGER_TABLE} WHERE unique_key = ?1"
@@ -556,9 +602,10 @@ fn ledger_counts(db_path: &Path, table: &LedgerTable) -> Result<RowCounts, Strin
         let Some(Value::String(unique_key)) = row.get(key) else {
             continue;
         };
-        if stmt
-            .exists([unique_key])
-            .map_err(|error| error.to_string())?
+        if shared.contains(source_key(unique_key))
+            || stmt
+                .exists([unique_key])
+                .map_err(|error| error.to_string())?
         {
             counts.known += 1;
         }
@@ -689,7 +736,7 @@ pub fn preview(
         app_version: bundle.app_version.clone(),
         machine: bundle.machine.clone(),
         same_machine: same_machine(bundle),
-        ledger: ledger_counts(&db_path, &bundle.ledger)?,
+        ledger: ledger_counts(&db_path, &bundle.ledger, &bundle.scan_cumulative)?,
         gateway_requests_restorable: same_machine(bundle),
         gateway_requests: gateway_counts(gateway, &bundle.gateway_requests)?,
         providers,
@@ -877,18 +924,23 @@ fn restore_ledger(
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|error| format!("写入账本失败：{error}"))?;
-    let added = import_ledger(&tx, ledger)?;
-    import_cumulative(&tx, cumulative)?;
+    let shared = shared_cumulative_sources(&tx, cumulative)?;
+    let added = import_ledger(&tx, ledger, &shared)?;
+    import_cumulative(&tx, cumulative, &shared)?;
     tx.commit()
         .map_err(|error| format!("写入账本失败：{error}"))?;
     Ok(added)
 }
 
-fn import_ledger(tx: &rusqlite::Transaction, table: &LedgerTable) -> Result<usize, String> {
+fn import_ledger(
+    tx: &rusqlite::Transaction,
+    table: &LedgerTable,
+    shared: &BTreeSet<String>,
+) -> Result<usize, String> {
     if table.rows.is_empty() {
         return Ok(0);
     }
-    unique_key_index(&table.columns)?;
+    let key = unique_key_index(&table.columns)?;
     let local: BTreeSet<String> = table_columns(tx, LEDGER_TABLE)
         .map_err(|error| error.to_string())?
         .into_iter()
@@ -912,6 +964,11 @@ fn import_ledger(tx: &rusqlite::Transaction, table: &LedgerTable) -> Result<usiz
             ))
             .map_err(|error| error.to_string())?;
         for row in &table.rows {
+            if let Some(Value::String(unique_key)) = row.get(key) {
+                if shared.contains(source_key(unique_key)) {
+                    continue;
+                }
+            }
             let values: Vec<SqlValue> = picked
                 .iter()
                 .map(|(index, _)| row.get(*index).map_or(SqlValue::Null, json_to_sql))
@@ -935,8 +992,19 @@ fn import_ledger(tx: &rusqlite::Transaction, table: &LedgerTable) -> Result<usiz
 /// generation and the restored ledger holds the rows up to the higher one, so
 /// the next scan continues from there instead of counting them again or
 /// reusing a dedupe key.
-fn import_cumulative(tx: &rusqlite::Transaction, table: &LedgerTable) -> Result<(), String> {
-    if table.rows.is_empty() || !table.columns.iter().any(|column| column == "unique_key") {
+fn import_cumulative(
+    tx: &rusqlite::Transaction,
+    table: &LedgerTable,
+    shared: &BTreeSet<String>,
+) -> Result<(), String> {
+    let Some(key) = table
+        .columns
+        .iter()
+        .position(|column| column == "unique_key")
+    else {
+        return Ok(());
+    };
+    if table.rows.is_empty() {
         return Ok(());
     }
     let local: BTreeSet<String> = table_columns(tx, CUMULATIVE_TABLE)
@@ -998,6 +1066,9 @@ fn import_cumulative(tx: &rusqlite::Transaction, table: &LedgerTable) -> Result<
     let mut stmt = tx.prepare(&sql).map_err(|error| error.to_string())?;
     {
         for row in &table.rows {
+            if matches!(row.get(key), Some(Value::String(source)) if shared.contains(source)) {
+                continue;
+            }
             let values: Vec<SqlValue> = picked
                 .iter()
                 .map(|(index, _)| row.get(*index).map_or(SqlValue::Null, json_to_sql))
