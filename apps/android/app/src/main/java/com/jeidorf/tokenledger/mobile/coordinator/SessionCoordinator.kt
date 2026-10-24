@@ -145,8 +145,11 @@ internal class SessionCoordinator(
     fun signOut(
         onSignOutCleanup: (userId: String?) -> Unit
     ) {
-        enqueueSessionClear()
-        val userId = currentSession()?.userId
+        val uiSession = currentSession()
+        // The committed session is preferred: a background refresh may have rotated past the UI copy.
+        val revoked = revokeAndEnqueueClear() ?: uiSession
+        revoked?.let(::launchRemoteRevoke)
+        val userId = uiSession?.userId
         advanceSessionGeneration()
         restoreJob?.cancel()
         signInJob?.cancel()
@@ -165,15 +168,35 @@ internal class SessionCoordinator(
     }
 
     fun enqueueSessionClear(): Job {
+        revokeAndEnqueueClear()
+        return checkNotNull(sessionClearJob)
+    }
+
+    private fun revokeAndEnqueueClear(): MobileSession? {
         // Persist the tombstone before returning to the caller or suspending on an older mutation.
-        repository.revokeSessionNow()
+        val revoked = repository.revokeSessionNow()
         val previous = sessionClearJob
-        return coroutineScope.launch {
+        sessionClearJob = coroutineScope.launch {
             previous?.join()
             sessionMutationMutex.withLock {
                 repository.clearSession()
             }
-        }.also { sessionClearJob = it }
+        }
+        return revoked
+    }
+
+    // Local sign-out is already final; the server call only stops the old refresh token from
+    // being exchanged later. It never touches local state and its failure is not shown.
+    private fun launchRemoteRevoke(session: MobileSession) {
+        coroutineScope.launch {
+            try {
+                repository.revokeRemoteSession(session)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // Offline or already expired: nothing more to do on this device.
+            }
+        }
     }
 
     suspend fun persistSessionIfCurrent(
