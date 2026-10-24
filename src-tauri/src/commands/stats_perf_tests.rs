@@ -554,6 +554,7 @@ pub(super) fn bench_details_query(range: &str, scope: BenchScope) -> UsageDetail
         end: stats.end,
         cursor: None,
         limit: Some(50),
+        providers: None,
     }
 }
 

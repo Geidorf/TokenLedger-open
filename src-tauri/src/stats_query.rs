@@ -159,6 +159,11 @@ fn normalize_dimension(
     Ok(plural)
 }
 
+/// 明细的账号筛选（契约 §2.7 的供应商 ID），规则与工具、模型筛选相同。
+pub(crate) fn normalize_providers(values: Option<Vec<String>>) -> Result<Vec<String>, String> {
+    normalize_dimension("providers", values, None, false)
+}
+
 pub(crate) fn normalize_search(value: Option<String>) -> Result<Option<String>, String> {
     let Some(value) = value else {
         return Ok(None);

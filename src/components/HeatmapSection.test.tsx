@@ -150,10 +150,5 @@ describe('HeatmapSection', () => {
     );
     expect(screen.getByText('本年度 Token 消耗日历')).toBeInTheDocument();
     expect(container.querySelector('.heatmap-coverage')).toHaveTextContent('当前来源没有逐日的记录数与费用，这里显示有效 Token。');
-
-    rerender(
-      <HeatmapSection heatmap={{ '2026-09-20': 5_000 }} range="year" customRange={null} timeContext={cutoff('2026-09-24')} drillUnavailableNote="明细暂不能按账号筛选，选中账号时日期不可点开。" />,
-    );
-    expect(container.querySelector('.heatmap-coverage')).toHaveTextContent('明细暂不能按账号筛选');
   });
 });

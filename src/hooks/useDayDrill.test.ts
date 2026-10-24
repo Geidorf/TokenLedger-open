@@ -183,6 +183,17 @@ describe('overview day drill-down (audit P0-1)', () => {
     expect(result.current.drill.dayDrill).toBeNull();
   });
 
+  it('narrows the day to the focused account and keeps the drill while that account stays selected', () => {
+    const { result } = renderHook(() => useAppSlice('local'));
+    act(() => { result.current.drill.drillIntoDay(DRILL_DAY, { tools: [], models: [], providers: ['relay'] }); });
+    expect(result.current.details.detailFilters).toEqual({ ...EMPTY_DETAIL_FILTERS, providers: ['relay'] });
+    expect(result.current.drill.dayDrill?.date).toBe(DRILL_DAY);
+
+    // 移除账号筛选算用户改了条件，复盘失效。
+    act(() => result.current.details.setDetailFilters({ ...EMPTY_DETAIL_FILTERS, providers: [] }));
+    expect(result.current.drill.dayDrill).toBeNull();
+  });
+
   it('returns to the remembered range, filters and page', () => {
     const { result } = renderHook(() => useAppSlice('local'));
     act(() => result.current.details.setDetailFilters(ORIGIN_FILTERS));

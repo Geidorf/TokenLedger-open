@@ -737,3 +737,77 @@ fn overview_omits_context_composition_without_measured_rows() {
     assert!(stats.get("contextComposition").is_none());
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn usage_details_filter_by_provider_account_and_page_through_gateway_rows() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let conn = db::get_connection(&db_path).unwrap();
+    insert_scan(&conn, "a", "s9", "2026-10-04 09:00:00", 7, 3);
+    drop(conn);
+    let mut relay = ledger_line("g3", Some("s3"), local_ts(11, 30, 0), 30, 10);
+    relay["provider"] = json!("relay");
+    write_ledger(
+        &app,
+        &[
+            ledger_line("g1", Some("s1"), local_ts(10, 0, 10), 200, 80),
+            ledger_line("g2", Some("s2"), local_ts(11, 0, 0), 50, 20),
+            relay,
+        ],
+    );
+    let details = |extra: Value| {
+        let mut query = json!({
+            "range": "today",
+            "timezone": iana_time_zone::get_timezone().unwrap(),
+            "providers": ["openai"],
+            "limit": 1,
+        });
+        query
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let query: super::super::UsageDetailsQuery = serde_json::from_value(query).unwrap();
+        super::super::get_usage_details_impl_at(&app, query, local_ts(12, 0, 0)).unwrap()
+    };
+
+    let first = details(json!({}));
+    assert_eq!(first["filteredSummary"]["totalRequests"], json!(2));
+    assert_eq!(first["filteredSummary"]["totalTokens"], json!(350));
+    assert_eq!(first["meta"]["query"]["providers"], json!(["openai"]));
+    assert_eq!(first["items"][0]["provider"], json!("openai"));
+    // 第一页停在负 id 的网关行上，翻页仍要能继续。
+    let cursor = first["nextCursor"]
+        .as_str()
+        .expect("second page")
+        .to_string();
+    let second = details(json!({ "cursor": cursor }));
+    let items = second["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["provider"], json!("openai"));
+    assert!(second["nextCursor"].is_null());
+
+    let relay = details(json!({ "providers": ["relay"], "limit": 10 }));
+    assert_eq!(relay["filteredSummary"]["totalRequests"], json!(1));
+    let unknown = details(json!({ "providers": ["missing"], "limit": 10 }));
+    assert_eq!(unknown["items"], json!([]));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn usage_details_provider_filter_without_a_gateway_ledger_is_empty() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let conn = db::get_connection(&db_path).unwrap();
+    insert_scan(&conn, "a", "s9", "2026-10-04 09:00:00", 7, 3);
+    drop(conn);
+    let query: super::super::UsageDetailsQuery = serde_json::from_value(json!({
+        "range": "today",
+        "timezone": iana_time_zone::get_timezone().unwrap(),
+        "providers": ["openai"],
+    }))
+    .unwrap();
+    let details = super::super::get_usage_details_impl_at(&app, query, local_ts(12, 0, 0)).unwrap();
+    assert_eq!(details["items"], json!([]));
+    assert_eq!(details["filteredSummary"]["totalRequests"], json!(0));
+    let _ = fs::remove_dir_all(root);
+}

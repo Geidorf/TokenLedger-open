@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import type { DataScope, RangeKey, StatsData } from '../types';
-import { useUsageDetails } from './useUsageDetails';
+import { canonicalProviders, providersEchoMatches, useUsageDetails } from './useUsageDetails';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -105,6 +105,37 @@ describe('useUsageDetails 查询上下文桥接（T10.60 回归）', () => {
       await result.current.loadDetails();
     });
     expect(lastQuery()).toMatchObject({ tools: ['codex'] });
+  });
+
+  it('本机按账号筛选时把账号送进查询，云端与不筛选时不带这个键', async () => {
+    const { result, rerender } = renderHook((props) => useUsageDetails(props), {
+      initialProps: { ...cloudMonthProps, dataScope: 'local' as DataScope, stats: null as StatsData | null },
+    });
+    await act(async () => {
+      await result.current.loadDetails();
+    });
+    expect(lastQuery()).not.toHaveProperty('providers');
+    act(() => {
+      result.current.updateDetailFilter('providers', [' relay ', 'openai', 'relay']);
+    });
+    await act(async () => {
+      await result.current.loadDetails();
+    });
+    expect(lastQuery()).toMatchObject({ providers: ['openai', 'relay'] });
+
+    rerender({ ...cloudMonthProps });
+    await act(async () => {
+      await result.current.loadDetails();
+    });
+    expect(lastQuery()).not.toHaveProperty('providers');
+  });
+
+  it('账号回显必须与请求一致：旧后端不回显账号时拒收放宽的结果', () => {
+    expect(canonicalProviders(undefined)).toEqual([]);
+    expect(providersEchoMatches({ providers: ['relay'] }, ['relay'])).toBe(true);
+    expect(providersEchoMatches({}, [])).toBe(true);
+    expect(providersEchoMatches({}, ['relay'])).toBe(false);
+    expect(providersEchoMatches({ providers: ['relay'] }, [])).toBe(false);
   });
 
   it('云端缺少 detailPagination 能力时不发请求并提示入口停用', async () => {

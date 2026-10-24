@@ -407,7 +407,8 @@ export function useStats({
     setEntitySelection(null);
     setDataScope('cloud');
     setDeviceFilter('all_cloud');
-    setDetailFilters((previous: any) => ({ ...previous, machines: [] }));
+    // 账号筛选只在本机有，切到云端时一并清掉。
+    setDetailFilters((previous: any) => ({ ...previous, machines: [], providers: [] }));
   }, [changeTab, cloudStatus.authenticated, cloudStatusKnown, customRange, dataScope, deviceFilter, range, setDetailFilters, setEntitySelection, showMessage, snapshotKeyFor]);
 
   const selectLocalScope = useCallback(() => {

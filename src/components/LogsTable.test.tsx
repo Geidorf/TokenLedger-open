@@ -448,4 +448,29 @@ describe('LogsTable 导出与缓存命中率', () => {
     detail = document.querySelector('.log-detail-row') as HTMLElement;
     expect(within(detail).queryByText(/Context 构成/)).toBeNull();
   });
+
+  it('shows the account filter as a removable chip and counts it as an active filter', () => {
+    const onFilterChange = vi.fn();
+    render(
+      <LogsTable
+        details={details}
+        filters={{ tools: [], models: [], machines: [], search: '', providers: ['relay'] }}
+        loading={false}
+        loadingMore={false}
+        error=""
+        scope="local"
+        range="today"
+        onFilterChange={onFilterChange}
+        onClearFilters={vi.fn()}
+        onRetry={vi.fn()}
+        onLoadMore={vi.fn()}
+        onOpenEntity={vi.fn()}
+      />,
+    );
+    const group = screen.getByRole('group', { name: '账号筛选' });
+    expect(group).toHaveTextContent('relay');
+    expect(screen.getByRole('button', { name: /清除筛选/ })).toBeEnabled();
+    fireEvent.click(within(group).getByRole('button', { name: '移除账号筛选：relay' }));
+    expect(onFilterChange).toHaveBeenCalledWith('providers', []);
+  });
 });

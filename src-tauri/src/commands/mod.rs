@@ -2239,6 +2239,9 @@ pub struct UsageDetailsQuery {
     pub cursor: Option<String>,
     #[serde(default)]
     pub limit: Option<usize>,
+    /// 契约 §2.7：只看这些供应商账号的网关与导入行，仅本机。
+    #[serde(default)]
+    pub providers: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -5599,6 +5602,8 @@ struct NormalizedStatsQuery {
     models: Vec<String>,
     search: Option<String>,
     token_mode: String,
+    /// 只有本机明细会设置；空表示不按账号筛选。
+    providers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5703,6 +5708,7 @@ impl NormalizedStatsQuery {
             models: filters.models,
             search: filters.search,
             token_mode,
+            providers: Vec::new(),
         })
     }
 
@@ -5720,6 +5726,10 @@ impl NormalizedStatsQuery {
         if let Some((start, end)) = self.range.custom_bounds() {
             request["start"] = json!(start.format("%Y-%m-%d").to_string());
             request["end"] = json!(end.format("%Y-%m-%d").to_string());
+        }
+        // 只在按账号筛选时出现，不按账号的回显与指纹保持原样。
+        if !self.providers.is_empty() {
+            request["providers"] = json!(self.providers);
         }
         request
     }
@@ -6700,6 +6710,13 @@ fn append_stats_filters_with_entity(
             EntityKind::Model => sql.push_str(" AND model = ?"),
         }
         values.push(SqlValue::Text(entity.id.clone()));
+    }
+    if !query.providers.is_empty() {
+        // 供应商只记在网关与导入行上，扫描行没有账号，按账号筛选时不出现。
+        sql.push_str(" AND id IN (SELECT id FROM temp.gw_rows WHERE provider IN (");
+        sql.push_str(&vec!["?"; query.providers.len()].join(","));
+        sql.push_str("))");
+        values.extend(query.providers.iter().cloned().map(SqlValue::Text));
     }
     append_search_filter(sql, values, query.search.as_deref());
 }
@@ -8213,7 +8230,8 @@ fn decode_detail_cursor(
         .ok_or_else(|| "detail cursor is missing id".to_string())?
         .parse::<i64>()
         .map_err(|_| "detail cursor id is invalid".to_string())?;
-    if parts.next().is_some() || id < 1 {
+    // 网关与导入行的 id 是负数，翻页可能停在这样的行上。
+    if parts.next().is_some() || id == 0 {
         return Err("detail cursor is invalid".to_string());
     }
     let timestamp = String::from_utf8(decode_hex(timestamp_hex)?)
@@ -8558,7 +8576,7 @@ fn get_usage_details_impl_at(
     raw: UsageDetailsQuery,
     now: DateTime<Local>,
 ) -> Result<Value, String> {
-    let query = NormalizedStatsQuery::from_query(LocalStatsQuery {
+    let mut query = NormalizedStatsQuery::from_query(LocalStatsQuery {
         range: raw.range,
         timezone: raw.timezone,
         machines: raw.machines,
@@ -8572,6 +8590,7 @@ fn get_usage_details_impl_at(
         start: raw.start,
         end: raw.end,
     })?;
+    query.providers = crate::stats_query::normalize_providers(raw.providers)?;
     get_usage_details_normalized_at(
         app,
         query,
@@ -8604,6 +8623,13 @@ fn get_usage_details_normalized_at(
 
     let gateway_ledger = gateway_overlay::ledger_signature(&db_path).is_some();
     let mut conn = gateway_overlay::open_stats_connection(&db_path)?;
+    if !query.providers.is_empty() {
+        // 没有网关账本时没有任何账号行：给筛选一个空表，结果为空而不是报错。
+        conn.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS gw_rows (id INTEGER PRIMARY KEY, provider TEXT NOT NULL)",
+        )
+        .map_err(|e| e.to_string())?;
+    }
     let transaction = conn.transaction().map_err(|e| e.to_string())?;
     let summary =
         query_filtered_summary_with_entity(&transaction, &query, &bounds, &prices, entity)?;
@@ -10471,6 +10497,7 @@ mod wallpaper_retention_tests {
                     token_mode: None,
                     cursor: None,
                     limit: None,
+                    providers: None,
                 },
             ))
             .unwrap_err();
@@ -16582,6 +16609,13 @@ async fn get_cloud_usage_details_impl(
     app: &AppContext,
     query: UsageDetailsQuery,
 ) -> Result<Value, String> {
+    if query
+        .providers
+        .as_ref()
+        .is_some_and(|values| !values.is_empty())
+    {
+        return Err("providers filter is only available for local usage details".to_string());
+    }
     let request = normalize_details_request(&query)?;
     let context = CloudRpcContext::for_app(app).await?;
     let payload = details_v2_rpc_payload(&context.session.user_id, &request);
