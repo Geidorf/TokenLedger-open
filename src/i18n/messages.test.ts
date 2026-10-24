@@ -23,6 +23,7 @@ const FULLY_LOCALIZED = [
   'src/components/Sidebar.tsx',
   'src/components/AppHeader.tsx',
   'src/features/gateway/ModelWorkspace.tsx',
+  'src/features/gateway/RequestLogPage.tsx',
   'src/components/settings/RoutingPublishCard.tsx',
   'src/components/settings/PeerSharedUsageCard.tsx',
   'src/components/LogsTable.tsx',

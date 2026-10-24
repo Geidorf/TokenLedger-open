@@ -23,6 +23,8 @@
 .mw-log-detail {
   position: sticky; left: 0; max-width: 960px;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px 20px; padding: 8px 4px 12px;
+  /* 表格单元格不换行；详情里的长文案（英文尤其）要能换行。 */
+  white-space: normal;
 }
 .mw-log-detail h3 { margin: 0 0 6px; font-size: var(--font-size-xs); font-weight: 600; color: var(--color-text-secondary); }
 .mw-log-attempts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }

@@ -5,6 +5,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { InfoTip } from '../../components/InfoTip';
 import { contextComposition } from '../../utils/contextComposition';
 import { formatEstimatedUsd, formatTokens } from '../../utils/format';
+import { t, useLang } from '../../i18n';
 import { errorText, exportRequestLog, requestLog } from './api';
 import { DecisionTrace } from './DecisionTrace';
 import { ATTEMPT_OUTCOME_LABEL, DECISION_REASON_LABEL, effectiveTokens, shortTime, traceHeadline } from './helpers';
@@ -17,29 +18,29 @@ export const TAIL_INTERVAL_MS = 2000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 type RangeId = '1h' | '24h' | '7d' | 'all';
-const RANGES: { id: RangeId; label: string; hours: number | null }[] = [
-  { id: '1h', label: '1 小时', hours: 1 },
-  { id: '24h', label: '24 小时', hours: 24 },
-  { id: '7d', label: '7 天', hours: 24 * 7 },
-  { id: 'all', label: '全部', hours: null },
+const RANGES: { id: RangeId; readonly label: string; hours: number | null }[] = [
+  { id: '1h', get label() { return t('requestLog.range.1h'); }, hours: 1 },
+  { id: '24h', get label() { return t('requestLog.range.24h'); }, hours: 24 },
+  { id: '7d', get label() { return t('requestLog.range.7d'); }, hours: 24 * 7 },
+  { id: 'all', get label() { return t('requestLog.range.all'); }, hours: null },
 ];
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '全部状态' },
-  { value: 'ok', label: '成功' },
-  { value: 'error', label: '失败' },
-  { value: 'retried', label: '有重试或切换' },
+const STATUS_OPTIONS: { value: string; readonly label: string }[] = [
+  { value: '', get label() { return t('requestLog.status.all'); } },
+  { value: 'ok', get label() { return t('requestLog.status.ok'); } },
+  { value: 'error', get label() { return t('requestLog.status.error'); } },
+  { value: 'retried', get label() { return t('requestLog.status.retried'); } },
   { value: '4xx', label: '4xx' },
-  { value: '429', label: '429 限流' },
+  { value: '429', get label() { return t('requestLog.status.429'); } },
   { value: '5xx', label: '5xx' },
 ];
 
-const LATENCY_OPTIONS: { value: string; label: string; min?: number; max?: number }[] = [
-  { value: '', label: '全部耗时' },
-  { value: 'lt2', label: '2 秒内', max: 2000 },
-  { value: 'gt10', label: '超过 10 秒', min: 10_000 },
-  { value: 'gt30', label: '超过 30 秒', min: 30_000 },
-  { value: 'gt60', label: '超过 60 秒', min: 60_000 },
+const LATENCY_OPTIONS: { value: string; readonly label: string; min?: number; max?: number }[] = [
+  { value: '', get label() { return t('requestLog.latency.all'); } },
+  { value: 'lt2', get label() { return t('requestLog.latency.under', { seconds: 2 }); }, max: 2000 },
+  { value: 'gt10', get label() { return t('requestLog.latency.over', { seconds: 10 }); }, min: 10_000 },
+  { value: 'gt30', get label() { return t('requestLog.latency.over', { seconds: 30 }); }, min: 30_000 },
+  { value: 'gt60', get label() { return t('requestLog.latency.over', { seconds: 60 }); }, min: 60_000 },
 ];
 
 export interface LogFilters {
@@ -98,15 +99,15 @@ function routeSummary(entry: RequestLogEntry): string | null {
 }
 
 function attemptOutcome(attempt: RequestLogAttempt, index: number, count: number): string {
-  if (attempt.ok) return ATTEMPT_OUTCOME_LABEL.ok ?? '成功';
+  if (attempt.ok) return ATTEMPT_OUTCOME_LABEL.ok ?? t('requestLog.status.ok');
   // 供应商已删除或停用：网关没有发出请求，后端按路由决策补的零用量尝试。
-  if (attempt.requestId.startsWith('skipped:')) return ATTEMPT_OUTCOME_LABEL.skipped ?? '跳过';
-  return index < count - 1 ? (ATTEMPT_OUTCOME_LABEL.failed ?? '失败已切换') : (ATTEMPT_OUTCOME_LABEL.rejected ?? '上游拒绝');
+  if (attempt.requestId.startsWith('skipped:')) return ATTEMPT_OUTCOME_LABEL.skipped ?? t('requestLog.attempt.skipped');
+  return index < count - 1 ? (ATTEMPT_OUTCOME_LABEL.failed ?? t('requestLog.attempt.failed')) : (ATTEMPT_OUTCOME_LABEL.rejected ?? t('requestLog.attempt.rejected'));
 }
 
 function ContextBars({ entry }: { entry: RequestLogEntry }) {
   const segments = contextComposition(entry.context ?? undefined, entry.input + entry.cacheRead + entry.cacheWrite);
-  if (!segments) return <p className="mw-caption">这条请求没有记录 Context 构成（旧版本记录或不支持的接口）。</p>;
+  if (!segments) return <p className="mw-caption">{t('requestLog.context.none')}</p>;
   return (
     <div className="mw-log-context">
       <div className="mw-log-context-bar" aria-hidden="true">
@@ -114,17 +115,17 @@ function ContextBars({ entry }: { entry: RequestLogEntry }) {
           <span key={segment.key} className={`mw-log-seg is-${segment.key}`} style={{ width: `${Math.max(segment.share * 100, 1)}%` }} />
         ))}
       </div>
-      <ul className="mw-log-context-legend" aria-label="Context 构成">
+      <ul className="mw-log-context-legend" aria-label={t('requestLog.section.context')}>
         {segments.map((segment) => (
           <li key={segment.key}>
             <span className={`mw-log-dot is-${segment.key}`} aria-hidden="true" />
             {segment.label} {Math.round(segment.share * 100)}%
-            {segment.estimatedTokens != null && <span className="mw-faint"> · 约 {formatTokens(segment.estimatedTokens)}</span>}
+            {segment.estimatedTokens != null && <span className="mw-faint"> · {t('requestLog.context.approx', { tokens: formatTokens(segment.estimatedTokens) })}</span>}
           </li>
         ))}
       </ul>
       {entry.context && (
-        <p className="mw-caption">{entry.context.messages} 条消息 · {entry.context.toolResults} 个工具结果 · {entry.context.attachments} 个附件（Token 按字节占比估算）</p>
+        <p className="mw-caption">{t('requestLog.context.counts', { messages: entry.context.messages, toolResults: entry.context.toolResults, attachments: entry.context.attachments })}</p>
       )}
     </div>
   );
@@ -133,8 +134,8 @@ function ContextBars({ entry }: { entry: RequestLogEntry }) {
 function EntryDetail({ entry }: { entry: RequestLogEntry }) {
   return (
     <div className="mw-log-detail">
-      <section aria-label="尝试顺序">
-        <h3>尝试顺序{entry.retries > 0 && <span className="mw-faint"> · 重试 {entry.retries} 次{entry.switched ? '，已切换' : ''}</span>}</h3>
+      <section aria-label={t('requestLog.section.attempts')}>
+        <h3>{t('requestLog.section.attempts')}{entry.retries > 0 && <span className="mw-faint"> · {t(entry.switched ? 'requestLog.attempts.retriedSwitched' : 'requestLog.attempts.retried', { count: entry.retries })}</span>}</h3>
         <ol className="mw-log-attempts">
           {entry.attempts.map((attempt, index) => (
             <li key={attempt.requestId} className={attempt.ok ? 'is-ok' : 'is-failed'}>
@@ -142,8 +143,8 @@ function EntryDetail({ entry }: { entry: RequestLogEntry }) {
               <span className="mw-mono-text">{memberOf(attempt)}</span>
               <span className={`mw-chip ${attempt.ok ? 'is-success' : 'is-warning'}`}>{attempt.status} · {attemptOutcome(attempt, index, entry.attempts.length)}</span>
               <span className="mw-log-attempt-meta">
-                耗时 {formatMs(attempt.latencyMs)}
-                {attempt.firstTokenMs != null && <> · 首字 {formatMs(attempt.firstTokenMs)}</>}
+                {t('requestLog.attempt.latency', { value: formatMs(attempt.latencyMs) })}
+                {attempt.firstTokenMs != null && <> · {t('requestLog.attempt.firstToken', { value: formatMs(attempt.firstTokenMs) })}</>}
                 {' · '}{formatTokens(effectiveTokens(attempt))} Token · {formatEstimatedUsd(attempt.costUsd, 'record')}
               </span>
               {attempt.error && <span className="mw-log-attempt-error" title={attempt.error}>{attempt.error}</span>}
@@ -152,36 +153,36 @@ function EntryDetail({ entry }: { entry: RequestLogEntry }) {
         </ol>
       </section>
       {entry.decision && (
-        <section aria-label="路由决策解释链">
-          <h3>为什么这样路由<span className="mw-faint"> · group/{entry.decision.group} · {DECISION_REASON_LABEL[entry.decision.reason] ?? entry.decision.reason}</span></h3>
+        <section aria-label={t('requestLog.section.trace')}>
+          <h3>{t('requestLog.section.why')}<span className="mw-faint"> · group/{entry.decision.group} · {DECISION_REASON_LABEL[entry.decision.reason] ?? entry.decision.reason}</span></h3>
           {entry.decision.detail && <p className="mw-caption">{entry.decision.detail}</p>}
           <DecisionTrace decision={entry.decision} />
         </section>
       )}
-      <section aria-label="Token 与费用">
-        <h3>Token 与费用</h3>
+      <section aria-label={t('requestLog.section.usage')}>
+        <h3>{t('requestLog.section.usage')}</h3>
         <dl className="mw-log-facts">
-          <div><dt>输入</dt><dd>{formatTokens(entry.input)}</dd></div>
-          <div><dt>输出</dt><dd>{formatTokens(entry.output)}</dd></div>
-          <div><dt>缓存读</dt><dd>{formatTokens(entry.cacheRead)}</dd></div>
-          <div><dt>缓存写</dt><dd>{formatTokens(entry.cacheWrite)}</dd></div>
-          <div><dt>预估费用</dt><dd>{formatEstimatedUsd(entry.costUsd, 'record')}</dd></div>
-          <div><dt>首字耗时</dt><dd>{formatMs(entry.firstTokenMs)}</dd></div>
-          <div><dt>输出速度</dt><dd>{formatTps(entry.outputTps)}</dd></div>
-          <div><dt>总耗时</dt><dd>{formatMs(entry.latencyMs)}</dd></div>
+          <div><dt>{t('requestLog.fact.input')}</dt><dd>{formatTokens(entry.input)}</dd></div>
+          <div><dt>{t('requestLog.fact.output')}</dt><dd>{formatTokens(entry.output)}</dd></div>
+          <div><dt>{t('requestLog.fact.cacheRead')}</dt><dd>{formatTokens(entry.cacheRead)}</dd></div>
+          <div><dt>{t('requestLog.fact.cacheWrite')}</dt><dd>{formatTokens(entry.cacheWrite)}</dd></div>
+          <div><dt>{t('requestLog.fact.cost')}</dt><dd>{formatEstimatedUsd(entry.costUsd, 'record')}</dd></div>
+          <div><dt>{t('requestLog.fact.firstToken')}</dt><dd>{formatMs(entry.firstTokenMs)}</dd></div>
+          <div><dt>{t('requestLog.fact.speed')}</dt><dd>{formatTps(entry.outputTps)}</dd></div>
+          <div><dt>{t('requestLog.fact.latency')}</dt><dd>{formatMs(entry.latencyMs)}</dd></div>
         </dl>
       </section>
-      <section aria-label="Context 构成">
-        <h3>Context 构成</h3>
+      <section aria-label={t('requestLog.section.context')}>
+        <h3>{t('requestLog.section.context')}</h3>
         <ContextBars entry={entry} />
       </section>
-      <section aria-label="请求信息">
-        <h3>请求信息</h3>
+      <section aria-label={t('requestLog.section.request')}>
+        <h3>{t('requestLog.section.request')}</h3>
         <dl className="mw-log-facts is-wide">
-          <div><dt>请求 ID</dt><dd className="mw-mono-text">{entry.id}</dd></div>
-          <div><dt>会话</dt><dd className="mw-mono-text">{entry.session ?? '—'}</dd></div>
-          <div><dt>接口</dt><dd>{entry.endpoint}{entry.stream ? ' · 流式' : ''} → {entry.wire}</dd></div>
-          <div><dt>开始</dt><dd>{new Date(entry.startedAt).toLocaleString()}</dd></div>
+          <div><dt>{t('requestLog.fact.id')}</dt><dd className="mw-mono-text">{entry.id}</dd></div>
+          <div><dt>{t('requestLog.fact.session')}</dt><dd className="mw-mono-text">{entry.session ?? '—'}</dd></div>
+          <div><dt>{t('requestLog.fact.endpoint')}</dt><dd>{entry.endpoint}{entry.stream ? ` · ${t('requestLog.fact.stream')}` : ''} → {entry.wire}</dd></div>
+          <div><dt>{t('requestLog.fact.started')}</dt><dd>{new Date(entry.startedAt).toLocaleString()}</dd></div>
         </dl>
       </section>
     </div>
@@ -189,6 +190,8 @@ function EntryDetail({ entry }: { entry: RequestLogEntry }) {
 }
 
 export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text: string) => void }) {
+  // Subscribing re-renders the page when the language changes.
+  useLang();
   const [filters, setFilters] = useState<LogFilters>(EMPTY_FILTERS);
   const [searchText, setSearchText] = useState('');
   const [offset, setOffset] = useState(0);
@@ -269,7 +272,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
     try {
       const { offset: _offset, limit: _limit, ...query } = toQuery(filters, 0);
       const result = await exportRequestLog(query);
-      onNotify?.('success', `${result.message}：${result.path}`);
+      onNotify?.('success', t('requestLog.exported', { message: result.message, path: result.path }));
     } catch (reason) {
       onNotify?.('error', errorText(reason));
     } finally {
@@ -285,60 +288,60 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
   return (
     <div className="mw-page-stack mw-log-page">
       <div className="mw-card mw-panel">
-        <div className="mw-log-toolbar" role="search" aria-label="筛选请求日志">
-          <div className="mw-seg is-sm" role="radiogroup" aria-label="时间范围">
+        <div className="mw-log-toolbar" role="search" aria-label={t('requestLog.filter.aria')}>
+          <div className="mw-seg is-sm" role="radiogroup" aria-label={t('requestLog.filter.range')}>
             {RANGES.map((range) => (
               <button key={range.id} type="button" role="radio" aria-checked={filters.range === range.id} className={filters.range === range.id ? 'is-on' : ''} onClick={() => update({ range: range.id })}>{range.label}</button>
             ))}
           </div>
-          <select className="mw-native-select is-compact" aria-label="客户端或 Agent" value={filters.agent} onChange={(event) => update({ agent: event.target.value })}>
-            <option value="">全部 Agent</option>
+          <select className="mw-native-select is-compact" aria-label={t('requestLog.filter.agent')} value={filters.agent} onChange={(event) => update({ agent: event.target.value })}>
+            <option value="">{t('requestLog.filter.agentAll')}</option>
             {facets.agents.map((agent) => <option key={agent} value={agent}>{agent}</option>)}
           </select>
-          <select className="mw-native-select is-compact" aria-label="供应商" value={filters.provider} onChange={(event) => update({ provider: event.target.value })}>
-            <option value="">全部供应商</option>
+          <select className="mw-native-select is-compact" aria-label={t('requestLog.filter.provider')} value={filters.provider} onChange={(event) => update({ provider: event.target.value })}>
+            <option value="">{t('requestLog.filter.providerAll')}</option>
             {facets.providers.map((provider) => <option key={provider} value={provider}>{provider}</option>)}
           </select>
-          <select className="mw-native-select is-compact" aria-label="模型" value={filters.model} onChange={(event) => update({ model: event.target.value })}>
-            <option value="">全部模型</option>
+          <select className="mw-native-select is-compact" aria-label={t('requestLog.filter.model')} value={filters.model} onChange={(event) => update({ model: event.target.value })}>
+            <option value="">{t('requestLog.filter.modelAll')}</option>
             {facets.models.map((model) => <option key={model} value={model}>{model}</option>)}
           </select>
-          <select className="mw-native-select is-compact" aria-label="状态" value={filters.status} onChange={(event) => update({ status: event.target.value })}>
+          <select className="mw-native-select is-compact" aria-label={t('requestLog.filter.status')} value={filters.status} onChange={(event) => update({ status: event.target.value })}>
             {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
-          <select className="mw-native-select is-compact" aria-label="耗时" value={filters.latency} onChange={(event) => update({ latency: event.target.value })}>
+          <select className="mw-native-select is-compact" aria-label={t('requestLog.filter.latency')} value={filters.latency} onChange={(event) => update({ latency: event.target.value })}>
             {LATENCY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <label className="mw-search is-inline mw-log-search">
             <Search className="h-4 w-4" aria-hidden="true" />
-            <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索请求 ID、会话、模型、错误" aria-label="搜索请求日志" />
+            <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder={t('requestLog.search.placeholder')} aria-label={t('requestLog.search.aria')} />
           </label>
           <div className="mw-log-actions">
             <button type="button" className={`mw-btn ${tail ? 'is-primary' : 'is-ghost'}`} aria-pressed={tail} onClick={toggleTail}>
-              <Radio className={`h-3.5 w-3.5 ${tail ? 'mw-log-live' : ''}`} aria-hidden="true" />{tail ? '尾随中' : '实时尾随'}
+              <Radio className={`h-3.5 w-3.5 ${tail ? 'mw-log-live' : ''}`} aria-hidden="true" />{tail ? t('requestLog.tail.on') : t('requestLog.tail.off')}
             </button>
-            <button type="button" className="mw-btn is-ghost" onClick={() => void load()} disabled={loading}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</button>
-            <button type="button" className="mw-btn is-ghost" onClick={() => void runExport()} disabled={exporting || total === 0}><Download className="h-3.5 w-3.5" aria-hidden="true" />{exporting ? '导出中…' : '导出 CSV'}</button>
+            <button type="button" className="mw-btn is-ghost" onClick={() => void load()} disabled={loading}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />{t('requestLog.refresh')}</button>
+            <button type="button" className="mw-btn is-ghost" onClick={() => void runExport()} disabled={exporting || total === 0}><Download className="h-3.5 w-3.5" aria-hidden="true" />{exporting ? t('requestLog.exporting') : t('requestLog.export')}</button>
           </div>
         </div>
         <p className="mw-caption mw-log-summary" aria-live="polite">
-          {page ? <>匹配 {total} 条{total > 0 && <>，显示 {offset + 1}–{pageEnd}</>} · 本机保留 {page.retained} 条{page.oldest && <>（最早 {shortTime(page.oldest)}）</>}</> : '读取中…'}
-          <InfoTip label="请求日志说明">只记录元数据：时间、Agent、模型、状态、耗时、Token 与 Context 各部分的大小；不保存请求或回复内容。日志在本机轮转，最多约 32 MB，更早的请求只保留在用量统计里。费用按本机价格表估算。</InfoTip>
+          {page ? <>{t('requestLog.summary.matched', { total })}{total > 0 && <>{t('requestLog.summary.showing', { from: offset + 1, to: pageEnd })}</>} · {t('requestLog.summary.retained', { count: page.retained })}{page.oldest && <>{t('requestLog.summary.oldest', { time: shortTime(page.oldest) })}</>}</> : t('requestLog.loading')}
+          <InfoTip label={t('requestLog.info.label')}>{t('requestLog.info.body')}</InfoTip>
         </p>
         {error && <p className="mw-caption is-danger" role="alert">{error}</p>}
         {page && page.retained === 0 ? (
-          <EmptyState variant="inset" icon={ScrollText} title="还没有经过网关的请求" description="Agent 或你自己的代码经本机网关发出请求后，每一次都会出现在这里。" />
+          <EmptyState variant="inset" icon={ScrollText} title={t('requestLog.empty.title')} description={t('requestLog.empty.body')} />
         ) : page && total === 0 ? (
-          <EmptyState variant="inset" icon={Search} title="没有符合条件的请求" description={filtered ? '换个筛选条件或清空搜索试试。' : '这个时间范围内没有请求，试试更长的范围。'}>
-            {filtered && <button type="button" className="secondary-inline" onClick={() => { setSearchText(''); setFilters({ ...EMPTY_FILTERS, range: filters.range }); setOffset(0); }}>清空筛选</button>}
+          <EmptyState variant="inset" icon={Search} title={t('requestLog.noMatch.title')} description={filtered ? t('requestLog.noMatch.filtered') : t('requestLog.noMatch.range')}>
+            {filtered && <button type="button" className="secondary-inline" onClick={() => { setSearchText(''); setFilters({ ...EMPTY_FILTERS, range: filters.range }); setOffset(0); }}>{t('requestLog.clearFilters')}</button>}
           </EmptyState>
         ) : (
           <div className="mw-table-wrap">
-            <table className="mw-table mw-log-table" aria-label="网关请求日志">
+            <table className="mw-table mw-log-table" aria-label={t('requestLog.table.aria')}>
               <thead>
                 <tr>
-                  <th>时间</th><th>Agent</th><th>模型</th><th>实际转发</th><th>状态</th>
-                  <th className="is-num">有效 Token</th><th className="is-num">费用</th><th className="is-num">首字</th><th className="is-num">耗时</th><th className="is-num">输出速度</th>
+                  <th>{t('requestLog.col.time')}</th><th>Agent</th><th>{t('requestLog.filter.model')}</th><th>{t('requestLog.col.routed')}</th><th>{t('requestLog.filter.status')}</th>
+                  <th className="is-num">{t('requestLog.col.tokens')}</th><th className="is-num">{t('requestLog.col.cost')}</th><th className="is-num">{t('requestLog.col.firstToken')}</th><th className="is-num">{t('requestLog.filter.latency')}</th><th className="is-num">{t('requestLog.fact.speed')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -349,7 +352,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
                     <Fragment key={entry.id}>
                       <tr className={`mw-log-row${fresh.has(entry.id) ? ' is-fresh' : ''}${expanded ? ' is-open' : ''}`}>
                         <td>
-                          <button type="button" className="mw-log-toggle" aria-expanded={expanded} aria-label={`${expanded ? '收起' : '展开'} ${shortTime(entry.ts)} 的请求详情`} onClick={() => setOpen(expanded ? null : entry.id)}>
+                          <button type="button" className="mw-log-toggle" aria-expanded={expanded} aria-label={t(expanded ? 'requestLog.row.collapse' : 'requestLog.row.expand', { time: shortTime(entry.ts) })} onClick={() => setOpen(expanded ? null : entry.id)}>
                             {shortTime(entry.ts)}
                           </button>
                         </td>
@@ -357,7 +360,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
                         <td className="mw-mono-text">{entry.requestedModel}</td>
                         <td className="mw-mono-text">
                           {entry.provider}/{entry.upstreamModel}
-                          {entry.retries > 0 && <span className="mw-chip is-warning mw-log-inline-chip">{entry.switched ? `切换 ${entry.retries}` : `重试 ${entry.retries}`}</span>}
+                          {entry.retries > 0 && <span className="mw-chip is-warning mw-log-inline-chip">{t(entry.switched ? 'requestLog.row.switched' : 'requestLog.row.retried', { count: entry.retries })}</span>}
                           {why && <span className="mw-chip is-info mw-log-inline-chip">{why}</span>}
                         </td>
                         <td className={entry.ok ? '' : 'is-danger'} title={entry.error ?? undefined}>{entry.status}</td>
@@ -381,9 +384,9 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
         )}
         {total > PAGE_SIZE && (
           <div className="mw-log-pager">
-            <button type="button" className="mw-btn is-ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>上一页</button>
+            <button type="button" className="mw-btn is-ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>{t('requestLog.page.prev')}</button>
             <span className="mw-caption">{Math.floor(offset / PAGE_SIZE) + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
-            <button type="button" className="mw-btn is-ghost" disabled={pageEnd >= total} onClick={() => { setTail(false); setOffset(offset + PAGE_SIZE); }}>下一页</button>
+            <button type="button" className="mw-btn is-ghost" disabled={pageEnd >= total} onClick={() => { setTail(false); setOffset(offset + PAGE_SIZE); }}>{t('requestLog.page.next')}</button>
           </div>
         )}
       </div>
