@@ -13,7 +13,7 @@ import org.junit.Test
 
 class UsageSplitTest {
     private fun stats(machines: List<CompositionEntry>? = null) = StatsData(
-        summary = Summary(),
+        summary = Summary(inputTokens = 400, outputTokens = 50, cachedTokens = 500, totalCost = 2.0, totalRequests = 6),
         tools = mapOf(
             "Codex" to ToolStat("Codex", input = 100, output = 20, cached = 500, total = 620, cost = 0.5, requests = 4),
             "Claude Code" to ToolStat("Claude Code", input = 300, output = 30, cached = 0, total = 330, cost = 1.5, requests = 2)
@@ -36,7 +36,7 @@ class UsageSplitTest {
     fun agentRowsSortByMetricAndFollowTokenMode() {
         val byTokens = available(splitUsage(stats(), SplitDimension.Agent, SplitMetric.Tokens, TokenDisplayMode.Effective, false))
         assertEquals(listOf("Claude Code", "Codex"), byTokens.rows.map { it.name })
-        assertEquals(450.0, byTokens.total, 0.0)
+        assertEquals(450.0, byTokens.total!!, 0.0)
 
         val withCache = available(splitUsage(stats(), SplitDimension.Agent, SplitMetric.Tokens, TokenDisplayMode.All, false))
         assertEquals(listOf("Codex", "Claude Code"), withCache.rows.map { it.name })
@@ -51,8 +51,18 @@ class UsageSplitTest {
         val result = available(splitUsage(stats(), SplitDimension.Model, SplitMetric.Cost, TokenDisplayMode.Effective, false))
         assertEquals(listOf("m-b", "m-a"), result.rows.map { it.name })
         assertEquals(1, result.unknownCount)
-        assertEquals(1.5, result.total, 0.0)
+        // 分母是汇总费用，不把已知的 1.5 归一成 100%。
+        assertEquals(2.0, result.total!!, 0.0)
+        assertEquals(75.0, result.sharePercent(result.rows.first(), SplitMetric.Cost)!!, 1e-9)
         assertNull(result.sharePercent(result.rows.last(), SplitMetric.Cost))
+    }
+
+    @Test
+    fun unknownSummaryCostLeavesTotalAndSharesUnavailable() {
+        val unknown = stats().copy(summary = Summary(totalCost = Double.NaN, totalRequests = 6))
+        val result = available(splitUsage(unknown, SplitDimension.Model, SplitMetric.Cost, TokenDisplayMode.Effective, false))
+        assertNull(result.total)
+        assertNull(result.sharePercent(result.rows.first(), SplitMetric.Cost))
     }
 
     @Test

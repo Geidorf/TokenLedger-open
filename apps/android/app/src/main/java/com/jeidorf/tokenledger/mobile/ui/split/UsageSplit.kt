@@ -35,10 +35,13 @@ internal data class SplitRow(
 }
 
 internal sealed interface SplitResult {
-    /** [rows] 已按所选指标降序排好；取不到值的行排在最后。[total] 是可得值之和。 */
+    /**
+     * [rows] 已按所选指标降序排好；取不到值的行排在最后。[total] 是同一响应汇总里的合计
+     * （占比的分母），汇总本身不可得时为 null，此时合计与占比都写不可得，不拿已知行之和充数。
+     */
     data class Available(
         val rows: List<SplitRow>,
-        val total: Double,
+        val total: Double?,
         val unknownCount: Int
     ) : SplitResult
 
@@ -87,12 +90,18 @@ internal fun splitUsage(
     val sorted = rows.sortedWith(
         compareByDescending<SplitRow> { it.value(metric) ?: Double.NEGATIVE_INFINITY }.thenBy { it.name }
     )
-    val known = sorted.mapNotNull { it.value(metric) }
-    return SplitResult.Available(sorted, known.sum(), sorted.size - known.size)
+    val summary = stats.summary
+    val total = when (metric) {
+        SplitMetric.Tokens -> displayedTokenCount(tokenMode, summary.effectiveTokens, summary.cachedTokens).toDouble()
+        SplitMetric.Requests -> summary.totalRequests.toDouble()
+        SplitMetric.Cost -> summary.totalCost.takeIf(::isKnownCost)
+    }
+    return SplitResult.Available(sorted, total, sorted.count { it.value(metric) == null })
 }
 
-/** 占比文案用的百分数（0–100）；总和为 0 或取不到值时为 null。 */
+/** 占比文案用的百分数（0–100）；合计为 0、不可得或行值取不到时为 null。 */
 internal fun SplitResult.Available.sharePercent(row: SplitRow, metric: SplitMetric): Double? {
     val value = row.value(metric) ?: return null
-    return if (total > 0.0) value / total * 100.0 else null
+    val denominator = total ?: return null
+    return if (denominator > 0.0) value / denominator * 100.0 else null
 }

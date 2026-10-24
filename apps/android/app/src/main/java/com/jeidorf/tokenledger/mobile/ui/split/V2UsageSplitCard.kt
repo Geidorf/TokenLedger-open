@@ -104,7 +104,8 @@ internal fun V2UsageSplitCard(
         V2SegmentedToggle(
             palette = palette,
             options = SplitMetric.entries.map {
-                V2Segment(it, it.label, contentDescription = "按${it.label}排序", activeContent = palette.blue, activeContainer = palette.blueSoft)
+                val label = metricLabel(it, tokenDisplayMode)
+                V2Segment(it, label, contentDescription = "按${label}排序", activeContent = palette.blue, activeContainer = palette.blueSoft)
             },
             selected = metric,
             onSelect = { metric = it },
@@ -121,7 +122,7 @@ internal fun V2UsageSplitCard(
                 val rows = if (hideCost) result.rows.sortedBy { it.name } else result.rows
                 Row(Modifier.fillMaxWidth().padding(top = LedgerSpace.md), verticalAlignment = Alignment.Bottom) {
                     Text(
-                        format(result.total.takeIf { rows.isNotEmpty() }, metric),
+                        format(result.total, metric),
                         color = palette.text,
                         fontSize = LedgerFont.displaySmall,
                         fontWeight = FontWeight.SemiBold,
@@ -131,8 +132,8 @@ internal fun V2UsageSplitCard(
                 Text(
                     buildString {
                         append("${rows.size} 个${spacedLabel(dimension.label)}")
-                        if (result.unknownCount > 0) append(" · ${result.unknownCount} 项${spacedLabel(metric.label)}不可得")
-                        append(if (hideCost) " · 费用已隐藏 · 按名称列出" else " · 按${spacedLabel(metric.label)}排序")
+                        if (result.unknownCount > 0) append(" · ${result.unknownCount} 项${spacedLabel(metricLabel(metric, tokenDisplayMode))}不可得")
+                        append(if (hideCost) " · 费用已隐藏 · 按名称列出" else " · 按${spacedLabel(metricLabel(metric, tokenDisplayMode))}排序")
                     }.replace("  ", " "),
                     color = palette.muted,
                     fontSize = LedgerFont.caption,
@@ -146,7 +147,7 @@ internal fun V2UsageSplitCard(
                     val secondary = if (metric == SplitMetric.Tokens) {
                         "${v2FormatNumber(row.requests)} 条记录"
                     } else {
-                        "${row.tokens?.let(::v2FormatTokens) ?: VALUE_UNAVAILABLE} Token"
+                        "${row.tokens?.let(::v2FormatTokens) ?: VALUE_UNAVAILABLE} ${tokenDisplayMode.label} Token"
                     }
                     V2SplitRow(
                         palette = palette,
@@ -183,6 +184,10 @@ private fun splitColor(palette: MobileV2Palette, dimension: SplitDimension, name
     SplitDimension.Model -> palette.violet
     SplitDimension.Device, SplitDimension.Account -> palette.green
 }
+
+/** Token 指标带上当前口径（有效 / 含缓存），与概览的口径开关一致。 */
+private fun metricLabel(metric: SplitMetric, mode: TokenDisplayMode): String =
+    if (metric == SplitMetric.Tokens) "${mode.label} Token" else metric.label
 
 /** 拉丁文标签夹在中文里时两侧留空格（「按 Token 排序」）；中文标签原样。 */
 private fun spacedLabel(label: String): String =
