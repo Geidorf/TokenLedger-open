@@ -6503,12 +6503,16 @@
 
   .detail-account-chip button {
     display: inline-grid;
+    position: relative;
     place-items: center;
     width: 20px;
     height: 20px;
     border-radius: var(--radius-full);
     color: var(--color-text-secondary);
   }
+
+  /* The visible circle stays 20px; a transparent layer extends the hit area to 44px (GLB-03). */
+  .detail-account-chip button::after { content: ""; position: absolute; inset: -12px; }
 
   .detail-account-chip button:hover:not(:disabled) {
     background: var(--color-bg-subtle);
