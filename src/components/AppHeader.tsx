@@ -12,14 +12,15 @@ import { isUsageTab, type CloudStatus, type DataScope, type Tab } from '../types
 import { focusAfterPopoverTrigger, useAnchoredPopover } from './anchoredPopover';
 import { USAGE_SUB_OPTIONS, usageSubLabelForTab } from './usage/UsagePage';
 import { USAGE_SUB_TABS } from '../utils/usageNavigation';
+import { localized, t, useLang } from '../i18n';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
 
-const THEME_LABELS: Record<ThemeMode, string> = {
-  auto: '自动',
-  light: '浅色',
-  dark: '深色',
-};
+const THEME_LABELS: Record<ThemeMode, string> = localized({
+  auto: 'header.theme.auto',
+  light: 'header.theme.light',
+  dark: 'header.theme.dark',
+});
 
 function scrollHeaderElement(element: HTMLElement, left: number, behavior: ScrollBehavior) {
   if (typeof element.scrollTo === 'function') {
@@ -134,11 +135,11 @@ export function formatHeaderFreshnessLabel(
   refreshTime: string | null,
 ): string {
   if (!refreshDate || !refreshTime) {
-    return dataScope === 'cloud' ? '数据时间未知' : '刷新时间未知';
+    return t(dataScope === 'cloud' ? 'header.fresh.cloudUnknown' : 'header.fresh.localUnknown');
   }
   return dataScope === 'cloud'
-    ? `数据截至 ${refreshDate} ${refreshTime}`
-    : `更新于 ${refreshDate} ${refreshTime}`;
+    ? t('header.fresh.cloud', { date: refreshDate, time: refreshTime })
+    : t('header.fresh.local', { date: refreshDate, time: refreshTime });
 }
 
 export function AppHeader({
@@ -152,6 +153,8 @@ export function AppHeader({
   dataStatus,
   onTabChange,
 }: AppHeaderProps) {
+  // Labels read the current language directly; subscribing re-renders the header when it changes.
+  useLang();
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const themePopoverRef = useRef<HTMLDivElement>(null);
@@ -168,7 +171,7 @@ export function AppHeader({
   // 用量三个子页共用一个顶栏：元素、健康状态与命令不随子页变化（T10.276），标题是「用量 · 子页」
   // 面包屑（U-101，T10.277）。子页部分对读屏隐藏：内容区已用同一名称作可访问名称。
   const usageCrumb = usageSurface ? usageSubLabelForTab(activeTab) : null;
-  const headerTitle = activeTab === 'settings' ? '设置与云端' : '用量';
+  const headerTitle = activeTab === 'settings' ? t('header.title.settings') : t('shell.nav.usage');
   // 副标题只保留标题给不出的信息。原来三种取值分别是「连接、额度、壁纸与数据管理」
   // 「检索本地与云端的完整使用记录」「仅此电脑的使用记录」——都是把标题换句话再说一遍，
   // 叠在页内标题上就变成同一件事写四行。登录后的邮箱是标题里没有的，留下。
@@ -176,8 +179,8 @@ export function AppHeader({
     ? cloudStatus.email
     : '';
   const headerControlsLabel = isSettingsSurface
-    ? '主题设置'
-    : '顶部控制器，可横向滚动查看更多命令';
+    ? t('header.controls.settings')
+    : t('header.controls.usage');
   const themePopoverStyle = useAnchoredPopover(themeMenuOpen, themeButtonRef, themePopoverRef, 8, 164);
 
   useEffect(() => {
@@ -326,18 +329,18 @@ export function AppHeader({
     : null;
   const refreshLabel = formatHeaderFreshnessLabel(dataScope, refreshDate, refreshTime);
   const staleLabel = hasRefreshTimestamp
-    ? `最近可信 ${refreshDate} ${refreshTime}`
-    : '显示最近可信数据';
+    ? t('header.stale', { date: refreshDate ?? '', time: refreshTime ?? '' })
+    : t('header.staleUnknown');
   const healthLabel = dataStatus.loading
-    ? '正在更新'
+    ? t('header.health.loading')
     : dataScope === 'cloud' && !dataStatus.cloudCapabilityVerified
-      ? '待验证 Stats v2'
+      ? t('header.health.unverified')
       : dataScope === 'cloud' && !dataStatus.cloudFirstSyncCompleted
-        ? '待首次同步'
+        ? t('header.health.unsynced')
         : dataScope === 'cloud' && dataStatus.unsyncedRecords === null
-          ? '待上传数未知'
+          ? t('header.health.pendingUnknown')
           : dataScope === 'cloud' && dataStatus.unsyncedRecords !== null && dataStatus.unsyncedRecords > 0
-            ? `${dataStatus.unsyncedRecords} 条待上传`
+            ? t('header.health.pending', { count: dataStatus.unsyncedRecords })
             : dataStatus.stale
               ? staleLabel
               : refreshLabel;
@@ -360,7 +363,7 @@ export function AppHeader({
     >
       <div className="toolbar-brand min-w-0">
         {usageSurface && onTabChange ? (
-          <nav ref={usageIndicatorRef} className="usage-subnav tl-seg" data-window-drag-block aria-label="用量子页">
+          <nav ref={usageIndicatorRef} className="usage-subnav tl-seg" data-window-drag-block aria-label={t('header.subnav')}>
             {USAGE_SUB_OPTIONS.map((option) => {
               const tab = USAGE_SUB_TABS[option.id];
               const current = activeTab === tab;
@@ -370,7 +373,7 @@ export function AppHeader({
                   type="button"
                   className={current ? 'active' : ''}
                   aria-current={current ? 'page' : undefined}
-                  title={`用量 · ${option.label}`}
+                  title={t('header.subnavTitle', { page: option.label })}
                   onClick={() => onTabChange(tab)}
                 >
                   {option.label}
@@ -397,9 +400,9 @@ export function AppHeader({
         )}
         {/* 数据新鲜度说的是看板/明细读到的那份统计数据，设置页没有这回事。行为分析结果自己的
             「正在刷新… / 更新于」仍只写在页内，顶栏这枚胶囊在三个子页一致（T10.276）。 */}
-        {!isSettingsSurface && <div className={`toolbar-health ${healthTone}`} role="status" aria-live="polite" title={`${dataScope === 'cloud' ? '云端汇总' : '本机数据'} · ${healthLabel}`}>
+        {!isSettingsSurface && <div className={`toolbar-health ${healthTone}`} role="status" aria-live="polite" title={`${t(dataScope === 'cloud' ? 'header.scope.cloud' : 'header.scope.local')} · ${healthLabel}`}>
           <span className={`toolbar-health-dot${dataStatus.loading ? ' tl-live-dot' : ''}`} aria-hidden="true" />
-          <span>{dataScope === 'cloud' ? '云端汇总' : '本机数据'}</span>
+          <span>{t(dataScope === 'cloud' ? 'header.scope.cloud' : 'header.scope.local')}</span>
           <span className="toolbar-health-label">
             {healthHasTimestamp ? (
               <time dateTime={dataStatus.lastRefreshedAt || undefined}>{healthLabel}</time>
@@ -418,14 +421,14 @@ export function AppHeader({
           data-window-drag-block
         >
         {!isSettingsSurface && <>
-        <div ref={scopeIndicatorRef} className="segmented tl-seg" role="group" aria-label="数据范围">
+        <div ref={scopeIndicatorRef} className="segmented tl-seg" role="group" aria-label={t('header.scope.aria')}>
           <button
             className={dataScope === 'local' ? 'active' : ''}
             aria-pressed={dataScope === 'local'}
             onClick={() => onScopeChange('local')}
           >
             <Smartphone className="h-3.5 w-3.5" />
-            本地机器
+            {t('header.scope.localButton')}
           </button>
           <button
             className={dataScope === 'cloud' ? 'active' : ''}
@@ -433,7 +436,7 @@ export function AppHeader({
             onClick={onCloudScope}
           >
             <Cloud className="h-3.5 w-3.5" />
-            云端汇总
+            {t('header.scope.cloud')}
           </button>
         </div>
 
@@ -443,14 +446,14 @@ export function AppHeader({
           <button
             ref={themeButtonRef}
             className="icon-command theme-toggle"
-            title={`主题：${THEME_LABELS[themeMode]}`}
-            aria-label={`主题：${THEME_LABELS[themeMode]}`}
+            title={t('header.theme.current', { mode: THEME_LABELS[themeMode] })}
+            aria-label={t('header.theme.current', { mode: THEME_LABELS[themeMode] })}
             aria-haspopup="menu"
             aria-expanded={themeMenuOpen}
             onClick={() => setThemeMenuOpen((open) => !open)}
           >
             {themeMode === 'light' ? <Sun className="h-4 w-4" /> : themeMode === 'dark' ? <Moon className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            <span>主题</span>
+            <span>{t('header.theme.label')}</span>
             <span className="theme-mode-label">{THEME_LABELS[themeMode]}</span>
           </button>
           {themeMenuOpen && createPortal(
@@ -459,11 +462,11 @@ export function AppHeader({
               data-header-popover
               ref={themePopoverRef}
               role="menu"
-              aria-label="主题模式"
+              aria-label={t('header.theme.menu')}
               style={themePopoverStyle}
               onKeyDown={handleThemeMenuKeyDown}
             >
-              <div className="theme-menu-heading">主题模式</div>
+              <div className="theme-menu-heading">{t('header.theme.menu')}</div>
               {(Object.keys(THEME_LABELS) as ThemeMode[]).map((mode) => (
                 <button
                   key={mode}
@@ -501,8 +504,8 @@ export function AppHeader({
           ref={headerControlsCueRef}
           className={`header-controls-scroll-cue${hasMoreHeaderControls ? ' is-visible' : ''}`}
           type="button"
-          aria-label="向右查看更多顶部命令"
-          title="向右查看更多顶部命令"
+          aria-label={t('header.moreControls')}
+          title={t('header.moreControls')}
           aria-controls="header-controls"
           aria-hidden={!hasMoreHeaderControls}
           tabIndex={hasMoreHeaderControls ? 0 : -1}

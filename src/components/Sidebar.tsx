@@ -6,6 +6,7 @@ import { isUsageTab } from '../types';
 import { showsWindowsLockscreenControls } from '../utils/frontendContracts';
 import { useSegmentedIndicator } from '../hooks/useSegmentedIndicator';
 import { handleWindowDragDoubleClick, handleWindowDragMouseDown } from './AppHeader';
+import { t, useLang } from '../i18n';
 
 interface SidebarProps {
   activeTab: Tab;
@@ -49,24 +50,24 @@ export function cloudSidebarStatusCopy({
   statusKnown?: boolean;
 }): CloudSidebarStatusCopy {
   if (!statusKnown) {
-    return { label: '本地就绪 · 云端状态待检查', compactLabel: '待检查' };
+    return { label: t('shell.cloud.unknown'), compactLabel: t('shell.cloud.unknownShort') };
   }
   if (!authenticated) {
-    return { label: '本地就绪 · 云端未登录', compactLabel: '未登录' };
+    return { label: t('shell.cloud.signedOut'), compactLabel: t('shell.cloud.signedOutShort') };
   }
   if (!capabilityVerified) {
-    return { label: '云端账户已登录 · 待完成验证', compactLabel: '待验证' };
+    return { label: t('shell.cloud.unverified'), compactLabel: t('shell.cloud.unverifiedShort') };
   }
   if (!ready) {
-    return { label: '云端账户已登录 · 待首次同步', compactLabel: '待同步' };
+    return { label: t('shell.cloud.unsynced'), compactLabel: t('shell.cloud.unsyncedShort') };
   }
   if (pendingUploads === null) {
-    return { label: '云端可用 · 待上传数未知', compactLabel: '待确认' };
+    return { label: t('shell.cloud.pendingUnknown'), compactLabel: t('shell.cloud.pendingUnknownShort') };
   }
   if (pendingUploads > 0) {
-    return { label: `云端可用 · ${pendingUploads} 条待上传`, compactLabel: '待上传' };
+    return { label: t('shell.cloud.pending', { count: pendingUploads }), compactLabel: t('shell.cloud.pendingShort') };
   }
-  return { label: '本地就绪 · 云端可用', compactLabel: '云端可用' };
+  return { label: t('shell.cloud.ready'), compactLabel: t('shell.cloud.readyShort') };
 }
 
 interface NavItem {
@@ -79,13 +80,13 @@ interface NavItem {
  * 顶栏一级分段顺序：Agent、供应商、网关、路由、用量；设置收进右侧齿轮。
  * 用量的四个子页（概览、请求、会话、额度）由页头的二级分段切换（见 AppHeader）。
  */
-const USAGE_NAV_ITEM: NavItem = { id: 'dashboard', label: '用量', matches: isUsageTab };
+const USAGE_NAV_ITEM: NavItem = { id: 'dashboard', get label() { return t('shell.nav.usage'); }, matches: isUsageTab };
 
 const MODEL_NAV_ITEMS: NavItem[] = [
-  { id: 'agents', label: 'Agent', matches: (tab) => tab === 'agents' },
-  { id: 'providers', label: '供应商', matches: (tab) => tab === 'providers' },
-  { id: 'gateway', label: '网关', matches: (tab) => tab === 'gateway' },
-  { id: 'routing', label: '路由', matches: (tab) => tab === 'routing' },
+  { id: 'agents', get label() { return t('shell.nav.agents'); }, matches: (tab) => tab === 'agents' },
+  { id: 'providers', get label() { return t('shell.nav.providers'); }, matches: (tab) => tab === 'providers' },
+  { id: 'gateway', get label() { return t('shell.nav.gateway'); }, matches: (tab) => tab === 'gateway' },
+  { id: 'routing', get label() { return t('shell.nav.routing'); }, matches: (tab) => tab === 'routing' },
 ];
 
 /**
@@ -125,6 +126,8 @@ export function Sidebar({
   // The active page's thumb slides between segments (T10.150); items keep aria-current.
   const navIndicatorRef = useSegmentedIndicator<HTMLElement>('[aria-current="page"]');
   const [nativeVibrancy] = useState(hasNativeVibrancy);
+  // Labels read the current language directly; subscribing re-renders the bar when it changes.
+  useLang();
 
   const statusLive = busy.scan || busy.sync;
   const { label: cloudStatusLabel, compactLabel: compactCloudStatusLabel } = cloudSidebarStatusCopy({
@@ -135,37 +138,37 @@ export function Sidebar({
     statusKnown: cloudStatusKnown,
   });
   const syncDisabled = busy.sync || !cloudStatusKnown || !cloudAuthenticated || !cloudCapabilityVerified;
-  const wallpaperActionTitle = wallpaperBusy ? '正在写入系统壁纸' : '设置桌面壁纸';
-  const lockscreenWallpaperActionTitle = wallpaperBusy ? '正在写入系统壁纸' : '设置锁屏壁纸';
-  const scanActionAriaLabel = busy.scan ? '正在扫描本地各 AI 工具日志' : '扫描本地日志';
-  const scanActionTitle = busy.scan ? '正在扫描本地各 AI 工具日志' : '立即扫描本地各 AI 工具日志';
+  const wallpaperActionTitle = wallpaperBusy ? t('shell.wallpaper.busy') : t('shell.wallpaper.desktop');
+  const lockscreenWallpaperActionTitle = wallpaperBusy ? t('shell.wallpaper.busy') : t('shell.wallpaper.lockscreen');
+  const scanActionAriaLabel = busy.scan ? t('shell.scan.busy') : t('shell.scan.aria');
+  const scanActionTitle = busy.scan ? t('shell.scan.busy') : t('shell.scan.title');
   const syncActionAriaLabel = busy.sync
-    ? '正在同步云端数据'
+    ? t('shell.sync.busy')
     : !cloudStatusKnown
-      ? '请先检查云端状态'
-      : '立即同步云端';
+      ? t('shell.sync.checkFirst')
+      : t('shell.sync.now');
   const syncActionTitle = busy.sync
-    ? '正在同步云端数据'
+    ? t('shell.sync.busy')
     : !cloudStatusKnown
-      ? '请先在设置与云端检查云端状态'
+      ? t('shell.sync.checkInSettings')
       : !cloudAuthenticated
-      ? '请先在设置中登录云端'
+      ? t('shell.sync.signInFirst')
       : !cloudCapabilityVerified
-        ? '请先在设置与云端中验证 Stats v2'
-        : '立即将本地数据同步至云端';
+        ? t('shell.sync.verifyFirst')
+        : t('shell.sync.nowTitle');
   const syncRecoveryHint = !busy.sync && !cloudStatusKnown
-    ? '同步暂不可用：请先打开设置与云端检查账户状态。'
+    ? t('shell.sync.hintCheck')
     : !busy.sync && !cloudAuthenticated
-    ? '同步暂不可用：请先在设置与云端登录云端账户。'
+    ? t('shell.sync.hintSignIn')
     : !busy.sync && !cloudCapabilityVerified
-      ? '同步暂不可用：请先在设置与云端完成 Stats v2 验证。'
+      ? t('shell.sync.hintVerify')
       : null;
   const syncRecoveryAriaLabel = !cloudStatusKnown
-    ? '去设置与云端检查云端状态'
+    ? t('shell.sync.recoverCheck')
     : !cloudAuthenticated
-    ? '去设置与云端登录云端账户'
-    : '去设置与云端验证 Stats v2';
-  const syncRecoveryLabel = !cloudStatusKnown ? '检查状态' : !cloudAuthenticated ? '去登录' : '去验证';
+    ? t('shell.sync.recoverSignIn')
+    : t('shell.sync.recoverVerify');
+  const syncRecoveryLabel = t(!cloudStatusKnown ? 'shell.sync.recoverCheckShort' : !cloudAuthenticated ? 'shell.sync.recoverSignInShort' : 'shell.sync.recoverVerifyShort');
   const settingsActive = activeTab === 'settings';
   const navItems = modelAccessEnabled ? [...MODEL_NAV_ITEMS, USAGE_NAV_ITEM] : [USAGE_NAV_ITEM];
 
@@ -176,12 +179,12 @@ export function Sidebar({
       onMouseDown={handleWindowDragMouseDown}
       onDoubleClick={handleWindowDragDoubleClick}
     >
-      <div className="topbar-brand" title={`TokenLedger${appVersion ? ` v${appVersion}` : ''} · 个人 AI 用量账本`}>
+      <div className="topbar-brand" title={`TokenLedger${appVersion ? ` v${appVersion}` : ''} · ${t('shell.brand')}`}>
         <TokenLedgerIcon className="topbar-logo-mark" />
         <span className="topbar-title">TokenLedger</span>
       </div>
 
-      <nav ref={navIndicatorRef} className="topbar-nav tl-seg" data-window-drag-block aria-label="主要页面导航">
+      <nav ref={navIndicatorRef} className="topbar-nav tl-seg" data-window-drag-block aria-label={t('shell.nav.aria')}>
         {navItems.map((item) => {
           const current = item.matches(activeTab);
           return (
@@ -261,13 +264,13 @@ export function Sidebar({
           <Cloud className={`h-4 w-4 ${busy.sync ? 'animate-spin' : ''}`} aria-hidden="true" />
         </button>
         <span className="topbar-divider" aria-hidden="true" />
-        <div className="topbar-tools" role="group" aria-label="快捷工具与战报" aria-busy={wallpaperBusy || undefined}>
+        <div className="topbar-tools" role="group" aria-label={t('shell.tools')} aria-busy={wallpaperBusy || undefined}>
           {onOpenShareCard && (
             <button
               type="button"
               className="topbar-icon-btn"
-              aria-label="生成数据战报卡片"
-              title="生成数据战报卡片"
+              aria-label={t('shell.shareCard')}
+              title={t('shell.shareCard')}
               onClick={onOpenShareCard}
             >
               <Share2 className="h-4 w-4" aria-hidden="true" />
@@ -277,7 +280,7 @@ export function Sidebar({
           <button
             type="button"
             className="topbar-icon-btn"
-            aria-label={wallpaperBusy ? '正在设置桌面壁纸' : '一键设置桌面壁纸'}
+            aria-label={wallpaperBusy ? t('shell.wallpaper.desktopBusy') : t('shell.wallpaper.desktopAction')}
             disabled={wallpaperBusy}
             title={wallpaperActionTitle}
             onClick={() => onWallpaper('desktop')}
@@ -288,7 +291,7 @@ export function Sidebar({
             <button
               type="button"
               className="topbar-icon-btn"
-              aria-label={wallpaperBusy ? '正在设置锁屏壁纸' : '一键设置锁屏壁纸'}
+              aria-label={wallpaperBusy ? t('shell.wallpaper.lockscreenBusy') : t('shell.wallpaper.lockscreenAction')}
               disabled={wallpaperBusy}
               title={lockscreenWallpaperActionTitle}
               onClick={() => onWallpaper('lockscreen')}
@@ -300,9 +303,9 @@ export function Sidebar({
         <button
           type="button"
           className={`topbar-icon-btn${settingsActive ? ' is-active' : ''}`}
-          aria-label="设置与云端"
+          aria-label={t('shell.settings')}
           aria-current={settingsActive ? 'page' : undefined}
-          title="设置与云端"
+          title={t('shell.settings')}
           onClick={() => onTabChange('settings')}
         >
           <Settings className="h-4 w-4" aria-hidden="true" />

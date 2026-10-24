@@ -1,4 +1,5 @@
 import type { LedgerRecord, ProviderView, RoutingGroup, RuleCondition, RuleKind } from './types';
+import { formatCount, localized, MESSAGES, t } from '../../i18n';
 
 export const GATEWAY_PORT = 3462;
 export const DEFAULT_BASE_URL = `http://127.0.0.1:${GATEWAY_PORT}/v1`;
@@ -20,7 +21,7 @@ export interface ModelOption {
 export function modelOptions(providers: ProviderView[], groups: RoutingGroup[]): ModelOption[] {
   const groupOptions = groups
     .filter((group) => group.enabled)
-    .map((group) => ({ value: `${GROUP_PREFIX}${group.id}`, label: group.name, section: '路由组', isGroup: true, providerId: null }));
+    .map((group) => ({ value: `${GROUP_PREFIX}${group.id}`, label: group.name, section: t('gateway.options.groupSection'), isGroup: true, providerId: null }));
   const providerOptions = providers
     .filter((provider) => provider.enabled)
     .flatMap((provider) => provider.models.map((model) => ({
@@ -63,40 +64,40 @@ export function codeSample(api: SampleApi, lang: SampleLang, baseUrl: string, mo
   const path = api === 'chat' ? '/chat/completions' : '/responses';
   if (lang === 'curl') {
     const body = api === 'chat'
-      ? `{"model":"${model}","messages":[{"role":"user","content":"你好"}]}`
-      : `{"model":"${model}","input":"你好"}`;
+      ? `{"model":"${model}","messages":[{"role":"user","content":"${t('gateway.sample.prompt')}"}]}`
+      : `{"model":"${model}","input":"${t('gateway.sample.prompt')}"}`;
     return `curl ${baseUrl}${path} \\\n  -H "Authorization: Bearer ${token ?? TOKEN_PLACEHOLDER}" \\\n  -H "Content-Type: application/json" \\\n  -d '${body}'`;
   }
   if (lang === 'python') {
     const call = api === 'chat'
-      ? `client.chat.completions.create(model="${model}",\n    messages=[{"role": "user", "content": "你好"}])`
-      : `client.responses.create(model="${model}", input="你好")`;
+      ? `client.chat.completions.create(model="${model}",\n    messages=[{"role": "user", "content": "${t('gateway.sample.prompt')}"}])`
+      : `client.responses.create(model="${model}", input="${t('gateway.sample.prompt')}")`;
     const head = token ? 'from openai import OpenAI' : 'import os\nfrom openai import OpenAI';
     return `${head}\nclient = OpenAI(base_url="${baseUrl}", api_key=${token ? `"${token}"` : 'os.environ["TOKENLEDGER_TOKEN"]'})\n${call}`;
   }
   const call = api === 'chat'
-    ? `await client.chat.completions.create({ model: '${model}',\n  messages: [{ role: 'user', content: '你好' }] });`
-    : `await client.responses.create({ model: '${model}', input: '你好' });`;
+    ? `await client.chat.completions.create({ model: '${model}',\n  messages: [{ role: 'user', content: '${t('gateway.sample.prompt')}' }] });`
+    : `await client.responses.create({ model: '${model}', input: '${t('gateway.sample.prompt')}' });`;
   return `import OpenAI from 'openai';\nconst client = new OpenAI({ baseURL: '${baseUrl}', apiKey: ${token ? `'${token}'` : 'process.env.TOKENLEDGER_TOKEN'} });\n${call}`;
 }
 
-export const RULE_KIND_LABEL: Record<RuleKind, string> = {
-  hasImage: '带图片',
-  inputCharsOver: '输入超过',
-  reasoningEffort: '推理强度',
-  agent: 'Agent',
-  timeWindow: '时段',
-  compact: '压缩对话',
-};
+export const RULE_KIND_LABEL: Record<RuleKind, string> = localized({
+  hasImage: 'routing.ruleKind.hasImage',
+  inputCharsOver: 'routing.ruleKind.inputCharsOver',
+  reasoningEffort: 'routing.ruleKind.reasoningEffort',
+  agent: 'routing.ruleKind.agent',
+  timeWindow: 'routing.ruleKind.timeWindow',
+  compact: 'routing.ruleKind.compact',
+});
 
 export function ruleSummary(condition: RuleCondition): string {
   switch (condition.kind) {
-    case 'hasImage': return '请求带图片';
-    case 'inputCharsOver': return `输入超过 ${condition.chars.toLocaleString('zh-CN')} 字符`;
-    case 'reasoningEffort': return `推理强度为 ${condition.efforts.join('、')}`;
-    case 'agent': return `Agent 为 ${condition.agents.join('、')}`;
-    case 'timeWindow': return `本地时间 ${condition.start}–${condition.end}`;
-    case 'compact': return '压缩对话请求';
+    case 'hasImage': return t('routing.rule.hasImage');
+    case 'inputCharsOver': return t('routing.rule.inputCharsOver', { chars: formatCount(condition.chars) });
+    case 'reasoningEffort': return t('routing.rule.reasoningEffort', { efforts: condition.efforts.join(t('routing.rule.listSeparator')) });
+    case 'agent': return t('routing.rule.agent', { agents: condition.agents.join(t('routing.rule.listSeparator')) });
+    case 'timeWindow': return t('routing.rule.timeWindow', { start: condition.start, end: condition.end });
+    case 'compact': return t('routing.rule.compact');
   }
 }
 
@@ -111,19 +112,19 @@ export function defaultCondition(kind: RuleKind): RuleCondition {
   }
 }
 
-export const STRATEGY_LABEL: Record<RoutingGroup['strategy'], string> = {
-  failover: '按顺序',
-  rotate: '轮流',
-  manual: '固定一个',
-  weighted: '按权重',
-};
+export const STRATEGY_LABEL: Record<RoutingGroup['strategy'], string> = localized({
+  failover: 'routing.strategy.failover',
+  rotate: 'routing.strategy.rotate',
+  manual: 'routing.strategy.manual',
+  weighted: 'routing.strategy.weighted',
+});
 
-export const STRATEGY_HINT: Record<RoutingGroup['strategy'], string> = {
-  failover: '总是先用第一个，失败才换下一个',
-  rotate: '新会话轮流分给各成员，失败换下一个',
-  manual: '只用选定的成员，规则暂停',
-  weighted: '新会话按权重比例分给各成员，失败按权重从高到低换',
-};
+export const STRATEGY_HINT: Record<RoutingGroup['strategy'], string> = localized({
+  failover: 'routing.strategyHint.failover',
+  rotate: 'routing.strategyHint.rotate',
+  manual: 'routing.strategyHint.manual',
+  weighted: 'routing.strategyHint.weighted',
+});
 
 export const MAX_WEIGHT = 100;
 
@@ -137,59 +138,71 @@ export function weightShare(group: Pick<RoutingGroup, 'weights' | 'members'>, me
   return total === 0 ? 0 : Math.round((memberWeight(group, member) / total) * 100);
 }
 
-export const DECISION_REASON_LABEL: Record<string, string> = {
-  rule: '规则',
-  affinity: '会话保持',
-  failover: '按顺序',
-  rotate: '轮流',
-  manual: '固定',
-  weighted: '按权重',
-};
+const DECISION_REASON_KEYS = {
+  rule: 'routing.reason.rule',
+  affinity: 'routing.reason.affinity',
+  failover: 'routing.strategy.failover',
+  rotate: 'routing.strategy.rotate',
+  manual: 'routing.reason.manual',
+  weighted: 'routing.strategy.weighted',
+} as const;
 
-export const ATTEMPT_OUTCOME_LABEL: Record<string, string> = {
-  ok: '成功',
-  rejected: '上游拒绝',
-  failed: '失败已切换',
-  skipped: '跳过',
-};
+export const DECISION_REASON_LABEL: Record<string, string> = localized(DECISION_REASON_KEYS);
 
-export const TRACE_VERDICT_LABEL: Record<string, string> = {
-  chosen: '选中',
-  failed: '失败已切换',
-  rejected: '上游拒绝',
-  skipped: '跳过',
-  not_reached: '未轮到',
-  excluded: '未参与',
-};
+/**
+ * The decision's detail line, or null when it only repeats the reason chip.
+ * The gateway writes details in Chinese, so an echo is caught in either language.
+ */
+export function decisionDetail(decision: { reason: string; detail: string }): string | null {
+  const key = DECISION_REASON_KEYS[decision.reason as keyof typeof DECISION_REASON_KEYS];
+  const echoes = key ? [MESSAGES.zh[key], MESSAGES.en[key]] : [decision.reason];
+  return echoes.includes(decision.detail) ? null : decision.detail;
+}
+
+export const ATTEMPT_OUTCOME_LABEL: Record<string, string> = localized({
+  ok: 'routing.attempt.ok',
+  rejected: 'routing.attempt.rejected',
+  failed: 'routing.attempt.failed',
+  skipped: 'routing.attempt.skipped',
+});
+
+export const TRACE_VERDICT_LABEL: Record<string, string> = localized({
+  chosen: 'routing.verdict.chosen',
+  failed: 'routing.attempt.failed',
+  rejected: 'routing.attempt.rejected',
+  skipped: 'routing.attempt.skipped',
+  not_reached: 'routing.verdict.notReached',
+  excluded: 'routing.verdict.excluded',
+});
 
 /** Reason codes from the gateway's decision trace (routing.rs build_trace). */
-export const TRACE_REASON_LABEL: Record<string, string> = {
-  rule_match: '命中规则',
-  affinity: '会话保持',
-  strategy_first: '策略首选',
-  rotate_turn: '轮到它',
-  weighted_pick: '按权重选中',
-  manual_pick: '固定成员',
-  fallback: '备选',
-  nested: '来自子组',
-  answered: '已响应',
-  rate_limited: '限流',
-  quota_exhausted: '额度用尽',
-  connect_failed: '连接失败',
-  upstream_failed: '上游出错',
-  upstream_rejected: '上游拒绝',
-  auth_failed: '鉴权失败',
-  provider_missing: '供应商不存在',
-  key_missing: '未设置 Key',
-  protocol_unsupported: '协议不支持',
-  credential_unavailable: '凭据不可用',
-  not_reached: '前一个已响应',
-  manual_only: '固定分配只用一个',
-  cooling_down: '冷却中',
-  unhealthy: '健康检查未过',
-  disabled: '已停用',
-  not_planned: '未排入候选',
-};
+export const TRACE_REASON_LABEL: Record<string, string> = localized({
+  rule_match: 'routing.trace.rule_match',
+  affinity: 'routing.reason.affinity',
+  strategy_first: 'routing.trace.strategy_first',
+  rotate_turn: 'routing.trace.rotate_turn',
+  weighted_pick: 'routing.trace.weighted_pick',
+  manual_pick: 'routing.trace.manual_pick',
+  fallback: 'routing.trace.fallback',
+  nested: 'routing.trace.nested',
+  answered: 'routing.trace.answered',
+  rate_limited: 'routing.trace.rate_limited',
+  quota_exhausted: 'routing.trace.quota_exhausted',
+  connect_failed: 'routing.trace.connect_failed',
+  upstream_failed: 'routing.trace.upstream_failed',
+  upstream_rejected: 'routing.attempt.rejected',
+  auth_failed: 'routing.trace.auth_failed',
+  provider_missing: 'routing.trace.provider_missing',
+  key_missing: 'routing.trace.key_missing',
+  protocol_unsupported: 'routing.trace.protocol_unsupported',
+  credential_unavailable: 'routing.trace.credential_unavailable',
+  not_reached: 'routing.trace.not_reached',
+  manual_only: 'routing.trace.manual_only',
+  cooling_down: 'routing.trace.cooling_down',
+  unhealthy: 'routing.trace.unhealthy',
+  disabled: 'routing.trace.disabled',
+  not_planned: 'routing.trace.not_planned',
+});
 
 /** Codes that say why a member could not serve, for compact one-line hints. */
 const TRACE_PROBLEM_CODES = new Set([
@@ -209,18 +222,18 @@ export function traceHeadline(reasons: string[]): string | null {
 }
 
 export const TTL_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: '关闭' },
-  { value: 1800, label: '30 分钟' },
-  { value: 3600, label: '1 小时' },
-  { value: 21600, label: '6 小时' },
-  { value: 86400, label: '1 天' },
+  { value: 0, get label() { return t('routing.ttl.off'); } },
+  { value: 1800, get label() { return t('routing.ttl.minutes', { count: 30 }); } },
+  { value: 3600, get label() { return t('routing.ttl.hours', { count: 1 }); } },
+  { value: 21600, get label() { return t('routing.ttl.hours', { count: 6 }); } },
+  { value: 86400, get label() { return t('routing.ttl.day'); } },
 ];
 
 export function ttlLabel(seconds: number): string {
   const option = TTL_OPTIONS.find((item) => item.value === seconds);
   if (option) return option.label;
-  if (seconds % 3600 === 0) return `${seconds / 3600} 小时`;
-  return `${Math.round(seconds / 60)} 分钟`;
+  if (seconds % 3600 === 0) return t('routing.ttl.hours', { count: seconds / 3600 });
+  return t('routing.ttl.minutes', { count: Math.round(seconds / 60) });
 }
 
 /** Effective tokens = input + output; cache reads/writes stay separate. */
