@@ -70,6 +70,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.jeidorf.tokenledger.mobile.budget.BudgetAlertScheduler
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2Palette
 import com.jeidorf.tokenledger.mobile.ui.onboarding.V2LoginIntro
@@ -101,6 +102,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        BudgetAlertScheduler.sync(this)
+        BudgetAlertScheduler.runNow(this)
         setContent {
             val eInkDisplay = remember {
                 isLikelyEInkDisplay(readAndroidDisplayIdentity(applicationContext))

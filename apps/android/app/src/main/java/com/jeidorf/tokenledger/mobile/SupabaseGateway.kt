@@ -79,6 +79,16 @@ class SupabaseGateway(
         )
     }
 
+    suspend fun fetchBudgetSnapshots(session: MobileSession): String = withContext(Dispatchers.IO) {
+        request(
+            path = "/rest/v1/rpc/$BUDGET_SNAPSHOTS_READ_FUNCTION",
+            method = "POST",
+            bearerToken = session.accessToken,
+            body = JSONObject(),
+            maxResponseBytes = BUDGET_SNAPSHOTS_MAX_RESPONSE_BYTES
+        )
+    }
+
     suspend fun fetchDashboardStats(
         session: MobileSession,
         range: RangeKey,
@@ -833,6 +843,8 @@ internal const val QUOTA_READ_V2_FUNCTION = "get_quota_snapshots_v2"
 /** 契约 routing-snapshot-v1：最多 8 份快照，每份不超过 16 KB，再留出外层与转义的余量。 */
 private const val ROUTING_SNAPSHOTS_MAX_RESPONSE_BYTES = 256 * 1_024
 internal const val ROUTING_SNAPSHOTS_READ_FUNCTION = "get_routing_snapshots_v1"
+internal const val BUDGET_SNAPSHOTS_READ_FUNCTION = "get_budget_snapshots_v1"
+private const val BUDGET_SNAPSHOTS_MAX_RESPONSE_BYTES = 128 * 1_024
 private const val SUPABASE_ERROR_MAX_RESPONSE_BYTES = 128 * 1_024
 
 internal class SupabaseResponseTooLargeException(maxBytes: Int) :
