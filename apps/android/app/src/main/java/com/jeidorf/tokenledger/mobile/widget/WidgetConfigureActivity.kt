@@ -63,8 +63,6 @@ import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.lifecycle.lifecycleScope
 import com.jeidorf.tokenledger.mobile.R
 import com.jeidorf.tokenledger.mobile.LedgerAppearance
 import com.jeidorf.tokenledger.mobile.QuotaCache
@@ -74,9 +72,7 @@ import com.jeidorf.tokenledger.mobile.TokenLedgerTheme
 import com.jeidorf.tokenledger.mobile.localizedDisplayName
 import com.jeidorf.tokenledger.mobile.orderedQuotaProvidersForDisplay
 import androidx.core.view.WindowCompat
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.jeidorf.tokenledger.mobile.ui.foundation.LedgerRadius
 
@@ -178,24 +174,8 @@ internal class WidgetConfigureActivity : ComponentActivity() {
         WidgetConfigStore.save(applicationContext, appWidgetId, config)
         runCatching { WidgetScheduler.ensurePeriodicRefresh(applicationContext) }
         if (routingWidget) {
-            // 路由配置保存后只主动重绘当前 Glance 实例，不连带刷新额度组件或改写会话。
-            val glanceId = runCatching {
-                GlanceAppWidgetManager(applicationContext).getGlanceIdBy(appWidgetId)
-            }.getOrNull()
-            if (glanceId == null) {
-                requestRoutingWidgetUpdate(appWidgetId)
-            } else {
-                lifecycleScope.launch {
-                    try {
-                        RoutingLiveWidget().update(applicationContext, glanceId)
-                        finishConfirmed(appWidgetId)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        requestRoutingWidgetUpdate(appWidgetId)
-                    }
-                }
-            }
+            // 刷新交给当前实例的广播，保存结果不等待可被 Activity 销毁取消的协程。
+            requestRoutingWidgetUpdate(appWidgetId)
             return
         }
         runCatching { WidgetScheduler.enqueueOneTimeRefresh(applicationContext) }
