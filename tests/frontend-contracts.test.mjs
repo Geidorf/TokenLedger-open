@@ -4399,7 +4399,8 @@ test('Claude enhanced quota prefers the bounded in-process PTY and keeps CodexBa
   assert.match(backend, /claude_codexbar_envelope\(app_data_dir, fetched_at\)/);
   assert.doesNotMatch(backend, /api\/oauth\/usage|Claude Code-credentials/);
   // U-107：实验来源收进「高级」，默认不参与；边界说明仍写明不碰凭据。
-  assert.match(settings, /实验来源：内置 \/usage 与 CodexBar/);
+  assert.match(settings, /FALLBACK_CLI_NAME = 'CodexBar'/);
+  assert.match(settings, /实验来源：内置 \/usage 与 \{cli\}/);
   assert.match(settings, /不读钥匙串、Cookie 或 OAuth Token/);
 });
 
@@ -4420,7 +4421,7 @@ test('Antigravity quota is native-first on every desktop and restricts CodexBar 
   assert.match(backend, /Some\("app" \| "cli" \| "ide" \| "local"\)/);
   assert.doesNotMatch(backend, /api\/oauth|accounts\.google\.com/);
   assert.match(settings, /只请求当前用户 Antigravity App、IDE 或 agy 的 127\.0\.0\.1 本地服务/);
-  assert.match(settings, /内置读取失败后才调用 CodexBar CLI/);
+  assert.match(settings, /内置读取失败后才调用 \{cli\} CLI/);
 });
 
 test('Windows lock-screen refresh uses a fresh setter file and never reports a rejected update as success', () => {

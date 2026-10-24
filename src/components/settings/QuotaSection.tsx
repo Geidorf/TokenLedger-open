@@ -144,6 +144,9 @@ const LOGIN_REASON_CODES = new Set([
   'antigravity_native_authorization_required',
 ]);
 
+/** 实验来源兜底调用的第三方命令行工具名；文案表里写作 `{cli}`。 */
+export const FALLBACK_CLI_NAME = 'CodexBar';
+
 const SOURCE_REASON_COPY: Record<string, ReasonCopyKeys> = {
   app_server_auth_required: { sentence: 'qs.reason.appServerAuthRequired', action: null, detail: 'qs.reason.appServerAuthRequired.detail' },
   app_server_unavailable: { sentence: 'qs.reason.appServerUnavailable', action: null, detail: 'qs.reason.appServerUnavailable.detail' },
@@ -156,17 +159,17 @@ const SOURCE_REASON_COPY: Record<string, ReasonCopyKeys> = {
   claude_native_usage_unavailable: { sentence: 'qs.reason.claudeNativeUsageUnavailable', action: 'read', detail: 'qs.reason.claudeNativeUsageUnavailable.detail' },
   claude_native_subscription_unavailable: { sentence: 'qs.reason.claudeNativeSubscriptionUnavailable', action: null, detail: 'qs.reason.claudeNativeSubscriptionUnavailable.detail' },
   claude_native_response_invalid: { sentence: 'qs.reason.claudeNativeResponseInvalid', action: 'read', detail: 'qs.reason.claudeNativeResponseInvalid.detail' },
-  claude_codexbar_unavailable: { sentence: 'qs.reason.claudeCodexbarUnavailable', action: 'read', detail: 'qs.reason.claudeCodexbarUnavailable.detail' },
-  claude_codexbar_timeout: { sentence: 'qs.reason.claudeCodexbarTimeout', action: 'read', detail: 'qs.reason.claudeCodexbarTimeout.detail' },
-  claude_codexbar_response_invalid: { sentence: 'qs.reason.claudeCodexbarResponseInvalid', action: 'read', detail: 'qs.reason.claudeCodexbarResponseInvalid.detail' },
+  claude_codexbar_unavailable: { sentence: 'qs.reason.claudeFallbackCliUnavailable', action: 'read', detail: 'qs.reason.claudeFallbackCliUnavailable.detail' },
+  claude_codexbar_timeout: { sentence: 'qs.reason.claudeFallbackCliTimeout', action: 'read', detail: 'qs.reason.claudeFallbackCliTimeout.detail' },
+  claude_codexbar_response_invalid: { sentence: 'qs.reason.claudeFallbackCliResponseInvalid', action: 'read', detail: 'qs.reason.claudeFallbackCliResponseInvalid.detail' },
   antigravity_native_authorization_required: { sentence: 'qs.reason.antigravityNativeAuthorizationRequired', action: 'read', detail: 'qs.reason.antigravityNativeAuthorizationRequired.detail' },
   antigravity_native_source_not_found: { sentence: 'qs.reason.antigravityNativeSourceNotFound', action: 'read', detail: 'qs.reason.antigravityNativeSourceNotFound.detail' },
   antigravity_native_port_unavailable: { sentence: 'qs.reason.antigravityNativePortUnavailable', action: 'read', detail: 'qs.reason.antigravityNativePortUnavailable.detail' },
   antigravity_native_timeout: { sentence: 'qs.reason.antigravityNativeTimeout', action: 'read', detail: 'qs.reason.antigravityNativeTimeout.detail' },
   antigravity_native_response_invalid: { sentence: 'qs.reason.antigravityNativeResponseInvalid', action: 'read', detail: 'qs.reason.antigravityNativeResponseInvalid.detail' },
-  antigravity_codexbar_unavailable: { sentence: 'qs.reason.antigravityCodexbarUnavailable', action: 'read', detail: 'qs.reason.antigravityCodexbarUnavailable.detail' },
-  antigravity_codexbar_timeout: { sentence: 'qs.reason.antigravityCodexbarTimeout', action: 'read', detail: 'qs.reason.antigravityCodexbarTimeout.detail' },
-  antigravity_codexbar_response_invalid: { sentence: 'qs.reason.antigravityCodexbarResponseInvalid', action: 'read', detail: 'qs.reason.antigravityCodexbarResponseInvalid.detail' },
+  antigravity_codexbar_unavailable: { sentence: 'qs.reason.antigravityFallbackCliUnavailable', action: 'read', detail: 'qs.reason.antigravityFallbackCliUnavailable.detail' },
+  antigravity_codexbar_timeout: { sentence: 'qs.reason.antigravityFallbackCliTimeout', action: 'read', detail: 'qs.reason.antigravityFallbackCliTimeout.detail' },
+  antigravity_codexbar_response_invalid: { sentence: 'qs.reason.antigravityFallbackCliResponseInvalid', action: 'read', detail: 'qs.reason.antigravityFallbackCliResponseInvalid.detail' },
   permission_denied: { sentence: 'qs.reason.permissionDenied', action: null, detail: 'qs.reason.permissionDenied.detail' },
   source_not_found: { sentence: 'qs.reason.sourceNotFound', action: null, detail: 'qs.reason.sourceNotFound.detail' },
   observation_stale: { sentence: 'qs.reason.observationStale', action: 'read', detail: 'qs.reason.observationStale.detail' },
@@ -176,7 +179,7 @@ const SOURCE_REASON_COPY: Record<string, ReasonCopyKeys> = {
 function sourceReasonCopy(reasonCode: string | undefined): ReasonCopy {
   const keys = reasonCode ? SOURCE_REASON_COPY[reasonCode] : undefined;
   if (!keys) return { sentence: t('qs.readFailedGeneric'), action: 'read', detail: '' };
-  return { sentence: t(keys.sentence), action: keys.action, detail: t(keys.detail) };
+  return { sentence: t(keys.sentence, { cli: FALLBACK_CLI_NAME }), action: keys.action, detail: t(keys.detail, { cli: FALLBACK_CLI_NAME }) };
 }
 
 function formatSourceRelative(observedAt: number, now: number): string {
@@ -1156,7 +1159,7 @@ export function QuotaSection(props: QuotaSectionProps) {
           </DisclosurePanel>
           <DisclosurePanel title={t('qs.advanced')} ariaLabel={t('qs.claude.advancedAria')} decorative>
             <SettingsToggleRow
-              label={t('qs.claude.experimental')}
+              label={t('qs.claude.experimental', { cli: FALLBACK_CLI_NAME })}
               hint={t('qs.claude.experimentalHint')}
               icon={FlaskConical}
               checked={appSettings.quota_claude_codexbar_enabled}
@@ -1218,8 +1221,8 @@ export function QuotaSection(props: QuotaSectionProps) {
           />
           <DisclosurePanel title={t('qs.advanced')} ariaLabel={t('qs.antigravity.advancedAria')} decorative>
             <SettingsToggleRow
-              label={t('qs.antigravity.codexbar')}
-              hint={t('qs.antigravity.codexbarHint')}
+              label={t('qs.antigravity.fallbackCli', { cli: FALLBACK_CLI_NAME })}
+              hint={t('qs.antigravity.fallbackCliHint', { cli: FALLBACK_CLI_NAME })}
               icon={FlaskConical}
               checked={appSettings.quota_antigravity_codexbar_enabled}
               disabled={busy.settings || !appSettings.quota_antigravity_local_enabled}
@@ -1229,7 +1232,7 @@ export function QuotaSection(props: QuotaSectionProps) {
           </DisclosurePanel>
           <DisclosurePanel ariaLabel={t('qs.antigravity.boundary')} openSignal={antigravitySignal}>
             <p>{t('qs.antigravity.boundary1')}</p>
-            <p>{t('qs.antigravity.boundary2')}</p>
+            <p>{t('qs.antigravity.boundary2', { cli: FALLBACK_CLI_NAME })}</p>
           </DisclosurePanel>
         </SettingsGroup>
       </SettingsCard>

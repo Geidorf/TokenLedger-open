@@ -13,7 +13,8 @@ import {
 import { providerDisplayName, quotaLevel } from '../utils/quotaOverview';
 import { computeQuotaPace, describeQuotaPace, type QuotaPace, type QuotaPaceCopy } from '../utils/quotaPace';
 import { BrandIcon, resolveBrandIconKey } from './brand/BrandIcon';
-import { getLang, localized, t, useLang, type MessageKey } from '../i18n';
+import { format, getLang, localized, t, useLang, type MessageKey } from '../i18n';
+import { FALLBACK_CLI_NAME } from './settings/QuotaSection';
 
 interface QuotaPanelProps {
   providers: QuotaProviderEnvelope[];
@@ -41,18 +42,18 @@ const REASON_LABELS: Record<string, string> = localized({
   claude_native_usage_unavailable: 'quota.reason.claudeNativeUsageUnavailable',
   claude_native_subscription_unavailable: 'quota.reason.claudeNativeSubscriptionUnavailable',
   claude_native_response_invalid: 'quota.reason.claudeNativeResponseInvalid',
-  claude_codexbar_unavailable: 'quota.reason.claudeCodexbarUnavailable',
-  claude_codexbar_timeout: 'quota.reason.claudeCodexbarTimeout',
-  claude_codexbar_response_invalid: 'quota.reason.claudeCodexbarResponseInvalid',
+  claude_codexbar_unavailable: 'quota.reason.claudeFallbackCliUnavailable',
+  claude_codexbar_timeout: 'quota.reason.claudeFallbackCliTimeout',
+  claude_codexbar_response_invalid: 'quota.reason.claudeFallbackCliResponseInvalid',
   antigravity_local_authorization_required: 'quota.reason.antigravityLocalAuthorizationRequired',
   antigravity_native_authorization_required: 'quota.reason.antigravityNativeAuthorizationRequired',
   antigravity_native_source_not_found: 'quota.reason.antigravityNativeSourceNotFound',
   antigravity_native_port_unavailable: 'quota.reason.antigravityNativePortUnavailable',
   antigravity_native_timeout: 'quota.reason.antigravityNativeTimeout',
   antigravity_native_response_invalid: 'quota.reason.antigravityNativeResponseInvalid',
-  antigravity_codexbar_unavailable: 'quota.reason.antigravityCodexbarUnavailable',
-  antigravity_codexbar_timeout: 'quota.reason.antigravityCodexbarTimeout',
-  antigravity_codexbar_response_invalid: 'quota.reason.antigravityCodexbarResponseInvalid',
+  antigravity_codexbar_unavailable: 'quota.reason.antigravityFallbackCliUnavailable',
+  antigravity_codexbar_timeout: 'quota.reason.antigravityFallbackCliTimeout',
+  antigravity_codexbar_response_invalid: 'quota.reason.antigravityFallbackCliResponseInvalid',
   consumer_api_unavailable: 'quota.reason.consumerApiUnavailable',
   source_not_found: 'quota.reason.sourceNotFound',
   app_server_unavailable: 'quota.reason.appServerUnavailable',
@@ -198,7 +199,7 @@ export function quotaWindowDisplayLabel(
 }
 
 export function quotaReasonLabel(reasonCode: string | undefined, fallback: string) {
-  return reasonCode ? REASON_LABELS[reasonCode] || fallback : fallback;
+  return reasonCode && REASON_LABELS[reasonCode] ? format(REASON_LABELS[reasonCode], { cli: FALLBACK_CLI_NAME }) : fallback;
 }
 
 function providerEmptyActionLabel(
