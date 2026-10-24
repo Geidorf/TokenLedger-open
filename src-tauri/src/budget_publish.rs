@@ -187,6 +187,13 @@ impl Publisher {
         self.app.app_data_dir().join(CLEAR_MARKER)
     }
 
+    /// Asked again right before a request leaves (see `call_rpc`): the saved
+    /// switch must still be where this pass found it.
+    fn switch_is(&self, on: bool) -> impl Fn() -> bool + Send + Sync {
+        let dir = self.app.app_data_dir().to_path_buf();
+        move || crate::budget::load_settings(&dir).sync_to_phone == on
+    }
+
     fn back_off(&mut self) -> Duration {
         let delay = self.backoff;
         self.backoff = (self.backoff * 2).min(MAX_BACKOFF);
@@ -223,12 +230,14 @@ impl Publisher {
             .filter(|previous| previous.user == user)
             .map(|previous| previous.device)
             .unwrap_or_else(|| device_id(&user, &self.machine));
+        // Turned back on while the session refreshed: publishing overwrites the row anyway.
+        let still_off = self.switch_is(false);
         let delay = match call_rpc(
             &self.app,
             &user,
             "clear_budget_snapshot_v1",
             json!({ "p_device": device }),
-            &|| true,
+            &still_off,
         )
         .await
         {
@@ -237,7 +246,7 @@ impl Publisher {
                 self.backoff = MIN_BACKOFF;
                 TICK
             }
-            Err(RpcError::Cancelled) => TICK,
+            Err(RpcError::Cancelled) => Duration::ZERO,
             Err(RpcError::Failed(error)) => {
                 log::warn!("budget snapshot clear failed: {error}");
                 self.back_off()
@@ -309,12 +318,15 @@ impl Publisher {
         {
             return TICK;
         }
+        // Evaluating and refreshing the session both await: the switch may have gone
+        // off meanwhile, and nothing may upload after that.
+        let still_on = self.switch_is(true);
         match call_rpc(
             &self.app,
             &user,
             "publish_budget_snapshot_v1",
             json!({ "p_device": device, "p_snapshot": snapshot }),
-            &|| true,
+            &still_on,
         )
         .await
         {
@@ -345,7 +357,9 @@ impl Publisher {
                 });
                 TICK
             }
-            Err(RpcError::Cancelled | RpcError::AccountChanged) => {
+            // Switched off before sending: the next pass clears right away.
+            Err(RpcError::Cancelled) => Duration::ZERO,
+            Err(RpcError::AccountChanged) => {
                 self.published = None;
                 MIN_BACKOFF
             }
