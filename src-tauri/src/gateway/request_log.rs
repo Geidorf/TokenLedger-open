@@ -270,7 +270,7 @@ pub fn group_records(
         .filter_map(|id| {
             let attempts = groups.get(id)?;
             let mut entry = entry_of(id.clone(), attempts, decisions);
-            reconcile_skipped_tail(&mut entry);
+            merge_skipped(&mut entry);
             Some(entry)
         })
         .collect();
@@ -357,25 +357,76 @@ fn entry_of(
 }
 
 /// A skipped member (provider deleted or disabled) writes no ledger line, yet
-/// when it was tried last the client got its 404. Take the final outcome from
-/// the decision then, not from the last upstream that answered.
-fn reconcile_skipped_tail(entry: &mut RequestLogEntry) {
-    let Some(last) = entry.decision.as_ref().and_then(|d| d.attempts.last()) else {
+/// it was tried and, when last, the client got its 404. Put those members
+/// back into the attempt list in decision order as zero-usage diagnostic
+/// attempts (never into accounting), so the final outcome, the provider and
+/// model filters, the facets and the export all see them.
+fn skipped_attempt(attempt: &StoredDecisionAttempt, ts: &str) -> RequestLogAttempt {
+    let (provider, upstream_model) = attempt
+        .member
+        .split_once('/')
+        .unwrap_or((&attempt.member, ""));
+    RequestLogAttempt {
+        ts: ts.to_string(),
+        request_id: format!("skipped:{}", attempt.member),
+        provider: provider.to_string(),
+        upstream_model: upstream_model.to_string(),
+        member: Some(attempt.member.clone()),
+        status: 404,
+        ok: false,
+        latency_ms: 0,
+        first_token_ms: None,
+        input: 0,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        error: attempt.error.clone(),
+        cost_usd: None,
+    }
+}
+
+fn merge_skipped(entry: &mut RequestLogEntry) {
+    let Some(decision) = entry.decision.as_ref() else {
         return;
     };
-    if last.outcome != "skipped" {
+    if !decision.attempts.iter().any(|a| a.outcome == "skipped") {
         return;
     }
-    let (provider, upstream_model) = last.member.split_once('/').unwrap_or((&last.member, ""));
-    entry.provider = provider.to_string();
-    entry.upstream_model = upstream_model.to_string();
-    entry.status = 404;
-    entry.ok = false;
-    entry.error = last.error.clone();
-    entry.output_tps = None;
-    let tried = entry.decision.as_ref().map_or(0, |d| d.attempts.len());
-    entry.retries = entry.retries.max(tried.saturating_sub(1));
-    entry.switched = true;
+    let mut ledger = std::mem::take(&mut entry.attempts).into_iter();
+    let mut merged = Vec::with_capacity(decision.attempts.len());
+    for attempt in &decision.attempts {
+        if attempt.outcome == "skipped" {
+            let ts = merged.last().map_or_else(
+                || entry.started_at.clone(),
+                |a: &RequestLogAttempt| a.ts.clone(),
+            );
+            merged.push(skipped_attempt(attempt, &ts));
+        } else if let Some(recorded) = ledger.next() {
+            merged.push(recorded);
+        }
+    }
+    // Ledger lines the decision did not account for stay, after the rest.
+    merged.extend(ledger);
+    entry.attempts = merged;
+    let Some(last) = entry.attempts.last() else {
+        return;
+    };
+    if last.request_id.starts_with("skipped:") {
+        entry.provider = last.provider.clone();
+        entry.upstream_model = last.upstream_model.clone();
+        entry.status = last.status;
+        entry.ok = false;
+        entry.error = last.error.clone();
+        entry.output_tps = None;
+        entry.first_token_ms = None;
+    }
+    entry.retries = entry.attempts.len().saturating_sub(1);
+    let distinct: BTreeSet<(&str, &str)> = entry
+        .attempts
+        .iter()
+        .map(|a| (a.provider.as_str(), a.upstream_model.as_str()))
+        .collect();
+    entry.switched = distinct.len() > 1;
 }
 
 fn decision_only_entry(decision: &StoredDecision) -> RequestLogEntry {
@@ -412,7 +463,11 @@ fn decision_only_entry(decision: &StoredDecision) -> RequestLogEntry {
         context: None,
         retries: decision.attempts.len().saturating_sub(1),
         switched: decision.attempts.len() > 1,
-        attempts: Vec::new(),
+        attempts: decision
+            .attempts
+            .iter()
+            .map(|attempt| skipped_attempt(attempt, &decision.ts))
+            .collect(),
         decision: Some(decision.clone()),
     }
 }
@@ -767,6 +822,14 @@ mod tests {
             (l3.ok, l3.status, l3.provider.as_str()),
             (false, 404, "gone")
         );
+        assert_eq!(l3.attempts[0].provider, "gone");
+        let by_provider = RequestLogQuery {
+            provider: Some("gone".into()),
+            ..Default::default()
+        };
+        assert!(filter_all(entries.clone(), &by_provider)
+            .iter()
+            .any(|e| e.id == "L3"));
         assert!(filter_all(
             entries.clone(),
             &RequestLogQuery {
@@ -818,6 +881,25 @@ mod tests {
             (l1.provider.as_str(), l1.status, l1.ok, l1.retries),
             ("gone", 404, false, 2)
         );
-        assert_eq!(l1.attempts.len(), 2, "ledger attempts stay as recorded");
+        let order: Vec<_> = l1
+            .attempts
+            .iter()
+            .map(|a| (a.provider.as_str(), a.status))
+            .collect();
+        assert_eq!(order, vec![("p1", 429), ("p2", 503), ("gone", 404)]);
+        assert_eq!(l1.attempts[2].input, 0);
+        // The skipped member is filterable by provider and model and listed in the facets.
+        let by = |q: RequestLogQuery| filter_all(entries.clone(), &q).iter().any(|e| e.id == "L1");
+        assert!(by(RequestLogQuery {
+            provider: Some("gone".into()),
+            ..Default::default()
+        }));
+        assert!(by(RequestLogQuery {
+            model: Some("gone/m".into()),
+            ..Default::default()
+        }));
+        let listed = facets(&entries);
+        assert!(listed.providers.contains(&"gone".to_string()));
+        assert!(listed.models.contains(&"gone/m".to_string()));
     }
 }

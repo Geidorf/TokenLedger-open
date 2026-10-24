@@ -99,6 +99,8 @@ function routeSummary(entry: RequestLogEntry): string | null {
 
 function attemptOutcome(attempt: RequestLogAttempt, index: number, count: number): string {
   if (attempt.ok) return ATTEMPT_OUTCOME_LABEL.ok ?? '成功';
+  // 供应商已删除或停用：网关没有发出请求，后端按路由决策补的零用量尝试。
+  if (attempt.requestId.startsWith('skipped:')) return ATTEMPT_OUTCOME_LABEL.skipped ?? '跳过';
   return index < count - 1 ? (ATTEMPT_OUTCOME_LABEL.failed ?? '失败已切换') : (ATTEMPT_OUTCOME_LABEL.rejected ?? '上游拒绝');
 }
 

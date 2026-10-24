@@ -283,4 +283,42 @@ mod tests {
         assert!(lines[1].contains("p1/unknown-model-x=failed[strategy_first+rate_limited]"));
         assert!(lines[1].contains("\"'=cmd|"), "{}", lines[1]);
     }
+
+    #[test]
+    fn skipped_members_reach_the_export() {
+        use crate::gateway::request_log::{group_records, StoredDecisionAttempt};
+        use crate::gateway::LedgerRecord;
+        let record: LedgerRecord = serde_json::from_value(json!({
+            "ts": "2026-10-24T01:00:01Z", "requestId": "a1", "logicalRequestId": "L1",
+            "agent": "codex", "session": null, "endpoint": "responses", "provider": "p1",
+            "requestedModel": "group/fast", "upstreamModel": "m", "wire": "chat", "stream": true,
+            "status": 503, "ok": false, "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0,
+            "latencyMs": 500, "error": "upstream", "group": "fast", "member": "p1/m"
+        }))
+        .unwrap();
+        let mut decision = entry().decision.unwrap();
+        decision.attempts = vec![
+            StoredDecisionAttempt {
+                member: "p1/m".into(),
+                outcome: "failed".into(),
+                status: Some(503),
+                error: None,
+            },
+            StoredDecisionAttempt {
+                member: "gone/m".into(),
+                outcome: "skipped".into(),
+                status: None,
+                error: Some("gone".into()),
+            },
+        ];
+        let mut entries = group_records(
+            &[record],
+            &std::collections::HashMap::from([("L1".to_string(), decision)]),
+        );
+        price_entries(&mut entries, &json!({}));
+        let csv = request_log_csv(&entries);
+        let row = csv.lines().nth(1).unwrap();
+        assert!(row.contains("p1/m:503 > gone/m:404"), "{row}");
+        assert!(row.contains(",gone,m,404,false,"), "{row}");
+    }
 }
