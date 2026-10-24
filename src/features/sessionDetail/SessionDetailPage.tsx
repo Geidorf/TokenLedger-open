@@ -10,7 +10,7 @@ import { CONTEXT_SEGMENTS } from '../../utils/contextComposition';
 import { escapeHtml } from '../../utils/frontendContracts';
 import { formatAxisTokens, formatEstimatedUsd, formatNum, formatTokens, isKnownCost } from '../../utils/format';
 import { useTheme } from '../../utils/useTheme';
-import { contextSeries, effectiveTokens, localDay, ratioToAverage, requestCount, topExpensive, type PeerAverage, type SessionSummary, type TimelineEntry } from './sessionDetailData';
+import { contextSeries, effectiveTokens, localDay, ratioToAverage, windowTotals, requestCount, topExpensive, type PeerAverage, type SessionSummary, type TimelineEntry } from './sessionDetailData';
 import type { SessionDetailRef } from './sessionDetailRoute';
 import { useSessionDetail } from './useSessionDetail';
 import './sessionDetail.css';
@@ -157,17 +157,18 @@ function contextOption(points: ReturnType<typeof contextSeries>, theme: ChartThe
   };
 }
 
-function PeerPanel({ peer, summary, t }: { peer: PeerAverage | null | 'loading' | 'failed'; summary: SessionSummary; t: Translate }) {
+function PeerPanel({ peer, summary, timeline, timezone, t }: { peer: PeerAverage | null | 'loading' | 'failed'; summary: SessionSummary; timeline: TimelineEntry[]; timezone: string; t: Translate }) {
   let body;
   if (summary.tools.length > 1) body = <p className="session-detail-muted">{t('sessionDetail.peer.mixed')}</p>;
   else if (peer === 'loading') body = <p className="session-detail-muted" role="status">{t('sessionDetail.peer.loading')}</p>;
   else if (peer === 'failed') body = <p className="session-detail-muted">{t('sessionDetail.peer.failed')}</p>;
   else if (!peer) body = <p className="session-detail-muted">{t('sessionDetail.peer.none')}</p>;
   else {
+    const self = windowTotals(timeline, { start: peer.windowStart, end: peer.windowEnd }, timezone);
     const rows: Array<[string, number | null, number | null, (value: number) => string]> = [
-      [t('sessionDetail.peer.cost'), summary.cost, peer.cost, usd],
-      [t('sessionDetail.peer.tokens'), summary.effectiveTokens, peer.tokens, formatTokens],
-      [t('sessionDetail.peer.rows'), summary.rows, peer.rows, value => formatNum(Math.round(value))],
+      [t('sessionDetail.peer.cost'), self.cost, peer.cost, usd],
+      [t('sessionDetail.peer.tokens'), self.tokens, peer.tokens, formatTokens],
+      [t('sessionDetail.peer.rows'), self.rows, peer.rows, value => formatNum(Math.round(value))],
     ];
     body = (
       <>
@@ -302,7 +303,7 @@ export default function SessionDetailPage({ sessionRef, timezone, onBack, onOpen
               <div className="workbuddy-card-header"><h2 id="session-detail-cost-title">{t('sessionDetail.cost.title')}<InfoTip label={t('sessionDetail.cost.title')}>{t('sessionDetail.cost.hint')}</InfoTip></h2><span>{usd(summary.knownCost)}</span></div>
               <div className="session-detail-chart"><EChart option={costChart} ariaLabel={t('sessionDetail.cost.aria')} onEvents={{ click: (params: { dataIndex?: number }) => { if (typeof params.dataIndex === 'number') jumpTo(params.dataIndex + 1); } }} /></div>
             </section>
-            <PeerPanel peer={peer} summary={summary} t={t} />
+            <PeerPanel peer={peer} summary={summary} timeline={timeline} timezone={timezone} t={t} />
           </div>
 
           <div className="session-detail-grid">

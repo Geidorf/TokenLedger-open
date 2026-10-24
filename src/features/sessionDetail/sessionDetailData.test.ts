@@ -9,6 +9,7 @@ import {
   peerAverage,
   peerWindow,
   ratioToAverage,
+  windowTotals,
   SESSION_DETAIL_MAX_PAGES,
   summarizeSession,
   topExpensive,
@@ -143,6 +144,15 @@ describe('同类会话平均', () => {
     const partial = { ...response, sessions: [...response.sessions, { id: 'sess-5', tool: 'claude', tokens: 2000, requests: 3, cost: null }] } as BehaviorAnalysisResponse;
     expect(peerAverage(partial, { sessionId: 'sess-1', tool: 'claude' })?.cost).toBeNull();
     expect(peerAverage(response, { sessionId: 'sess-4', tool: 'codex' })).toBeNull();
+  });
+
+  it('本会话只算对比窗口内的部分', () => {
+    const timeline = buildTimeline([
+      row(1, { timestamp: '2026-05-01T06:00:00.000Z', cost: 5 }),
+      row(2, { timestamp: '2026-07-01T06:00:00.000Z', cost: 0.5 }),
+      row(3, { timestamp: '2026-07-15T06:00:00.000Z', cost: 0.25 }),
+    ]);
+    expect(windowTotals(timeline, { start: '2026-06-16', end: '2026-07-15' }, 'UTC')).toEqual({ tokens: 300, rows: 2, cost: 0.75 });
   });
 
   it('窗口与倍数', () => {

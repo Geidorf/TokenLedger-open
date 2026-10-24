@@ -293,6 +293,31 @@ export async function loadPeerAverage(self: { sessionId: string; tool: string; l
   return peerAverage(response, self);
 }
 
+export interface WindowTotals {
+  tokens: number;
+  rows: number;
+  /** 窗口内每行费用都已知时的合计，否则为 null。 */
+  cost: number | null;
+}
+
+/**
+ * 本会话落在同类对比窗口内的部分：行为分析对其他会话也只统计窗口内的记录，
+ * 两边按同一窗口比，较长的会话不会因为多算了窗口外的历史而显得更贵。
+ */
+export function windowTotals(timeline: TimelineEntry[], window: { start: string; end: string }, timezone: string): WindowTotals {
+  const rows = timeline
+    .map(entry => entry.item)
+    .filter(item => {
+      const day = localDay(item.timestamp, timezone);
+      return day !== null && day >= window.start && day <= window.end;
+    });
+  return {
+    tokens: rows.reduce((sum, item) => sum + effectiveTokens(item), 0),
+    rows: rows.length,
+    cost: rows.every(item => isKnownCost(item.cost)) ? rows.reduce((sum, item) => sum + item.cost, 0) : null,
+  };
+}
+
 /** 当前值相对平均值的倍数；平均为 0 或不可得时为 null。 */
 export function ratioToAverage(value: number | null, average: number | null): number | null {
   if (value === null || average === null || !Number.isFinite(value) || !Number.isFinite(average) || average <= 0) return null;
