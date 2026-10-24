@@ -4,7 +4,7 @@ import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
 import { UsageSplitPanel } from './usage/UsageSplitPanel';
-import { accountSplitAvailable, splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
+import { accountSplitAvailable, effectiveSplitMetric, splitHeatmapView, type SplitDimension, type SplitFocus, type SplitMetric } from '../utils/usageSplit';
 import { LoadingSkeleton, MetricsSkeleton } from './LoadingSkeleton';
 import { MetricsGrid } from './MetricsGrid';
 import { ModelCostDistributionPanel } from './ModelCostDistributionPanel';
@@ -617,7 +617,11 @@ export function DashboardTab({
         : splitFocus.dimension === 'account' ? Boolean(stats.providers?.[splitFocus.id])
           : showDeviceDistribution && (stats.machineDistribution || []).some((machine) => machine.value === splitFocus.id)
   ) ? splitFocus : null;
-  const heatmapView = splitHeatmapView(stats, activeSplitFocus, splitMetric);
+  const activeSplitDimension: SplitDimension = (splitDimension === 'device' && !showDeviceDistribution)
+    || (splitDimension === 'account' && !accountSplitAvailable(stats)) ? 'agent' : splitDimension;
+  // 交叉时拆分面板只能显示 Token；热力图跟面板实际显示的指标走，不跟残留的选择。
+  const heatmapView = splitHeatmapView(stats, activeSplitFocus,
+    effectiveSplitMetric(stats, activeSplitDimension, splitMetric, activeSplitFocus, showTotalTokens));
   const cloudRecovery = scope === 'cloud'
     ? cloudSyncRecoveryCopy({ authenticated: cloudAuthenticated, capabilityVerified: cloudCapabilityVerified })
     : null;
@@ -879,7 +883,7 @@ export function DashboardTab({
             sourceOrder={displayPreferences.preferences.quotaSourceOrder} hiddenSourceIds={displayPreferences.preferences.hiddenQuotaSourceIds} />
         </div>;
         if (module === 'distribution') return <UsageSplitPanel key={module} stats={stats}
-          dimension={(splitDimension === 'device' && !showDeviceDistribution) || (splitDimension === 'account' && !accountSplitAvailable(stats)) ? 'agent' : splitDimension}
+          dimension={activeSplitDimension}
           metric={splitMetric} focus={activeSplitFocus}
           deviceAvailable={showDeviceDistribution} showTotalTokens={showTotalTokens}
           onDimensionChange={setSplitDimension} onMetricChange={setSplitMetric} onFocusChange={setSplitFocus}

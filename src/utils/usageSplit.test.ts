@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StatsData } from '../types';
-import { accountSplitAvailable, cacheHitRate, outputTokensPerSecond, splitHeatmapView, splitUsage } from './usageSplit';
+import { accountSplitAvailable, cacheHitRate, effectiveSplitMetric, outputTokensPerSecond, splitHeatmapView, splitUsage } from './usageSplit';
 
 const stats = {
   summary: { totalTokens: 1000, inputTokens: 800, outputTokens: 200, cachedTokens: 0, totalCost: 3, totalRequests: 10, avgTokensPerReq: 100 },
@@ -120,6 +120,14 @@ describe('splitHeatmapView', () => {
     expect(splitHeatmapView(local, { dimension: 'agent', id: 'codex' }, 'cost')).toEqual({ heatmap: { '2026-10-01': 2 }, metric: 'cost', focused: true, metricFallback: false });
     expect(splitHeatmapView(local, { dimension: 'agent', id: 'claude' }, 'cost')).toEqual({ heatmap: { '2026-10-02': 400 }, metric: 'tokens', focused: true, metricFallback: true });
     expect(splitHeatmapView(stats, null, 'requests')).toEqual({ heatmap: stats.heatmap, metric: 'tokens', focused: false, metricFallback: true });
+  });
+});
+
+describe('effectiveSplitMetric', () => {
+  it('Agent × 模型交叉时面板只能显示 Token，热力图随之退回 Token', () => {
+    expect(effectiveSplitMetric(stats, 'model', 'cost', { dimension: 'agent', id: 'codex' })).toBe('tokens');
+    expect(effectiveSplitMetric(stats, 'model', 'cost', null)).toBe('cost');
+    expect(effectiveSplitMetric(stats, 'agent', 'requests', { dimension: 'agent', id: 'codex' })).toBe('requests');
   });
 });
 

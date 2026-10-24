@@ -171,6 +171,11 @@ export function splitUsage(stats: StatsData, dimension: SplitDimension, metric: 
   return finish(dimension === 'agent' ? agentRows(stats, withCache) : modelRows(stats, withCache), metric, ALL_METRICS, false, costTotal);
 }
 
+/** 拆分面板实际显示的指标：所选指标在当前维度与焦点下不可得时为 Token（与面板同一判断）。 */
+export function effectiveSplitMetric(stats: StatsData, dimension: SplitDimension, metric: SplitMetric, focus: SplitFocus | null, withCache = false): SplitMetric {
+  return splitUsage(stats, dimension, metric, focus, withCache).metrics.includes(metric) ? metric : 'tokens';
+}
+
 interface HeatmapSource {
   heatmap?: Record<string, number>;
   heatmapRequests?: Record<string, number>;
