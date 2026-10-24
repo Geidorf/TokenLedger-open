@@ -160,19 +160,24 @@ internal fun routingLiveView(snapshot: RoutingLiveSnapshot?, nowEpochMs: Long): 
             }
             val aged = snapshot.flows.map { it to it.ageMs + elapsed }
             val rows = aged.map { (flow, age) -> routingLiveRow(flow, age) }
+            val busy = onlineAtCapture && snapshot.inflight > 0 && elapsed < RoutingSnapshots.OFFLINE_AFTER_MS
             RoutingLiveView(
                 status = status,
                 statusTone = tone,
-                agents = snapshot.agents,
-                targets = snapshot.targets,
+                agents = if (busy) snapshot.agents else snapshot.agents.withoutBusy(),
+                targets = if (busy) snapshot.targets else snapshot.targets.withoutBusy(),
                 lit = aged.filter { (_, age) -> age < RoutingSnapshots.PLAYABLE_WITHIN_MS }.map { it.first },
-                busy = onlineAtCapture && snapshot.inflight > 0 && elapsed < RoutingSnapshots.OFFLINE_AFTER_MS,
+                busy = busy,
                 rows = rows,
                 emptyText = if (rows.isEmpty()) "暂无请求" else null
             )
         }
     }
 }
+
+/** 在途观察过期后，读到时的「处理中」节点不再画成在途（网关与节点一起退回空闲）。 */
+private fun List<RoutingLiveNode>.withoutBusy(): List<RoutingLiveNode> =
+    map { if (it.state == RoutingNodeState.Busy) it.copy(state = RoutingNodeState.Idle) else it }
 
 internal fun routingLiveRow(flow: RoutingLiveFlow, ageMs: Long): RoutingLiveRow {
     val who = if (flow.agent == RoutingSnapshots.UNKNOWN_AGENT) "请求" else flow.agent

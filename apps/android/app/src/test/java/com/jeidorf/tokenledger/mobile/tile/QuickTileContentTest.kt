@@ -94,6 +94,24 @@ class QuickTileContentTest {
     }
 
     @Test
+    fun costCachedBeforeMidnightIsNotCalledToday() {
+        val midnight = 1_800_000_000_000L
+        fun saved(at: Long?) = usage(12.5).copy(savedAtEpochMillis = at)
+        val yesterday = quickTileContent(ready(emptyList(), saved(midnight - 60_000L)), costMasked = false, todayStartEpochMs = midnight)
+        assertEquals("暂无数据", yesterday.subtitle)
+        assertFalse(yesterday.active)
+        val unknown = quickTileContent(ready(emptyList(), saved(null)), costMasked = false, todayStartEpochMs = midnight)
+        assertEquals("暂无数据", unknown.subtitle)
+        // 额度仍在，只是不再带上隔夜的「今日」费用。
+        val withQuota = quickTileContent(
+            ready(listOf(row("Claude", "5 小时", 30, 0)), saved(midnight - 60_000L)), costMasked = false, todayStartEpochMs = midnight
+        )
+        assertEquals("Claude 5 小时", withQuota.subtitle)
+        val fresh = quickTileContent(ready(emptyList(), saved(midnight + 60_000L)), costMasked = false, todayStartEpochMs = midnight)
+        assertEquals("今日 ¥12.50", fresh.label)
+    }
+
+    @Test
     fun unknownCostIsSaidNotZeroed() {
         val content = quickTileContent(ready(emptyList(), usage(null)), costMasked = false)
         assertEquals("今日 不可得", content.label)

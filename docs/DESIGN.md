@@ -574,6 +574,11 @@ T10.306h 后台小组件两条缓存写入在网络前捕获请求身份，最�
 - 额度横条：Codex、Claude、Antigravity 以稳定顺序纵排，每行固定为状态点、Provider、窗口/状态、可用值与共宽轨道；4×1 压缩文字和轨道而不删除来源，4×2 保留窗口语义。错误态不绘制伪造的百分比进度。
 - 额度与消耗：4×2 上部把有效 Token 与预估费用放入互不推动的双数值轨道，下部按实际高度呈现一至三个完整 Provider 可用额度横条；大字或窄宽时纵向收束并至少保留一项额度与消耗，确实无法同时承载时明确提示尺寸不足，不把组合卡静默降级成另一组件类型（T10.118d）。
 - 额度条：4×3 为主要形态，每个额度窗口一行，左写「来源 · 窗口」，右写「N 分钟后重置」与「可用 N%」，下方 4dp 细条；截断按受限窗口选择规则，放不下的窗口在卡头写「+N 个窗口」，大字或窄卡时卡头让出用量以保住该文字。配置页「实时路由」开关（默认关）打开后，底部一行写最近一次网关调用；后台刷新时读一次 routing-snapshot-v1，只存按账号绑定的摘要，不存设备名与凭据。
+- 实时路由（独立 Provider `RoutingLiveWidgetReceiver`，无配置页，主题跟随系统）：上方是一帧位图路由图（Agent → 网关 → 供应商/模型），10 分钟内的调用按结果点亮，成功画绿色实线，失败和改道前失败的那一跳画危险色虚线；下方是最近 3 条调用。矮卡只留文字行，大字体时先省掉路由帧。
+  - 数据：复用 `RoutingSnapshots.merge/describe`。按账号绑定存一帧（`RoutingLiveStore`），不存设备标识与凭据。
+  - 读取链：唯一 OneTime 任务，按「桌面在线有调用 3 分钟 / 空闲 10 分钟」续排；离线、未部署、需登录、访问令牌余量不足或读取失败只剩旧帧时停链，交回共用周期刷新，下次读到桌面在线再接上。
+  - 呈现时按真实年龄推算：在途超过 90 秒后，网关与节点都退回空闲。
+- 快捷设置磁贴（`LedgerQuickTileService`，非 active 模式）：每次展开通知栏时重读本地缓存，最多每 10 分钟触发一次后台刷新。主行「可用 N%」，副行「来源 窗口 · 今日 ¥x」。不早于本地今天零点写入的「今日」费用才显示。点按打开应用，锁屏时先解锁。
 - 交互：卡片整体点击只打开 TokenLedger。样式、来源、范围与主题通过 Launcher 的添加/重新配置 Activity 修改；卡片内不提供字符图标或循环轮播，避免误触后实例用途变化。全部来源为默认值，也允许某个实例固定单一来源。
 - 主题：`WidgetThemeMode.System/Light/Dark` 按 appWidgetId 持久化。System 在渲染时读取 `uiMode`，Light/Dark 使用固定语义色，不反向修改 `LedgerAppearance`。
 - 数据：`WidgetStateRepository` 只读 owner-bound LKG；Provider 复用 Android 稳定排序 helper。百分比从 `remaining / limit` 映射为 available fraction，费用按构建配置汇率换算为人民币；来源时效取当前 Provider 窗口最大 `observedAt`。
@@ -586,7 +591,7 @@ T10.306h 后台小组件两条缓存写入在网络前捕获请求身份，最�
 
 旧 `TokenLedgerWidgetReceiver` 保留为隐藏的兼容 Provider，继续读取旧实例的 mode；Launcher 新增入口只暴露环形额度、单行消耗、组合卡和额度条四个固定 Provider。`WidgetMode.SingleUsage` 承担 4×1 单行消耗，旧存储值 `usage` 映射到该模式；历史 `MultiBar` 仍可渲染但不作为新实例选择。
 
-四个固定 Provider 都指向配置 Activity 并通过自身 Component 锁定类型，只允许修改来源、范围和主题；旧隐藏 Provider 才能保留历史类型选择。全局 WorkManager 周期任务按五个 Provider 的实例总数管理，任一 `onDisabled` 都必须重新查询总数，只有总数为零才取消。卡片、登录态、空态与错误态整体点击打开主应用；字符型刷新符号不进入 RemoteViews。
+四个固定 Provider 都指向配置 Activity 并通过自身 Component 锁定类型，只允许修改来源、范围和主题；旧隐藏 Provider 才能保留历史类型选择。全局 WorkManager 周期任务按使用者总数管理（`WidgetConfigStore.backgroundConsumerCount`：五个额度 Provider 的实例、实时路由小组件实例，以及已加入通知栏的磁贴）。任一 `onDisabled` 或磁贴移除都必须重新计数，只有总数为零才取消。卡片、登录态、空态与错误态整体点击打开主应用；字符型刷新符号不进入 RemoteViews。
 
 ### 6.6 Android 周期总结与 PNG 分享（REQ-SHARE-01）
 

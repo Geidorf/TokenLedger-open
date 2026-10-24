@@ -32,7 +32,9 @@ internal data class QuickTileContent(
 internal fun quickTileContent(
     state: WidgetState,
     costMasked: Boolean,
-    supportsSubtitle: Boolean = true
+    supportsSubtitle: Boolean = true,
+    /** 本地今天零点；给出时，零点前写入缓存的「今日」费用不再当作今天的数（跨天后手机离线或令牌过期）。 */
+    todayStartEpochMs: Long? = null
 ): QuickTileContent {
     val ready = when (state) {
         WidgetState.NeedLogin -> return QuickTileContent(
@@ -44,7 +46,9 @@ internal fun quickTileContent(
         WidgetState.NoData -> return noData()
         is WidgetState.Ready -> state
     }
-    val usage = ready.usage?.takeIf { it.range == com.jeidorf.tokenledger.mobile.widget.WidgetRange.Today }
+    val usage = ready.usage?.takeIf {
+        it.range == com.jeidorf.tokenledger.mobile.widget.WidgetRange.Today && isCurrentDay(it, todayStartEpochMs)
+    }
     val cost = usage?.let { "今日 ${formatCny(it.costCny, costMasked)}" }
     val tightest = tightestQuotaRow(ready.quota?.rows.orEmpty())
     if (tightest != null) {
@@ -88,6 +92,12 @@ internal fun quickTileSourceName(row: WidgetQuotaBarRow): String = listOfNotNull
     widgetShortProviderName(row.providerName),
     row.windowLabel?.let { formatWidgetWindowLabel(it, row.roleSubstitute) }
 ).joinToString(" ")
+
+private fun isCurrentDay(usage: WidgetUsage, todayStartEpochMs: Long?): Boolean {
+    if (todayStartEpochMs == null) return true
+    val savedAt = usage.savedAtEpochMillis ?: return false
+    return savedAt >= todayStartEpochMs
+}
 
 private fun costSpoken(usage: WidgetUsage, costMasked: Boolean): String =
     if (costMasked) "今日预估费用已隐藏" else "今日预估费用 ${formatCny(usage.costCny)}"

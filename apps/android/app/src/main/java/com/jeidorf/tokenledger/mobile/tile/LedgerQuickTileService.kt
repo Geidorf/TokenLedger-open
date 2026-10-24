@@ -15,6 +15,8 @@ import com.jeidorf.tokenledger.mobile.widget.WidgetConfigStore
 import com.jeidorf.tokenledger.mobile.widget.WidgetScheduler
 import com.jeidorf.tokenledger.mobile.widget.WidgetStateRepository
 import com.jeidorf.tokenledger.mobile.widget.shouldCancelWidgetRefresh
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -65,7 +67,8 @@ class LedgerQuickTileService : TileService() {
             val content = quickTileContent(
                 state = state,
                 costMasked = PrivacyStore.isCostMaskEnabled(applicationContext),
-                supportsSubtitle = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                supportsSubtitle = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
+                todayStartEpochMs = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             )
             render(content)
         }

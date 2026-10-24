@@ -5,6 +5,7 @@ import com.jeidorf.tokenledger.mobile.routing.RoutingFlow
 import com.jeidorf.tokenledger.mobile.routing.RoutingFlowPhase
 import com.jeidorf.tokenledger.mobile.routing.RoutingHop
 import com.jeidorf.tokenledger.mobile.routing.RoutingHopOutcome
+import com.jeidorf.tokenledger.mobile.routing.RoutingNodeState
 import com.jeidorf.tokenledger.mobile.routing.RoutingReadFailure
 import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshotsResult
 import com.jeidorf.tokenledger.mobile.routing.RoutingSourceId
@@ -68,6 +69,16 @@ class RoutingLiveWidgetTest {
         // 读到时在途，但已过去 3 分钟：不再画成在途。
         assertFalse(view.busy)
         assertTrue(routingLiveView(routingLiveSnapshot("u1", busy, captured), captured + 10_000L).busy)
+    }
+
+    @Test
+    fun expiredInflightAlsoClearsBusyNodes() {
+        val snapshot = routingLiveSnapshot("u1", busy, captured)
+        fun busyNodes(view: RoutingLiveView) =
+            (view.agents.orEmpty() + view.targets).filter { it.state == RoutingNodeState.Busy }
+        assertTrue(busyNodes(routingLiveView(snapshot, captured + 10_000L)).isNotEmpty())
+        // 后续读取失败、只剩这一帧：在途观察过期后节点也不再画成处理中。
+        assertTrue(busyNodes(routingLiveView(snapshot, captured + 3 * 60_000L)).isEmpty())
     }
 
     @Test
