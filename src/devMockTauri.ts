@@ -1554,7 +1554,7 @@ interface MockBudgetRule {
   limit: number;
   warnPercent: number;
 }
-let mockBudgetSettings: { notify: boolean; rules: MockBudgetRule[] } = { notify: false, rules: [] };
+let mockBudgetSettings: { notify: boolean; syncToPhone: boolean; rules: MockBudgetRule[] } = { notify: false, syncToPhone: false, rules: [] };
 
 /** 与 `budget.rs` 同一读法：从同一份本机统计取今日 / 本周 / 本月的合计或分组行。 */
 function mockBudgetStatus() {
@@ -1588,6 +1588,9 @@ function mockBudgetStatus() {
       providers: keys('providers'),
       providersAvailable: group(month, 'providers') !== null,
     },
+    phoneSync: mockBudgetSettings.syncToPhone
+      ? { state: 'ok', lastPublishedAt: mockTimestamp, error: null }
+      : { state: 'off', lastPublishedAt: null, error: null },
   };
 }
 
@@ -2164,9 +2167,10 @@ export function installDevMockTauri() {
       case 'get_budget_settings':
         return mockBudgetSettings;
       case 'set_budget_settings': {
-        const next = (payload.settings ?? {}) as { notify?: unknown; rules?: unknown };
+        const next = (payload.settings ?? {}) as { notify?: unknown; syncToPhone?: unknown; rules?: unknown };
         mockBudgetSettings = {
           notify: next.notify === true,
+          syncToPhone: next.syncToPhone === true,
           rules: Array.isArray(next.rules) ? next.rules.slice(0, 32) as MockBudgetRule[] : [],
         };
         return mockBudgetSettings;
