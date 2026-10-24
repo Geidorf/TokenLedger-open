@@ -33,6 +33,8 @@ const MAX_FLOWS: usize = 24;
 const MAX_HOPS: usize = 8;
 const MAX_SNAPSHOT_BYTES: usize = 16 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024;
+/// Present while a snapshot may sit in the cloud, so a clear can resume after a restart.
+const CLEAR_MARKER: &str = "routing-publish-clear-pending";
 const FLOW_WINDOW_SECS: i64 = 600;
 const FEED_LIMIT: usize = 30;
 const UNKNOWN_AGENT: &str = "Agent";
@@ -553,8 +555,10 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
         let machine = crate::commands::local_machine_id();
         let mut published: Option<Published> = None;
         // A device row still to delete after the switch went off; kept until the clear lands.
-        // The device ID is derived, so a clear that failed before the last exit is retried
-        // once per launch for the stored account (a no-op when nothing was published).
+        // The device ID is derived, so a clear left over from before the last exit is retried
+        // on launch. Only the marker file is checked first: people who never turned the
+        // switch on do not touch the secure session store at startup.
+        let marker = app.app_data_dir().join(CLEAR_MARKER);
         let stored_target = || {
             stored_user(&app)
                 .filter(|user| !user.is_empty())
@@ -565,7 +569,14 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
                     at: Instant::now(),
                 })
         };
-        let mut pending_clear = stored_target();
+        let mut pending_clear = if marker.exists() {
+            stored_target()
+        } else {
+            None
+        };
+        if pending_clear.is_none() {
+            let _ = std::fs::remove_file(&marker);
+        }
         let mut was_enabled = false;
         let mut backoff = TICK;
         let mut delay = TICK;
@@ -607,6 +618,9 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
                         }
                     }
                 }
+                if pending_clear.is_none() {
+                    let _ = std::fs::remove_file(&marker);
+                }
                 set_status(|status| {
                     *status = RoutingPublishStatus {
                         state: "off",
@@ -617,7 +631,9 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             }
 
             pending_clear = None;
-            was_enabled = true;
+            if !std::mem::replace(&mut was_enabled, true) {
+                let _ = std::fs::write(&marker, b"");
+            }
             // Identity comes from the local config: a token refresh failing during an outage
             // surfaces from `call_rpc` as a retryable error and keeps `published`, so a later
             // switch-off still knows which row to delete.
