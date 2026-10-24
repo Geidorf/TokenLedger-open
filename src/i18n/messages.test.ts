@@ -36,6 +36,8 @@ const FULLY_LOCALIZED = [
   'src/components/RangeControls.tsx',
   'src/components/FilterMultiSelect.tsx',
   'src/utils/detailGranularity.ts',
+  'src/components/settings/AlertWebhookCard.tsx',
+  'src/hooks/useAlertWebhooks.ts',
   'src/utils/quotaPace.ts',
   'src/components/SessionAnalysisDrawer.tsx',
   'src/types/sessionAnalysis.ts',

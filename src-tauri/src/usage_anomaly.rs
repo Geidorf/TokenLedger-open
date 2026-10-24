@@ -254,6 +254,8 @@ pub(crate) struct PlannedAlert {
     pub id: String,
     pub title: String,
     pub body: String,
+    /// Cost figures for webhooks that opted in; never in the notification.
+    pub cost: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -417,6 +419,13 @@ pub(crate) fn run_alerts(
         if let Err(error) = notifier.notify(&alert.title, &alert.body) {
             log::warn!("usage anomaly notification failed: {error}");
         }
+        crate::alert_webhook::forward(
+            app_data_dir,
+            crate::alert_webhook::AlertKind::Anomaly,
+            &alert.title,
+            &alert.body,
+            alert.cost.as_deref(),
+        );
     }
     planned
 }
@@ -485,6 +494,7 @@ pub(crate) fn plan_alerts(
             id: finding.id.clone(),
             title,
             body,
+            cost: cost_text(finding),
         });
     }
     trim_fired(state);
@@ -574,6 +584,20 @@ fn notification_text(finding: &AnomalyFinding, today: NaiveDate) -> (String, Str
                 (finding.value * 100.0).floor()
             ),
         ),
+    }
+}
+
+/// Cost figures for opted-in webhooks: only findings measured in dollars.
+fn cost_text(finding: &AnomalyFinding) -> Option<String> {
+    if finding.unit != AnomalyUnit::Usd {
+        return None;
+    }
+    let (value, baseline) = (finding.value, finding.baseline);
+    match finding.kind {
+        AnomalyKind::ExpensiveSession => Some(format!(
+            "这个会话预估费用 ${value:.2}，常见会话约 ${baseline:.2}"
+        )),
+        _ => Some(format!("预估费用 ${value:.2}，平时约 ${baseline:.2}")),
     }
 }
 

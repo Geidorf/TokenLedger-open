@@ -33,6 +33,22 @@ mod gateway {
     pub(crate) use crate::gateway_store::{load_providers_readonly, read_provider_key};
     pub use crate::gateway_store::{KeyringSecrets, ProviderRecord};
 }
+/// Quota alerts forward to webhooks; this test crate never sends, so the
+/// forwarder is a no-op stand-in for `src/alert_webhook`.
+#[allow(dead_code)]
+mod alert_webhook {
+    pub(crate) enum AlertKind {
+        Quota,
+    }
+    pub(crate) fn forward(
+        _app_data_dir: &std::path::Path,
+        _kind: AlertKind,
+        _title: &str,
+        _body: &str,
+        _cost: Option<&str>,
+    ) {
+    }
+}
 
 use chrono::{DateTime, Utc};
 use quota::{

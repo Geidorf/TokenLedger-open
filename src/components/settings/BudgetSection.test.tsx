@@ -41,6 +41,8 @@ beforeEach(() => {
       case 'set_budget_settings':
         stored = (args as { settings: typeof stored }).settings;
         return stored;
+      case 'get_alert_webhooks':
+        return { enabled: false, endpoints: [], sources: { budget: false, quota: false, anomaly: false, periodReport: null }, maxEndpoints: 8 };
       case 'get_budget_status':
         return {
           generatedAt: '2026-10-24T00:00:00Z',

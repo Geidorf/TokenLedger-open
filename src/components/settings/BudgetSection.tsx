@@ -31,6 +31,7 @@ import {
   SettingsSection,
   SettingsToggleRow,
 } from './SettingsPrimitives';
+import { AlertWebhookCard } from './AlertWebhookCard';
 import '../../styles/budget.css';
 import { getLang, localized, t, useLang } from '../../i18n';
 
@@ -378,6 +379,8 @@ export function BudgetSection() {
           </SettingsGroup>
         </form>
       </SettingsCard>
+
+      <AlertWebhookCard />
     </SettingsSection>
   );
 }
