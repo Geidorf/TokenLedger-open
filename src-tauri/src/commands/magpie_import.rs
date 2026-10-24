@@ -35,6 +35,9 @@ const META_FILE: &str = "magpie-import-v1.json";
 const SOURCE_FILE: &str = "usage.jsonl";
 /// A line longer than this is not a usage record (bodies are never in it).
 const MAX_LINE_BYTES: usize = 256 * 1024;
+/// Non-empty lines read from one file; past this the file is refused rather
+/// than imported in part, so a runaway file can't exhaust memory.
+pub(crate) const MAX_LINES: usize = 2_000_000;
 const SYNTHETIC_SESSION_PREFIX: &str = "magpie:";
 
 /// magpie's config folder: `$XDG_CONFIG_HOME/magpie` when that is an absolute
@@ -195,6 +198,30 @@ fn parse_line(line: &str) -> Parsed {
     })
 }
 
+/// Reads one line into `buffer`, keeping at most `MAX_LINE_BYTES + 1` of its
+/// bytes and skipping the rest, so an unterminated or huge line can't grow
+/// the buffer without bound. Returns the bytes consumed; 0 at the end.
+fn read_line_capped(reader: &mut impl BufRead, buffer: &mut Vec<u8>) -> std::io::Result<usize> {
+    let mut consumed = 0;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok(consumed);
+        }
+        let (count, complete) = match available.iter().position(|byte| *byte == b'\n') {
+            Some(index) => (index + 1, true),
+            None => (available.len(), false),
+        };
+        let room = (MAX_LINE_BYTES + 1).saturating_sub(buffer.len());
+        buffer.extend_from_slice(&available[..count.min(room)]);
+        reader.consume(count);
+        consumed += count;
+        if complete {
+            return Ok(consumed);
+        }
+    }
+}
+
 /// Reads a magpie `usage.jsonl`; a line that doesn't parse is counted and
 /// skipped, as magpie itself does.
 pub(crate) fn parse_usage(path: &Path) -> Result<(Vec<ImportedCall>, ParseCounts), String> {
@@ -207,8 +234,7 @@ pub(crate) fn parse_usage(path: &Path) -> Result<(Vec<ImportedCall>, ParseCounts
     let mut buffer = Vec::new();
     loop {
         buffer.clear();
-        let read = reader
-            .read_until(b'\n', &mut buffer)
+        let read = read_line_capped(&mut reader, &mut buffer)
             .map_err(|error| format!("读取 magpie 用量文件失败：{error}"))?;
         if read == 0 {
             break;
@@ -219,6 +245,11 @@ pub(crate) fn parse_usage(path: &Path) -> Result<(Vec<ImportedCall>, ParseCounts
             continue;
         }
         counts.lines += 1;
+        if counts.lines > MAX_LINES {
+            return Err(format!(
+                "用量文件超过 {MAX_LINES} 行，已停止导入；请先清理或归档旧记录。"
+            ));
+        }
         if line.len() > MAX_LINE_BYTES {
             counts.invalid += 1;
             continue;

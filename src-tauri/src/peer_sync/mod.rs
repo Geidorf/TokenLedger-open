@@ -59,7 +59,7 @@ pub struct SyncConfigView {
     pub has_passphrase: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveConfigInput {
     pub url: String,
@@ -68,6 +68,17 @@ pub struct SaveConfigInput {
     /// `None` keeps the saved one; `Some("")` removes it.
     pub password: Option<String>,
     pub passphrase: Option<String>,
+}
+
+impl std::fmt::Debug for SaveConfigInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SaveConfigInput")
+            .field("url", &self.url)
+            .field("user", &self.user)
+            .field("password", &crate::redact::hidden_opt(&self.password))
+            .field("passphrase", &crate::redact::hidden_opt(&self.passphrase))
+            .finish()
+    }
 }
 
 fn config_path(app_dir: &Path) -> PathBuf {
@@ -201,14 +212,23 @@ impl PeerBundle {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(default)]
 pub struct PeerKey {
     pub key: String,
     pub off: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+impl std::fmt::Debug for PeerKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerKey")
+            .field("key", &crate::redact::Hidden(&self.key))
+            .field("off", &self.off)
+            .finish()
+    }
+}
+
+#[derive(Default, Deserialize)]
 #[serde(default)]
 pub struct PeerProvider {
     pub id: String,
@@ -224,6 +244,25 @@ pub struct PeerProvider {
     pub base_api: String,
     pub models: Vec<String>,
     pub off: bool,
+}
+
+impl std::fmt::Debug for PeerProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerProvider")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("key", &crate::redact::Hidden(&self.key))
+            .field("keys", &self.keys)
+            .field("chat", &self.chat)
+            .field("responses", &self.responses)
+            .field("anthropic", &self.anthropic)
+            .field("gemini", &self.gemini)
+            .field("decide", &self.decide)
+            .field("base_api", &self.base_api)
+            .field("models", &self.models)
+            .field("off", &self.off)
+            .finish()
+    }
 }
 
 impl PeerProvider {
