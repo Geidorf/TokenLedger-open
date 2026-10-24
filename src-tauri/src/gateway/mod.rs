@@ -452,19 +452,24 @@ impl Gateway {
         }
         let key = input.key.trim();
         let account = provider_account(&input.id);
-        // Probe results were for the old key.
-        self.prober.invalidate(&input.id);
-        if key.is_empty() {
-            return self.shared.secrets.delete(&account);
-        }
-        if key.len() > MAX_KEY_LENGTH
-            || key
-                .chars()
-                .any(|character| character.is_whitespace() || character.is_control())
+        if !key.is_empty()
+            && (key.len() > MAX_KEY_LENGTH
+                || key
+                    .chars()
+                    .any(|character| character.is_whitespace() || character.is_control()))
         {
             return Err("API key 格式无效。".to_string());
         }
-        self.shared.secrets.set(&account, key)
+        // Probe results were for the old key: drop them before the change and
+        // again after it, so a round that read the old key in between is lost.
+        self.prober.invalidate(&input.id);
+        let changed = if key.is_empty() {
+            self.shared.secrets.delete(&account)
+        } else {
+            self.shared.secrets.set(&account, key)
+        };
+        self.prober.invalidate(&input.id);
+        changed
     }
 
     pub fn delete_provider(&self, id: &str) -> Result<Vec<ProviderView>, String> {
