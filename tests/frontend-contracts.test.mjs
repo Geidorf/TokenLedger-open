@@ -1328,7 +1328,10 @@ test('CI runs every main commit to completion and reports main failures', () => 
   assert.match(alert, /branches: \[ main \]/);
   // 告警串行写 Issue，排队不能被后来的 run 顶掉。
   assert.match(alert, /group: main-ci-alert\n  cancel-in-progress: false\n  queue: max/);
-  assert.match(alert, /grep -qF "\$RUN_URL"/);
+  // 去重键是 run id + 第几次尝试：重复投递不重复记，重跑（新尝试）照常记。
+  assert.match(alert, /MARKER="<!-- main-ci-alert run=\$RUN_ID attempt=\$RUN_ATTEMPT -->"/);
+  assert.match(alert, /grep -qxF "\$MARKER"/);
+  assert.equal((alert.match(/echo "\$MARKER"/g) || []).length, 2);
   assert.match(alert, /github\.event\.workflow_run\.event == 'push'/);
   // 提交消息只经文件交给 gh，不拼进 shell。
   assert.doesNotMatch(alert, /\$\{\{ github\.event\.workflow_run\.(head_commit|display_title)/);

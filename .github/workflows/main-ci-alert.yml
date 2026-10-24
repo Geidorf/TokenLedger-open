@@ -36,12 +36,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           SHA: ${{ github.event.workflow_run.head_sha }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           set -euo pipefail
           TITLE='[CI] main 红灯记录'
+          MARKER="<!-- main-ci-alert run=$RUN_ID attempt=$RUN_ATTEMPT -->"
           issue=$(gh issue list -R "$REPO" --state open --search "\"$TITLE\" in:title" --json number,title \
             --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")
           # 「上一条记录」只看本工作流（github-actions[bot]）写的评论，翻完所有页取最后一条的首行。
@@ -49,8 +51,8 @@ jobs:
           if [ -n "$issue" ]; then
             gh api --paginate "repos/$REPO/issues/$issue/comments?per_page=100" \
               --jq '.[] | select(.user.login == "github-actions[bot]") | .body' > bot-comments.txt
-            # 同一个 run 重跑或重复投递时已记过就不再写。
-            if grep -qF "$RUN_URL" bot-comments.txt; then
+            # 同一次运行（run id + 第几次尝试）重复投递时已记过就不再写；重跑是新的尝试，照常记。
+            if grep -qxF "$MARKER" bot-comments.txt; then
               exit 0
             fi
             last=$(gh api --paginate "repos/$REPO/issues/$issue/comments?per_page=100" \
@@ -76,6 +78,8 @@ jobs:
               echo
               echo "- 提交：$subject"
               echo "- 运行：$RUN_URL"
+              echo
+              echo "$MARKER"
             } > body.md
             gh issue comment "$issue" -R "$REPO" --body-file body.md
             exit 0
@@ -93,6 +97,8 @@ jobs:
             cat jobs.txt
             echo
             echo "处理：提交所属工位优先修；常见原因是两个 PR 各自在旧 main 上绿、合并后冲突。修复 PR 标题写明「修复 main」。不要回滚别人的提交。"
+            echo
+            echo "$MARKER"
           } > body.md
           if [ -z "$issue" ]; then
             {
