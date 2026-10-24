@@ -84,7 +84,7 @@ const USAGE_NAV_ITEM: NavItem = { id: 'dashboard', label: '用量', matches: isU
 const MODEL_NAV_ITEMS: NavItem[] = [
   { id: 'agents', label: 'Agent', matches: (tab) => tab === 'agents' },
   { id: 'providers', label: '供应商', matches: (tab) => tab === 'providers' },
-  { id: 'gateway', label: '网关', matches: (tab) => tab === 'gateway' },
+  { id: 'gateway', label: '网关', matches: (tab) => tab === 'gateway' || tab === 'gatewaylog' },
   { id: 'routing', label: '路由', matches: (tab) => tab === 'routing' },
 ];
 

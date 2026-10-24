@@ -7,6 +7,7 @@ import { gatewayStatus } from './api';
 import { GatewayPage } from './GatewayPage';
 import { DEFAULT_BASE_URL } from './helpers';
 import { ProvidersPage } from './ProvidersPage';
+import { RequestLogPage } from './RequestLogPage';
 import { RoutingPage } from './RoutingPage';
 import type { GatewayStatus } from './types';
 import './gateway.css';
@@ -15,6 +16,7 @@ const PAGE_COPY: Record<ModelTab, { title: string; subtitle: string }> = {
   agents: { title: 'Agent', subtitle: '给本机 Agent 选模型或路由组，请求经本机网关转发并记账。' },
   providers: { title: '供应商', subtitle: '添加 API key，模型就出现在 Agent 和路由组的选择器里。' },
   gateway: { title: '网关', subtitle: '本机 127.0.0.1 上的统一入口：协议转换、记账、路由。' },
+  gatewaylog: { title: '请求日志', subtitle: '每次经网关的请求：路由原因、尝试顺序、Token、费用与耗时。只存元数据。' },
   routing: { title: '路由', subtitle: '把多个供应商的模型合成一个虚拟模型，按规则选择、失败自动切换。' },
 };
 
@@ -62,7 +64,8 @@ export function ModelWorkspaceContent({ page, onPage, onNotify, onConfirm, onCha
     <div className="mw-content">
       {page === 'agents' && <AgentsPage onNotify={onNotify} onConfirm={onConfirm} onOpenProviders={() => onPage('providers')} />}
       {page === 'providers' && <ProvidersPage onNotify={onNotify} onConfirm={onConfirm} onChanged={onChanged} />}
-      {page === 'gateway' && <GatewayPage onOpenRouting={() => onPage('routing')} onOpenProviders={() => onPage('providers')} onOpenAgents={() => onPage('agents')} />}
+      {page === 'gateway' && <GatewayPage onOpenRouting={() => onPage('routing')} onOpenProviders={() => onPage('providers')} onOpenAgents={() => onPage('agents')} onOpenRequestLog={() => onPage('gatewaylog')} />}
+      {page === 'gatewaylog' && <RequestLogPage onNotify={onNotify} />}
       {page === 'routing' && <RoutingPage onNotify={onNotify} onConfirm={onConfirm} />}
     </div>
   );

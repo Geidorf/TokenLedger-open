@@ -1,0 +1,52 @@
+/* 网关请求日志：筛选条、表格行展开详情、实时尾随高亮。只用设计令牌。 */
+.mw-log-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mw-log-toolbar .mw-native-select { max-width: 220px; }
+.mw-log-search { flex: 1 1 220px; min-width: 180px; }
+.mw-log-actions { display: flex; gap: 6px; margin-left: auto; }
+.mw-log-summary { margin: 10px 0 6px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.mw-log-toggle {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--color-text-primary);
+  cursor: pointer; text-decoration: underline dotted var(--color-text-tertiary); text-underline-offset: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.mw-log-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+.mw-log-inline-chip { margin-left: 6px; vertical-align: middle; }
+.mw-log-row.is-open > td { background: var(--color-bg-subtle); }
+.mw-log-row.is-fresh > td { animation: mw-log-fresh 1.6s ease-out; }
+@keyframes mw-log-fresh { from { background: var(--color-info-subtle); } to { background: transparent; } }
+.mw-log-live { color: var(--color-danger); animation: mw-log-pulse 1.4s ease-in-out infinite; }
+@keyframes mw-log-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .mw-log-row.is-fresh > td, .mw-log-live { animation: none; }
+}
+.mw-table .mw-log-detail-row > td { padding-top: 0; background: var(--color-bg-subtle); }
+.mw-log-detail {
+  position: sticky; left: 0; max-width: 960px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px 20px; padding: 8px 4px 12px;
+}
+.mw-log-detail h3 { margin: 0 0 6px; font-size: var(--font-size-xs); font-weight: 600; color: var(--color-text-secondary); }
+.mw-log-attempts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.mw-log-attempts > li {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 2px 8px; align-items: center;
+  padding: 4px 8px; border-radius: var(--radius-md); background: var(--color-bg-panel); font-size: var(--font-size-xs);
+}
+.mw-log-attempt-rank { color: var(--color-text-tertiary); text-align: center; font-variant-numeric: tabular-nums; }
+.mw-log-attempt-meta, .mw-log-attempt-error { grid-column: 2 / -1; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.mw-log-attempt-error { color: var(--color-danger-text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.mw-log-facts { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 12px; font-size: var(--font-size-xs); }
+.mw-log-facts.is-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mw-log-facts dt { color: var(--color-text-tertiary); }
+.mw-log-facts dd { margin: 0; color: var(--color-text-primary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mw-log-context-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--color-bg-panel); }
+.mw-log-context-legend { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.mw-log-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.mw-log-seg.is-systemBytes, .mw-log-dot.is-systemBytes { background: var(--chart-1); }
+.mw-log-seg.is-toolsBytes, .mw-log-dot.is-toolsBytes { background: var(--chart-2); }
+.mw-log-seg.is-historyBytes, .mw-log-dot.is-historyBytes { background: var(--chart-3); }
+.mw-log-seg.is-toolResultsBytes, .mw-log-dot.is-toolResultsBytes { background: var(--chart-4); }
+.mw-log-seg.is-attachmentsBytes, .mw-log-dot.is-attachmentsBytes { background: var(--chart-5); }
+.mw-log-pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+@media (max-width: 720px) {
+  .mw-log-actions { margin-left: 0; }
+  .mw-log-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

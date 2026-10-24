@@ -114,7 +114,7 @@ function MainApp() {
   // Tab & Scroll state
   const [activeTab, setActiveTab] = useState<Tab>(() => initialTabFromLocation());
   const contentRef = useRef<HTMLElement>(null);
-  const tabScrollPositions = useRef<Record<Tab, number>>({ dashboard: 0, logs: 0, behavior: 0, allowances: 0, settings: 0, agents: 0, providers: 0, gateway: 0, routing: 0 });
+  const tabScrollPositions = useRef<Record<Tab, number>>({ dashboard: 0, logs: 0, behavior: 0, allowances: 0, settings: 0, agents: 0, providers: 0, gateway: 0, gatewaylog: 0, routing: 0 });
   const [gatewayRefreshKey, setGatewayRefreshKey] = useState(0);
   const [settingsAnchor, setSettingsAnchor] = useState<string | null>(null);
 

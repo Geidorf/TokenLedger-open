@@ -43,7 +43,7 @@ function CatalogIcon({ option, providers }: { option: ModelOption; providers: Pr
   return <span className="mw-brand is-fallback" style={{ width: 22, height: 22, fontSize: 9 }} aria-hidden="true">{option.section.slice(0, 2).toUpperCase()}</span>;
 }
 
-export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { onOpenRouting: () => void; onOpenProviders?: () => void; onOpenAgents?: () => void }) {
+export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents, onOpenRequestLog }: { onOpenRouting: () => void; onOpenProviders?: () => void; onOpenAgents?: () => void; onOpenRequestLog?: () => void }) {
   const [data, setData] = useState<GatewayData | null>(null);
   const [loadError, setLoadError] = useState('');
   const [api, setApi] = useState<SampleApi>('responses');
@@ -161,6 +161,7 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
         <div className="mw-panel-head">
           <h2>最近请求<InfoTip label="请求记录说明">记录保存在本机，最多显示最近 50 条。</InfoTip></h2>
           <span>有效 Token = 输入 + 输出，缓存读写单列</span>
+          {onOpenRequestLog && <button type="button" className="mw-btn is-ghost" onClick={onOpenRequestLog}>打开请求日志</button>}
         </div>
         {data && data.requests.length === 0 ? (
           <EmptyState variant="inset" icon={Bot} title="还没有经过网关的请求" description="在 Agent 页把 Codex、Claude Code 等接到网关，或在自己的代码里用上面的地址和 token，每次请求都会出现在这里。">

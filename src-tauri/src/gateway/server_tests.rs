@@ -182,6 +182,10 @@ fn real_http_failover_records_distinct_attempts_and_reported_failure_usage() {
             }
             assert_eq!(records.last().unwrap().input, first_tokens);
             assert_eq!(shared.router.recent(1)[0].attempts.len(), 1 + expected_hits);
+            // The decision outlives a restart, keyed by the logical request id.
+            let logical = records[0].logical_request_id.clone().unwrap();
+            let stored = super::super::request_log::read_decisions(&dir);
+            assert_eq!(stored[&logical].attempts.len(), 1 + expected_hits);
             std::fs::remove_dir_all(dir).unwrap();
         }
     });
@@ -405,6 +409,9 @@ fn real_http_streams_use_idle_deadlines_keep_partial_usage_and_bound_accumulatio
                 text
             );
             assert!(text.contains("think"));
+            // The usage-only event is not output; the first reasoning delta is.
+            let first = record.first_token_ms.expect("first token time");
+            assert!(first >= 100 && first <= record.latency_ms, "{first}");
             let (text, record) = stream_case(
                 endpoint,
                 sse_packets(
@@ -1259,4 +1266,49 @@ fn upstream_error_text_never_carries_the_presented_key() {
     // Too short to be a key: left alone so ordinary words are not mangled.
     assert_eq!(redact_key("error abc", "abc"), "error abc");
     assert_eq!(redact_key("plain", ""), "plain");
+}
+
+#[test]
+fn first_output_ignores_lifecycle_events() {
+    let cases = [
+        (
+            WireApi::Chat,
+            json!({"choices":[{"delta":{"role":"assistant","content":""}}]}),
+            false,
+        ),
+        (
+            WireApi::Chat,
+            json!({"choices":[{"delta":{"content":"Hi"}}]}),
+            true,
+        ),
+        (
+            WireApi::Chat,
+            json!({"choices":[{"delta":{"reasoning_content":"…"}}]}),
+            true,
+        ),
+        (
+            WireApi::Chat,
+            json!({"choices":[{"delta":{"tool_calls":[{"index":0}]}}]}),
+            true,
+        ),
+        (
+            WireApi::Responses,
+            json!({"type":"response.created"}),
+            false,
+        ),
+        (
+            WireApi::Responses,
+            json!({"type":"response.output_text.delta","delta":"a"}),
+            true,
+        ),
+        (WireApi::Anthropic, json!({"type":"message_start"}), false),
+        (
+            WireApi::Anthropic,
+            json!({"type":"content_block_delta"}),
+            true,
+        ),
+    ];
+    for (wire, event, expected) in cases {
+        assert_eq!(carries_output(wire, &event), expected, "{event}");
+    }
 }

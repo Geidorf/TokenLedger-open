@@ -1,6 +1,7 @@
 // In-memory gateway backend for the browser dev preview only. Keys are
 // tracked as a boolean, matching the real backend's write-only contract.
-import type { AgentInspection, AgentPreview, CodexInspection, LedgerRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
+import { mockRequestLog } from './requestLogMock';
+import type { AgentInspection, AgentPreview, CodexInspection, LedgerRecord, ProviderView, RequestLogQuery, RouteDecision, RoutingGroup } from './types';
 
 const PORT = 3462;
 const minutesAgo = (minutes: number) => new Date(Date.UTC(2026, 9, 3, 16, 30 - minutes, 12)).toISOString();
@@ -46,6 +47,24 @@ let decisions: RouteDecision[] = [
   ] },
   { ts: minutesAgo(20), requestId: 'r2', group: 'cheap', session: 's9', reason: 'affinity', detail: '会话保持', chosen: 'deepseek/deepseek-reasoner', attempts: [{ member: 'deepseek/deepseek-reasoner', outcome: 'ok', status: 200 }] },
 ];
+
+/**
+ * Extra ledger detail only the request log reads: the failed first attempt of
+ * r5 and stream timings / context sizes, so the recent-requests table and its
+ * fixtures stay unchanged.
+ */
+const logOnlyAttempts: LedgerRecord[] = [
+  { ts: new Date(Date.parse(minutesAgo(4)) - 1900).toISOString(), requestId: 'r5-a', logicalRequestId: 'r5', agent: 'codex', session: 's1', endpoint: '/v1/responses', provider: 'openai', requestedModel: 'group/coding', upstreamModel: 'gpt-5', wire: 'responses', stream: true, status: 429, ok: false, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, latencyMs: 420, error: '上游返回 429 Too Many Requests', group: 'coding', member: 'openai/gpt-5' },
+];
+const logDetail: Record<string, Partial<LedgerRecord>> = {
+  r6: { firstTokenMs: 640, context: { systemBytes: 9200, toolsBytes: 21400, historyBytes: 38800, toolResultsBytes: 16200, attachmentsBytes: 4100, messages: 42, toolResults: 11, attachments: 1 } },
+  r5: { logicalRequestId: 'r5', firstTokenMs: 380, context: { systemBytes: 9200, toolsBytes: 21400, historyBytes: 12100, toolResultsBytes: 3300, attachmentsBytes: 0, messages: 12, toolResults: 3, attachments: 0 } },
+  r3: { firstTokenMs: null },
+};
+
+function requestLogRecords(): LedgerRecord[] {
+  return [...requests.map((record) => ({ ...record, ...logDetail[record.requestId] })), ...logOnlyAttempts];
+}
 
 let codexModel: string | null = 'gpt-5-codex';
 let codexOnGateway = false;
@@ -214,6 +233,12 @@ export function handleGatewayMock(cmd: string, payload: Record<string, unknown>)
       return groups;
     case 'gateway_recent_route_decisions':
       return decisions;
+    case 'gateway_request_log':
+      return mockRequestLog(requestLogRecords(), decisions, (payload.query ?? {}) as RequestLogQuery);
+    case 'gateway_request_log_export': {
+      const page = mockRequestLog(requestLogRecords(), decisions, { ...(payload.query ?? {}) as RequestLogQuery, offset: 0, limit: 200 });
+      return { message: `已导出 ${page.total} 条请求`, path: '~/TokenLedger/tokenledger_gateway_requests.csv' };
+    }
     case 'gateway_routing_cooldowns':
       return [];
     case 'gateway_routing_feed': {

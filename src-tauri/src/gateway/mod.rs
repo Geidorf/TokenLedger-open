@@ -13,6 +13,7 @@ mod gemini;
 mod ledger;
 mod legacy_restore;
 mod policy;
+pub mod request_log;
 mod routing;
 mod server;
 mod store;
@@ -466,6 +467,24 @@ impl Gateway {
 
     pub fn recent_requests(&self, limit: usize) -> Result<Vec<LedgerRecord>, String> {
         self.shared.ledger.recent(limit.clamp(1, 500))
+    }
+
+    /// Every logical request still in the diagnostic log, newest first, each
+    /// joined with its routing decision (from disk, else from memory).
+    pub fn request_log_entries(&self) -> Result<Vec<request_log::RequestLogEntry>, String> {
+        let records = self.shared.ledger.all_records()?;
+        let mut decisions = self
+            .shared
+            .ledger
+            .dir()
+            .map(request_log::read_decisions)
+            .unwrap_or_default();
+        for decision in self.shared.router.recent(200) {
+            decisions
+                .entry(decision.request_id.clone())
+                .or_insert_with(|| (&decision).into());
+        }
+        Ok(request_log::group_records(&records, &decisions))
     }
 
     pub fn dir(&self) -> &Path {
@@ -2155,6 +2174,7 @@ mod tests {
             group: Some("coding".into()),
             member: Some("b/m".into()),
             context: None,
+            first_token_ms: None,
         };
         let feed = RoutingFeed {
             running: true,

@@ -937,6 +937,7 @@ mod tests {
             group: group.map(str::to_string),
             member: None,
             context: None,
+            first_token_ms: None,
         }
     }
 

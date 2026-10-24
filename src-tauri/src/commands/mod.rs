@@ -6766,6 +6766,7 @@ fn read_local_rows_filtered(
 
 mod gateway_cloud;
 mod gateway_overlay;
+pub mod gateway_request_log;
 pub mod magpie_import;
 pub mod peer_shared;
 mod price_memo;

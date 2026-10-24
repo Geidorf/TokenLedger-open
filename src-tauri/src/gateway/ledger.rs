@@ -179,11 +179,16 @@ pub struct LedgerRecord {
     /// Prompt composition sizes of the client request; never its content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<ContextSize>,
+    /// Milliseconds from this attempt's start to the first upstream event
+    /// carrying output (text, reasoning or a tool call). Streams only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_token_ms: Option<u64>,
 }
 
 pub struct Ledger {
     path: PathBuf,
     lock: Mutex<()>,
+    decision_lock: Mutex<()>,
 }
 
 impl Ledger {
@@ -191,7 +196,51 @@ impl Ledger {
         Self {
             path: dir.join(LEDGER_FILE),
             lock: Mutex::new(()),
+            decision_lock: Mutex::new(()),
         }
+    }
+
+    /// Keeps a routing decision next to the diagnostic log so the request log
+    /// can explain it after a restart. Diagnostic only: a failure is logged.
+    pub fn append_decision(&self, decision: &super::RouteDecision) {
+        let _guard = self
+            .decision_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(dir) = self.path.parent() else {
+            return;
+        };
+        if let Err(error) = super::request_log::append_decision(dir, decision) {
+            log::warn!("gateway decision log: {error}");
+        }
+    }
+
+    /// Every diagnostic record still on disk, oldest first: the rotated file
+    /// then the current one. Unreadable lines are skipped.
+    pub fn all_records(&self) -> Result<Vec<LedgerRecord>, String> {
+        let _guard = self
+            .lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut records = Vec::new();
+        for path in [self.path.with_extension("jsonl.1"), self.path.clone()] {
+            let file = match fs::File::open(&path) {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.to_string()),
+            };
+            records.extend(
+                BufReader::new(file)
+                    .lines()
+                    .map_while(Result::ok)
+                    .filter_map(|line| serde_json::from_str::<LedgerRecord>(&line).ok()),
+            );
+        }
+        Ok(records)
+    }
+
+    pub fn dir(&self) -> Option<&Path> {
+        self.path.parent()
     }
 
     pub fn append(&self, record: &LedgerRecord) -> Result<(), String> {
@@ -435,6 +484,7 @@ mod tests {
                     group: None,
                     member: None,
                     context: None,
+                    first_token_ms: None,
                 })
                 .unwrap();
         }
