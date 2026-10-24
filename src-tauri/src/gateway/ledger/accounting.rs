@@ -447,7 +447,7 @@ pub(crate) fn coverage_of(dir: &Path) -> Result<Option<Coverage>, String> {
 
 /// The later of two history boundaries; one that does not parse wins, since
 /// treating more hours as incomplete is the safe side.
-fn later_boundary(current: Option<String>, incoming: &str) -> String {
+pub(crate) fn later_boundary(current: Option<String>, incoming: &str) -> String {
     let parse = |at: &str| DateTime::parse_from_rfc3339(at).ok();
     match current {
         Some(current) => match (parse(&current), parse(incoming)) {

@@ -2554,8 +2554,8 @@ export function installDevMockTauri() {
       case 'local_backup_preview':
         return {
           digest: 'mock-digest', created: '2026-10-23T01:00:00Z', appVersion: '2.0.0', machine: 'old-laptop', sameMachine: false, gatewayRequestsRestorable: false,
-          ledger: { total: 48_210, new: 46_977, known: 1_233, skipped: 0, first: '2025-11-02 09:14:00', last: '2026-10-23 08:59:41' },
-          gatewayRequests: { total: 1_904, new: 1_904, known: 0, skipped: 0, first: '2026-09-01T02:00:00Z', last: '2026-10-23T00:58:00Z' },
+          ledger: { total: 48_210, new: 46_977, known: 1_233, otherComputerPending: 0, first: '2025-11-02 09:14:00', last: '2026-10-23 08:59:41' },
+          gatewayRequests: { total: 1_904, new: 1_904, known: 0, otherComputerPending: 0, first: '2026-09-01T02:00:00Z', last: '2026-10-23T00:58:00Z' },
           providers: [
             { id: 'deepseek', name: 'DeepSeek', status: 'new' },
             { id: 'openrouter', name: 'OpenRouter', status: 'differs' },

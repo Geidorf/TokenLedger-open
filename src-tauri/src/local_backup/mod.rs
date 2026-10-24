@@ -492,9 +492,10 @@ pub struct RowCounts {
     pub new: usize,
     /// Rows already here (the same `unique_key` or accounting identity).
     pub known: usize,
-    /// Rows another computer had not uploaded yet: that computer uploads
-    /// them; uploaded here they would replace its newer cloud totals.
-    pub skipped: usize,
+    /// Rows another computer had not uploaded yet. They are restored, but
+    /// if this computer uploads them they replace whatever that computer
+    /// uploaded for the same hour later; the preview says so.
+    pub other_computer_pending: usize,
     pub first: Option<String>,
     pub last: Option<String>,
 }
@@ -540,12 +541,12 @@ fn unique_key_index(columns: &[String]) -> Result<usize, String> {
         .ok_or_else(|| "备份里的账本缺少去重键。".to_string())
 }
 
-/// How ledger rows from another computer are restored. That computer's
-/// cloud totals are its own: an hour it uploaded is replaced by whatever this
-/// computer aggregates for it, so a row it had not uploaded yet would bring
-/// that hour back here partially and overwrite the newer total. Such rows
-/// are skipped; uploaded ones come in as they were, under the source
-/// computer's id even when the row had none.
+/// Where ledger rows from another computer come from. They are all
+/// restored (a new computer or a reinstall has another id, and without cloud
+/// sync nothing was ever uploaded), under the source computer's id even when
+/// the row had none. Rows it had not uploaded yet are counted for the
+/// preview: uploaded from here they would replace what that computer later
+/// uploaded for the same hour.
 struct Provenance {
     machine: Option<usize>,
     sync_status: Option<usize>,
@@ -598,7 +599,7 @@ impl Provenance {
     }
 
     /// Whether a row is another computer's and not uploaded yet.
-    fn skip(&self, row: &[Value]) -> bool {
+    fn other_pending(&self, row: &[Value]) -> bool {
         self.foreign_machine(row).is_some() && self.pending(row)
     }
 }
@@ -670,9 +671,8 @@ fn ledger_counts(
         let Some(Value::String(unique_key)) = row.get(key) else {
             continue;
         };
-        if provenance.skip(row) {
-            counts.skipped += 1;
-            continue;
+        if provenance.other_pending(row) {
+            counts.other_computer_pending += 1;
         }
         if shared.contains(source_key(unique_key))
             || stmt
@@ -682,7 +682,7 @@ fn ledger_counts(
             counts.known += 1;
         }
     }
-    counts.new = counts.total - counts.known - counts.skipped;
+    counts.new = counts.total - counts.known;
     if let Some(at) = table
         .columns
         .iter()
@@ -704,7 +704,7 @@ fn gateway_counts(gateway: &Gateway, records: &[LedgerRecord]) -> Result<RowCoun
         total: records.len(),
         new: records.len().saturating_sub(known),
         known,
-        skipped: 0,
+        other_computer_pending: 0,
         first: records.iter().map(|record| record.ts.clone()).min(),
         last: records.iter().map(|record| record.ts.clone()).max(),
     })
@@ -1050,9 +1050,6 @@ fn import_ledger(
                     continue;
                 }
             }
-            if provenance.skip(row) {
-                continue;
-            }
             let foreign = provenance.foreign_machine(row);
             let values: Vec<SqlValue> = picked
                 .iter()
@@ -1311,12 +1308,22 @@ pub fn apply(
         )?;
     }
     if sections.gateway_requests && same_machine(bundle) {
-        let created = bundle.created.clone();
-        let boundary = match &bundle.gateway_coverage {
-            Some(coverage) if coverage.import_pending => Some(created),
-            Some(coverage) => coverage.complete_from_utc.clone(),
-            None => Some(created),
-        };
+        // The backup is a snapshot: this computer may have uploaded more for
+        // an hour after it was made, so every restored hour stays protected
+        // from overwriting cloud history. That is the later of the source's
+        // own boundary and the time the backup was made.
+        let boundary = (!bundle.gateway_requests.is_empty()).then(|| {
+            match bundle
+                .gateway_coverage
+                .as_ref()
+                .and_then(|coverage| coverage.complete_from_utc.as_deref())
+            {
+                Some(source) => {
+                    accounting::later_boundary(Some(source.to_string()), &bundle.created)
+                }
+                None => bundle.created.clone(),
+            }
+        });
         result.gateway_added =
             accounting::import(gateway.dir(), &bundle.gateway_requests, boundary.as_deref())?;
     }

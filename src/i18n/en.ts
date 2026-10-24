@@ -656,7 +656,7 @@ export const en: Record<MessageKey, string> = {
   'backup.preview.gatewayOtherMachine': 'Only restores onto the computer that made them (that computer keeps counting and uploading them)',
   'backup.preview.none': 'Not in the backup',
   'backup.preview.rows': '{total} rows: {added} new, {known} already here (skipped)',
-  'backup.preview.rowsSkipped': '; {skipped} more rows the other computer had not uploaded yet stay with it to upload and are not restored here',
+  'backup.preview.otherComputerPending': '; {count} of them were not uploaded by the other computer yet. If it later uploaded more for the same hour, cloud sync here may overwrite that hour with a lower total',
   'backup.preview.items': '{total} items: {added} new, {differs} different here',
   'backup.preview.needKeys': 'These providers have no API key on this computer yet; add them on the Providers page after restoring: {ids}',
   'backup.status.new': 'Not here; will be added',

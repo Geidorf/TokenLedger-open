@@ -50,8 +50,8 @@ export interface LocalBackupRowCounts {
   total: number;
   new: number;
   known: number;
-  /** 另一台电脑还没上传的行：留给那台电脑上传，不在这里恢复。 */
-  skipped: number;
+  /** 另一台电脑还没上传云端的行：照常恢复，但本机上传时可能覆盖那台电脑之后上传的同小时总量。 */
+  otherComputerPending: number;
   first: string | null;
   last: string | null;
 }
@@ -302,7 +302,9 @@ export function LocalBackupCard() {
         }
         if (counts.total === 0) return t('backup.preview.none');
         const rows = t('backup.preview.rows', { total: formatNum(counts.total), added: formatNum(counts.new), known: formatNum(counts.known) });
-        return counts.skipped > 0 ? `${rows}${t('backup.preview.rowsSkipped', { skipped: formatNum(counts.skipped) })}` : rows;
+        return counts.otherComputerPending > 0
+          ? `${rows}${t('backup.preview.otherComputerPending', { count: formatNum(counts.otherComputerPending) })}`
+          : rows;
       }
       case 'providers':
       case 'routingGroups':

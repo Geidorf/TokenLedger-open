@@ -741,18 +741,26 @@ fn gateway_requests_restore_only_onto_the_computer_that_made_them() {
 }
 
 #[test]
-fn restored_gateway_history_keeps_its_completeness_boundary() {
-    let boundary = "2026-10-21T00:00:00+00:00";
+fn restored_gateway_hours_never_overwrite_cloud_history() {
     let old = Computer::new("old");
-    accounting::import(old.gateway.dir(), &[request("r1", 50)], Some(boundary)).unwrap();
-    let bundle = sealed_roundtrip(&old.export());
+    accounting::import(
+        old.gateway.dir(),
+        &[request("r1", 50)],
+        Some("2026-10-21T00:00:00+00:00"),
+    )
+    .unwrap();
+    let mut bundle = sealed_roundtrip(&old.export());
     assert_eq!(
         bundle
             .gateway_coverage
             .as_ref()
             .and_then(|coverage| coverage.complete_from_utc.as_deref()),
-        Some(boundary)
+        Some("2026-10-21T00:00:00+00:00")
     );
+    // Even a source with complete history: the backup is a snapshot, and
+    // that computer may have uploaded more for those hours since.
+    bundle.gateway_coverage = Some(GatewayCoverage::default());
+    bundle.created = "2026-10-22T00:00:00Z".to_string();
 
     let new = Computer::new("new");
     apply(
@@ -764,16 +772,18 @@ fn restored_gateway_history_keeps_its_completeness_boundary() {
     )
     .unwrap();
     let coverage = accounting::coverage_of(new.gateway.dir()).unwrap().unwrap();
-    assert_eq!(coverage.complete_from_utc.as_deref(), Some(boundary));
+    assert_eq!(
+        coverage.complete_from_utc.as_deref(),
+        Some("2026-10-22T00:00:00Z")
+    );
+    assert!(!coverage.hour_is_complete("2026-10-20 10:00:00"));
 
-    // A bundle that does not say is treated as unknown before it was made.
-    let mut unknown = bundle.clone();
-    unknown.gateway_coverage = None;
-    unknown.created = "2026-10-22T00:00:00Z".to_string();
+    // A later boundary already here is kept.
+    bundle.created = "2026-10-21T12:00:00Z".to_string();
     apply(
         &new.app,
         &new.gateway,
-        &unknown,
+        &bundle,
         &everything(),
         Conflict::KeepLocal,
     )
@@ -945,7 +955,7 @@ fn pruning_keeps_the_newest_backup_written_in_the_same_second() {
 }
 
 #[test]
-fn another_computers_rows_it_had_not_uploaded_stay_with_it() {
+fn another_computers_rows_are_restored_and_its_unuploaded_ones_counted() {
     let old = Computer::new("old");
     let row = |key: &str, machine: &str, status: i64, user: Option<&str>| {
         old.conn()
@@ -967,7 +977,10 @@ fn another_computers_rows_it_had_not_uploaded_stay_with_it() {
 
     let new = Computer::new("new");
     let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
-    assert_eq!((plan.ledger.new, plan.ledger.skipped), (2, 2));
+    assert_eq!(
+        (plan.ledger.new, plan.ledger.other_computer_pending),
+        (4, 2)
+    );
     let result = apply(
         &new.app,
         &new.gateway,
@@ -976,7 +989,7 @@ fn another_computers_rows_it_had_not_uploaded_stay_with_it() {
         Conflict::KeepLocal,
     )
     .unwrap();
-    assert_eq!(result.ledger_added, 2);
+    assert_eq!(result.ledger_added, 4);
     let machine_of = |key: &str| -> Option<String> {
         new.conn()
             .query_row(
@@ -989,6 +1002,8 @@ fn another_computers_rows_it_had_not_uploaded_stay_with_it() {
     assert_eq!(machine_of("uploaded").as_deref(), Some("pc-a"));
     // A row without an id keeps counting under the computer it came from.
     assert_eq!(machine_of("no-machine").as_deref(), Some("pc-a"));
-    assert_eq!(machine_of("pending"), None);
-    assert_eq!(machine_of("never-signed-in"), None);
+    // Not uploaded yet: restored all the same (a new computer has another
+    // id, and without cloud sync nothing was ever uploaded).
+    assert_eq!(machine_of("pending").as_deref(), Some("pc-a"));
+    assert_eq!(machine_of("never-signed-in").as_deref(), Some("pc-a"));
 }
