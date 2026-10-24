@@ -1,12 +1,13 @@
 use super::checkpoints::*;
 use super::gemini::{gemini_counter_value, gemini_timestamp};
 use super::helpers::*;
+use super::jsonl::bounded_lines;
 use super::types::LogRecord;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -142,7 +143,7 @@ fn qwen_parse_jsonl_file(
         .filter(|value| !value.is_empty())
         .unwrap_or("unknown_session")
         .to_string();
-    let mut lines = BufReader::new(file).lines().enumerate().peekable();
+    let mut lines = bounded_lines(BufReader::new(file)).enumerate().peekable();
     while let Some((line_index, line)) = lines.next() {
         let Ok(line) = line else {
             return false;
