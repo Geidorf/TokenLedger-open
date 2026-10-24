@@ -215,6 +215,8 @@ tasks.withType<Test>().matching { task ->
     task.name.contains("screenshot", ignoreCase = true)
 }.configureEach {
     systemProperty("user.timezone", "Asia/Shanghai")
+    // 截图测试已超过 300 张，默认 512 MiB 的测试 JVM 在截图主机上会内存不足。
+    maxHeapSize = "2g"
 }
 
 dependencies {
