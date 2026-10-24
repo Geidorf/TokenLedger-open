@@ -194,7 +194,8 @@ test('看板刷新入口根据本地或云端动作暴露准确的进行中文�
 
 test('顶栏云端同步入口在进行期间暴露动作级反馈并锁定重复工作', () => {
   const source = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  assert.match(source, /const syncActionAriaLabel = busy\.sync[\s\S]*?正在同步云端数据[\s\S]*?请先检查云端状态[\s\S]*?立即同步云端/);
+  assert.match(source, /const syncActionAriaLabel = busy\.sync[\s\S]*?t\('shell\.sync\.busy'\)[\s\S]*?t\('shell\.sync\.checkFirst'\)[\s\S]*?t\('shell\.sync\.now'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.sync\.busy': '正在同步云端数据'[\s\S]*'shell\.sync\.checkFirst': '请先检查云端状态'[\s\S]*'shell\.sync\.now': '立即同步云端'/);
   assert.match(source, /aria-label=\{syncActionAriaLabel\}[\s\S]*disabled=\{syncDisabled\}[\s\S]*aria-busy=\{busy\.sync \|\| undefined\}/);
   assert.match(source, /title=\{syncActionTitle\}/);
   assert.match(source, /<Cloud className=\{`h-4 w-4 \$\{busy\.sync \? 'animate-spin' : ''\}`\}/);
@@ -3441,7 +3442,8 @@ test('top bar status changes are announced without making action buttons live co
 
 test('top bar scan action exposes a visible and accessible busy state', () => {
   const sidebar = readSource(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'));
-  assert.match(sidebar, /const scanActionAriaLabel = busy\.scan \? '正在扫描本地各 AI 工具日志' : '扫描本地日志';/);
+  assert.match(sidebar, /const scanActionAriaLabel = busy\.scan \? t\('shell\.scan\.busy'\) : t\('shell\.scan\.aria'\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.scan\.busy': '正在扫描本地各 AI 工具日志'[\s\S]*'shell\.scan\.aria': '扫描本地日志'/);
   assert.match(sidebar, /aria-label=\{scanActionAriaLabel\}[\s\S]*disabled=\{busy\.scan\}[\s\S]*aria-busy=\{busy\.scan \|\| undefined\}/);
   assert.match(sidebar, /aria-label=\{scanActionAriaLabel\}[\s\S]*data-tooltip=\{scanActionTitle\}/);
   assert.match(sidebar, /<RefreshCw className=\{`h-4 w-4 \$\{busy\.scan \? 'animate-spin' : ''\}`\}/);
@@ -3551,10 +3553,11 @@ test('top bar segments and icon actions preserve a 44px target (GLB-03)', () => 
   // The visible thumb, track and hover fill are drawn inset, not the hit area.
   assert.match(shell, /--seg-inset-y: 8px;/);
   assert.match(shell, /\.topbar-icon-btn::after,\n\.topbar-text-btn::after \{[^}]*inset: 8px 7px;/);
-  assert.match(sidebar, /role="group" aria-label="快捷工具与战报"/);
-  assert.match(sidebar, /aria-label="生成数据战报卡片"[\s\S]*title="生成数据战报卡片"/);
-  assert.match(sidebar, /aria-label=\{wallpaperBusy \? '正在设置桌面壁纸' : '一键设置桌面壁纸'\}/);
-  assert.match(sidebar, /aria-label=\{wallpaperBusy \? '正在设置锁屏壁纸' : '一键设置锁屏壁纸'\}/);
+  assert.match(sidebar, /role="group" aria-label=\{t\('shell\.tools'\)\}/);
+  assert.match(sidebar, /aria-label=\{t\('shell\.shareCard'\)\}[\s\S]*title=\{t\('shell\.shareCard'\)\}/);
+  assert.match(sidebar, /aria-label=\{wallpaperBusy \? t\('shell\.wallpaper\.desktopBusy'\) : t\('shell\.wallpaper\.desktopAction'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.tools': '快捷工具与战报'[\s\S]*'shell\.shareCard': '生成数据战报卡片'/);
+  assert.match(sidebar, /aria-label=\{wallpaperBusy \? t\('shell\.wallpaper\.lockscreenBusy'\) : t\('shell\.wallpaper\.lockscreenAction'\)\}/);
   assert.match(sidebar, /className="topbar-status-label" aria-hidden="true"/);
   assert.match(sidebar, /title=\{cloudStatusLabel\}/);
   assert.match(sidebar, /aria-label=\{syncActionAriaLabel\}[\s\S]*data-tooltip=\{syncActionTitle\}/);
@@ -3837,14 +3840,15 @@ test('phone-width toolbar keeps commands in a contained horizontal strip', () =>
   assert.match(phoneBlock, /\.header-controls::-webkit-scrollbar \{[\s\S]*display:\s*none;/);
   assert.match(header, /className="header-controls"[\s\S]*role="group"[\s\S]*aria-label=\{headerControlsLabel\}/);
   // 范围、设备与战报都在用量页内工具行（T10.276；请求并入用量后顶栏不再托管任何一项）。
-  assert.match(header, /aria-label="数据范围"/);
+  assert.match(header, /aria-label=\{t\('header\.scope\.aria'\)\}/);
   assert.doesNotMatch(header, /<ShareCardButton|<CloudDeviceSelect|<RangeControl/);
   assert.match(header, /function scrollHeaderElement\(element: HTMLElement, left: number, behavior: ScrollBehavior\)[\s\S]*typeof element\.scrollTo === 'function'[\s\S]*element\.scrollTo\(\{ left, behavior \}\)[\s\S]*element\.scrollLeft = left/);
   assert.match(header, /scrollHeaderElement\(controls, 0, 'auto'\)[\s\S]*\}, \[activeTab\]\);/);
-  assert.match(header, /headerControlsLabel[\s\S]*顶部控制器，可横向滚动查看更多命令/);
-  assert.match(header, /headerControlsLabel[\s\S]*主题设置/);
+  assert.match(header, /headerControlsLabel[\s\S]*t\('header\.controls\.usage'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'header\.controls\.usage': '顶部控制器，可横向滚动查看更多命令'/);
+  assert.match(header, /headerControlsLabel[\s\S]*t\('header\.controls\.settings'\)/);
   assert.match(phoneBlock, /\.header-controls-shell \{[\s\S]*position:\s*relative;[\s\S]*width:\s*100%;/);
-  assert.match(header, /className=\{`header-controls-scroll-cue[\s\S]*type="button"[\s\S]*aria-label="向右查看更多顶部命令"[\s\S]*onClick=\{scrollHeaderControlsForward\}/);
+  assert.match(header, /className=\{`header-controls-scroll-cue[\s\S]*type="button"[\s\S]*aria-label=\{t\('header\.moreControls'\)\}[\s\S]*onClick=\{scrollHeaderControlsForward\}/);
   assert.match(header, /onKeyDown=\{handleHeaderControlsCueKeyDown\}/);
   assert.match(header, /event\.key !== 'Enter' && event\.key !== ' '/);
   assert.match(header, /aria-hidden=\{!hasMoreHeaderControls\}[\s\S]*tabIndex=\{hasMoreHeaderControls \? 0 : -1\}/);
@@ -3966,8 +3970,9 @@ test('cloud status and remote quota reads require an explicit user check', () =>
   assert.match(native, /quota::retry_quota_providers/);
   assert.match(native, /quota::retry_local_quota_providers/);
   assert.match(native, /quota::get_local_quota_providers/);
-  assert.match(sidebar, /本地就绪 · 云端状态待检查/);
-  assert.match(sidebar, /请先在设置与云端检查云端状态/);
+  assert.match(sidebar, /t\('shell\.cloud\.unknown'\)/);
+  assert.match(sidebar, /t\('shell\.sync\.checkInSettings'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.cloud\.unknown': '本地就绪 · 云端状态待检查'[\s\S]*'shell\.sync\.checkInSettings': '请先在设置与云端检查云端状态'/);
   assert.match(sidebar, /onCheckCloudStatus\?: \(\) => void/);
   assert.match(sidebar, /if \(!cloudStatusKnown && onCheckCloudStatus\)/);
   assert.match(cloudSection, /查看登录状态会读取本机钥匙串，仅在你主动点击后执行/);

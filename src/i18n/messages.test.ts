@@ -20,6 +20,11 @@ const FULLY_LOCALIZED = [
   'src/components/usage/ContextComposition.tsx',
   'src/components/usage/AverageContextPanel.tsx',
   'src/utils/contextComposition.ts',
+  'src/components/Sidebar.tsx',
+  'src/components/AppHeader.tsx',
+  'src/features/gateway/ModelWorkspace.tsx',
+  'src/components/settings/RoutingPublishCard.tsx',
+  'src/components/settings/PeerSharedUsageCard.tsx',
 ];
 
 // 英文文案里允许出现中文的键：语言名用它自己的文字写。
