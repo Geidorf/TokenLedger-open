@@ -31,9 +31,7 @@ const NOT_DEPLOYED_RETRY: Duration = Duration::from_secs(300);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 const MAX_FLOWS: usize = 24;
 const MAX_HOPS: usize = 8;
-// The server measures `jsonb::text`, which adds a space after every `:` and `,`,
-// so the compact local form keeps headroom under the 16 KiB contract limit.
-const MAX_SNAPSHOT_BYTES: usize = 15_000;
+const MAX_SNAPSHOT_BYTES: usize = 16 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024;
 const FLOW_WINDOW_SECS: i64 = 600;
 const FEED_LIMIT: usize = 30;
@@ -404,7 +402,7 @@ pub fn build_snapshot(
         "flows": flows.iter().map(Flow::to_json).collect::<Vec<_>>(),
     });
     // Long labels can still exceed the server's limit: drop the oldest flows.
-    while snapshot.to_string().len() > MAX_SNAPSHOT_BYTES {
+    while server_text_len(&snapshot) > MAX_SNAPSHOT_BYTES {
         let Some(list) = snapshot["flows"].as_array_mut() else {
             break;
         };
@@ -413,6 +411,24 @@ pub fn build_snapshot(
         }
     }
     snapshot
+}
+
+/// Size as the server measures it (`octet_length(jsonb::text)`): the compact form plus
+/// the space jsonb prints after every `:` and every `,` between items.
+fn server_text_len(snapshot: &Value) -> usize {
+    fn separators(value: &Value) -> usize {
+        match value {
+            Value::Array(items) => {
+                items.len().saturating_sub(1) + items.iter().map(separators).sum::<usize>()
+            }
+            Value::Object(map) => {
+                map.len() * 2 - usize::from(!map.is_empty())
+                    + map.values().map(separators).sum::<usize>()
+            }
+            _ => 0,
+        }
+    }
+    snapshot.to_string().len() + separators(snapshot)
 }
 
 /// The snapshot minus its timestamp: unchanged content is not re-sent before the heartbeat.
@@ -427,6 +443,8 @@ fn content_key(snapshot: &Value) -> String {
 #[derive(Debug, PartialEq)]
 enum RpcError {
     NotDeployed,
+    /// The signed-in account is not the one the request was built for.
+    AccountChanged,
     Failed(String),
 }
 
@@ -461,18 +479,22 @@ fn classify_failure(status: u16, body: &[u8]) -> RpcError {
     RpcError::Failed(message)
 }
 
+/// Device and flow IDs are salted with the user, so a request only goes out under the
+/// account it was built for.
 async fn call_rpc(
     app: &AppContext,
+    expected_user: &str,
     function: &str,
     body: Value,
-) -> Result<(String, Value), RpcError> {
+) -> Result<Value, RpcError> {
     let (config, lease) = crate::commands::acquire_current_cloud_session(app)
         .await
         .map_err(RpcError::Failed)?;
     let session = config
         .session
         .as_ref()
-        .ok_or_else(|| RpcError::Failed("未登录".to_string()))?;
+        .filter(|session| session.user_id == expected_user)
+        .ok_or(RpcError::AccountChanged)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())
@@ -496,8 +518,19 @@ async fn call_rpc(
     if !(200..300).contains(&status) {
         return Err(classify_failure(status, &bytes));
     }
-    let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-    Ok((session.user_id.clone(), value))
+    Ok(serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+/// The account in the local cloud config, without touching the network. `None` only when
+/// the file cannot be read; signed out reads as an empty user.
+fn stored_user(app: &AppContext) -> Option<String> {
+    let config = crate::commands::load_cloud_config_file(app).ok()?;
+    Some(
+        config
+            .session
+            .map(|session| session.user_id)
+            .unwrap_or_default(),
+    )
 }
 
 async fn signed_in_user(app: &AppContext) -> Option<String> {
@@ -526,6 +559,8 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
     tauri::async_runtime::spawn(async move {
         let machine = crate::commands::local_machine_id();
         let mut published: Option<Published> = None;
+        // A device row still to delete after the switch went off; kept until the clear lands.
+        let mut pending_clear: Option<Published> = None;
         let mut backoff = TICK;
         let mut delay = TICK;
         loop {
@@ -534,12 +569,35 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
 
             if !enabled(&settings) {
                 if let Some(previous) = published.take() {
-                    let _ = call_rpc(
+                    pending_clear = Some(previous);
+                }
+                // Signed out or switched (read locally, so an outage does not count): the row
+                // is no longer this session's to delete; reads hide it after 15 minutes and
+                // the hourly purge drops it.
+                if let Some(previous) = &pending_clear {
+                    if stored_user(&app).is_some_and(|user| user != previous.user) {
+                        pending_clear = None;
+                    }
+                }
+                if let Some(previous) = &pending_clear {
+                    match call_rpc(
                         &app,
+                        &previous.user,
                         "clear_routing_snapshot_v1",
                         json!({ "p_device": previous.device }),
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(_) | Err(RpcError::NotDeployed | RpcError::AccountChanged) => {
+                            pending_clear = None;
+                            backoff = TICK;
+                        }
+                        Err(RpcError::Failed(error)) => {
+                            log::warn!("routing snapshot clear failed: {error}");
+                            delay = backoff;
+                            backoff = (backoff * 2).min(MAX_BACKOFF);
+                        }
+                    }
                 }
                 set_status(|status| {
                     *status = RoutingPublishStatus {
@@ -550,6 +608,7 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
                 continue;
             }
 
+            pending_clear = None;
             let Some(user) = signed_in_user(&app).await else {
                 published = None;
                 set_status(|status| {
@@ -589,12 +648,13 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             let flows = snapshot["flows"].as_array().map_or(0, Vec::len);
             match call_rpc(
                 &app,
+                &user,
                 "publish_routing_snapshot_v1",
                 json!({ "p_device": device, "p_snapshot": snapshot }),
             )
             .await
             {
-                Ok((user, _)) => {
+                Ok(_) => {
                     published = Some(Published {
                         user,
                         device,
@@ -610,6 +670,10 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
                             error: None,
                         }
                     });
+                }
+                // Built for the previous account: the next tick rebuilds it for this one.
+                Err(RpcError::AccountChanged) => {
+                    published = None;
                 }
                 Err(RpcError::NotDeployed) => {
                     set_status(|status| {
@@ -906,6 +970,13 @@ mod tests {
     }
 
     #[test]
+    fn server_size_counts_the_spaces_jsonb_prints() {
+        let value = json!({ "a": [1, 2], "b": { "c": "x,y:z" }, "d": [], "e": {} });
+        // As printed by Postgres: {"a": [1, 2], "b": {"c": "x,y:z"}, "d": [], "e": {}}
+        assert_eq!(server_text_len(&value), 52);
+    }
+
+    #[test]
     fn limits_hold_for_many_and_long_flows() {
         let long = "x".repeat(400);
         let mut live = external();
@@ -927,7 +998,7 @@ mod tests {
             })
             .collect();
         let snapshot = build_snapshot(DEVICE, &Ok(feed()), Some(&live), now());
-        assert!(snapshot.to_string().len() <= MAX_SNAPSHOT_BYTES);
+        assert!(server_text_len(&snapshot) <= MAX_SNAPSHOT_BYTES);
         let flows = snapshot["flows"].as_array().unwrap();
         assert!(!flows.is_empty() && flows.len() <= MAX_FLOWS);
         for flow in flows {
