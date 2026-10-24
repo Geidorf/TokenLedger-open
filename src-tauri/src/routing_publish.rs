@@ -555,14 +555,18 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
         // A device row still to delete after the switch went off; kept until the clear lands.
         // The device ID is derived, so a clear that failed before the last exit is retried
         // once per launch for the stored account (a no-op when nothing was published).
-        let mut pending_clear: Option<Published> = stored_user(&app)
-            .filter(|user| !user.is_empty())
-            .map(|user| Published {
-                device: device_id(&user, &machine),
-                user,
-                key: String::new(),
-                at: Instant::now(),
-            });
+        let stored_target = || {
+            stored_user(&app)
+                .filter(|user| !user.is_empty())
+                .map(|user| Published {
+                    device: device_id(&user, &machine),
+                    user,
+                    key: String::new(),
+                    at: Instant::now(),
+                })
+        };
+        let mut pending_clear = stored_target();
+        let mut was_enabled = false;
         let mut backoff = TICK;
         let mut delay = TICK;
         loop {
@@ -570,8 +574,10 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             delay = TICK;
 
             if !enabled(&settings) {
-                if let Some(previous) = published.take() {
-                    pending_clear = Some(previous);
+                // Switching off always targets a clear, even when no publish was confirmed:
+                // one may have committed on the server before its response was lost.
+                if std::mem::take(&mut was_enabled) {
+                    pending_clear = published.take().or_else(stored_target);
                 }
                 // Signed out or switched (read locally, so an outage does not count): the row
                 // is no longer this session's to delete; reads hide it after 15 minutes and
@@ -611,6 +617,7 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             }
 
             pending_clear = None;
+            was_enabled = true;
             // Identity comes from the local config: a token refresh failing during an outage
             // surfaces from `call_rpc` as a retryable error and keeps `published`, so a later
             // switch-off still knows which row to delete.
@@ -671,6 +678,16 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             )
             .await
             {
+                // The server keeps a newer snapshot when this machine's clock went back.
+                Ok(reply) if reply.get("stored") == Some(&Value::Bool(false)) => {
+                    set_status(|status| {
+                        status.state = "error";
+                        status.error =
+                            Some("本机时钟早于上次发布的时间，时钟追上后自动恢复".to_string());
+                    });
+                    delay = backoff;
+                    backoff = (backoff * 2).min(MAX_BACKOFF);
+                }
                 Ok(_) => {
                     published = Some(Published {
                         user,
