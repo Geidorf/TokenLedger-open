@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BehaviorAnalysisResponse, StatsData } from '../types';
 import type { BudgetRule } from '../hooks/useBudget';
 import { buildPeriodReport, budgetUsed, compareValues, describeDelta, reportPeriod, reportPeriodOptions, weekStart } from './periodReport';
-import { generatePeriodReportHtml } from './periodReportExport';
+import { budgetPercentText, generatePeriodReportHtml } from './periodReportExport';
 
 function stats(input: number, output: number, extra: Partial<StatsData> = {}): StatsData {
   return {
@@ -86,6 +86,19 @@ describe('buildPeriodReport', () => {
     expect(report.highlights[0]).toContain('多 100%');
   });
 
+  it('treats an empty cloud baseline as missing, not as a real zero', () => {
+    const empty = stats(0, 0);
+    empty.summary.totalRequests = 0;
+    empty.tools = {};
+    const cloud = buildPeriodReport({ period, scope: 'cloud', current: stats(10, 10), previous: empty });
+    expect(cloud.deltas.tokens).toEqual({ kind: 'missing' });
+    expect(describeDelta(cloud.deltas.tokens)).toBe('基线缺失');
+    expect(cloud.previous).toBeNull();
+    expect(cloud.agents[0].delta).toEqual({ kind: 'unavailable' });
+    const local = buildPeriodReport({ period, scope: 'local', current: stats(10, 10), previous: empty });
+    expect(local.deltas.tokens).toEqual({ kind: 'new' });
+  });
+
   it('orders sessions by known cost and keeps unpriced ones last', () => {
     const behavior = {
       meta: { sessionsTruncated: false, sessionLimit: 100 },
@@ -128,5 +141,16 @@ describe('generatePeriodReportHtml', () => {
     expect(hidden).not.toMatch(/\$\d/);
     expect(hidden).toContain('费用已隐藏');
     expect(generatePeriodReportHtml(report)).toContain('$12.50');
+  });
+
+  it('hides the spent ratio of cost budgets but not of token budgets', () => {
+    const report = buildPeriodReport({
+      period, scope: 'local', current: stats(100, 100), previous: null,
+      budgetRules: [rule({ id: 'cost', limit: 25 }), rule({ id: 'tokens', metric: 'tokens', limit: 800 })],
+    });
+    expect(budgetPercentText(report.budgets[0], true)).toBe('已隐藏');
+    expect(budgetPercentText(report.budgets[0], false)).toBe('50%');
+    expect(budgetPercentText(report.budgets[1], true)).toBe('25%');
+    expect(generatePeriodReportHtml(report, { hideCosts: true })).not.toContain('>50%<');
   });
 });

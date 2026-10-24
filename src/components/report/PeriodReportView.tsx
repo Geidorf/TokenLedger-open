@@ -17,7 +17,7 @@ import {
   type ReportDelta,
   type ReportKind,
 } from '../../utils/periodReport';
-import { downloadPeriodReportHtml, downloadPeriodReportImage, printPeriodReport } from '../../utils/periodReportExport';
+import { budgetPercentText, downloadPeriodReportHtml, downloadPeriodReportImage, printPeriodReport } from '../../utils/periodReportExport';
 import { budgetScopeName } from '../settings/BudgetSection';
 import { companyQuotaWindowLabel, isCompanyQuotaProvider, quotaWindowDisplayLabel, selectCompanyQuotaWindows } from '../QuotaPanel';
 import '../../styles/periodReport.css';
@@ -178,6 +178,12 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
         <button type="button" className="icon-command" aria-label="刷新报告" title="刷新报告" onClick={() => void reload()} disabled={loading}><RefreshCw size={16} aria-hidden="true" /></button>
       </div>
 
+      {error && report && (
+        <div className="report-refresh-error" role="alert">
+          <span>刷新失败，下面仍是上次成功读取的报告：{error}</span>
+          <button type="button" className="secondary-inline" onClick={() => void reload()}>重试</button>
+        </div>
+      )}
       {error && !report && (
         <div className="panel empty-panel report-error" role="alert">
           <p>报告读取失败：{error}</p>
@@ -260,9 +266,9 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
                     <li key={budget.id} data-level={budget.level}>
                       <div className="report-rank-line">
                         <span className="report-rank-name">{budgetScopeName(budget.rule)} · {BUDGET_METRIC_LABELS[budget.rule.metric]}</span>
-                        <span className="report-rank-value">{budget.percent === null ? '不可得' : `${Math.floor(budget.percent)}%`}</span>
+                        <span className="report-rank-value">{budget.percent === null ? '不可得' : budgetPercentText(budget, hideCosts)}</span>
                       </div>
-                      <div className="report-rank-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, budget.percent ?? 0)}%` }} /></div>
+                      {!(hideCosts && budget.rule.metric === 'cost') && <div className="report-rank-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, budget.percent ?? 0)}%` }} /></div>}
                       <div className="report-rank-meta">
                         <span>{budget.rule.metric === 'cost' ? `${cost(budget.used, hideCosts)} / ${cost(budget.rule.limit, hideCosts)}` : `${formatTokens(budget.used)} / ${formatTokens(budget.rule.limit)}`}</span>
                         <span>{{ ok: '达成', warn: '接近上限', over: '已超出', unavailable: '不可得' }[budget.level]}</span>
@@ -277,7 +283,7 @@ export function PeriodReportView({ scope, timezone, quotaProviders, appVersion, 
                     <li key={quota.key} data-level={quota.stale ? 'stale' : quota.level}>
                       <div className="report-rank-line">
                         <span className="report-rank-name">{quota.provider} · {quota.window}</span>
-                        <span className="report-rank-value">可用 {quota.remaining}%</span>
+                        <span className="report-rank-value">{quota.stale ? '历史读数 · ' : ''}可用 {quota.remaining}%</span>
                       </div>
                       <div className="report-rank-bar" aria-hidden="true"><i style={{ width: `${Math.max(2, quota.remaining)}%` }} /></div>
                     </li>

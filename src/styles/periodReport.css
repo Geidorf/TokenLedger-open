@@ -82,3 +82,4 @@
   .report-hero, .report-grid, .report-grid-2 { grid-template-columns: minmax(0, 1fr); }
   .report-hero-number { justify-items: start; text-align: left; }
 }
+.report-refresh-error { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; border: 1px solid var(--color-border); border-left: 3px solid var(--color-warning-text); border-radius: var(--radius-card); background: var(--color-bg-panel); color: var(--color-text-secondary); font-size: var(--font-size-sm); }

@@ -134,6 +134,8 @@ export type ReportDelta =
   | { kind: 'change'; percent: number }
   | { kind: 'new' }
   | { kind: 'flat' }
+  /** 云端上一期零记录零 Token：没有可信基线，不当成真零（GLB-01）。 */
+  | { kind: 'missing' }
   | { kind: 'unavailable' };
 
 function finite(value: unknown): value is number {
@@ -150,6 +152,7 @@ export function compareValues(current: number | null, previous: number | null): 
 export function describeDelta(delta: ReportDelta): string | null {
   if (delta.kind === 'new') return '上期无记录';
   if (delta.kind === 'flat') return '持平';
+  if (delta.kind === 'missing') return '基线缺失';
   if (delta.kind === 'unavailable') return null;
   return `${delta.percent > 0 ? '+' : '−'}${Math.abs(delta.percent).toFixed(1)}%`;
 }
@@ -424,6 +427,8 @@ function buildHighlights(report: Omit<PeriodReport, 'highlights'>): string[] {
     lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}，与${period.previousLabel}基本持平`);
   } else if (deltas.tokens.kind === 'change') {
     lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}，比${period.previousLabel}${deltas.tokens.percent > 0 ? '多' : '少'} ${Math.abs(deltas.tokens.percent).toFixed(0)}%`);
+  } else if (deltas.tokens.kind === 'missing') {
+    lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}；云端${period.previousLabel}没有可信基线，不做对比`);
   } else if (tokenDelta) {
     lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}，${period.previousLabel}${deltas.tokens.kind === 'new' ? '没有记录' : '持平'}`);
   }
@@ -445,7 +450,14 @@ export function buildPeriodReport(input: BuildPeriodReportInput): PeriodReport {
   const now = input.now ?? new Date();
   const limit = input.breakdownLimit ?? 6;
   const totals = totalsFor(current, period.start, period.end);
-  const previousTotals = previous ? totalsFor(previous, period.previousStart, period.previousEnd) : null;
+  // 与看板、简报同一条件：云端上一期零记录零 Token 不能证明「真的没有用量」。
+  const baselineMissing = scope === 'cloud' && !!previous
+    && previous.summary.totalRequests === 0 && previous.summary.totalTokens === 0;
+  const baseline = baselineMissing ? null : previous;
+  const previousTotals = baseline ? totalsFor(baseline, period.previousStart, period.previousEnd) : null;
+  const compare = (current: number | null, before: number | null): ReportDelta => (
+    baselineMissing ? { kind: 'missing' } : compareValues(current, before)
+  );
   const days: ReportDay[] = [];
   for (let day = period.start; day <= period.end; day = addDays(day, 1)) {
     const tokens = current.heatmap?.[day];
@@ -460,19 +472,19 @@ export function buildPeriodReport(input: BuildPeriodReportInput): PeriodReport {
     totals,
     previous: previousTotals,
     deltas: {
-      tokens: compareValues(totals.effectiveTokens, previousTotals?.effectiveTokens ?? null),
-      cost: compareValues(totals.cost, previousTotals ? previousTotals.cost : null),
-      requests: compareValues(totals.requests, previousTotals?.requests ?? null),
+      tokens: compare(totals.effectiveTokens, previousTotals?.effectiveTokens ?? null),
+      cost: compare(totals.cost, previousTotals ? previousTotals.cost : null),
+      requests: compare(totals.requests, previousTotals?.requests ?? null),
       cacheReusePoints: totals.cacheReuse !== null && previousTotals?.cacheReuse != null
         ? (totals.cacheReuse - previousTotals.cacheReuse) * 100
         : null,
     },
     days,
     peakDay,
-    agents: breakdown(current.tools, previous?.tools, totals.effectiveTokens, toolDisplayName, limit),
-    models: breakdown(current.models, previous?.models, totals.effectiveTokens, (id) => id, limit),
+    agents: breakdown(current.tools, baseline?.tools, totals.effectiveTokens, toolDisplayName, limit),
+    models: breakdown(current.models, baseline?.models, totals.effectiveTokens, (id) => id, limit),
     accounts: current.providers && Object.keys(current.providers).length > 0
-      ? breakdown(current.providers, previous?.providers ?? null, totals.effectiveTokens, (id) => id, limit)
+      ? breakdown(current.providers, baseline?.providers ?? null, totals.effectiveTokens, (id) => id, limit)
       : null,
     sessions,
     sessionsNote: scope === 'local' ? note : '云端账本不含会话明细，最贵的会话只在本机账本里统计',

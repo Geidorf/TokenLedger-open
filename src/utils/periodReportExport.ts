@@ -52,6 +52,13 @@ function budgetAmount(budget: ReportBudget, value: number | null, hideCosts: boo
   return value === null ? '不可得' : formatTokens(value);
 }
 
+/** 费用预算的比例由金额算出，隐藏费用时一并隐藏（GLB-12）；Token 预算照常显示。 */
+export function budgetPercentText(budget: ReportBudget, hideCosts: boolean): string {
+  if (budget.percent === null) return '—';
+  if (hideCosts && budget.rule.metric === 'cost') return '已隐藏';
+  return `${Math.floor(budget.percent)}%`;
+}
+
 function shortSessionId(id: string): string {
   return id.length > 10 ? `…${id.slice(-6)}` : id;
 }
@@ -114,7 +121,7 @@ export function generatePeriodReportHtml(report: PeriodReport, options: PeriodRe
           <td class="name-cell">${escapeHtml(budgetScopeName(budget.rule))} · ${escapeHtml(BUDGET_METRIC_LABELS[budget.rule.metric])}</td>
           <td class="num">${budgetAmount(budget, budget.used, hideCosts)}</td>
           <td class="num">${budgetAmount(budget, budget.rule.limit, hideCosts)}</td>
-          <td class="num">${budget.percent === null ? '—' : `${Math.floor(budget.percent)}%`}</td>
+          <td class="num">${budgetPercentText(budget, hideCosts)}</td>
           <td class="num">${BUDGET_LEVEL_TEXT[budget.level]}</td>
         </tr>`).join('');
 
