@@ -1537,6 +1537,53 @@ let mockSettings: AppSettings = normalizeMockClaudeToggles({
   model_access_version: 1,
 });
 let mockQuotaSyncStatus: QuotaSyncStatus = { enabled: false, state: 'disabled' };
+interface MockBudgetRule {
+  id: string;
+  enabled: boolean;
+  period: 'day' | 'week' | 'month';
+  metric: 'cost' | 'tokens';
+  scopeKind: 'all' | 'tool' | 'model' | 'provider';
+  scopeId: string;
+  limit: number;
+  warnPercent: number;
+}
+let mockBudgetSettings: { notify: boolean; rules: MockBudgetRule[] } = { notify: false, rules: [] };
+
+/** 与 `budget.rs` 同一读法：从同一份本机统计取今日 / 本周 / 本月的合计或分组行。 */
+function mockBudgetStatus() {
+  const range = { day: 'today', week: 'week', month: 'month' } as const;
+  const snapshot = (period: MockBudgetRule['period']) => statsForQuery({ range: range[period], tokenMode: 'effective' }) as unknown as Record<string, unknown>;
+  const month = snapshot('month');
+  const group = (stats: Record<string, unknown>, key: string) =>
+    (stats[key] && typeof stats[key] === 'object' ? stats[key] : null) as Record<string, { total?: number; cost?: number | null }> | null;
+  const statuses = mockBudgetSettings.rules.filter((rule) => rule.enabled).map((rule) => {
+    const stats = snapshot(rule.period);
+    let used: number | null;
+    if (rule.scopeKind === 'all') {
+      const summary = stats.summary as { totalTokens?: number; totalCost?: number | null };
+      used = rule.metric === 'cost' ? summary.totalCost ?? null : summary.totalTokens ?? null;
+    } else {
+      const rows = group(stats, rule.scopeKind === 'tool' ? 'tools' : rule.scopeKind === 'model' ? 'models' : 'providers');
+      const row = rows?.[rule.scopeId];
+      used = !rows ? null : !row ? 0 : rule.metric === 'cost' ? row.cost ?? null : row.total ?? null;
+    }
+    const percent = used === null ? null : Math.round((used / rule.limit) * 1000) / 10;
+    const level = used === null ? 'unavailable' : used >= rule.limit ? 'over' : used * 100 >= rule.limit * rule.warnPercent ? 'warn' : 'ok';
+    return { ruleId: rule.id, periodStart: '', used, limit: rule.limit, percent, level };
+  });
+  const keys = (key: string) => Object.keys(group(month, key) ?? {}).sort();
+  return {
+    generatedAt: new Date().toISOString(),
+    statuses,
+    choices: {
+      tools: keys('tools'),
+      models: keys('models'),
+      providers: keys('providers'),
+      providersAvailable: group(month, 'providers') !== null,
+    },
+  };
+}
+
 let mockQuotaAlertSettings = { enabled: false, thresholds: [20] as number[] };
 let mockUnsyncedRecords = 12;
 let mockCloudAuthenticated = true;
@@ -2131,6 +2178,18 @@ export function installDevMockTauri() {
         syncMockCustomSettings();
         return mockCustomEndpoints;
       }
+      case 'get_budget_settings':
+        return mockBudgetSettings;
+      case 'set_budget_settings': {
+        const next = (payload.settings ?? {}) as { notify?: unknown; rules?: unknown };
+        mockBudgetSettings = {
+          notify: next.notify === true,
+          rules: Array.isArray(next.rules) ? next.rules.slice(0, 32) as MockBudgetRule[] : [],
+        };
+        return mockBudgetSettings;
+      }
+      case 'get_budget_status':
+        return mockBudgetStatus();
       case 'get_quota_alert_settings':
         return mockQuotaAlertSettings;
       case 'set_quota_alert_settings': {

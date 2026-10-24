@@ -1575,7 +1575,7 @@ fn capitalize_first(value: &str) -> String {
 /// (`src/utils/toolDisplayName.ts`). Both read
 /// `fixtures/tool-display-names-v1/names.json` (TOKE-12). Trim matches
 /// ECMAScript `trim()` via `is_ecmascript_trimmable`, not Rust's Unicode trim.
-fn tool_display_name(name: &str) -> String {
+pub(crate) fn tool_display_name(name: &str) -> String {
     let table = tool_display_name_table();
     let trimmed = name.trim_matches(is_ecmascript_trimmable);
     let key = trimmed.to_lowercase();
@@ -4327,9 +4327,10 @@ pub fn set_wallpaper(path: &Path) -> bool {
     }
     std::thread::sleep(std::time::Duration::from_millis(80));
     let path_str = path.to_string_lossy().to_string();
+    // AppleScript string literal: a `"` or `\` in the path must not end it.
     let set_script = format!(
         "tell application \"System Events\" to tell every desktop to set picture to POSIX file \"{}\"",
-        path_str
+        path_str.replace('\\', "\\\\").replace('"', "\\\"")
     );
     match std::process::Command::new("osascript")
         .args(["-e", &set_script])

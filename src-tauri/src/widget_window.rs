@@ -1199,6 +1199,7 @@ pub fn refresh_tray_status(
     app: &tauri::AppHandle,
     tray_text_enabled: bool,
     tray_text_metric: &str,
+    budget_line: Option<String>,
 ) {
     let stats = match commands::get_stats_impl(ctx, "today".to_string()) {
         Ok(stats) => stats,
@@ -1210,7 +1211,10 @@ pub fn refresh_tray_status(
     let (tokens, cost) = summary_numbers(&stats);
     let (tooltip, cost_title) = tray_status_text(tokens, cost);
     let quota = crate::tray_panel::current_tightest_quota();
-    let tooltip = tray_tooltip(&tooltip, quota.as_ref());
+    let mut tooltip = tray_tooltip(&tooltip, quota.as_ref());
+    if let Some(line) = budget_line {
+        tooltip = format!("{tooltip}\n{line}");
+    }
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };

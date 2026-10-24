@@ -409,12 +409,28 @@ pub fn parse_bundle(plain: &[u8]) -> Result<PeerBundle, String> {
 pub struct ImportResult {
     pub imported: Vec<String>,
     pub keys_saved: usize,
+    /// Existing keys removed because the import moved their provider to
+    /// another scheme, host or port.
+    pub keys_cleared: usize,
     pub skipped: Vec<String>,
+}
+
+fn same_origin(left: &str, right: &str) -> bool {
+    let origin = |url: &str| {
+        reqwest::Url::parse(url.trim()).ok().map(|url| {
+            (
+                url.scheme().to_string(),
+                url.host_str().map(str::to_ascii_lowercase),
+                url.port_or_known_default(),
+            )
+        })
+    };
+    matches!((origin(left), origin(right)), (Some(a), Some(b)) if a == b)
 }
 
 /// Brings the picked the peer providers (by the peer id) into the gateway; keys
 /// go to the keychain. A provider without a key keeps any key TokenLedger
-/// already has for it.
+/// already has for it, unless the import moves it to another origin.
 pub fn apply(
     gateway: &Gateway,
     bundle: &PeerBundle,
@@ -437,7 +453,7 @@ pub fn apply(
             continue;
         }
         let record = record_for(provider, &candidate.id)?;
-        gateway.upsert_provider(record)?;
+        gateway.upsert_provider(record.clone())?;
         if let Some(key) = provider.api_key().filter(|_| bundle.carries_keys()) {
             if let Err(error) = gateway.set_provider_key(SetProviderKeyInput {
                 id: candidate.id.clone(),
@@ -451,6 +467,17 @@ pub fn apply(
                 return Err(error);
             }
             result.keys_saved += 1;
+        } else if before
+            .get(&candidate.id)
+            .is_some_and(|previous| !same_origin(&previous.base_url, &record.base_url))
+        {
+            // The kept key was set for the old host; it must not follow an
+            // imported address to a host it was never meant for.
+            gateway.set_provider_key(SetProviderKeyInput {
+                id: candidate.id.clone(),
+                key: String::new(),
+            })?;
+            result.keys_cleared += 1;
         }
         result.imported.push(candidate.id.clone());
     }
