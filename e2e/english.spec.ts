@@ -65,4 +65,30 @@ test.describe('英文界面', () => {
       await expectNoHorizontalOverflow(page);
     });
   });
+
+  test('路由页：新建路由组、按权重与会话保持都是英文', async ({ page }) => {
+    await openEnglish(page, 'routing');
+    await expect(page.getByRole('heading', { name: 'Live routing' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recent decisions' })).toBeVisible();
+    await page.getByRole('button', { name: /New routing group/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'New routing group' });
+    await dialog.getByLabel('Name').fill('Split');
+    await dialog.getByLabel('Choose a member').selectOption('openai/gpt-5');
+    await dialog.getByRole('button', { name: /Add member/ }).click();
+    await dialog.getByLabel(/^Distribution/).selectOption('weighted');
+    await expect(dialog.getByText('New sessions are split by weight; on failure members are tried from highest weight down')).toBeVisible();
+    await expect(dialog.getByLabel('Weight of openai/gpt-5')).toBeVisible();
+    await expect(dialog.getByLabel(/^Session affinity/)).toContainText('1 h');
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('网关页：接入说明、模型目录与最近请求是英文', async ({ page }) => {
+    await openEnglish(page, 'gateway');
+    await expect(page.getByRole('heading', { name: /^Connect/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Model catalog' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copy local token' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Recent requests/ })).toBeVisible();
+    await expect(page.getByText('Effective tokens = input + output; cache reads and writes are listed separately')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
 });

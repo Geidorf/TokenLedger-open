@@ -10,6 +10,7 @@ import {
   type SceneNode,
 } from './routingScene';
 import './routingStage.css';
+import { localized, t } from '../../i18n';
 
 /** Seconds a packet takes along one wire, and the pause between hops. */
 const HOP_SECONDS = 0.7;
@@ -131,7 +132,7 @@ const VARIANTS: Record<StageVariant, { width: number; rowGap: number; nodeWidth:
 const FOLDED_TARGETS = '+targets';
 const FOLDED_AGENTS = '+agents';
 
-const SOURCE_LABEL = { tokenledger: 'TokenLedger 网关', external: '外部网关' } as const;
+const SOURCE_LABEL = localized({ tokenledger: 'stage.source.tokenledger', external: 'stage.source.external' });
 
 /** Chart slots that don't read as a status: red, green and amber stay for failed / ok / waiting. */
 const AGENT_SLOTS = [1, 2, 7, 3];
@@ -145,7 +146,7 @@ export function agentColor(agent: string): string {
 
 function hubLabel(scene: RoutingScene): string {
   const live = scene.sources.filter((source) => source.reachable).map((source) => SOURCE_LABEL[source.id]);
-  return live.length > 0 ? live.join(' · ') : '网关';
+  return live.length > 0 ? live.join(' · ') : t('stage.hub');
 }
 
 function packetStyle(delay: number, run: number, color: string): CSSProperties {
@@ -169,7 +170,7 @@ function NodeBox({ node, x, y, width, height, maxLabel, side, color }: {
   const state = node.more ? 'more' : node.state ?? 'idle';
   return (
     <g className={`rs-node rs-${side} is-${state}`} transform={`translate(${x - width / 2} ${y - height / 2})`} style={color ? ({ '--agent': color } as CSSProperties) : undefined}>
-      <title>{node.more ? `另有 ${node.more} 个` : node.why ? `${node.label} · ${node.why}` : node.label}</title>
+      <title>{node.more ? t('stage.more', { count: node.more }) : node.why ? `${node.label} · ${node.why}` : node.label}</title>
       <rect className="rs-node-box" width={width} height={height} rx={height / 3.2} />
       {!node.more && <circle className="rs-node-dot" cx={12} cy={height / 2} r={3.5} />}
       <text className="rs-node-label" x={node.more ? width / 2 : 22} y={height / 2} textAnchor={node.more ? 'middle' : 'start'} dominantBaseline="central">
@@ -210,7 +211,9 @@ export function RoutingStage({ scene, variant: requested = 'auto', title }: { sc
     if (flow.phase !== 'inflight' && !playing.current.has(flow.id)) playing.current.set(flow.id, nowMs + hopTiming(flow.hops.length).total * 1000);
   }
   const replays = scene.flows.filter((flow) => flow.phase === 'inflight' ? flow.fresh && layout.agents.has(sourceOf(flow)) : (playing.current.get(flow.id) ?? 0) >= nowMs && layout.agents.has(sourceOf(flow)));
-  const caption = scene.flows[0] ? `${scene.flows[0].fresh ? '' : '最近：'}${describeFlow(scene.flows[0])}` : '';
+  const caption = scene.flows[0]
+    ? (scene.flows[0].fresh ? describeFlow(scene.flows[0]) : t('stage.recent', { text: describeFlow(scene.flows[0]) }))
+    : '';
 
   const liveAgents = new Set<string>();
   const litAgents = new Set<string>();
@@ -269,10 +272,10 @@ export function RoutingStage({ scene, variant: requested = 'auto', title }: { sc
   useLoopClock(svgRef, liveAgents.size + liveTargets.size > 0 || scene.stats.inflight > 0
     || [...scene.agents, ...scene.targets].some((node) => node.state === 'busy'));
 
-  const label = title ?? '实时路由动画';
+  const label = title ?? t('stage.label');
   return (
     <figure ref={ref} className={`rs-stage is-${variant}`} aria-label={label}>
-      <svg ref={svgRef} viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={`${label}：${scene.agents.length} 个 Agent，${scene.targets.length} 个上游`} preserveAspectRatio="xMidYMid meet">
+      <svg ref={svgRef} viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={t('stage.aria', { label, agents: scene.agents.length, targets: scene.targets.length })} preserveAspectRatio="xMidYMid meet">
         <g className="rs-wires" aria-hidden="true">
           {scene.agents.map((node) => (
             <path
@@ -322,13 +325,13 @@ export function RoutingStageEmpty({ scene, variant = 'page' }: { scene: RoutingS
     <div className={`rs-empty is-${variant}`} role="status">
       {scene.empty === 'no-source' ? (
         <>
-          <b>{readFailed ? '读取实时路由数据失败' : '暂无实时路由数据'}</b>
-          <span>{notes.length > 0 ? `${notes.join('，')}。` : ''}{readFailed ? '会自动重试。' : '开启模型接入后，经过网关的请求会在这里实时显示路径与失败切换。'}</span>
+          <b>{t(readFailed ? 'stage.empty.readFailed' : 'stage.empty.noData')}</b>
+          <span>{notes.length > 0 ? t('stage.empty.notes', { notes: notes.join(t('stage.empty.notesSeparator')) }) : ''}{t(readFailed ? 'stage.empty.retry' : 'stage.empty.enableHint')}</span>
         </>
       ) : (
         <>
-          <b>还没有经过网关的请求</b>
-          <span>Agent 发出请求后，这里会显示它走了哪条路、失败时切到了哪个成员。</span>
+          <b>{t('stage.empty.noRequests')}</b>
+          <span>{t('stage.empty.noRequestsHint')}</span>
         </>
       )}
     </div>

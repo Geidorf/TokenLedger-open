@@ -9,6 +9,7 @@ import type { GatewayStatus, LedgerRecord, ProviderView, RouteDecision, RoutingG
 import { DecisionTrace } from './DecisionTrace';
 import { CopyButton, ProviderIcon, RevealCopyButton } from './ui';
 import { InfoTip } from '../../components/InfoTip';
+import { t, useLang } from '../../i18n';
 
 interface GatewayData {
   status: GatewayStatus;
@@ -27,12 +28,13 @@ function attemptWhy(record: LedgerRecord, decision: RouteDecision | undefined): 
 }
 
 export function GatewayStatusBar({ status }: { status: GatewayStatus | null }) {
-  if (!status) return <span className="mw-caption">读取网关状态…</span>;
+  useLang();
+  if (!status) return <span className="mw-caption">{t('gateway.status.loading')}</span>;
   if (status.running) {
-    return <><span className="mw-led" /><strong>运行中</strong><span className="mw-faint">·</span><span className="mw-mono-text">{status.baseUrl ?? DEFAULT_BASE_URL}</span></>;
+    return <><span className="mw-led" /><strong>{t('gateway.status.running')}</strong><span className="mw-faint">·</span><span className="mw-mono-text">{status.baseUrl ?? DEFAULT_BASE_URL}</span></>;
   }
-  if (status.error) return <><span className="mw-led is-danger" /><strong>未运行</strong><span className="mw-caption">{status.error}</span></>;
-  return <><span className="mw-led is-off" /><strong>未运行</strong><span className="mw-caption">启用至少一个供应商后自动启动（端口 {status.port}）</span></>;
+  if (status.error) return <><span className="mw-led is-danger" /><strong>{t('gateway.status.stopped')}</strong><span className="mw-caption">{status.error}</span></>;
+  return <><span className="mw-led is-off" /><strong>{t('gateway.status.stopped')}</strong><span className="mw-caption">{t('gateway.status.autoStart', { port: status.port })}</span></>;
 }
 
 /** 目录里的供应商模型与供应商页用同一枚品牌图标，路由组用路由图标。 */
@@ -44,6 +46,8 @@ function CatalogIcon({ option, providers }: { option: ModelOption; providers: Pr
 }
 
 export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { onOpenRouting: () => void; onOpenProviders?: () => void; onOpenAgents?: () => void }) {
+  // Labels read the current language directly; subscribing re-renders the page when it changes.
+  const uiLang = useLang();
   const [data, setData] = useState<GatewayData | null>(null);
   const [loadError, setLoadError] = useState('');
   const [api, setApi] = useState<SampleApi>('responses');
@@ -66,8 +70,9 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const options = useMemo(() => (data ? modelOptions(data.providers, data.groups) : []), [data]);
-  const sampleModel = model || options[0]?.value || '供应商ID/模型';
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `uiLang` re-derives the translated section labels
+  const options = useMemo(() => (data ? modelOptions(data.providers, data.groups) : []), [data, uiLang]);
+  const sampleModel = model || options[0]?.value || t('gateway.sample.modelPlaceholder');
   const baseUrl = data?.status.baseUrl ?? `http://127.0.0.1:${data?.status.port ?? 3462}/v1`;
   const q = query.trim().toLowerCase();
   const catalog = options.filter((option) => `${option.value} ${option.section}`.toLowerCase().includes(q));
@@ -78,48 +83,48 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
       <div className="mw-card mw-status-bar" role="status">
         <GatewayStatusBar status={status} />
         <span className="mw-flex" />
-        {status && <span className="mw-caption">{status.enabledCount}/{status.providerCount} 个供应商启用 · {options.length} 个模型</span>}
-        <button type="button" className="mw-btn is-ghost" onClick={() => void load()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
+        {status && <span className="mw-caption">{t('gateway.summary', { enabled: status.enabledCount, total: status.providerCount, models: options.length })}</span>}
+        <button type="button" className="mw-btn is-ghost" onClick={() => void load()}><RefreshCw className="h-3.5 w-3.5" />{t('gateway.refresh')}</button>
       </div>
-      {loadError && <p className="mw-note is-danger" role="alert">读取网关信息失败：{loadError}</p>}
+      {loadError && <p className="mw-note is-danger" role="alert">{t('gateway.loadError', { error: loadError })}</p>}
 
       <div className="mw-card mw-panel">
         <div className="mw-panel-head">
-          <h2>接入<InfoTip label="接入说明">
-            <span>已接入的 Agent 由 TokenLedger 自动写好；其他客户端（脚本、IDE 插件）照着填。</span>
-            <span>示例里的 TOKENLEDGER_TOKEN 是占位符，界面上只显示 token 尾号；点「复制 token」或「复制带 token 的完整示例」时才读取完整本地 token，直接写入剪贴板，不在界面显示或保存。</span>
-            <span>网关只监听 127.0.0.1，供应商 key 存在系统钥匙串，不会出现在任何客户端配置中。</span>
+          <h2>{t('gateway.connect.title')}<InfoTip label={t('gateway.connect.info')}>
+            <span>{t('gateway.connect.infoAgents')}</span>
+            <span>{t('gateway.connect.infoToken')}</span>
+            <span>{t('gateway.connect.infoLocal')}</span>
           </InfoTip></h2>
         </div>
         <div className="mw-connect">
-          <Seg value={api} options={[{ id: 'responses', label: 'OpenAI Responses' }, { id: 'chat', label: 'OpenAI Chat' }]} onChange={setApi} label="接入协议" size="sm" />
+          <Seg value={api} options={[{ id: 'responses', label: 'OpenAI Responses' }, { id: 'chat', label: 'OpenAI Chat' }]} onChange={setApi} label={t('gateway.connect.protocol')} size="sm" />
           <div className="mw-connect-fields">
             <div className="mw-copy-field">
               <span className="mw-copy-label">Base URL</span>
               <span className="mw-copy-value is-mono">{baseUrl}</span>
-              <CopyButton text={baseUrl} label="复制 Base URL" />
+              <CopyButton text={baseUrl} label={t('gateway.connect.copyBaseUrl')} />
             </div>
             <div className="mw-copy-field">
-              <span className="mw-copy-label">API 密钥</span>
-              <span className="mw-copy-value is-mono">{status?.tokenHint ?? '网关启动后生成'}</span>
-              <RevealCopyButton resolve={revealLocalToken} label="复制本地 token">复制 token</RevealCopyButton>
+              <span className="mw-copy-label">{t('gateway.connect.apiKey')}</span>
+              <span className="mw-copy-value is-mono">{status?.tokenHint ?? t('gateway.connect.tokenPending')}</span>
+              <RevealCopyButton resolve={revealLocalToken} label={t('gateway.connect.copyTokenLabel')}>{t('gateway.connect.copyToken')}</RevealCopyButton>
             </div>
             <div className="mw-copy-field">
-              <span className="mw-copy-label">模型</span>
+              <span className="mw-copy-label">{t('gateway.connect.model')}</span>
               {options.length > 0 ? (
-                <select className="mw-native-select is-compact" value={sampleModel} onChange={(event) => setModel(event.target.value)} aria-label="示例模型">
+                <select className="mw-native-select is-compact" value={sampleModel} onChange={(event) => setModel(event.target.value)} aria-label={t('gateway.connect.sampleModel')}>
                   {options.map((option) => <option key={option.value} value={option.value}>{option.value}</option>)}
                 </select>
               ) : <span className="mw-copy-value is-mono">{sampleModel}</span>}
-              <CopyButton text={sampleModel} label="复制模型名" />
+              <CopyButton text={sampleModel} label={t('gateway.connect.copyModel')} />
             </div>
           </div>
           <div className="mw-code">
             <div className="mw-code-head">
-              <Seg value={lang} options={[{ id: 'curl', label: 'curl' }, { id: 'python', label: 'Python' }, { id: 'node', label: 'Node' }]} onChange={setLang} label="示例语言" size="sm" />
+              <Seg value={lang} options={[{ id: 'curl', label: 'curl' }, { id: 'python', label: 'Python' }, { id: 'node', label: 'Node' }]} onChange={setLang} label={t('gateway.connect.sampleLanguage')} size="sm" />
               <span className="mw-flex" />
-              <CopyButton text={codeSample(api, lang, baseUrl, sampleModel)} label="复制示例代码">复制</CopyButton>
-              <RevealCopyButton resolve={async () => codeSample(api, lang, baseUrl, sampleModel, await revealLocalToken())} label="复制带 token 的完整示例">复制带 token 的完整示例</RevealCopyButton>
+              <CopyButton text={codeSample(api, lang, baseUrl, sampleModel)} label={t('gateway.connect.copySampleLabel')}>{t('gateway.connect.copy')}</CopyButton>
+              <RevealCopyButton resolve={async () => codeSample(api, lang, baseUrl, sampleModel, await revealLocalToken())} label={t('gateway.connect.copyFullSample')}>{t('gateway.connect.copyFullSample')}</RevealCopyButton>
             </div>
             <pre>{codeSample(api, lang, baseUrl, sampleModel)}</pre>
           </div>
@@ -128,17 +133,17 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
 
       <div className="mw-card mw-panel">
         <div className="mw-panel-head">
-          <h2>模型目录</h2>
+          <h2>{t('gateway.catalog.title')}</h2>
           <div className="mw-panel-tools">
-            <label className="mw-search is-inline"><Search className="h-4 w-4" aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索模型" aria-label="搜索模型目录" /></label>
-            <CopyButton text={options.map((option) => option.value).join('\n')} label="复制全部模型 ID">复制全部 ID</CopyButton>
+            <label className="mw-search is-inline"><Search className="h-4 w-4" aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('gateway.catalog.search')} aria-label={t('gateway.catalog.searchLabel')} /></label>
+            <CopyButton text={options.map((option) => option.value).join('\n')} label={t('gateway.catalog.copyAllLabel')}>{t('gateway.catalog.copyAll')}</CopyButton>
           </div>
         </div>
         {catalog.length === 0 ? (options.length === 0 ? (
-          <EmptyState variant="inset" icon={Boxes} title="还没有可用模型" description="在供应商页启用供应商并列出模型，这里就会出现可直接复制的模型 ID。">
-            {onOpenProviders && <button type="button" className="secondary-inline" onClick={onOpenProviders}>去添加供应商</button>}
+          <EmptyState variant="inset" icon={Boxes} title={t('empty.gatewayModels.title')} description={t('empty.gatewayModels.description')}>
+            {onOpenProviders && <button type="button" className="secondary-inline" onClick={onOpenProviders}>{t('empty.gatewayModels.action')}</button>}
           </EmptyState>
-        ) : <p className="mw-caption">没有匹配的模型。</p>) : (
+        ) : <p className="mw-caption">{t('gateway.catalog.noMatch')}</p>) : (
           <ul className="mw-catalog">
             {catalog.map((option) => (
               <li key={option.value}>
@@ -148,9 +153,9 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
                   <small>{option.isGroup ? option.label : option.section}</small>
                 </div>
                 <div className="mw-badges">
-                  {option.isGroup && <button type="button" className="mw-chip-hit" onClick={onOpenRouting}><span className="mw-chip is-info">路由组</span></button>}
+                  {option.isGroup && <button type="button" className="mw-chip-hit" onClick={onOpenRouting}><span className="mw-chip is-info">{t('gateway.catalog.group')}</span></button>}
                 </div>
-                <CopyButton text={option.value} label={`复制 ${option.value}`} />
+                <CopyButton text={option.value} label={t('gateway.catalog.copyOne', { value: option.value })} />
               </li>
             ))}
           </ul>
@@ -159,20 +164,20 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
 
       <div className="mw-card mw-panel">
         <div className="mw-panel-head">
-          <h2>最近请求<InfoTip label="请求记录说明">记录保存在本机，最多显示最近 50 条。</InfoTip></h2>
-          <span>有效 Token = 输入 + 输出，缓存读写单列</span>
+          <h2>{t('gateway.requests.title')}<InfoTip label={t('gateway.requests.info')}>{t('gateway.requests.infoBody')}</InfoTip></h2>
+          <span>{t('gateway.requests.effective')}</span>
         </div>
         {data && data.requests.length === 0 ? (
-          <EmptyState variant="inset" icon={Bot} title="还没有经过网关的请求" description="在 Agent 页把 Codex、Claude Code 等接到网关，或在自己的代码里用上面的地址和 token，每次请求都会出现在这里。">
-            {onOpenAgents && <button type="button" className="secondary-inline" onClick={onOpenAgents}>去接入 Agent</button>}
+          <EmptyState variant="inset" icon={Bot} title={t('empty.gatewayRequests.title')} description={t('empty.gatewayRequests.description')}>
+            {onOpenAgents && <button type="button" className="secondary-inline" onClick={onOpenAgents}>{t('empty.gatewayRequests.action')}</button>}
           </EmptyState>
         ) : (
           <div className="mw-table-wrap">
-            <table className="mw-table" aria-label="最近请求">
+            <table className="mw-table" aria-label={t('gateway.requests.title')}>
               <thead>
                 <tr>
-                  <th>时间</th><th>Agent</th><th>模型</th><th>实际转发</th><th>状态</th>
-                  <th className="is-num">有效 Token</th><th className="is-num">输入</th><th className="is-num">输出</th><th className="is-num">缓存读</th><th className="is-num">缓存写</th><th className="is-num">耗时</th>
+                  <th>{t('gateway.requests.col.time')}</th><th>Agent</th><th>{t('gateway.requests.col.model')}</th><th>{t('gateway.requests.col.routed')}</th><th>{t('gateway.requests.col.status')}</th>
+                  <th className="is-num">{t('gateway.requests.col.effective')}</th><th className="is-num">{t('gateway.requests.col.input')}</th><th className="is-num">{t('gateway.requests.col.output')}</th><th className="is-num">{t('gateway.requests.col.cacheRead')}</th><th className="is-num">{t('gateway.requests.col.cacheWrite')}</th><th className="is-num">{t('gateway.requests.col.duration')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -189,8 +194,8 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
                         <td className="mw-mono-text">
                           {record.member ?? `${record.provider}/${record.upstreamModel}`}
                           {decision && (
-                            <button type="button" className="mw-chip-hit mw-trace-open" aria-expanded={open} aria-label={`${open ? '收起' : '查看'}路由原因`} onClick={() => setOpenTrace(open ? null : record.requestId)}>
-                              <span className={`mw-chip ${record.ok ? 'is-info' : 'is-warning'}`}>{why ?? '路由原因'}</span>
+                            <button type="button" className="mw-chip-hit mw-trace-open" aria-expanded={open} aria-label={t(open ? 'gateway.requests.whyHide' : 'gateway.requests.whyShow')} onClick={() => setOpenTrace(open ? null : record.requestId)}>
+                              <span className={`mw-chip ${record.ok ? 'is-info' : 'is-warning'}`}>{why ?? t('gateway.requests.why')}</span>
                             </button>
                           )}
                         </td>

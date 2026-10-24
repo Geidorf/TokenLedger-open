@@ -11,6 +11,8 @@ const SHOTS = [
   { name: 'dashboard-420', hash: 'dashboard', width: 420 },
   // 英文界面：新电脑的首次启动引导（`?lang=en` 与设置里选 English 等价）。
   { name: 'onboarding-en-1280', hash: 'dashboard', width: 1280, query: '?fresh=1&lang=en' },
+  { name: 'routing-en-1280', hash: 'routing', width: 1280, query: '?lang=en' },
+  { name: 'gateway-en-1280', hash: 'gateway', width: 1280, query: '?lang=en' },
 ] as const satisfies readonly { name: string; hash: string; width: number; query?: string }[];
 
 test.describe('视觉基线', () => {
