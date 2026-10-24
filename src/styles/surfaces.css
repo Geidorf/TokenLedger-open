@@ -442,6 +442,26 @@
   color: var(--color-text-tertiary);
 }
 
+/* ----- Model pages: routing groups ---------------------------------------
+   A group card's rules read as one outlined list, matching the members list
+   above them, instead of a stack of grey slabs. */
+.app-shell .mw-group .mw-rules {
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.app-shell .mw-group .mw-rule {
+  border: 0;
+  border-radius: 0;
+  padding: 8px 10px;
+  background: transparent;
+}
+
+.app-shell .mw-group .mw-rule + .mw-rule {
+  border-top: 1px solid var(--color-border-faint);
+}
+
 /* ----- Model pages: fields ------------------------------------------------
    Search boxes, selects and the model picker sit on the card as outlined
    fields instead of grey slabs; focus keeps the shared ring. */
