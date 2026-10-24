@@ -518,9 +518,8 @@ pub struct RowCounts {
     pub new: usize,
     /// Rows already here (the same `unique_key` or accounting identity).
     pub known: usize,
-    /// Rows another computer had not uploaded yet. They are restored, but
-    /// if this computer uploads them they replace whatever that computer
-    /// uploaded for the same hour later; the preview says so.
+    /// 原设备尚未上传的行。它们只恢复到本机账本，仍归原设备，不由本机
+    /// 代为上传。
     pub other_computer_pending: usize,
     pub first: Option<String>,
     pub last: Option<String>,
@@ -567,12 +566,9 @@ fn unique_key_index(columns: &[String]) -> Result<usize, String> {
         .ok_or_else(|| "备份里的账本缺少去重键。".to_string())
 }
 
-/// Where ledger rows from another computer come from. They are all
-/// restored (a new computer or a reinstall has another id, and without cloud
-/// sync nothing was ever uploaded), under the source computer's id even when
-/// the row had none. Rows it had not uploaded yet are counted for the
-/// preview: uploaded from here they would replace what that computer later
-/// uploaded for the same hour.
+/// 恢复行最终归属的设备。本机旧别名统一归到当前随机设备 ID；外机显式 ID
+/// 保持不变；缺失、null 或空 ID 按备份所属设备补齐。原设备尚未上传的行
+/// 只恢复到本机账本，仍归原设备，不会由本机代为上传。
 struct Provenance {
     machine: Option<usize>,
     sync_status: Option<usize>,
@@ -580,21 +576,48 @@ struct Provenance {
     /// This computer's ids: its device id and the host names its rows
     /// carried before it had one.
     local: Vec<String>,
-    /// The backup's computer when it is not this one.
-    foreign: Option<String>,
+    /// 当前随机设备 ID，`local` 的第一项。
+    current: String,
+    /// 备份所属设备；本机旧别名会解析为当前设备 ID。
+    bundle_owner: String,
 }
 
 impl Provenance {
-    fn new(conn: &Connection, columns: &[String], bundle_machine: &str) -> Self {
+    fn new(conn: &Connection, columns: &[String], bundle_machine: &str) -> Result<Self, String> {
         let at = |name: &str| columns.iter().position(|column| column == name);
-        let local = own_machine_ids(conn);
-        Self {
+        let local = own_machine_ids(conn)?;
+        let current = local
+            .first()
+            .cloned()
+            .ok_or_else(|| "无法识别当前设备。".to_string())?;
+        let bundle_owner = if bundle_machine.is_empty() {
+            String::new()
+        } else if local.iter().any(|id| id == bundle_machine) {
+            current.clone()
+        } else {
+            bundle_machine.to_string()
+        };
+        Ok(Self {
             machine: at("machine_id"),
             sync_status: at("sync_status"),
             cloud_user: at("cloud_user_id"),
-            foreign: (!bundle_machine.is_empty() && !local.iter().any(|id| id == bundle_machine))
-                .then(|| bundle_machine.to_string()),
             local,
+            current,
+            bundle_owner,
+        })
+    }
+
+    /// 恢复行应写入的设备 ID。
+    fn machine_id(&self, row: &[Value]) -> String {
+        match self
+            .machine
+            .and_then(|at| row.get(at))
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+        {
+            Some(id) if self.local.iter().any(|own| own == id) => self.current.clone(),
+            Some(id) => id.to_string(),
+            None => self.bundle_owner.clone(),
         }
     }
 
@@ -608,7 +631,8 @@ impl Provenance {
         match own {
             Some(id) if !self.local.iter().any(|own| own == id) => Some(id.to_string()),
             Some(_) => None,
-            None => self.foreign.clone(),
+            None if self.bundle_owner.is_empty() || self.bundle_owner == self.current => None,
+            None => Some(self.bundle_owner.clone()),
         }
     }
 
@@ -689,7 +713,7 @@ fn ledger_counts(
     let key = unique_key_index(&table.columns)?;
     let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
     let shared = shared_cumulative_sources(&conn, cumulative)?;
-    let provenance = Provenance::new(&conn, &table.columns, bundle_machine);
+    let provenance = Provenance::new(&conn, &table.columns, bundle_machine)?;
     let mut stmt = conn
         .prepare(&format!(
             "SELECT 1 FROM {LEDGER_TABLE} WHERE unique_key = ?1"
@@ -779,20 +803,23 @@ fn merged_overrides(
 
 /// The ids rows of this computer carry: its device id, then the host names
 /// it migrated from (backups made before the device id name the host).
-fn own_machine_ids(conn: &Connection) -> Vec<String> {
-    let Ok(device) = crate::device_identity::for_connection(conn) else {
-        return Vec::new();
-    };
-    let mut ids = crate::device_identity::legacy_machine_ids(conn, &device).unwrap_or_default();
+fn own_machine_ids(conn: &Connection) -> Result<Vec<String>, String> {
+    let device = crate::device_identity::for_connection(conn)
+        .map_err(|error| format!("无法识别当前设备：{error}"))?;
+    let mut ids = crate::device_identity::legacy_machine_ids(conn, &device)
+        .map_err(|error| format!("读取设备迁移记录失败：{error}"))?;
     ids.insert(0, device);
-    ids
+    Ok(ids)
 }
 
-fn same_machine(db_path: &Path, bundle: &Bundle) -> bool {
-    !bundle.machine.is_empty()
-        && db::get_connection(db_path)
-            .map(|conn| own_machine_ids(&conn).contains(&bundle.machine))
-            .unwrap_or(false)
+fn same_machine(db_path: &Path, bundle: &Bundle) -> Result<bool, String> {
+    if bundle.machine.is_empty() {
+        return Ok(false);
+    }
+    let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
+    Ok(own_machine_ids(&conn)?
+        .iter()
+        .any(|id| id == &bundle.machine))
 }
 
 /// What restoring `bundle` here would do, item by item.
@@ -845,19 +872,20 @@ pub fn preview(
                 ItemStatus::Differs
             }
         });
+    let same_machine = same_machine(&db_path, bundle)?;
     Ok(Preview {
         digest,
         created: bundle.created.clone(),
         app_version: bundle.app_version.clone(),
         machine: bundle.machine.clone(),
-        same_machine: same_machine(&db_path, bundle),
+        same_machine,
         ledger: ledger_counts(
             &db_path,
             &bundle.ledger,
             &bundle.scan_cumulative,
             &bundle.machine,
         )?,
-        gateway_requests_restorable: same_machine(&db_path, bundle),
+        gateway_requests_restorable: same_machine,
         gateway_requests: gateway_counts(gateway, &bundle.gateway_requests)?,
         providers,
         providers_without_key,
@@ -1059,7 +1087,7 @@ fn import_ledger(
     shared: &BTreeSet<String>,
     bundle_machine: &str,
 ) -> Result<usize, String> {
-    let provenance = Provenance::new(tx, &table.columns, bundle_machine);
+    let provenance = Provenance::new(tx, &table.columns, bundle_machine)?;
     if table.rows.is_empty() {
         return Ok(0);
     }
@@ -1069,13 +1097,18 @@ fn import_ledger(
         .into_iter()
         .collect();
     // Columns this build does not have are dropped; `id` is never carried.
-    let picked: Vec<(usize, String)> = table
+    // machine_id is appended below even when an old backup lacks the column,
+    // so every inserted row gets its resolved owner explicitly.
+    let mut picked: Vec<(Option<usize>, String)> = table
         .columns
         .iter()
         .enumerate()
-        .filter(|(_, column)| column.as_str() != "id" && local.contains(column.as_str()))
-        .map(|(index, column)| (index, column.clone()))
+        .filter(|(_, column)| {
+            !matches!(column.as_str(), "id" | "machine_id") && local.contains(column.as_str())
+        })
+        .map(|(index, column)| (Some(index), column.clone()))
         .collect();
+    picked.push((None, "machine_id".to_string()));
     let names: Vec<String> = picked.iter().map(|(_, name)| name.clone()).collect();
     let placeholders = vec!["?"; names.len()].join(",");
     let mut added = 0;
@@ -1092,12 +1125,12 @@ fn import_ledger(
                     continue;
                 }
             }
-            let foreign = provenance.foreign_machine(row);
             let values: Vec<SqlValue> = picked
                 .iter()
-                .map(|(index, name)| match (&foreign, name.as_str()) {
-                    (Some(machine), "machine_id") => SqlValue::Text(machine.clone()),
-                    _ => row.get(*index).map_or(SqlValue::Null, json_to_sql),
+                .map(|(index, name)| match (index, name.as_str()) {
+                    (None, "machine_id") => SqlValue::Text(provenance.machine_id(row)),
+                    (Some(index), _) => row.get(*index).map_or(SqlValue::Null, json_to_sql),
+                    (None, _) => SqlValue::Null,
                 })
                 .collect();
             match stmt.execute(params_from_iter(values)) {
@@ -1349,7 +1382,7 @@ pub fn apply(
             &bundle.machine,
         )?;
     }
-    if sections.gateway_requests && same_machine(&db_path, bundle) {
+    if sections.gateway_requests && same_machine(&db_path, bundle)? {
         // The backup is a snapshot: this computer may have uploaded more for
         // an hour after it was made, so every restored hour stays protected
         // from overwriting cloud history. That is the later of the source's

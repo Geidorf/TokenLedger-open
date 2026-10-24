@@ -197,21 +197,106 @@ fn test_app() -> (AppContext, PathBuf) {
 }
 
 fn insert_scan(db_path: &Path, key: &str, session: &str, at: &str, synced_for: Option<&str>) {
+    let _ = insert_scan_for_machine(db_path, key, session, at, synced_for, "");
+}
+
+fn insert_scan_for_machine(
+    db_path: &Path,
+    key: &str,
+    session: &str,
+    at: &str,
+    synced_for: Option<&str>,
+    machine_id: &str,
+) -> i64 {
     let conn = db::get_connection(db_path).unwrap();
     conn.execute(
         "INSERT INTO token_logs (tool, model, input_tokens, output_tokens, cached_tokens,
              cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id,
              sync_status, cloud_user_id)
-         VALUES ('codex', 'gpt-5.5', 200, 80, 0, 0, ?1, ?2, ?3, 0.1, '', ?4, ?5)",
+         VALUES ('codex', 'gpt-5.5', 200, 80, 0, 0, ?1, ?2, ?3, 0.1, ?4, ?5, ?6)",
         params![
             at,
             session,
             key,
+            machine_id,
             i64::from(synced_for.is_some()),
             synced_for
         ],
     )
     .unwrap();
+    conn.last_insert_rowid()
+}
+
+fn write_gateway_usage(db_path: &Path, session: &str, request_id: &str) {
+    let end = Local
+        .with_ymd_and_hms(2026, 10, 4, 10, 0, 10)
+        .single()
+        .unwrap();
+    let line = json!({
+        "ts": end.with_timezone(&Utc).to_rfc3339(), "requestId": request_id, "agent": "codex",
+        "session": session, "endpoint": "responses", "provider": "openai",
+        "requestedModel": "openai/gpt-5.5", "upstreamModel": "gpt-5.5", "wire": "responses",
+        "stream": true, "status": 200, "ok": true, "input": 200, "output": 80,
+        "cacheRead": 0, "cacheWrite": 0, "latencyMs": 900, "error": null
+    });
+    let dir = gateway_overlay::gateway_dir(db_path);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("usage-v1.jsonl"), format!("{line}\n")).unwrap();
+}
+
+#[test]
+fn machine_scoped_scan_candidates_exclude_external_rows() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let local_id = insert_scan_for_machine(
+        &db_path,
+        "local-candidate",
+        "s1",
+        "2026-10-04 10:00:09",
+        None,
+        "mac",
+    );
+    let external_id = insert_scan_for_machine(
+        &db_path,
+        "external-candidate",
+        "s1",
+        "2026-10-04 10:00:09",
+        None,
+        "other-machine",
+    );
+    let conn = db::get_connection(&db_path).unwrap();
+    let gateway = vec![gateway_overlay::GatewayRow {
+        id: -1,
+        source: gateway_overlay::RowSource::Gateway,
+        request_id: "candidate".into(),
+        tool: "codex".into(),
+        model: "gpt-5.5".into(),
+        provider: "openai".into(),
+        session_id: "s1".into(),
+        real_session: true,
+        timestamp: "2026-10-04 10:00:10".into(),
+        start_timestamp: "2026-10-04 10:00:09".into(),
+        input_tokens: 200,
+        output_tokens: 80,
+        cached_tokens: 0,
+        cache_write_tokens: 0,
+        machine_id: None,
+        latency_ms: 900,
+        context: None,
+    }];
+
+    let scoped =
+        gateway_overlay::scan_candidates_for_machine(&conn, &gateway, Some("mac")).unwrap();
+    assert_eq!(
+        scoped.iter().map(|row| row.id).collect::<Vec<_>>(),
+        vec![local_id]
+    );
+    assert!(!scoped.iter().any(|row| row.id == external_id));
+    let all = gateway_overlay::scan_candidates(&conn, &gateway).unwrap();
+    assert_eq!(all.len(), 2, "统计入口保留同小时全部扫描行");
+
+    drop(conn);
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
@@ -265,6 +350,82 @@ fn collect_hours_flags_superseded_scans_and_skips_untouched_hours() {
     );
     save_state(&db_path, &plan.next_state).unwrap();
     assert_eq!(load_state(&db_path), plan.next_state);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn collect_hours_excludes_external_rows_from_same_hour_data_and_receipts() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let local_id = insert_scan_for_machine(
+        &db_path,
+        "local-scan",
+        "s1",
+        "2026-10-04 10:00:09",
+        None,
+        "mac",
+    );
+    let external_id = insert_scan_for_machine(
+        &db_path,
+        "external-scan",
+        "s1",
+        "2026-10-04 10:00:09",
+        None,
+        "other-machine",
+    );
+    write_gateway_usage(&db_path, "s1", "external-candidate");
+
+    let hours = collect_hours(&db_path, "user-a", "mac").unwrap();
+    let scans: Vec<_> = hours[HOUR].iter().filter(|row| !row.gateway).collect();
+    assert_eq!(scans.len(), 1, "同小时只收集本机扫描行");
+    assert_eq!(scans[0].id, local_id);
+    assert_eq!(scans[0].machine_id, "mac");
+    assert!(!scans.iter().any(|row| row.id == external_id));
+
+    let plan = plan(&hours, &CloudState::default(), "user-a", "mac", &cost);
+    assert!(plan.mark_ids.iter().any(|(id, _)| *id == local_id));
+    assert!(!plan.mark_ids.iter().any(|(id, _)| *id == external_id));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn gateway_snapshot_ignores_same_hour_external_revision_change() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    insert_scan_for_machine(
+        &db_path,
+        "local-snapshot",
+        "s1",
+        "2026-10-04 10:00:09",
+        None,
+        "mac",
+    );
+    let external_id = insert_scan_for_machine(
+        &db_path,
+        "external-snapshot",
+        "s1",
+        "2026-10-04 10:00:09",
+        None,
+        "other-machine",
+    );
+    write_gateway_usage(&db_path, "s1", "external-snapshot");
+
+    let hours = collect_hours_with_scan_hook(&db_path, "user-a", "mac", || {
+        db::get_connection(&db_path)
+            .unwrap()
+            .execute(
+                "UPDATE token_logs SET output_tokens=81 WHERE id=?1",
+                [external_id],
+            )
+            .unwrap();
+    })
+    .unwrap();
+    let conn = db::get_connection(&db_path).unwrap();
+    assert!(
+        super::super::scanner_sync::gateway_snapshot_matches(&conn, &hours, "mac").unwrap(),
+        "外机同小时行变化不应使本机快照失效"
+    );
+    drop(conn);
     let _ = fs::remove_dir_all(root);
 }
 

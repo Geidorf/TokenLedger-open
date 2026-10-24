@@ -765,7 +765,7 @@ export const zh = {
   'backup.preview.gatewayOtherMachine': '只能恢复到产生它们的那台电脑（换电脑时由原电脑继续统计与上传）',
   'backup.preview.none': '备份里没有',
   'backup.preview.rows': '共 {total} 行，新增 {added} 行，本机已有 {known} 行（跳过）',
-  'backup.preview.otherComputerPending': '；其中 {count} 行原电脑还没上传云端，如果原电脑之后为同一小时上传过更多，本机开云同步后可能把那一小时覆盖成较少的数',
+  'backup.preview.otherComputerPending': '；其中 {count} 行为原设备尚未上传的行，仅恢复到本机，本机不会代它上传',
   'backup.preview.items': '共 {total} 项，新增 {added}，与本机不同 {differs}',
   'backup.preview.needKeys': '这些供应商在本机还没有 API key，恢复后需要到「供应商」页补填：{ids}',
   'backup.status.new': '本机没有，将新增',

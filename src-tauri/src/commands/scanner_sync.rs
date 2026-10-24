@@ -29,7 +29,9 @@ pub(super) fn dirty_snapshot(
     deferred_hours: &HashSet<String>,
 ) -> Result<DirtySnapshot> {
     let mut statement=conn.prepare("SELECT id,tool,model,hour_bucket,coalesce(nullif(machine_id,''),?2)
-        FROM scan_cloud_dirty_buckets WHERE user_id=?1 AND NOT (
+        FROM scan_cloud_dirty_buckets WHERE user_id=?1
+          AND coalesce(nullif(machine_id,''),?2)=?2
+          AND NOT (
             tool='codex' AND coalesce(nullif(machine_id,''),?2)=?2
             AND EXISTS(SELECT 1 FROM pending_cloud_purges WHERE tool='codex' AND machine_id=?2 AND ready=0)) ORDER BY id")?;
     let mut result = DirtySnapshot::default();
@@ -61,7 +63,8 @@ pub(super) fn remember_sending(
 ) -> Result<()> {
     let mut statement=conn.prepare("INSERT OR IGNORE INTO scan_cloud_sent_identities(user_id,source_key,tool,model,hour_bucket,machine_id)
         SELECT ?1,unique_key,tool,model,substr(timestamp,1,13)||':00:00',coalesce(nullif(machine_id,''),?2)
-        FROM token_logs WHERE id=?3")?;
+        FROM token_logs WHERE id=?3
+          AND coalesce(nullif(machine_id,''),?2)=?2")?;
     for id in ids {
         statement.execute(params![user, fallback, id])?;
     }
@@ -92,9 +95,12 @@ pub(super) fn acknowledge_dirty(conn: &Connection, user: &str, ids: &[i64]) -> R
 pub(super) fn gateway_snapshot_matches(
     conn: &Connection,
     hours: &BTreeMap<String, Vec<gateway_cloud::HourRow>>,
+    machine_id: &str,
 ) -> Result<bool> {
     let mut statement = conn.prepare(
-        "SELECT id,sync_revision FROM token_logs WHERE substr(timestamp,1,13)||':00:00'=?1",
+        "SELECT id,sync_revision FROM token_logs
+         WHERE substr(timestamp,1,13)||':00:00'=?1
+           AND coalesce(nullif(machine_id,''),?2)=?2",
     )?;
     for (hour, rows) in hours {
         let expected: HashMap<i64, i64> = rows
@@ -103,7 +109,9 @@ pub(super) fn gateway_snapshot_matches(
             .map(|r| (r.id, r.sync_revision))
             .collect();
         let actual = statement
-            .query_map([hour], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+            .query_map(params![hour, machine_id], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            })?
             .collect::<Result<HashMap<_, _>>>()?;
         if actual != expected {
             return Ok(false);
