@@ -104,12 +104,12 @@ private fun QuickTileGallery(night: Boolean) {
 }
 
 @PreviewTest
-@Preview(name = "QuickTile Dark", device = "spec:width=280dp,height=400dp,dpi=320", fontScale = 1.0f,
+@Preview(name = "QuickTile Dark", device = "spec:width=280dp,height=400dp,dpi=160", fontScale = 1.0f,
     uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun QuickTileDarkScreenshot() { QuickTileGallery(night = true) }
 
 @PreviewTest
-@Preview(name = "QuickTile Light", device = "spec:width=280dp,height=400dp,dpi=320", fontScale = 1.0f)
+@Preview(name = "QuickTile Light", device = "spec:width=280dp,height=400dp,dpi=160", fontScale = 1.0f)
 @Composable
 fun QuickTileLightScreenshot() { QuickTileGallery(night = false) }

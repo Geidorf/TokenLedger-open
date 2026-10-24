@@ -143,24 +143,24 @@ private fun RoutingLiveFixture(
 }
 
 @PreviewTest
-@Preview(name = "RoutingLive Dark", device = "spec:width=320dp,height=220dp,dpi=320", fontScale = 1.0f,
+@Preview(name = "RoutingLive Dark", device = "spec:width=320dp,height=220dp,dpi=160", fontScale = 1.0f,
     uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RoutingLiveDarkScreenshot() { RoutingLiveFixture(320, 220, night = true) }
 
 @PreviewTest
-@Preview(name = "RoutingLive Light", device = "spec:width=320dp,height=220dp,dpi=320", fontScale = 1.0f)
+@Preview(name = "RoutingLive Light", device = "spec:width=320dp,height=220dp,dpi=160", fontScale = 1.0f)
 @Composable
 fun RoutingLiveLightScreenshot() { RoutingLiveFixture(320, 220, night = false) }
 
 @PreviewTest
-@Preview(name = "RoutingLive Short", device = "spec:width=320dp,height=110dp,dpi=320", fontScale = 1.0f,
+@Preview(name = "RoutingLive Short", device = "spec:width=320dp,height=110dp,dpi=160", fontScale = 1.0f,
     uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RoutingLiveShortScreenshot() { RoutingLiveFixture(320, 110, night = true) }
 
 @PreviewTest
-@Preview(name = "RoutingLive Stale", device = "spec:width=320dp,height=220dp,dpi=320", fontScale = 1.0f)
+@Preview(name = "RoutingLive Stale", device = "spec:width=320dp,height=220dp,dpi=160", fontScale = 1.0f)
 @Composable
 fun RoutingLiveStaleScreenshot() {
     // 读到后 40 分钟没再读（手机省电或离线）：连线全部熄灭，行按真实年龄写。
@@ -168,7 +168,7 @@ fun RoutingLiveStaleScreenshot() {
 }
 
 @PreviewTest
-@Preview(name = "RoutingLive Offline", device = "spec:width=320dp,height=220dp,dpi=320", fontScale = 1.0f,
+@Preview(name = "RoutingLive Offline", device = "spec:width=320dp,height=220dp,dpi=160", fontScale = 1.0f,
     uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RoutingLiveOfflineScreenshot() {
@@ -176,14 +176,14 @@ fun RoutingLiveOfflineScreenshot() {
 }
 
 @PreviewTest
-@Preview(name = "RoutingLive NoSnapshot", device = "spec:width=320dp,height=220dp,dpi=320", fontScale = 1.0f)
+@Preview(name = "RoutingLive NoSnapshot", device = "spec:width=320dp,height=220dp,dpi=160", fontScale = 1.0f)
 @Composable
 fun RoutingLiveNoSnapshotScreenshot() {
     RoutingLiveFixture(320, 220, night = false, snapshot = RoutingLiveSnapshot("u1", WidgetRoutingState.NoSnapshot, CAPTURED))
 }
 
 @PreviewTest
-@Preview(name = "RoutingLive Font200", device = "spec:width=320dp,height=220dp,dpi=320", fontScale = 2.0f,
+@Preview(name = "RoutingLive Font200", device = "spec:width=320dp,height=220dp,dpi=160", fontScale = 2.0f,
     uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RoutingLiveFont200Screenshot() { RoutingLiveFixture(320, 220, night = true) }
