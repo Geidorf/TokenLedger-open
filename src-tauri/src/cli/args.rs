@@ -20,6 +20,7 @@ tokenledger-cli —— TokenLedger 命令行
       --format csv|json          默认 csv
       --output <文件>            写到文件；默认写到标准输出
   status [--no-quota]     一行摘要，给状态栏插件用
+  mcp                     以 stdio 运行只读 MCP 服务，给 Agent 用（见 docs/mcp.md）
   help                    显示本帮助
   version                 显示版本
 

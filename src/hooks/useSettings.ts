@@ -193,10 +193,11 @@ export function useSettings({
   const saveAppSettings = useCallback(async (next: AppSettings): Promise<boolean> => {
     setBusy((p: any) => ({ ...p, settings: true }));
     try {
-      const res = await invoke<{ message: string; settings: AppSettings; quotaCleanupPending?: boolean; wallpaperWarning?: string }>('save_settings', { settings: next });
+      const res = await invoke<{ message: string; settings: AppSettings; quotaCleanupPending?: boolean; wallpaperWarning?: string; autostartWarning?: string }>('save_settings', { settings: next });
       setAppSettings(res.settings);
       setWallpaperError(res.wallpaperWarning || '');
-      showMessage(res.wallpaperWarning ? 'warning' : res.quotaCleanupPending ? 'info' : 'success', res.wallpaperWarning || res.message);
+      const warning = res.wallpaperWarning || res.autostartWarning;
+      showMessage(warning ? 'warning' : res.quotaCleanupPending ? 'info' : 'success', warning || res.message);
       if (
         next.quota_codex_local_enabled !== appSettings.quota_codex_local_enabled
         || next.quota_claude_enabled !== appSettings.quota_claude_enabled

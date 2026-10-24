@@ -1,12 +1,13 @@
 use super::checkpoints::*;
 use super::helpers::*;
+use super::jsonl::bounded_lines;
 use super::types::LogRecord;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -97,28 +98,22 @@ pub(crate) fn scan_dsh_file(
             filepath.display()
         )
     })?;
-    let mut reader = BufReader::new(decoder);
-    let mut line = String::new();
-    let mut line_number = 0usize;
+    let lines = bounded_lines(BufReader::new(decoder));
+
     let session_hint = dsh_session_hint(filepath);
     let mut session_id = session_hint.clone();
     let mut session_created_at = Value::Null;
     let mut latest_model: Option<String> = None;
     let mut file_logs = Vec::new();
 
-    loop {
-        line.clear();
-        let bytes = reader.read_line(&mut line).map_err(|error| {
+    for (line_index, line) in lines.enumerate() {
+        let line_number = line_index + 1;
+        let line = line.map_err(|error| {
             format!(
-                "failed to decompress DSH session {} at line {}: {error}",
+                "failed to decompress DSH session {} at line {line_number}: {error}",
                 filepath.display(),
-                line_number + 1
             )
         })?;
-        if bytes == 0 {
-            break;
-        }
-        line_number += 1;
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

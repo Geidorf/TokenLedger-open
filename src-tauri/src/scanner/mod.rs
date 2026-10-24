@@ -2,12 +2,15 @@ pub mod antigravity;
 pub mod checkpoints;
 pub mod cindy;
 pub mod claude;
+pub mod cline;
 pub mod codex;
 pub mod copilot;
 pub mod dsh;
 pub mod gemini;
+pub mod goose;
 pub mod grok;
 pub mod helpers;
+pub(crate) mod jsonl;
 pub mod kimi;
 pub mod minimax;
 pub mod other_tools;
@@ -17,6 +20,8 @@ pub mod reasonix;
 pub mod runner;
 pub mod types;
 
+#[cfg(test)]
+mod fuzz_tests;
 #[cfg(test)]
 mod tests;
 

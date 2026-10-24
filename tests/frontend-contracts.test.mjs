@@ -1817,9 +1817,10 @@ test('dashboard defaults keep KPI then comparison trend while allowing stored mo
   const trend = source.indexOf('<TrendPanel');
   const contributorGrid = source.indexOf('<UsageSplitPanel');
   assert.ok(trend !== -1 && contributorGrid !== -1 && trend < contributorGrid);
-  const preferences = readSource(path.join(process.cwd(), 'src', 'utils', 'useDashboardDisplayPreferences.ts'));
-  assert.match(preferences, /DASHBOARD_MODULE_IDS = \['kpi', 'trend', 'quota', 'distribution', 'insights'\]/);
-  assert.match(source, /moduleOrder\.filter\(moduleVisible\)\.map/);
+  // 卡片顺序由当前布局决定（dashboardLayout.ts）；默认布局沿用改版前的顺序：统计条、额度要点、趋势、额度详情、拆分。
+  const layout = readSource(path.join(process.cwd(), 'src', 'utils', 'dashboardLayout.ts'));
+  assert.match(layout, /DASHBOARD_CARD_IDS = \[\s*'metrics',\s*'quotaHighlights',\s*'trend',\s*'quota',\s*'split',/);
+  assert.match(source, /<DashboardLayoutGrid[\s\S]*?cards=\{layoutCards\}/);
 });
 
 test('workbuddy 多维分析视图已作为死代码删除（T10.160），不应恢复', () => {
@@ -1857,7 +1858,7 @@ test('overview day drill opens a single-day review and model cost reports use ev
   assert.match(source, /<ModelCostDistributionPanel models=\{allModelsList\}/);
   assert.match(source, /<CostEfficiencyQuadrantPanel models=\{allModelsList\}/);
   // 模型排行并入用量拆分的模型维度（对齐 magpie Split by），同样看到全部模型。
-  assert.match(source, /<UsageSplitPanel key=\{module\} stats=\{stats\}/);
+  assert.match(source, /<UsageSplitPanel stats=\{stats\}/);
 });
 
 test('populated dashboard groups insight panels in a cache-economics then time-behavior narrative', () => {

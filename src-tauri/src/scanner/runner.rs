@@ -1,9 +1,11 @@
 use super::antigravity::*;
 use super::claude::*;
+use super::cline::*;
 use super::codex::*;
 use super::copilot::*;
 use super::dsh::*;
 use super::gemini::*;
+use super::goose::*;
 use super::grok::*;
 use super::helpers::*;
 use super::kimi::*;
@@ -174,6 +176,10 @@ pub(crate) fn model_discovery_key(model: &str) -> Option<String> {
         "pi-unknown",
         "qwen-unknown",
         "copilot-unknown",
+        "cline-unknown",
+        "roo-unknown",
+        "kilocode-unknown",
+        "goose-unknown",
     ];
     if PLACEHOLDERS.contains(&key.as_str())
         || key == "auto"
@@ -262,6 +268,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         pi_checkpoints,
         qwen_checkpoints,
         copilot_checkpoints,
+        cline_checkpoints,
     ) = {
         let conn = crate::db::get_connection(db_path)?;
         (
@@ -278,6 +285,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
             crate::db::load_scan_checkpoints(&conn, PI_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, QWEN_CODE_CHECKPOINT_SOURCE_KIND)?,
             crate::db::load_scan_checkpoints(&conn, COPILOT_CLI_CHECKPOINT_SOURCE_KIND)?,
+            crate::db::load_scan_checkpoints(&conn, CLINE_FAMILY_CHECKPOINT_SOURCE_KIND)?,
         )
     };
     let mut pending_cursors = Vec::new();
@@ -315,7 +323,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         scan_opencode_like(
             &mut logs,
             "opencode",
-            ".local/share/opencode/opencode.db",
+            &opencode_like_db_path("opencode"),
             &scan_cursors,
             &mut pending_cursors,
         )
@@ -325,7 +333,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         scan_opencode_like(
             &mut logs,
             "kilo",
-            ".local/share/kilo/kilo.db",
+            &opencode_like_db_path("kilo"),
             &scan_cursors,
             &mut pending_cursors,
         )
@@ -337,10 +345,8 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     // Framework-backed rows in ~/.mavis mirror requests that the native
     // opencode/kilo scanners already cover. Skip them iff the native DB file
     // exists — a stable rule that cannot flip between scan passes.
-    let opencode_db_exists = get_home_dir()
-        .join(".local/share/opencode/opencode.db")
-        .exists();
-    let kilo_db_exists = get_home_dir().join(".local/share/kilo/kilo.db").exists();
+    let opencode_db_exists = opencode_like_db_path("opencode").exists();
+    let kilo_db_exists = opencode_like_db_path("kilo").exists();
     timed_scan_step!(
         "minimax",
         scan_minimax_marvis_incremental(
@@ -411,6 +417,14 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         "copilot",
         scan_copilot(&mut logs, &copilot_checkpoints, &mut pending_checkpoints)
     );
+    timed_scan_step!(
+        "cline",
+        scan_cline_family(&mut logs, &cline_checkpoints, &mut pending_checkpoints)
+    );
+    timed_scan_step!(
+        "goose",
+        scan_goose(&mut logs, &scan_cursors, &mut pending_cursors)
+    );
 
     let mut outcome = timed_scan_step!(
         "persist",
@@ -453,6 +467,43 @@ pub(crate) fn persist_scan_batch(
     )
 }
 
+/// No single request or session snapshot comes near a trillion tokens; a
+/// larger counter is a corrupt or hostile source row.
+pub(crate) const MAX_TOKENS_PER_RECORD: i64 = 1_000_000_000_000;
+
+/// Same idea for provider-reported cost.
+pub(crate) const MAX_COST_USD_PER_RECORD: f64 = 1_000_000.0;
+
+/// Last line of defence shared by every parser before rows reach the ledger.
+/// Negative counters (a source's "unknown", or `-1e30` saturated by `to_int`)
+/// become 0. A row with an absurd counter is dropped: stored as-is it would
+/// make every later `SUM()` over the ledger fail with an integer overflow.
+/// Non-finite, negative or absurd costs become unknown so repricing fills them.
+pub(crate) fn sanitize_log_record(mut log: LogRecord) -> Option<LogRecord> {
+    for counter in [
+        &mut log.input_tokens,
+        &mut log.output_tokens,
+        &mut log.cached_tokens,
+        &mut log.cache_write_tokens,
+    ] {
+        if *counter < 0 {
+            *counter = 0;
+        }
+        if *counter > MAX_TOKENS_PER_RECORD {
+            log::warn!(
+                "dropping {} row {} with an out-of-range token counter",
+                log.tool,
+                log.unique_key
+            );
+            return None;
+        }
+    }
+    log.cost_usd = log
+        .cost_usd
+        .filter(|cost| cost.is_finite() && (0.0..=MAX_COST_USD_PER_RECORD).contains(cost));
+    Some(log)
+}
+
 pub(crate) fn persist_scan_batch_with_antigravity(
     db_path: &Path,
     logs: Vec<LogRecord>,
@@ -492,7 +543,7 @@ pub(crate) fn persist_scan_batch_with_antigravity(
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"
         )?;
 
-        for log in logs {
+        for log in logs.into_iter().filter_map(sanitize_log_record) {
             if log.tool == "antigravity" {
                 let metadata = provenance.get(&log.unique_key).copied().unwrap_or(
                     AntigravityRecordProvenance {
@@ -793,10 +844,10 @@ pub(crate) fn insert_cumulative_delta(
             log.cost_usd,
         )
     } else {
-        let d_in = log.input_tokens - sum_in;
-        let d_out = log.output_tokens - sum_out;
-        let d_cached = log.cached_tokens - sum_cached;
-        let d_write = log.cache_write_tokens - sum_write;
+        let d_in = log.input_tokens.saturating_sub(sum_in);
+        let d_out = log.output_tokens.saturating_sub(sum_out);
+        let d_cached = log.cached_tokens.saturating_sub(sum_cached);
+        let d_write = log.cache_write_tokens.saturating_sub(sum_write);
         if d_in < 0 || d_out < 0 || d_cached < 0 {
             log::debug!(
                 "cumulative source shrank for {} (Δin={d_in}, Δout={d_out}); re-baselining",

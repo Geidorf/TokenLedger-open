@@ -37,6 +37,7 @@ import { BEHAVIOR_PROJECT_DIMENSION_DISABLED, BEHAVIOR_PROJECT_DIMENSION_UNAVAIL
 import type { CostProfile, CostProfileSaveResult } from './types';
 import { handleGatewayMock, resetGatewayMockToFresh } from './features/gateway/devMock';
 import { mockWallpaperPreview } from './devMockWallpaperPreview';
+import { SESSION_DETAIL_FIXTURE_ID, sessionDetailFixtureRows } from './devMockSessionDetail';
 import { attachE2eHarness, resolveE2eOverride } from './devMockE2e';
 import { COST_PROFILE_DEFAULT_CNY_PER_USD, checkCostProfileInput, isCostProfileCleared } from './utils/contracts/costProfile';
 
@@ -1360,6 +1361,22 @@ function detailsResponse(query: Record<string, unknown> = {}, entity?: EntitySel
   };
 }
 
+/** The session detail preview fixture, newest first like the native details. */
+function sessionDetailFixtureResponse(query: Record<string, unknown>): UsageDetailsResponse {
+  const tools = Array.isArray(query.tools) ? query.tools : [];
+  const rows = tools.length && !tools.includes('claude') ? [] : sessionDetailFixtureRows(mockNow).reverse();
+  return {
+    items: rows,
+    nextCursor: null,
+    hasMore: false,
+    totalCount: rows.length,
+    filteredSummary: summarize(rows),
+    availableFilters: { tools: facet(rows, 'tool'), models: facet(rows, 'model'), machines: facet(rows, 'machineId') },
+    granularity: 'request',
+    meta: { contractVersion: 2, generatedAt: mockTimestamp, timezone: currentTimezoneForMock(), capabilities: { gatewayLedger: true } },
+  };
+}
+
 function currentTimezoneForMock() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
@@ -2397,8 +2414,11 @@ export function installDevMockTauri() {
         }
         return delayMs > 0 ? new Promise((resolve) => { window.setTimeout(() => resolve(analysis), delayMs); }) : analysis;
       }
-      case 'get_usage_details':
-        return detailsResponse((payload.query || {}) as Record<string, unknown>);
+      case 'get_usage_details': {
+        const query = (payload.query || {}) as Record<string, unknown>;
+        if (query.search === SESSION_DETAIL_FIXTURE_ID) return sessionDetailFixtureResponse(query);
+        return detailsResponse(query);
+      }
       case 'cancel_local_session_analysis':
         return true;
       case 'get_local_session_analysis': {
