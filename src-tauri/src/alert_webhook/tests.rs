@@ -266,6 +266,24 @@ fn chat_robot_errors_come_from_the_body() {
         r#"{"errcode":0,"errmsg":"ok"}"#
     )
     .is_ok());
+    for platform in [
+        WebhookPlatform::Feishu,
+        WebhookPlatform::Dingtalk,
+        WebhookPlatform::Wecom,
+    ] {
+        assert!(
+            check_response(platform, 200, "").is_err(),
+            "{platform:?} empty body"
+        );
+        assert!(
+            check_response(platform, 200, "<html>").is_err(),
+            "{platform:?} not json"
+        );
+        assert!(
+            check_response(platform, 200, "{}").is_err(),
+            "{platform:?} no code"
+        );
+    }
     assert!(check_response(WebhookPlatform::Slack, 200, "ok").is_ok());
     assert!(check_response(WebhookPlatform::Discord, 204, "").is_ok());
     assert!(check_response(WebhookPlatform::Slack, 404, "no_service")
@@ -454,6 +472,41 @@ fn unsigned_platforms_never_store_a_secret_and_new_endpoints_need_an_address() {
     let mut missing = input(WebhookPlatform::Slack, Some(SLACK));
     missing.id = Some("wh-gone".to_string());
     assert!(upsert_endpoint(&dir, &store, missing).is_err());
+}
+
+#[test]
+fn oversized_records_are_refused_and_unreadable_ones_can_be_replaced() {
+    let dir = temp_dir("oversize");
+    let store = MemoryStore::default();
+    // 600 CJK characters fit the input limit but percent-encode past the
+    // record size the keychain loader accepts.
+    let long = format!("https://example.com/{}", "测".repeat(600));
+    assert!(long.len() <= 2_048);
+    let error =
+        upsert_endpoint(&dir, &store, input(WebhookPlatform::Generic, Some(&long))).unwrap_err();
+    assert!(error.contains("过长"), "{error}");
+    assert!(load_settings(&dir).endpoints.is_empty());
+
+    struct BrokenStore(MemoryStore);
+    impl CredentialStore for BrokenStore {
+        fn load(&self, _id: &str) -> Result<Option<StoredCredential>, String> {
+            Err("broken".to_string())
+        }
+        fn save(&self, id: &str, credential: &StoredCredential) -> Result<(), String> {
+            self.0.save(id, credential)
+        }
+        fn delete(&self, id: &str) -> Result<(), String> {
+            self.0.delete(id)
+        }
+    }
+    let saved = upsert_endpoint(&dir, &store, input(WebhookPlatform::Slack, Some(SLACK))).unwrap();
+    let broken = BrokenStore(MemoryStore::default());
+    let mut rename_only = input(WebhookPlatform::Slack, None);
+    rename_only.id = Some(saved.id.clone());
+    assert!(upsert_endpoint(&dir, &broken, rename_only).is_err());
+    let mut replace = input(WebhookPlatform::Slack, Some(SLACK));
+    replace.id = Some(saved.id.clone());
+    assert!(upsert_endpoint(&dir, &broken, replace).is_ok());
 }
 
 #[test]

@@ -324,10 +324,16 @@ pub(crate) fn check_response(
     }
     let parsed = serde_json::from_str::<Value>(body).ok();
     let code_and_message = |code_key: &str, message_key: &str| -> Result<(), String> {
-        let Some(value) = parsed.as_ref() else {
-            return Ok(());
+        // These robots answer HTTP 200 for failures too; only an explicit
+        // numeric success code confirms delivery.
+        let Some(code) = parsed
+            .as_ref()
+            .and_then(|value| value.get(code_key))
+            .and_then(Value::as_i64)
+        else {
+            return Err("平台回包里没有结果码，无法确认是否送达。".to_string());
         };
-        let code = value.get(code_key).and_then(Value::as_i64).unwrap_or(0);
+        let value = parsed.as_ref().expect("code came from parsed");
         if code == 0 {
             return Ok(());
         }

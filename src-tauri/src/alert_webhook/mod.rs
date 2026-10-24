@@ -491,7 +491,20 @@ pub(crate) fn upsert_endpoint(
     let id = input.id.clone().unwrap_or_else(new_id);
     let previous = existing.map(|index| settings.endpoints[index].clone());
     let stored = match &previous {
-        Some(_) => store.load(&id)?,
+        // An unreadable stored record must not block replacing it with a
+        // freshly typed address.
+        Some(_) => match store.load(&id) {
+            Ok(stored) => stored,
+            Err(_)
+                if input
+                    .url
+                    .as_deref()
+                    .is_some_and(|url| !url.trim().is_empty()) =>
+            {
+                None
+            }
+            Err(error) => return Err(error),
+        },
         None => None,
     };
     let platform_changed = previous
@@ -538,6 +551,12 @@ pub(crate) fn upsert_endpoint(
         has_secret: secret.is_some(),
     };
     let credential = StoredCredential { url, secret };
+    // Normalization percent-encodes non-ASCII paths, so check the record
+    // that is actually stored against the size `load` accepts.
+    let serialized = serde_json::to_string(&credential).map_err(|error| error.to_string())?;
+    if serialized.len() > MAX_CREDENTIAL_BYTES {
+        return Err("Webhook 地址或签名密钥过长。".to_string());
+    }
     if stored.as_ref() != Some(&credential) {
         store.save(&id, &credential)?;
     }
@@ -725,7 +744,7 @@ pub(crate) async fn send(
         .await
         .map_err(|error| describe_error(&error))?;
     let status = response.status().as_u16();
-    let body = read_capped(response).await;
+    let body = read_capped(response).await?;
     payload::check_response(platform, status, &body)
 }
 
@@ -739,16 +758,22 @@ fn describe_error(error: &reqwest::Error) -> String {
     }
 }
 
-async fn read_capped(mut response: reqwest::Response) -> String {
+/// A body that fails mid-stream is an error: chat robots report delivery in
+/// the body, so an unread body is an unconfirmed delivery.
+async fn read_capped(mut response: reqwest::Response) -> Result<String, String> {
     let mut bytes = Vec::new();
-    while let Ok(Some(chunk)) = response.chunk().await {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "读取平台回包失败，无法确认是否送达。".to_string())?
+    {
         let room = MAX_RESPONSE_BYTES.saturating_sub(bytes.len());
         bytes.extend_from_slice(&chunk[..chunk.len().min(room)]);
         if bytes.len() >= MAX_RESPONSE_BYTES {
             break;
         }
     }
-    String::from_utf8_lossy(&bytes).into_owned()
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn test_message() -> MessageText {
