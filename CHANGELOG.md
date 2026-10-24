@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Weekly and monthly usage reports under Usage › Reports: totals, cache reuse, splits by Agent, model and account, change against the previous period, the most expensive sessions, quota readings and budget results. Reports export as a share image, a single-file HTML page or a PDF via print, and an optional reminder posts a system notification every Monday (or on the 1st) at 09:00.
 - Local model gateway with a persistent accounting ledger: old logs import idempotently, and both local statistics and cloud aggregates read from that ledger. A failed import preserves newly billed usage instead of dropping it.
 - Antigravity CLI scanning across both of its roots, reading real input, output, and cache-read values. Local schema advanced to v16 to record usage provenance and the "cache write unknown" state; rows estimated by older versions carry an estimate badge.
 - Quota clearing now persists a local stop before dispatching, so an interrupted clear can recover. Compatible with older PostgREST versions; the cloud rejects observations more than five minutes in the future.

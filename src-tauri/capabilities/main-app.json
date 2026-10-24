@@ -41,6 +41,8 @@
     "allow-get-budget-settings",
     "allow-set-budget-settings",
     "allow-get-budget-status",
+    "allow-get-period-report-settings",
+    "allow-set-period-report-settings",
     "allow-get-quota-snapshot-sync-status",
     "allow-set-quota-snapshot-sync-enabled",
     "allow-sync-quota-snapshots-now",

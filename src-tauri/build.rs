@@ -99,6 +99,8 @@ fn main() {
         "get_budget_settings",
         "set_budget_settings",
         "get_budget_status",
+        "get_period_report_settings",
+        "set_period_report_settings",
         "get_quota_snapshot_sync_status",
         "set_quota_snapshot_sync_enabled",
         "sync_quota_snapshots_now",
