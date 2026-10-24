@@ -3,6 +3,7 @@ pub mod checkpoints;
 pub mod cindy;
 pub mod claude;
 pub mod codex;
+pub mod copilot;
 pub mod dsh;
 pub mod gemini;
 pub mod grok;
