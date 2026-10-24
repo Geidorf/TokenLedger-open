@@ -45,7 +45,7 @@ function CatalogIcon({ option, providers }: { option: ModelOption; providers: Pr
   return <span className="mw-brand is-fallback" style={{ width: 22, height: 22, fontSize: 9 }} aria-hidden="true">{option.section.slice(0, 2).toUpperCase()}</span>;
 }
 
-export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { onOpenRouting: () => void; onOpenProviders?: () => void; onOpenAgents?: () => void }) {
+export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents, onOpenRequestLog }: { onOpenRouting: () => void; onOpenProviders?: () => void; onOpenAgents?: () => void; onOpenRequestLog?: () => void }) {
   // Labels read the current language directly; subscribing re-renders the page when it changes.
   const uiLang = useLang();
   const [data, setData] = useState<GatewayData | null>(null);
@@ -166,6 +166,7 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents }: { 
         <div className="mw-panel-head">
           <h2>{t('gateway.requests.title')}<InfoTip label={t('gateway.requests.info')}>{t('gateway.requests.infoBody')}</InfoTip></h2>
           <span>{t('gateway.requests.effective')}</span>
+          {onOpenRequestLog && <button type="button" className="mw-btn is-ghost" onClick={onOpenRequestLog}>{t('gateway.requests.openLog')}</button>}
         </div>
         {data && data.requests.length === 0 ? (
           <EmptyState variant="inset" icon={Bot} title={t('empty.gatewayRequests.title')} description={t('empty.gatewayRequests.description')}>

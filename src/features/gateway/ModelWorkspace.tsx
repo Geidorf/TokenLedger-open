@@ -7,6 +7,7 @@ import { gatewayStatus } from './api';
 import { GatewayPage } from './GatewayPage';
 import { DEFAULT_BASE_URL } from './helpers';
 import { ProvidersPage } from './ProvidersPage';
+import { RequestLogPage } from './RequestLogPage';
 import { RoutingPage } from './RoutingPage';
 import type { GatewayStatus } from './types';
 import './gateway.css';
@@ -16,6 +17,7 @@ const PAGE_COPY: Record<ModelTab, { title: MessageKey; subtitle: MessageKey }> =
   agents: { title: 'shell.nav.agents', subtitle: 'workspace.agents.subtitle' },
   providers: { title: 'shell.nav.providers', subtitle: 'workspace.providers.subtitle' },
   gateway: { title: 'shell.nav.gateway', subtitle: 'workspace.gateway.subtitle' },
+  gatewaylog: { title: 'workspace.gatewaylog.title', subtitle: 'workspace.gatewaylog.subtitle' },
   routing: { title: 'shell.nav.routing', subtitle: 'workspace.routing.subtitle' },
 };
 
@@ -64,7 +66,8 @@ export function ModelWorkspaceContent({ page, onPage, onNotify, onConfirm, onCha
     <div className="mw-content">
       {page === 'agents' && <AgentsPage onNotify={onNotify} onConfirm={onConfirm} onOpenProviders={() => onPage('providers')} />}
       {page === 'providers' && <ProvidersPage onNotify={onNotify} onConfirm={onConfirm} onChanged={onChanged} />}
-      {page === 'gateway' && <GatewayPage onOpenRouting={() => onPage('routing')} onOpenProviders={() => onPage('providers')} onOpenAgents={() => onPage('agents')} />}
+      {page === 'gateway' && <GatewayPage onOpenRouting={() => onPage('routing')} onOpenProviders={() => onPage('providers')} onOpenAgents={() => onPage('agents')} onOpenRequestLog={() => onPage('gatewaylog')} />}
+      {page === 'gatewaylog' && <RequestLogPage onNotify={onNotify} />}
       {page === 'routing' && <RoutingPage onNotify={onNotify} onConfirm={onConfirm} />}
     </div>
   );

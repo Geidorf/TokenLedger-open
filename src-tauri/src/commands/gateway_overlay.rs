@@ -95,11 +95,17 @@ pub(super) fn tool_for_agent(agent: Option<&str>) -> String {
 }
 
 fn model_for(record: &LedgerRecord) -> String {
-    let upstream = record.upstream_model.trim();
+    model_name_for(&record.upstream_model, &record.requested_model)
+}
+
+/// The model a gateway call is priced and counted under: the upstream model,
+/// else the requested `provider/model` without its provider.
+pub(super) fn model_name_for(upstream_model: &str, requested_model: &str) -> String {
+    let upstream = upstream_model.trim();
     if !upstream.is_empty() {
         return upstream.to_string();
     }
-    let requested = record.requested_model.trim();
+    let requested = requested_model.trim();
     requested
         .split_once('/')
         .map_or(requested, |(_, model)| model)
