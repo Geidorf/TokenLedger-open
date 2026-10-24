@@ -65,6 +65,20 @@ class SupabaseGateway(
             QuotaSnapshotJson.parseTransport(raw)
         }
 
+    /**
+     * 实时路由快照（契约 docs/contracts/routing-snapshot-v1.md）：只读，原样返回 JSON，由
+     * `routing` 包解析与合并。路由页和锁屏动态壁纸共用；不刷新、不持久化会话。
+     */
+    suspend fun fetchRoutingSnapshots(session: MobileSession): String = withContext(Dispatchers.IO) {
+        request(
+            path = "/rest/v1/rpc/$ROUTING_SNAPSHOTS_READ_FUNCTION",
+            method = "POST",
+            bearerToken = session.accessToken,
+            body = JSONObject(),
+            maxResponseBytes = ROUTING_SNAPSHOTS_MAX_RESPONSE_BYTES
+        )
+    }
+
     suspend fun fetchDashboardStats(
         session: MobileSession,
         range: RangeKey,
@@ -816,6 +830,9 @@ private const val DETAILS_PAGE_SIZE = 20
 private const val QUOTA_RPC_MAX_RESPONSE_BYTES = 128 * 1_024
 internal const val QUOTA_READ_V3_FUNCTION = "get_quota_snapshots_v3"
 internal const val QUOTA_READ_V2_FUNCTION = "get_quota_snapshots_v2"
+/** 契约 routing-snapshot-v1：最多 8 份快照，每份不超过 16 KB，再留出外层与转义的余量。 */
+private const val ROUTING_SNAPSHOTS_MAX_RESPONSE_BYTES = 256 * 1_024
+internal const val ROUTING_SNAPSHOTS_READ_FUNCTION = "get_routing_snapshots_v1"
 private const val SUPABASE_ERROR_MAX_RESPONSE_BYTES = 128 * 1_024
 
 internal class SupabaseResponseTooLargeException(maxBytes: Int) :
