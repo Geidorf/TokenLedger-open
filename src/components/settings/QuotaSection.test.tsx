@@ -837,10 +837,22 @@ describe('Claude 一键接入（T10.282）', () => {
     });
   }
 
+  async function readySetupButton() {
+    const button = screen.getByRole('button', { name: '一键接入' });
+    await waitFor(() => expect(button).toBeEnabled());
+    return button;
+  }
+
   it('先预览改动，确认后按预览版本写入并刷新为已接入', async () => {
     let wired = false;
+    let resolveInitialSetup!: (setup: typeof baseSetup) => void;
+    const initialSetup = new Promise<typeof baseSetup>((resolve) => {
+      resolveInitialSetup = resolve;
+    });
     mockSetup({
-      get_claude_quota_setup: () => ({ ...baseSetup, statusLineWired: wired, chainPresent: wired }),
+      get_claude_quota_setup: () => wired
+        ? { ...baseSetup, statusLineWired: wired, chainPresent: wired }
+        : initialSetup,
       preview_claude_statusline_setup: () => preview,
       apply_claude_statusline_setup: () => {
         wired = true;
@@ -849,7 +861,13 @@ describe('Claude 一键接入（T10.282）', () => {
     });
     renderClaude();
 
-    fireEvent.click(await screen.findByRole('button', { name: '一键接入' }));
+    const loadingButton = screen.getByRole('button', { name: '一键接入' });
+    expect(loadingButton).toBeDisabled();
+    fireEvent.click(loadingButton);
+    expect(invoke).not.toHaveBeenCalledWith('preview_claude_statusline_setup');
+    await act(async () => resolveInitialSetup(baseSetup));
+
+    fireEvent.click(await readySetupButton());
     const dialog = await screen.findByRole('dialog', { name: '写入 Claude Code 配置？' }, { timeout: 3000 });
     expect(dialog).toHaveTextContent('~/.claude/settings.json');
     expect(within(dialog).getByLabelText('statusLine 改动预览')).toHaveTextContent('--claude-statusline');
@@ -874,13 +892,13 @@ describe('Claude 一键接入（T10.282）', () => {
     });
     renderClaude();
 
-    fireEvent.click(await screen.findByRole('button', { name: '一键接入' }));
+    fireEvent.click(await readySetupButton());
     const dialog = await screen.findByRole('dialog', { name: '写入 Claude Code 配置？' }, { timeout: 3000 });
     fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), { timeout: 3000 });
     expect(invoke).not.toHaveBeenCalledWith('apply_claude_statusline_setup', expect.anything());
 
-    fireEvent.click(await screen.findByRole('button', { name: '一键接入' }));
+    fireEvent.click(await readySetupButton());
     const previewDialog = await screen.findByRole('dialog', { name: '写入 Claude Code 配置？' }, { timeout: 3000 });
     fireEvent.click(within(previewDialog).getByRole('button', { name: '确认写入' }));
     expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent('请重新预览');
