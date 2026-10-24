@@ -7070,11 +7070,10 @@ fn get_local_stats_v2_snapshot_with_entity_at(
     insert_stats_v2_fields(
         &mut stats, &rows, &bounds, &query, &prices, zoned_now, entity,
     );
-    if gateway_overlay::ledger_signature(&db_path).is_some() {
+    if let Some(signature) = gateway_overlay::ledger_signature(&db_path) {
         stats["meta"]["capabilities"]["gatewayLedger"] = json!(true);
         if entity.is_none() {
-            let conn = gateway_overlay::open_stats_connection(&db_path)?;
-            let providers = gateway_overlay::row_providers(&conn).map_err(|e| e.to_string())?;
+            let providers = gateway_overlay::row_providers(&db_path, &signature)?;
             stats["providers"] = aggregate_provider_split(
                 &rows,
                 &providers,
