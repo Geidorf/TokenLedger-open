@@ -447,6 +447,8 @@ enum RpcError {
     NotDeployed,
     /// The signed-in account is not the one the request was built for.
     AccountChanged,
+    /// The switch changed before the request left.
+    Cancelled,
     Failed(String),
 }
 
@@ -488,6 +490,7 @@ async fn call_rpc(
     expected_user: &str,
     function: &str,
     body: Value,
+    still_wanted: &(dyn Fn() -> bool + Send + Sync),
 ) -> Result<Value, RpcError> {
     let (config, lease) = crate::commands::acquire_current_cloud_session(app)
         .await
@@ -503,6 +506,9 @@ async fn call_rpc(
         .build()
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     lease.ensure_current(app).map_err(RpcError::Failed)?;
+    if !still_wanted() {
+        return Err(RpcError::Cancelled);
+    }
     let response = client
         .post(format!(
             "{}/rest/v1/rpc/{function}",
@@ -549,217 +555,347 @@ fn enabled(settings: &Arc<Mutex<AppSettings>>) -> bool {
         .unwrap_or(false)
 }
 
-/// Runs for the life of the process. Every tick is cheap when the switch is off.
-pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: Arc<Gateway>) {
-    tauri::async_runtime::spawn(async move {
-        let machine = crate::commands::local_machine_id();
-        let mut published: Option<Published> = None;
-        // A device row still to delete after the switch went off; kept until the clear lands.
-        // The device ID is derived, so a clear left over from before the last exit is retried
-        // on launch. Only the marker file is checked first: people who never turned the
-        // switch on do not touch the secure session store at startup.
-        let marker = app.app_data_dir().join(CLEAR_MARKER);
-        let mut pending_clear: Option<Published> = None;
-        // The target still has to be derived from the stored account. An unreadable store
-        // keeps this set (and the marker on disk) so a later tick tries again.
-        let mut recover = marker.exists();
-        let mut was_enabled = false;
-        let mut backoff = TICK;
-        let mut delay = TICK;
-        loop {
-            // Waits in tick-sized slices so flipping the switch cuts a backoff short: turning
-            // it off must not wait out a five-minute publish retry before clearing.
-            let deadline = Instant::now() + delay;
-            let was_on = enabled(&settings);
-            loop {
-                let left = deadline.saturating_duration_since(Instant::now());
-                if left.is_zero() {
-                    break;
-                }
-                tokio::time::sleep(left.min(TICK)).await;
-                if enabled(&settings) != was_on {
-                    break;
-                }
-            }
-            delay = TICK;
+/// Everything the publish loop touches outside itself, so the state machine below can
+/// be driven by a fake in tests.
+trait PublishIo: Sync {
+    fn enabled(&self) -> bool;
+    /// See [`stored_user`].
+    fn stored_user(&self) -> Option<String>;
+    fn marker_exists(&self) -> bool;
+    fn set_marker(&self, present: bool);
+    async fn snapshot(&self, device: &str) -> Value;
+    /// `still_wanted` is asked again right before the request leaves; `false` cancels it.
+    async fn rpc(
+        &self,
+        user: &str,
+        function: &str,
+        body: Value,
+        still_wanted: &(dyn Fn() -> bool + Send + Sync),
+    ) -> Result<Value, RpcError>;
+    async fn sleep(&self, duration: Duration);
+}
 
-            if !enabled(&settings) {
-                // Switching off always targets a clear, even when no publish was confirmed:
-                // one may have committed on the server before its response was lost.
-                if std::mem::take(&mut was_enabled) {
-                    pending_clear = published.take();
-                    recover = pending_clear.is_none();
-                }
-                if recover {
-                    match stored_user(&app) {
-                        None => {}
-                        Some(user) => {
-                            recover = false;
-                            if !user.is_empty() {
-                                pending_clear = Some(Published {
-                                    device: device_id(&user, &machine),
-                                    user,
-                                    key: String::new(),
-                                    at: Instant::now(),
-                                });
-                            }
-                        }
-                    }
-                }
-                // Signed out or switched (read locally, so an outage does not count): the row
-                // is no longer this session's to delete; reads hide it after 15 minutes and
-                // the hourly purge drops it.
-                if let Some(previous) = &pending_clear {
-                    if stored_user(&app).is_some_and(|user| user != previous.user) {
-                        pending_clear = None;
-                    }
-                }
-                if let Some(previous) = &pending_clear {
-                    match call_rpc(
-                        &app,
-                        &previous.user,
-                        "clear_routing_snapshot_v1",
-                        json!({ "p_device": previous.device }),
-                    )
-                    .await
-                    {
-                        Ok(_) | Err(RpcError::NotDeployed | RpcError::AccountChanged) => {
-                            pending_clear = None;
-                            backoff = TICK;
-                        }
-                        Err(RpcError::Failed(error)) => {
-                            log::warn!("routing snapshot clear failed: {error}");
-                            delay = backoff;
-                            backoff = (backoff * 2).min(MAX_BACKOFF);
-                        }
-                    }
-                }
-                if pending_clear.is_none() && !recover {
-                    let _ = std::fs::remove_file(&marker);
-                }
-                set_status(|status| {
-                    *status = RoutingPublishStatus {
-                        state: "off",
-                        ..Default::default()
-                    }
-                });
-                continue;
-            }
+struct AppIo {
+    app: Arc<AppContext>,
+    settings: Arc<Mutex<AppSettings>>,
+    gateway: Arc<Gateway>,
+    marker: std::path::PathBuf,
+}
 
-            pending_clear = None;
-            recover = false;
-            if !std::mem::replace(&mut was_enabled, true) {
-                let _ = std::fs::write(&marker, b"");
-            }
-            // Identity comes from the local config: a token refresh failing during an outage
-            // surfaces from `call_rpc` as a retryable error and keeps `published`, so a later
-            // switch-off still knows which row to delete.
-            let user = match stored_user(&app) {
-                Some(user) if !user.is_empty() => user,
-                Some(_) => {
-                    published = None;
-                    set_status(|status| {
-                        *status = RoutingPublishStatus {
-                            state: "signed-out",
-                            ..Default::default()
-                        }
-                    });
-                    delay = SIGNED_OUT_RETRY;
-                    continue;
-                }
-                None => {
-                    set_status(|status| {
-                        status.state = "error";
-                        status.error = Some("读取云端登录信息失败".to_string());
-                    });
-                    delay = backoff;
-                    backoff = (backoff * 2).min(MAX_BACKOFF);
-                    continue;
-                }
-            };
-            if published
-                .as_ref()
-                .is_some_and(|previous| previous.user != user)
-            {
-                published = None;
-            }
-            let device = device_id(&user, &machine);
+impl PublishIo for AppIo {
+    fn enabled(&self) -> bool {
+        enabled(&self.settings)
+    }
 
-            let feed_gateway = gateway.clone();
-            let feed: FeedRead =
-                tauri::async_runtime::spawn_blocking(move || feed_gateway.routing_feed(FEED_LIMIT))
-                    .await
-                    .unwrap_or_else(|error| Err(error.to_string()));
-            let external = crate::peer_live::read_snapshot(crate::peer_live::DEFAULT_PORT)
+    fn stored_user(&self) -> Option<String> {
+        stored_user(&self.app)
+    }
+
+    fn marker_exists(&self) -> bool {
+        self.marker.exists()
+    }
+
+    fn set_marker(&self, present: bool) {
+        let _ = if present {
+            std::fs::write(&self.marker, b"")
+        } else {
+            std::fs::remove_file(&self.marker)
+        };
+    }
+
+    async fn snapshot(&self, device: &str) -> Value {
+        let gateway = self.gateway.clone();
+        let feed: FeedRead =
+            tauri::async_runtime::spawn_blocking(move || gateway.routing_feed(FEED_LIMIT))
                 .await
-                .ok();
-            let snapshot = build_snapshot(&device, &feed, external.as_ref(), Utc::now());
-            let key = content_key(&snapshot);
-            if published
-                .as_ref()
-                .is_some_and(|previous| previous.key == key && previous.at.elapsed() < HEARTBEAT)
-            {
-                continue;
-            }
-
-            let flows = snapshot["flows"].as_array().map_or(0, Vec::len);
-            match call_rpc(
-                &app,
-                &user,
-                "publish_routing_snapshot_v1",
-                json!({ "p_device": device, "p_snapshot": snapshot }),
-            )
+                .unwrap_or_else(|error| Err(error.to_string()));
+        let external = crate::peer_live::read_snapshot(crate::peer_live::DEFAULT_PORT)
             .await
-            {
-                // The server keeps a newer snapshot when this machine's clock went back.
-                Ok(reply) if reply.get("stored") == Some(&Value::Bool(false)) => {
-                    set_status(|status| {
-                        status.state = "error";
-                        status.error =
-                            Some("本机时钟早于上次发布的时间，时钟追上后自动恢复".to_string());
-                    });
-                    delay = backoff;
-                    backoff = (backoff * 2).min(MAX_BACKOFF);
-                }
-                Ok(_) => {
-                    published = Some(Published {
+            .ok();
+        build_snapshot(device, &feed, external.as_ref(), Utc::now())
+    }
+
+    async fn rpc(
+        &self,
+        user: &str,
+        function: &str,
+        body: Value,
+        still_wanted: &(dyn Fn() -> bool + Send + Sync),
+    ) -> Result<Value, RpcError> {
+        call_rpc(&self.app, user, function, body, still_wanted).await
+    }
+
+    async fn sleep(&self, duration: Duration) {
+        tokio::time::sleep(duration).await;
+    }
+}
+
+/// What one pass of the loop decided: how long to wait, and which switch position it
+/// acted on. The wait ends early once the switch no longer matches that position.
+struct Next {
+    delay: Duration,
+    acted_on: bool,
+}
+
+struct Publisher {
+    machine: String,
+    published: Option<Published>,
+    // A device row still to delete after the switch went off; kept until the clear lands.
+    pending_clear: Option<Published>,
+    // The target still has to be derived from the stored account. An unreadable store
+    // keeps this set (and the marker on disk) so a later pass tries again.
+    recover: bool,
+    was_enabled: bool,
+    backoff: Duration,
+}
+
+impl Publisher {
+    /// The device ID is derived, so a clear left over from before the last exit resumes
+    /// on launch. Only the marker file is checked here: people who never turned the
+    /// switch on do not touch the secure session store at startup.
+    fn new(machine: String, io: &impl PublishIo) -> Self {
+        Self {
+            machine,
+            published: None,
+            pending_clear: None,
+            recover: io.marker_exists(),
+            was_enabled: false,
+            backoff: TICK,
+        }
+    }
+
+    fn back_off(&mut self) -> Duration {
+        let delay = self.backoff;
+        self.backoff = (self.backoff * 2).min(MAX_BACKOFF);
+        delay
+    }
+
+    async fn run(mut self, io: impl PublishIo) {
+        let mut next = Next {
+            delay: TICK,
+            acted_on: io.enabled(),
+        };
+        loop {
+            wait(&io, &next).await;
+            next = self.tick(&io).await;
+        }
+    }
+
+    async fn tick(&mut self, io: &impl PublishIo) -> Next {
+        if io.enabled() {
+            self.publish(io).await
+        } else {
+            self.clear(io).await
+        }
+    }
+
+    async fn clear(&mut self, io: &impl PublishIo) -> Next {
+        let mut delay = TICK;
+        // Switching off always targets a clear, even when no publish was confirmed: one
+        // may have committed on the server before its response was lost.
+        if std::mem::take(&mut self.was_enabled) {
+            self.pending_clear = self.published.take();
+            self.recover = self.pending_clear.is_none();
+        }
+        if self.recover {
+            if let Some(user) = io.stored_user() {
+                self.recover = false;
+                if !user.is_empty() {
+                    self.pending_clear = Some(Published {
+                        device: device_id(&user, &self.machine),
                         user,
-                        device,
-                        key,
+                        key: String::new(),
                         at: Instant::now(),
                     });
-                    backoff = TICK;
-                    set_status(|status| {
-                        *status = RoutingPublishStatus {
-                            state: "ok",
-                            last_published_at: Some(stamp(Utc::now())),
-                            flows,
-                            error: None,
-                        }
-                    });
-                }
-                // Built for the previous account: the next tick rebuilds it for this one.
-                Err(RpcError::AccountChanged) => {
-                    published = None;
-                }
-                Err(RpcError::NotDeployed) => {
-                    set_status(|status| {
-                        status.state = "not-deployed";
-                        status.error = None;
-                    });
-                    delay = NOT_DEPLOYED_RETRY;
-                }
-                Err(RpcError::Failed(error)) => {
-                    log::warn!("routing snapshot publish failed: {error}");
-                    set_status(|status| {
-                        status.state = "error";
-                        status.error = Some(error);
-                    });
-                    delay = backoff;
-                    backoff = (backoff * 2).min(MAX_BACKOFF);
                 }
             }
         }
+        // Signed out or switched (read locally, so an outage does not count): the row is
+        // no longer this session's to delete; reads hide it after 15 minutes and the
+        // hourly purge drops it.
+        if let Some(previous) = &self.pending_clear {
+            if io.stored_user().is_some_and(|user| user != previous.user) {
+                self.pending_clear = None;
+            }
+        }
+        if let Some(previous) = &self.pending_clear {
+            let switched_back_on = || !io.enabled();
+            match io
+                .rpc(
+                    &previous.user,
+                    "clear_routing_snapshot_v1",
+                    json!({ "p_device": previous.device }),
+                    &switched_back_on,
+                )
+                .await
+            {
+                Ok(_) | Err(RpcError::NotDeployed | RpcError::AccountChanged) => {
+                    self.pending_clear = None;
+                    self.backoff = TICK;
+                }
+                // Turned back on: publishing overwrites the row anyway.
+                Err(RpcError::Cancelled) => {}
+                Err(RpcError::Failed(error)) => {
+                    log::warn!("routing snapshot clear failed: {error}");
+                    delay = self.back_off();
+                }
+            }
+        }
+        if self.pending_clear.is_none() && !self.recover {
+            io.set_marker(false);
+        }
+        set_status(|status| {
+            *status = RoutingPublishStatus {
+                state: "off",
+                ..Default::default()
+            }
+        });
+        Next {
+            delay,
+            acted_on: false,
+        }
+    }
+
+    async fn publish(&mut self, io: &impl PublishIo) -> Next {
+        let on = |delay| Next {
+            delay,
+            acted_on: true,
+        };
+        self.pending_clear = None;
+        self.recover = false;
+        if !std::mem::replace(&mut self.was_enabled, true) {
+            io.set_marker(true);
+        }
+        // Identity comes from the local config: a token refresh failing during an outage
+        // surfaces from the RPC as a retryable error and keeps `published`, so a later
+        // switch-off still knows which row to delete.
+        let user = match io.stored_user() {
+            Some(user) if !user.is_empty() => user,
+            Some(_) => {
+                self.published = None;
+                set_status(|status| {
+                    *status = RoutingPublishStatus {
+                        state: "signed-out",
+                        ..Default::default()
+                    }
+                });
+                return on(SIGNED_OUT_RETRY);
+            }
+            None => {
+                set_status(|status| {
+                    status.state = "error";
+                    status.error = Some("读取云端登录信息失败".to_string());
+                });
+                return on(self.back_off());
+            }
+        };
+        if self
+            .published
+            .as_ref()
+            .is_some_and(|previous| previous.user != user)
+        {
+            self.published = None;
+        }
+        let device = device_id(&user, &self.machine);
+        let snapshot = io.snapshot(&device).await;
+        let key = content_key(&snapshot);
+        if self
+            .published
+            .as_ref()
+            .is_some_and(|previous| previous.key == key && previous.at.elapsed() < HEARTBEAT)
+        {
+            return on(TICK);
+        }
+
+        let flows = snapshot["flows"].as_array().map_or(0, Vec::len);
+        // Reading the feed and refreshing the session both await: the switch may have
+        // gone off meanwhile, and nothing may start uploading after that.
+        let still_on = || io.enabled();
+        match io
+            .rpc(
+                &user,
+                "publish_routing_snapshot_v1",
+                json!({ "p_device": device, "p_snapshot": snapshot }),
+                &still_on,
+            )
+            .await
+        {
+            // The server keeps a newer snapshot when this machine's clock went back.
+            Ok(reply) if reply.get("stored") == Some(&Value::Bool(false)) => {
+                set_status(|status| {
+                    status.state = "error";
+                    status.error =
+                        Some("本机时钟早于上次发布的时间，时钟追上后自动恢复".to_string());
+                });
+                on(self.back_off())
+            }
+            Ok(_) => {
+                self.published = Some(Published {
+                    user,
+                    device,
+                    key,
+                    at: Instant::now(),
+                });
+                self.backoff = TICK;
+                set_status(|status| {
+                    *status = RoutingPublishStatus {
+                        state: "ok",
+                        last_published_at: Some(stamp(Utc::now())),
+                        flows,
+                        error: None,
+                    }
+                });
+                on(TICK)
+            }
+            // Switched off before sending: clear right away.
+            Err(RpcError::Cancelled) => on(Duration::ZERO),
+            // Built for the previous account: the next pass rebuilds it for this one.
+            Err(RpcError::AccountChanged) => {
+                self.published = None;
+                on(TICK)
+            }
+            Err(RpcError::NotDeployed) => {
+                set_status(|status| {
+                    status.state = "not-deployed";
+                    status.error = None;
+                });
+                on(NOT_DEPLOYED_RETRY)
+            }
+            Err(RpcError::Failed(error)) => {
+                log::warn!("routing snapshot publish failed: {error}");
+                set_status(|status| {
+                    status.state = "error";
+                    status.error = Some(error);
+                });
+                on(self.back_off())
+            }
+        }
+    }
+}
+
+/// Waits in tick-sized slices and stops as soon as the switch differs from the position
+/// the last pass acted on, so turning it off never waits out a publish backoff (and a
+/// flip during that pass's own RPC is caught before any sleep).
+async fn wait(io: &impl PublishIo, next: &Next) {
+    let mut left = next.delay;
+    while !left.is_zero() && io.enabled() == next.acted_on {
+        let slice = left.min(TICK);
+        io.sleep(slice).await;
+        left -= slice;
+    }
+}
+
+/// Runs for the life of the process. Every tick is cheap when the switch is off.
+pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: Arc<Gateway>) {
+    tauri::async_runtime::spawn(async move {
+        let io = AppIo {
+            marker: app.app_data_dir().join(CLEAR_MARKER),
+            app,
+            settings,
+            gateway,
+        };
+        let publisher = Publisher::new(crate::commands::local_machine_id(), &io);
+        publisher.run(io).await;
     });
 }
 
@@ -1096,5 +1232,216 @@ mod tests {
             classify_failure(502, b"<html>bad gateway</html>"),
             RpcError::Failed("HTTP 502".to_string())
         );
+    }
+
+    /// Drives the publish loop without network, keychain or clock. Hooks flip the
+    /// switch at the awaits where a real switch-off can land.
+    #[derive(Default)]
+    struct FakeIo {
+        on: std::sync::atomic::AtomicBool,
+        marker: std::sync::atomic::AtomicBool,
+        user_reads: std::sync::atomic::AtomicUsize,
+        off_during_snapshot: std::sync::atomic::AtomicBool,
+        off_before_send: std::sync::atomic::AtomicBool,
+        off_in_flight_then_fail: std::sync::atomic::AtomicBool,
+        fail: std::sync::atomic::AtomicBool,
+        sent: Mutex<Vec<String>>,
+        slept: Mutex<Vec<Duration>>,
+    }
+
+    impl FakeIo {
+        fn set(flag: &std::sync::atomic::AtomicBool, value: bool) {
+            flag.store(value, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        fn get(flag: &std::sync::atomic::AtomicBool) -> bool {
+            flag.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        fn sent(&self) -> Vec<String> {
+            self.sent.lock().unwrap().clone()
+        }
+
+        fn slept(&self) -> Vec<Duration> {
+            std::mem::take(&mut self.slept.lock().unwrap())
+        }
+    }
+
+    impl PublishIo for FakeIo {
+        fn enabled(&self) -> bool {
+            Self::get(&self.on)
+        }
+
+        fn stored_user(&self) -> Option<String> {
+            self.user_reads
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Some("user-1".to_string())
+        }
+
+        fn marker_exists(&self) -> bool {
+            Self::get(&self.marker)
+        }
+
+        fn set_marker(&self, present: bool) {
+            Self::set(&self.marker, present);
+        }
+
+        async fn snapshot(&self, device: &str) -> Value {
+            if Self::get(&self.off_during_snapshot) {
+                Self::set(&self.on, false);
+            }
+            build_snapshot(device, &Ok(feed()), None, now())
+        }
+
+        async fn rpc(
+            &self,
+            _user: &str,
+            function: &str,
+            _body: Value,
+            still_wanted: &(dyn Fn() -> bool + Send + Sync),
+        ) -> Result<Value, RpcError> {
+            if Self::get(&self.off_before_send) {
+                Self::set(&self.on, false);
+            }
+            if !still_wanted() {
+                return Err(RpcError::Cancelled);
+            }
+            self.sent.lock().unwrap().push(function.to_string());
+            if Self::get(&self.off_in_flight_then_fail) {
+                Self::set(&self.on, false);
+                return Err(RpcError::Failed("timeout".to_string()));
+            }
+            if Self::get(&self.fail) {
+                return Err(RpcError::Failed("unavailable".to_string()));
+            }
+            Ok(json!({ "stored": true }))
+        }
+
+        async fn sleep(&self, duration: Duration) {
+            self.slept.lock().unwrap().push(duration);
+        }
+    }
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    const PUBLISH: &str = "publish_routing_snapshot_v1";
+    const CLEAR: &str = "clear_routing_snapshot_v1";
+
+    #[test]
+    fn switching_off_while_reading_the_feed_sends_no_publish_and_clears_next() {
+        let io = FakeIo::default();
+        FakeIo::set(&io.on, true);
+        FakeIo::set(&io.off_during_snapshot, true);
+        let mut publisher = Publisher::new("machine".to_string(), &io);
+        block_on(async {
+            let next = publisher.tick(&io).await;
+            assert!(io.sent().is_empty());
+            wait(&io, &next).await;
+            assert!(io.slept().is_empty());
+            publisher.tick(&io).await;
+        });
+        assert_eq!(io.sent(), [CLEAR]);
+        assert!(!FakeIo::get(&io.marker));
+    }
+
+    #[test]
+    fn switching_off_during_the_session_refresh_cancels_the_upload() {
+        let io = FakeIo::default();
+        FakeIo::set(&io.on, true);
+        FakeIo::set(&io.off_before_send, true);
+        let mut publisher = Publisher::new("machine".to_string(), &io);
+        block_on(async {
+            let next = publisher.tick(&io).await;
+            assert_eq!(next.delay, Duration::ZERO);
+            FakeIo::set(&io.off_before_send, false);
+            wait(&io, &next).await;
+            publisher.tick(&io).await;
+        });
+        assert_eq!(io.sent(), [CLEAR]);
+        assert!(io.slept().is_empty());
+    }
+
+    #[test]
+    fn switching_off_during_a_failing_upload_at_full_backoff_clears_without_waiting() {
+        let io = FakeIo::default();
+        FakeIo::set(&io.on, true);
+        let mut publisher = Publisher::new("machine".to_string(), &io);
+        block_on(async {
+            publisher.tick(&io).await;
+            // Push the backoff to its ceiling with failing uploads.
+            FakeIo::set(&io.fail, true);
+            for _ in 0..8 {
+                publisher.published = None;
+                publisher.tick(&io).await;
+            }
+            assert_eq!(publisher.backoff, MAX_BACKOFF);
+            publisher.published = None;
+            FakeIo::set(&io.off_in_flight_then_fail, true);
+            let next = publisher.tick(&io).await;
+            assert_eq!(next.delay, MAX_BACKOFF);
+            assert!(next.acted_on);
+            io.slept();
+            wait(&io, &next).await;
+            assert!(io.slept().is_empty(), "the switch-off must cut the backoff");
+            FakeIo::set(&io.fail, false);
+            FakeIo::set(&io.off_in_flight_then_fail, false);
+            publisher.tick(&io).await;
+        });
+        assert_eq!(io.sent().last().map(String::as_str), Some(CLEAR));
+    }
+
+    #[test]
+    fn a_failed_clear_backs_off_but_switching_back_on_cuts_it_short() {
+        let io = FakeIo::default();
+        FakeIo::set(&io.on, true);
+        let mut publisher = Publisher::new("machine".to_string(), &io);
+        block_on(async {
+            publisher.tick(&io).await;
+            assert_eq!(io.sent(), [PUBLISH]);
+            FakeIo::set(&io.on, false);
+            FakeIo::set(&io.fail, true);
+            let next = publisher.tick(&io).await;
+            assert_eq!(next.delay, TICK);
+            assert!(publisher.pending_clear.is_some(), "kept for retry");
+            let next = publisher.tick(&io).await;
+            assert_eq!(next.delay, TICK * 2);
+            FakeIo::set(&io.on, true);
+            wait(&io, &next).await;
+            assert!(io.slept().is_empty());
+        });
+        assert!(
+            FakeIo::get(&io.marker),
+            "still marked while a row may exist"
+        );
+    }
+
+    #[test]
+    fn never_enabled_reads_no_session_and_sends_nothing() {
+        let io = FakeIo::default();
+        let mut publisher = Publisher::new("machine".to_string(), &io);
+        block_on(async {
+            for _ in 0..3 {
+                let next = publisher.tick(&io).await;
+                wait(&io, &next).await;
+            }
+        });
+        assert!(io.sent().is_empty());
+        assert_eq!(io.user_reads.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(io.slept(), [TICK, TICK, TICK]);
+    }
+
+    #[test]
+    fn a_marker_left_from_the_last_run_clears_on_launch() {
+        let io = FakeIo::default();
+        FakeIo::set(&io.marker, true);
+        let mut publisher = Publisher::new("machine".to_string(), &io);
+        block_on(publisher.tick(&io));
+        assert_eq!(io.sent(), [CLEAR]);
+        assert!(!FakeIo::get(&io.marker));
     }
 }
