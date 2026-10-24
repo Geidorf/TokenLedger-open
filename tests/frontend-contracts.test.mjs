@@ -3280,6 +3280,7 @@ test('settings form fields expose explicit accessible names', () => {
     'PricingSection.tsx',
   ].map((file) => readSource(path.join(process.cwd(), 'src', 'components', 'settings', file)));
   const source = sources.join('\n');
+  const zhMessages = readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts'));
   for (const label of [
     'Supabase URL',
     'Publishable Key',
@@ -3292,7 +3293,12 @@ test('settings form fields expose explicit accessible names', () => {
     '清理截止日期',
     '模型价格 JSON',
   ]) {
-    assert.match(source, new RegExp(`aria-label="${label}"`), `missing accessible name: ${label}`);
+    // 迁到文案表的标签写成 aria-label={t('键')}，键在 zh.ts 里对应原文。
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const key = zhMessages.match(new RegExp(`'([\\w.]+)': '${escaped}',`))?.[1];
+    const literal = new RegExp(`aria-label="${escaped}"`).test(source);
+    const viaKey = key !== undefined && source.includes(`aria-label={t('${key}')}`);
+    assert.ok(literal || viaKey, `missing accessible name: ${label}`);
   }
 });
 
@@ -3407,7 +3413,7 @@ test('phone cloud setup keeps the next verification action in the first viewport
   const cloud = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'CloudAccountSection.tsx'));
   const css = readSource(path.join(process.cwd(), 'src', 'index.css'));
-  assert.match(cloud, /登录云端账户/);
+  assert.match(cloud, /t\('cloud\.signInCloud'\)/);
   assert.match(cloud, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
   assert.match(cloud, /ref=\{emailInputRef\}/);
   assert.match(css, /@media \(max-width: 430px\)[\s\S]*?\.cloud-setup-steps li \{[\s\S]*?min-height:\s*44px;[\s\S]*?padding-block:\s*2px;/);
@@ -3419,7 +3425,8 @@ test('云端同步主动作会随首次同步完成状态切换文案', () => {
   const cloud = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'CloudAccountSection.tsx'));
   assert.match(cloud, /firstSyncActionLabel\(props\.setup, props\.busy\.sync\)/);
-  assert.match(cloud, /firstSyncCompleted \? '同步最新数据' : '执行首次同步'/);
+  assert.match(cloud, /firstSyncCompleted \? t\('cloud\.sync\.latest'\) : t\('cloud\.sync\.first'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'cloud\.sync\.latest': '同步最新数据',\s*'cloud\.sync\.first': '执行首次同步'/);
 });
 
 test('云端连接动作在验证或同步期间暴露进行中语义并统一入口文案', () => {
@@ -3428,7 +3435,7 @@ test('云端连接动作在验证或同步期间暴露进行中语义并统一�
   const primitives = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'SettingsPrimitives.tsx'));
   assert.match(cloud, /const capabilityBusy = props\.setup\.validating;/);
-  assert.match(cloud, /const capabilityButtonLabel = capabilityBusy \? '验证中…' : capabilityActionLabel\(props\.setup\);/);
+  assert.match(cloud, /const capabilityButtonLabel = capabilityBusy \? t\('cloud\.verify\.busy'\) : capabilityActionLabel\(props\.setup\);/);
   assert.match(cloud, /aria-label=\{capabilityButtonAriaLabel\}/);
   assert.match(cloud, /aria-busy=\{capabilityBusy \|\| undefined\}/);
   assert.match(cloud, /disabled=\{!props\.setup\.authenticated \|\| capabilityBusy \|\| props\.busy\.sync\}/);
@@ -3436,7 +3443,7 @@ test('云端连接动作在验证或同步期间暴露进行中语义并统一�
   assert.match(cloud, /<SettingsActionRow busy=\{capabilityBusy \|\| props\.busy\.sync\}>/);
   assert.match(cloud, /const firstSyncButtonAriaLabel = props\.busy\.sync/);
   assert.match(cloud, /aria-label=\{firstSyncButtonAriaLabel\}/);
-  assert.match(cloud, /const quickSyncButtonLabel = props\.busy\.sync \? '同步中…' : '立即同步';/);
+  assert.match(cloud, /const quickSyncButtonLabel = props\.busy\.sync \? t\('cloud\.sync\.busy'\) : t\('cloud\.sync\.now'\);/);
   assert.match(cloud, /aria-label=\{quickSyncButtonAriaLabel\}/);
   assert.match(cloud, /\{quickSyncButtonLabel\}/);
   assert.match(primitives, /settings-action-row" aria-busy=\{busy \|\| undefined\}/);
@@ -3445,7 +3452,7 @@ test('云端连接动作在验证或同步期间暴露进行中语义并统一�
 test('云端账户与连接配置动作在提交期间暴露进行中语义', () => {
   const cloud = readSource(
     path.join(process.cwd(), 'src', 'components', 'settings', 'CloudAccountSection.tsx'));
-  assert.match(cloud, /const configButtonLabel = props\.busy\.config \? '保存中…' : '保存配置';/);
+  assert.match(cloud, /const configButtonLabel = props\.busy\.config \? t\('cloud\.config\.saving'\) : t\('cloud\.config\.save'\);/);
   assert.match(cloud, /aria-label=\{configButtonAriaLabel\}/);
   assert.match(cloud, /aria-busy=\{props\.busy\.config \|\| undefined\}/);
   assert.match(cloud, /\{props\.busy\.config && <RefreshCw className="h-4 w-4 animate-spin" \/>\}/);
@@ -3454,12 +3461,13 @@ test('云端账户与连接配置动作在提交期间暴露进行中语义', ()
   assert.match(cloud, /const \[activeAuthAction, setActiveAuthAction\] = useState<AuthAction \| null>\(null\);/);
   assert.match(cloud, /const authActionBusy = \(action: AuthAction\) => props\.busy\.auth && activeAuthAction === action;/);
   assert.match(cloud, /const runAuthAction = \(action: AuthAction, callback: \(\) => void\) =>/);
-  assert.match(cloud, /aria-label=\{signInBusy \? '正在登录云端账户' : '登录'\}/);
-  assert.match(cloud, /aria-label=\{signUpBusy \? '正在注册云端账户' : '注册'\}/);
-  assert.match(cloud, /aria-label=\{signOutBusy \? '正在退出云端账户' : '退出云端账户'\}/);
-  assert.match(cloud, /\{signInBusy \? '登录中…' : '登录'\}/);
-  assert.match(cloud, /\{signUpBusy \? '注册中…' : '注册'\}/);
-  assert.match(cloud, /\{signOutBusy \? '退出中…' : '退出'\}/);
+  assert.match(cloud, /aria-label=\{signInBusy \? t\('cloud\.signIn\.busyAria'\) : t\('cloud\.signIn'\)\}/);
+  assert.match(cloud, /aria-label=\{signUpBusy \? t\('cloud\.signUp\.busyAria'\) : t\('cloud\.signUp'\)\}/);
+  assert.match(cloud, /aria-label=\{signOutBusy \? t\('cloud\.signOut\.busyAria'\) : t\('cloud\.signOut\.aria'\)\}/);
+  assert.match(cloud, /\{signInBusy \? t\('cloud\.signIn\.busy'\) : t\('cloud\.signIn'\)\}/);
+  assert.match(cloud, /\{signUpBusy \? t\('cloud\.signUp\.busy'\) : t\('cloud\.signUp'\)\}/);
+  assert.match(cloud, /\{signOutBusy \? t\('cloud\.signOut\.busy'\) : t\('cloud\.signOut'\)\}/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'cloud\.signIn\.busyAria': '正在登录云端账户',\s*'cloud\.signIn': '登录'/);
   assert.match(cloud, /<SettingsActionRow busy=\{props\.busy\.auth\}>/);
 });
 
@@ -4014,11 +4022,12 @@ test('cloud status and remote quota reads require an explicit user check', () =>
   assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'shell\.cloud\.unknown': '本地就绪 · 云端状态待检查'[\s\S]*'shell\.sync\.checkInSettings': '请先在设置与云端检查云端状态'/);
   assert.match(sidebar, /onCheckCloudStatus\?: \(\) => void/);
   assert.match(sidebar, /if \(!cloudStatusKnown && onCheckCloudStatus\)/);
-  assert.match(cloudSection, /查看登录状态会读取本机钥匙串，仅在你主动点击后执行/);
+  assert.match(cloudSection, /t\('cloud\.status\.note'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'cloud\.status\.note': '查看登录状态会读取本机钥匙串，仅在你主动点击后执行。'/);
   assert.match(cloud, /当前授权周期内不会重复读取本机钥匙串；请确认登录钥匙串已解锁后，主动重试/);
   assert.match(cloudSection, /id=\{statusErrorId\}[\s\S]*statusErrorId/);
   assert.match(cloudSection, /aria-describedby=\{statusErrorId\}/);
-  assert.match(cloudSection, /statusError \? '重试检查' : '检查账户状态'/);
+  assert.match(cloudSection, /statusError \? t\('cloud\.status\.retry'\) : t\('cloud\.status\.check'\)/);
 });
 
 test('native startup keeps the shell hidden until the resolved window mode is applied', () => {
@@ -4116,12 +4125,10 @@ test('wallpaper consent and cleanup actions expose progress while locking duplic
     path.join(process.cwd(), 'src', 'components', 'settings', 'WallpaperSection.tsx'));
   assert.match(wallpaper, /const \[activeAction, setActiveAction\] = useState<'restore-consent' \| 'disable-consent' \| 'cleanup' \| null>\(null\);/);
   assert.match(wallpaper, /aria-busy=\{activeAction !== null \|\| undefined\}/);
-  assert.match(wallpaper, /正在确认并恢复历史壁纸设置/);
-  assert.match(wallpaper, /确认中…/);
-  assert.match(wallpaper, /正在关闭历史壁纸自动化/);
-  assert.match(wallpaper, /处理中…/);
-  assert.match(wallpaper, /正在清理历史壁纸/);
-  assert.match(wallpaper, /清理中…/);
+  for (const key of ['wall.consent.restoringAria', 'wall.consent.confirming', 'wall.consent.disablingAria', 'wall.consent.disabling', 'wall.cleanup.busyAria', 'wall.cleanup.busy']) {
+    assert.match(wallpaper, new RegExp(`t\\('${key.replace(/\./g, '\\.')}'\\)`), key);
+  }
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'wall\.consent\.restoringAria': '正在确认并恢复历史壁纸设置'[\s\S]*'wall\.cleanup\.busy': '清理中…'/);
   assert.match(wallpaper, /<SettingsActionRow busy=\{actionLocked\}>/);
 });
 

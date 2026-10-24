@@ -147,6 +147,20 @@ test.describe('英文界面', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('设置：云端账户与壁纸是英文', async ({ page }) => {
+    await openEnglish(page, 'settings-cloud');
+    await expect(page.getByRole('heading', { name: 'Cloud account' })).toBeVisible();
+    await expect(page.getByText('Connection progress')).toBeVisible();
+    await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
+    await openEnglish(page, 'settings-wallpaper');
+    await expect(page.getByRole('heading', { name: 'Wallpaper', exact: true })).toBeVisible();
+    await expect(page.getByText('Desktop status')).toBeVisible();
+    await expect(page.getByText('Wallpaper usage source')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clean up old wallpapers' })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('设置：手机动态壁纸与其他电脑的共享用量卡片是英文', async ({ page }) => {
     await openEnglish(page, 'settings-data');
     await expect(page.getByText('Shared usage from other computers')).toBeVisible();

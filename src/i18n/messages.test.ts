@@ -9,6 +9,8 @@ const FULLY_LOCALIZED = [
   'src/i18n/index.ts',
   'src/i18n/LanguageSelect.tsx',
   'src/components/settings/LanguageCard.tsx',
+  'src/components/settings/CloudAccountSection.tsx',
+  'src/components/settings/WallpaperSection.tsx',
   'src/features/onboarding/FirstRunGuide.tsx',
   'src/features/onboarding/onboardingState.ts',
   'src/features/gateway/RoutingPage.tsx',
