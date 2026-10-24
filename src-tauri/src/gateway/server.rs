@@ -1217,14 +1217,28 @@ async fn read_upstream_body(
 }
 
 /// Some upstreams echo the presented key in their error text, which then
-/// reaches the agent and the request ledger.
+/// reaches the agent and the request ledger. The key itself is replaced
+/// wherever it appears; anything else shaped like a credential (a common
+/// provider key prefix, a bearer token, a JWT) is masked too, since an
+/// upstream may echo a cut or differently spelled key.
 fn redact_key(text: &str, key: &str) -> String {
+    const HIDDEN: &str = "[已隐去 API key]";
+    static SHAPES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(concat!(
+            r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}",
+            r"|\b(?:sk|pk|rk|ak|xai|gsk)[-_][A-Za-z0-9._-]{12,}",
+            r"|\bAIza[0-9A-Za-z_-]{20,}",
+            r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
+        ))
+        .expect("credential shapes compile")
+    });
     let key = key.trim();
-    if key.len() >= 8 {
-        text.replace(key, "[已隐去 API key]")
+    let text = if key.len() >= 8 {
+        text.replace(key, HIDDEN)
     } else {
         text.to_string()
-    }
+    };
+    SHAPES.replace_all(&text, HIDDEN).into_owned()
 }
 
 async fn read_limited(response: reqwest::Response) -> String {
