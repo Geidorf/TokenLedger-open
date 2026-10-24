@@ -23,6 +23,14 @@ pub const DATA_FORMAT: &str = crate::peer_wire::DATA_FORMAT;
 pub const ITERATIONS: u32 = 600_000;
 const KDF: &str = "pbkdf2-sha256";
 const VERSION: u32 = 1;
+/// Iteration counts a sealed file may name. The peer writes 600000; the
+/// cap keeps one file from costing more than a few seconds to open.
+const MIN_ITERATIONS: u32 = 100_000;
+pub const MAX_ITERATIONS: u32 = 2_000_000;
+/// PBKDF2 rounds one [`Opener`] spends in all: enough for every computer the
+/// shared folder may list under a few salts each, and a bound on the CPU a
+/// folder full of differently salted files can take.
+pub const OPENER_ROUNDS: u64 = 128 * 600_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenError {
@@ -34,6 +42,8 @@ pub enum OpenError {
     Newer,
     /// The passphrase does not open it, or the file was changed.
     Passphrase,
+    /// Opening it would derive more keys than one read allows.
+    TooManyKeys,
 }
 
 impl OpenError {
@@ -43,6 +53,7 @@ impl OpenError {
             Self::Corrupt => "外部网关同步文件已损坏或不完整。",
             Self::Newer => "这个同步文件由更新版本的外部网关生成，TokenLedger 还读不了。",
             Self::Passphrase => "同步密码不对，或文件已被改动。",
+            Self::TooManyKeys => "服务器上的共享用量文件用了过多不同的加密参数，已停止读取。",
         }
     }
 }
@@ -112,28 +123,43 @@ fn key_for(passphrase: &str, envelope: &Envelope) -> Result<LessSafeKey, OpenErr
 
 /// Opens many files sealed with one passphrase, deriving each salt's key
 /// once: the peer seals every shared file under the same salt, and 600000
-/// rounds per file would make a few months of days take minutes.
+/// rounds per file would make a few months of days take minutes. Once the
+/// keys derived add up to [`OPENER_ROUNDS`], a file under yet another salt
+/// is refused instead of opened.
 pub struct Opener {
     passphrase: String,
     keys: std::collections::HashMap<(Vec<u8>, u32), [u8; 32]>,
+    rounds_left: u64,
 }
 
 impl Opener {
     pub fn new(passphrase: &str) -> Self {
+        Self::with_rounds(passphrase, OPENER_ROUNDS)
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))] // tests shrink the budget
+    pub fn with_rounds(passphrase: &str, rounds: u64) -> Self {
         Self {
             passphrase: passphrase.to_string(),
             keys: std::collections::HashMap::new(),
+            rounds_left: rounds,
         }
     }
 
     pub fn open(&mut self, data: &[u8], format: &str) -> Result<Vec<u8>, OpenError> {
         let passphrase = &self.passphrase;
         let keys = &mut self.keys;
+        let rounds_left = &mut self.rounds_left;
         open_with(data, format, &mut |envelope| {
             let slot = (envelope.salt.clone(), envelope.iterations);
             let raw = match keys.get(&slot) {
                 Some(raw) => *raw,
                 None => {
+                    let cost = u64::from(envelope.iterations);
+                    if cost > *rounds_left {
+                        return Err(OpenError::TooManyKeys);
+                    }
+                    *rounds_left -= cost;
                     let raw = derive(passphrase, &envelope.salt, envelope.iterations)?;
                     keys.insert(slot, raw);
                     raw
@@ -177,7 +203,7 @@ fn open_with(
     if envelope.version != VERSION || envelope.kdf != KDF {
         return Err(OpenError::Newer);
     }
-    if !(100_000..=10_000_000).contains(&envelope.iterations)
+    if !(MIN_ITERATIONS..=MAX_ITERATIONS).contains(&envelope.iterations)
         || envelope.nonce.len() != 12
         || envelope.salt.len() < 16
     {

@@ -6,10 +6,13 @@ on:
   pull_request:
     branches: [ main ]
 
-# 同一分支的新推送取消仍在排队/运行的旧 run，避免连续推送把 8 个 job 排成长队。
+# PR 分支的新推送取消仍在排队/运行的旧 run，避免连续推送把 9 个 job 排成长队。
+# main 上每个合并提交都要跑完：按提交分组、互不取消，否则连续合并时坏提交可能根本没跑完
+# （同一组里排队中的 run 会被更新的 run 顶掉，所以不能只关 cancel-in-progress）。
+# 结果由 main-ci-alert.yml 报到固定 Issue。
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   docs-check:

@@ -1318,6 +1318,26 @@ test('CI keeps Android screenshot goldens on the macOS source host', () => {
   assert.match(androidScreenshot, /validateDebugScreenshotTest/);
 });
 
+test('CI runs every main commit to completion and reports main failures', () => {
+  const workflows = path.join(process.cwd(), '.github', 'workflows');
+  const ci = readSource(path.join(workflows, 'ci.yml'));
+  // main 上按提交分组、互不取消；只有 PR 分支的新推送才取消旧 run。
+  assert.match(ci, /group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name == 'pull_request' && github\.ref \|\| github\.sha \}\}/);
+  assert.match(ci, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
+  const alert = readSource(path.join(workflows, 'main-ci-alert.yml'));
+  assert.match(alert, /workflows: \[ TokenLedger CI \]/);
+  assert.match(alert, /branches: \[ main \]/);
+  // 告警串行写 Issue，排队不能被后来的 run 顶掉。
+  assert.match(alert, /group: main-ci-alert\n  cancel-in-progress: false\n  queue: max/);
+  // 去重键是 run id + 第几次尝试：重复投递不重复记，重跑（新尝试）照常记。
+  assert.match(alert, /MARKER="<!-- main-ci-alert run=\$RUN_ID attempt=\$RUN_ATTEMPT -->"/);
+  assert.match(alert, /grep -qxF "\$MARKER"/);
+  assert.equal((alert.match(/echo "\$MARKER"/g) || []).length, 2);
+  assert.match(alert, /github\.event\.workflow_run\.event == 'push'/);
+  // 提交消息只经文件交给 gh，不拼进 shell。
+  assert.doesNotMatch(alert, /\$\{\{ github\.event\.workflow_run\.(head_commit|display_title)/);
+});
+
 test('cloud connection rejects secret credentials and non-local HTTP', () => {
   const url = 'https://example.supabase.co';
   const publishableKey = 'sb_publishable_1234567890';
@@ -6238,7 +6258,7 @@ test('弹窗与模态遮罩使用 Portal 挂载至根节点并保持最高层级
 // T10.115 replaces the long-page scrollspy with one visible settings destination.
 // Rendering, focus, history and retained form state are exercised in SettingsTab.test.tsx.
 test('settings destinations stay reachable through user language and unique stable hashes', () => {
-  assert.equal(new Set(SETTINGS_DESTINATIONS.map((item) => item.id)).size, 8);
+  assert.equal(new Set(SETTINGS_DESTINATIONS.map((item) => item.id)).size, 9);
   assert.equal(findSettingsDestinations('')[0].id, 'settings-scan');
   assert.equal(findSettingsDestinations('壁纸')[0].id, 'settings-wallpaper');
   assert.equal(findSettingsDestinations('不存在的设置关键词').length, 0);
@@ -6248,6 +6268,9 @@ test('settings destinations stay reachable through user language and unique stab
   assert.equal(findSettingsDestinations('小组件')[0].id, 'settings-widget');
   // U-112：模型接入总开关有独立分区，搜「网关」直达。
   assert.equal(findSettingsDestinations('网关')[0].id, 'settings-model-access');
+  // 预算与超支提醒有独立分区，搜「预算」「超支」直达。
+  assert.equal(findSettingsDestinations('预算')[0].id, 'settings-budget');
+  assert.equal(findSettingsDestinations('超支')[0].id, 'settings-budget');
   // T10.272（U-99）：旧「API 配置」分区已下线，由侧栏模型接入四页取代。
   assert.equal(findSettingsDestinations('API endpoint').length, 0);
   assert.ok(!SETTINGS_DESTINATIONS.some((item) => item.id === 'settings-api-profiles'));

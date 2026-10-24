@@ -99,18 +99,22 @@ pub fn parse_day(computer: &str, packed: &[u8]) -> Result<(String, Vec<SharedCal
 /// and days past the peer's window left out.
 fn group(files: Vec<(String, String)>, local: Option<&str>, today: NaiveDate) -> Days {
     let oldest = today - chrono::Duration::days(SHARED_DAYS);
+    let newest = today + chrono::Duration::days(1);
     let mut days: Days = BTreeMap::new();
     for (name, _) in files {
         let Some((id, day)) = parse_name(&name) else {
             continue;
         };
-        if Some(id.as_str()) == local || day < oldest {
+        // A day past tomorrow (any time zone) cannot be real; a server that
+        // lists them would otherwise make each pull fetch without bound.
+        if Some(id.as_str()) == local || day < oldest || day > newest {
             continue;
         }
         days.entry(id).or_default().push((day, name));
     }
     for list in days.values_mut() {
         list.sort();
+        list.dedup_by_key(|(day, _)| *day);
     }
     while days.len() > MAX_COMPUTERS {
         days.pop_last();
@@ -208,7 +212,7 @@ impl SharedSource {
     }
 
     /// Every shared call of the `selected` computers still on the server,
-    /// one computer's sealed days in memory at a time.
+    /// one sealed day in memory at a time.
     pub async fn pull(
         &self,
         selected: &[String],
@@ -220,22 +224,21 @@ impl SharedSource {
             let Some(list) = days.get(id) else {
                 continue;
             };
-            let mut fetched = Vec::new();
-            for (_, name) in list {
-                fetched.push((id.clone(), self.fetch(name).await?));
-            }
             let mut computer = SharedComputer {
                 id: id.clone(),
                 ..SharedComputer::default()
             };
-            for day in self.open_all(fetched).await? {
-                // Days come oldest first: the newest name wins.
-                if !day.name.is_empty() {
-                    computer.name = day.name;
+            for (_, name) in list {
+                let fetched = vec![(id.clone(), self.fetch(name).await?)];
+                for day in self.open_all(fetched).await? {
+                    // Days come oldest first: the newest name wins.
+                    if !day.name.is_empty() {
+                        computer.name = day.name;
+                    }
+                    computer.days += 1;
+                    computer.calls += day.calls.len();
+                    calls.extend(day.calls);
                 }
-                computer.days += 1;
-                computer.calls += day.calls.len();
-                calls.extend(day.calls);
             }
             computers.push(computer);
         }
@@ -283,13 +286,16 @@ mod tests {
     }
 
     #[test]
-    fn grouping_leaves_out_this_computer_and_old_days() {
+    fn grouping_leaves_out_this_computer_old_and_future_days() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 23).unwrap();
         let file = |id: &str, day: &str| (format!("{id}-{day}{USAGE_FILE_EXT}"), String::new());
         let days = group(
             vec![
                 file("aa", "2026-10-22"),
                 file("aa", "2026-10-20"),
+                file("aa", "2026-10-24"),
+                file("aa", "2026-10-25"),
+                file("aa", "2099-01-01"),
                 file("bb", "2026-10-22"),
                 file("cc", "2026-01-01"),
                 ("notes.txt".to_string(), String::new()),
@@ -299,7 +305,7 @@ mod tests {
         );
         assert_eq!(days.keys().collect::<Vec<_>>(), ["aa"]);
         let aa: Vec<String> = days["aa"].iter().map(|(day, _)| day.to_string()).collect();
-        assert_eq!(aa, ["2026-10-20", "2026-10-22"]);
+        assert_eq!(aa, ["2026-10-20", "2026-10-22", "2026-10-24"]);
     }
 
     #[test]
@@ -473,6 +479,34 @@ mod tests {
         assert_eq!(
             opener.open(&first, backup::BACKUP_FORMAT),
             Err(backup::OpenError::NotSealed)
+        );
+    }
+
+    #[test]
+    fn the_opener_stops_deriving_past_its_budget() {
+        // `seal` picks a fresh salt each time: two files, two keys.
+        let first = backup::seal(b"one", "pass", backup::DATA_FORMAT, 100_000).unwrap();
+        let second = backup::seal(b"two", "pass", backup::DATA_FORMAT, 100_000).unwrap();
+        let mut opener = Opener::with_rounds("pass", 150_000);
+        assert_eq!(opener.open(&first, backup::DATA_FORMAT).unwrap(), b"one");
+        assert_eq!(
+            opener.open(&second, backup::DATA_FORMAT),
+            Err(backup::OpenError::TooManyKeys)
+        );
+        // A key already derived costs nothing more.
+        assert_eq!(opener.open(&first, backup::DATA_FORMAT).unwrap(), b"one");
+    }
+
+    #[test]
+    fn iteration_counts_past_the_cap_are_refused_before_deriving() {
+        let sealed = backup::seal(b"x", "pass", backup::DATA_FORMAT, 100_000).unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&sealed).unwrap();
+        value["iterations"] = serde_json::json!(backup::MAX_ITERATIONS + 1);
+        let heavy = serde_json::to_vec(&value).unwrap();
+        let mut opener = Opener::with_rounds("pass", u64::MAX);
+        assert_eq!(
+            opener.open(&heavy, backup::DATA_FORMAT),
+            Err(backup::OpenError::Corrupt)
         );
     }
 }
