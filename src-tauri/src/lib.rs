@@ -21,6 +21,7 @@ use tauri::{Emitter, Manager};
 use app_paths::AppContext;
 use settings::AppSettings;
 
+mod alert_webhook;
 mod app_paths;
 mod autostart;
 mod budget;
@@ -1027,6 +1028,11 @@ pub fn run() {
             usage_anomaly::get_usage_anomalies,
             usage_anomaly::get_usage_anomaly_settings,
             usage_anomaly::set_usage_anomaly_settings,
+            alert_webhook::get_alert_webhooks,
+            alert_webhook::set_alert_webhooks_enabled,
+            alert_webhook::save_alert_webhook,
+            alert_webhook::delete_alert_webhook,
+            alert_webhook::test_alert_webhook,
             quota_sync::get_quota_snapshot_sync_status,
             quota_sync::set_quota_snapshot_sync_enabled,
             quota_sync::sync_quota_snapshots_now,

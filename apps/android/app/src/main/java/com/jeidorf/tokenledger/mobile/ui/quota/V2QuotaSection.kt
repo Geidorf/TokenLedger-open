@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -51,7 +53,8 @@ internal fun LazyListScope.v2QuotaItems(
     palette: MobileV2Palette,
     quota: QuotaUiState,
     onRefresh: () -> Unit,
-    dashboardLoading: Boolean
+    dashboardLoading: Boolean,
+    columns: Int = 1
 ) {
     item(key = "quota-heading", contentType = "heading") {
         Text("订阅窗口", color = palette.text, style = LedgerType.titleM)
@@ -115,21 +118,13 @@ internal fun LazyListScope.v2QuotaItems(
                     item(key = "quota-attention-heading", contentType = "heading") {
                         V2QuotaGroupHeading(palette, QuotaDisplayGroup.Attention, groups.attention.size)
                     }
-                    groups.attention.forEach { provider ->
-                        item(key = "quota-attention-${provider.stableKey}", contentType = "quota-provider") {
-                            V2ProviderCard(palette, provider, quota, initiallyExpanded = true)
-                        }
-                    }
+                    v2QuotaProviderRows(palette, "quota-attention", groups.attention, quota, initiallyExpanded = true, columns)
                 }
                 if (groups.available.isNotEmpty()) {
                     item(key = "quota-available-heading", contentType = "heading") {
                         V2QuotaGroupHeading(palette, QuotaDisplayGroup.Available, groups.available.size)
                     }
-                    groups.available.forEach { provider ->
-                        item(key = "quota-available-${provider.stableKey}", contentType = "quota-provider") {
-                            V2ProviderCard(palette, provider, quota, initiallyExpanded = false)
-                        }
-                    }
+                    v2QuotaProviderRows(palette, "quota-available", groups.available, quota, initiallyExpanded = false, columns)
                 }
                 if (groups.history.isNotEmpty()) {
                     item(key = "quota-history", contentType = "quota-history") {
@@ -150,6 +145,40 @@ internal fun LazyListScope.v2QuotaItems(
                     style = LedgerType.meta,
                     modifier = Modifier.padding(horizontal = 2.dp)
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 一组额度卡。[columns] 为 2 时（平板横屏、手机横屏）每行并排两张，顶端对齐；
+ * 单数时最后一张占左半，右半留空，不拉宽成整行。
+ */
+private fun LazyListScope.v2QuotaProviderRows(
+    palette: MobileV2Palette,
+    keyPrefix: String,
+    providers: List<QuotaProviderEnvelope>,
+    quota: QuotaUiState.Available,
+    initiallyExpanded: Boolean,
+    columns: Int
+) {
+    if (columns <= 1) {
+        providers.forEach { provider ->
+            item(key = "$keyPrefix-${provider.stableKey}", contentType = "quota-provider") {
+                V2ProviderCard(palette, provider, quota, initiallyExpanded = initiallyExpanded)
+            }
+        }
+        return
+    }
+    providers.chunked(columns).forEach { row ->
+        item(key = "$keyPrefix-${row.joinToString("+") { it.stableKey }}", contentType = "quota-provider-row") {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                row.forEach { provider ->
+                    Box(Modifier.weight(1f)) {
+                        V2ProviderCard(palette, provider, quota, initiallyExpanded = initiallyExpanded)
+                    }
+                }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

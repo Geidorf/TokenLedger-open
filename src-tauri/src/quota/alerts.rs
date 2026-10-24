@@ -221,6 +221,13 @@ pub(crate) fn run_alerts(
         if let Err(error) = notifier.notify(&alert.title, &alert.body) {
             log::warn!("quota alert notification failed: {error}");
         }
+        crate::alert_webhook::forward(
+            app_data_dir,
+            crate::alert_webhook::AlertKind::Quota,
+            &alert.title,
+            &alert.body,
+            None,
+        );
     }
     planned
 }

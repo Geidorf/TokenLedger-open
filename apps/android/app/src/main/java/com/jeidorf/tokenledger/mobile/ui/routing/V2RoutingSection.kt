@@ -51,14 +51,18 @@ private const val RECENT_ROWS = 12
  * 这里画 Agent → 网关 → 上游成员的舞台和最近调用。没有快照、桌面离线、云端没部署时如实说明，
  * 不画假的流向、不编数字；快照有 5～10 秒延迟，时间一律写「N 秒前」。
  */
-internal fun LazyListScope.v2RoutingItems(palette: MobileV2Palette, feed: RoutingFeed) {
+internal fun LazyListScope.v2RoutingItems(palette: MobileV2Palette, feed: RoutingFeed, spread: Boolean = false) {
     item(key = "routing-page", contentType = "routing") {
-        V2RoutingPage(palette, feed)
+        V2RoutingPage(palette, feed, spread)
     }
 }
 
+/**
+ * [spread]：平板横屏与手机横屏（Expanded 宽度）把舞台和最近调用左右并排，舞台占六成宽、
+ * 横向铺开，不用先往下滚才看到最近调用。
+ */
 @Composable
-private fun V2RoutingPage(palette: MobileV2Palette, feed: RoutingFeed) {
+private fun V2RoutingPage(palette: MobileV2Palette, feed: RoutingFeed, spread: Boolean = false) {
     val now = rememberRoutingServerNow(feed)
     val scene = remember(feed.result, now / 1_000L) { feed.result?.let { RoutingSnapshots.merge(it, now) } }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -81,11 +85,23 @@ private fun V2RoutingPage(palette: MobileV2Palette, feed: RoutingFeed) {
             }
         }
         if (scene != null && scene.empty == null) {
-            V2Card(palette) {
-                V2RoutingStage(palette, scene, now)
-                V2RoutingFooter(palette, scene, now)
+            if (spread) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
+                    V2Card(palette, modifier = Modifier.weight(3f)) {
+                        V2RoutingStage(palette, scene, now)
+                        V2RoutingFooter(palette, scene, now)
+                    }
+                    Column(Modifier.weight(2f)) {
+                        V2RoutingRecent(palette, scene.flows.take(RECENT_ROWS), now)
+                    }
+                }
+            } else {
+                V2Card(palette) {
+                    V2RoutingStage(palette, scene, now)
+                    V2RoutingFooter(palette, scene, now)
+                }
+                V2RoutingRecent(palette, scene.flows.take(RECENT_ROWS), now)
             }
-            V2RoutingRecent(palette, scene.flows.take(RECENT_ROWS), now)
         }
     }
 }

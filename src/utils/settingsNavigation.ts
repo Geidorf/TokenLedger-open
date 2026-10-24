@@ -90,10 +90,11 @@ export const SETTINGS_DESTINATIONS: SettingsDestination[] = [
     id: "settings-budget",
     items: [
     "接近或超出预算时提醒", "新增预算", "预算周期", "预算范围", "预算上限", "接近提醒比例",
+    "推送提醒到 Webhook", "添加 Webhook", "测试发送",
     ],
     label: "预算提醒",
     description: "费用与 Token 预算、超支提醒",
-    keywords: ["预算", "超支", "告警", "通知", "费用", "token"],
+    keywords: ["预算", "超支", "告警", "通知", "费用", "token", "webhook", "飞书", "钉钉", "企业微信", "slack", "discord", "群机器人"],
     icon: "Wallet",
   },
   {
