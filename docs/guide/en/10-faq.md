@@ -1,6 +1,6 @@
 # 10. FAQ
 
-[← Privacy](09-privacy.md) · [Contents](README.md)
+[← Privacy](09-privacy.md) · [Contents](README.md) · Next: [Request log →](11-request-log.md)
 
 ## Install and launch
 

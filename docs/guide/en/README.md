@@ -17,9 +17,10 @@ Everything is counted on your computer first. Cloud sync, the model gateway and 
 5. [Budget alerts](05-budget.md): daily, weekly or monthly cost or token budgets
 6. [Cloud sync and the phone app](06-cloud-mobile.md): multi-device totals and the Android dashboard
 7. [Wallpapers and widgets](07-wallpaper-widgets.md): desktop wallpaper, lock screen, desktop widget, phone live wallpaper
-8. [Tray and menu bar](08-tray.md): tray widget, tray menu, start minimized
+8. [Tray and menu bar](08-tray.md): number badge, tray panel, background scan and sync switches
 9. [Privacy](09-privacy.md): what goes to the cloud and what stays on your computer
 10. [FAQ](10-faq.md)
+11. [Request log](11-request-log.md): filter gateway requests, inspect failover attempts, follow live traffic and export
 
 ## Definitions used throughout
 

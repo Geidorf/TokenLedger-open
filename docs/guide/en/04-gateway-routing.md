@@ -100,3 +100,5 @@ You can also:
 ### Recent decisions
 
 The right column lists the latest routing decisions: who was picked, why (rule match, session kept, in order, weighted pick…), and how each member did (success, failed and switched, rejected upstream, skipped, cooling down). Expand **Why this choice** to see why each member was not picked. It is the quickest way to answer "why does it keep using the fallback?".
+
+To find older requests, filter errors or inspect all attempts for one request, click **Open request log (打开请求日志)** on the gateway page. See the [request log guide](11-request-log.md) for details.
