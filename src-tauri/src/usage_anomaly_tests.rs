@@ -588,3 +588,33 @@ fn settings_round_trip_and_tolerate_garbage() {
     assert!(!load_settings(&dir).notify);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn webhook_cost_text_only_for_dollar_findings() {
+    let tokens = finding(
+        AnomalyKind::TokenSpike,
+        Granularity::Hour,
+        "2026-10-24 14:00",
+        at(24, 14, 30),
+    );
+    assert_eq!(cost_text(&tokens), None);
+
+    let mut spike = finding(
+        AnomalyKind::CostSpike,
+        Granularity::Day,
+        "2026-10-24",
+        at(24, 14, 30),
+    );
+    spike.unit = AnomalyUnit::Usd;
+    spike.value = 12.345;
+    spike.baseline = 2.0;
+    assert_eq!(
+        cost_text(&spike).as_deref(),
+        Some("预估费用 $12.35，平时约 $2.00")
+    );
+
+    let mut session = spike.clone();
+    session.kind = AnomalyKind::ExpensiveSession;
+    let text = cost_text(&session).unwrap();
+    assert!(text.starts_with("这个会话预估费用 $12.35"));
+}

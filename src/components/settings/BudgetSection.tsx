@@ -31,6 +31,7 @@ import {
   SettingsSection,
   SettingsToggleRow,
 } from './SettingsPrimitives';
+import { AlertWebhookCard } from './AlertWebhookCard';
 import '../../styles/budget.css';
 
 interface Draft {
@@ -376,6 +377,8 @@ export function BudgetSection() {
           </SettingsGroup>
         </form>
       </SettingsCard>
+
+      <AlertWebhookCard />
     </SettingsSection>
   );
 }

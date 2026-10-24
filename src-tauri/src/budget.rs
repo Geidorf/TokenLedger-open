@@ -259,6 +259,8 @@ pub(crate) struct PlannedAlert {
     pub rule_id: String,
     pub title: String,
     pub body: String,
+    /// Cost figures for webhooks that opted in; never in the notification.
+    pub cost: Option<String>,
 }
 
 #[tauri::command]
@@ -496,6 +498,13 @@ pub(crate) fn run_alerts(
         if let Err(error) = notifier.notify(&alert.title, &alert.body) {
             log::warn!("budget alert notification failed: {error}");
         }
+        crate::alert_webhook::forward(
+            app_data_dir,
+            crate::alert_webhook::AlertKind::Budget,
+            &alert.title,
+            &alert.body,
+            alert.cost.as_deref(),
+        );
     }
     planned
 }
@@ -590,6 +599,7 @@ pub(crate) fn plan_alerts(
             rule_id: rule.id.clone(),
             title,
             body,
+            cost: cost_text(rule, status),
         });
     }
     if state.fired.len() > MAX_FIRED_ENTRIES {
@@ -624,6 +634,15 @@ fn notification_text(rule: &BudgetRule, status: &BudgetStatus) -> (String, Strin
     };
     let body = format!("{}{metric}预算已用 {percent}%", rule.period.label());
     (title, body)
+}
+
+/// `已用 $40.00 / 上限 $50.00` for cost budgets; Token budgets carry no cost.
+fn cost_text(rule: &BudgetRule, status: &BudgetStatus) -> Option<String> {
+    if rule.metric != BudgetMetric::Cost {
+        return None;
+    }
+    let used = status.used?;
+    Some(format!("已用 ${used:.2} / 上限 ${:.2}", rule.limit))
 }
 
 pub(crate) fn scope_label(rule: &BudgetRule) -> String {
@@ -1142,6 +1161,21 @@ mod tests {
         let (title, body) = notification_text(&account, &status);
         assert_eq!(title, "账号 已超出预算");
         assert!(!body.contains('$') && !body.contains("7.5"));
+    }
+
+    #[test]
+    fn webhook_cost_text_only_for_cost_budgets() {
+        let cost = rule("c", BudgetPeriod::Month, BudgetMetric::Cost, 50.0);
+        let status = status_for(&cost, Some(42.5), day("2026-10-01"));
+        assert_eq!(
+            cost_text(&cost, &status).as_deref(),
+            Some("已用 $42.50 / 上限 $50.00")
+        );
+        let unavailable = status_for(&cost, None, day("2026-10-01"));
+        assert_eq!(cost_text(&cost, &unavailable), None);
+        let tokens = rule("t", BudgetPeriod::Month, BudgetMetric::Tokens, 1000.0);
+        let status = status_for(&tokens, Some(900.0), day("2026-10-01"));
+        assert_eq!(cost_text(&tokens, &status), None);
     }
 
     #[test]

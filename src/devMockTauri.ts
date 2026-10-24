@@ -1,5 +1,6 @@
 import { emit } from '@tauri-apps/api/event';
 import { mockUsageAnomalyCommand } from './devMockUsageAnomaly';
+import { mockAlertWebhookCommand, resetMockAlertWebhooks } from './devMockAlertWebhook';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import packageJson from '../package.json';
 import bundledPrices from '../src-tauri/prices.json';
@@ -2084,6 +2085,7 @@ export function installDevMockTauri() {
   }
   mockCostProfile = emptyMockCostProfile();
   resetMockProjectDimension();
+  resetMockAlertWebhooks();
   attachE2eHarness();
   mockIPC((cmd, args) => {
     const e2e = resolveE2eOverride(cmd, args);
@@ -2093,6 +2095,8 @@ export function installDevMockTauri() {
       : {};
     const anomaly = mockUsageAnomalyCommand(cmd, payload);
     if (anomaly.handled) return anomaly.value;
+    const webhook = mockAlertWebhookCommand(cmd, payload);
+    if (webhook.handled) return webhook.value;
     switch (cmd) {
       case 'get_cloud_config':
         if (mockFreshInstall && !mockCloudAuthenticated) return { supabase_url: '', supabase_key: '' };
