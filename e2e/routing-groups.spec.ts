@@ -76,6 +76,28 @@ test.describe('路由组', () => {
     await expect(dialog).toBeVisible();
   });
 
+  test('冷却中的成员：卡片与右栏都标出剩余时间，冷却结束后轮询把标记撤掉', async ({ page, ipc }) => {
+    await ipc.override('gateway_routing_cooldowns', { value: [
+      { member: 'openai/gpt-5', remainingSecs: 45, failures: 1 },
+      { member: 'deepseek/deepseek-reasoner', remainingSecs: 150, failures: 3 },
+    ] });
+    await openPage(page, 'routing');
+    const coding = groupCard(page, '编码主力');
+    const gpt = coding.locator('.mw-members li').filter({ hasText: 'openai/gpt-5' });
+    await expect(gpt.getByText('冷却中 · 约 45 秒')).toBeVisible();
+    await expect(gpt.getByText('冷却中 · 约 45 秒')).toHaveAttribute('title', /连续失败 1 次/);
+    await expect(coding.locator('.mw-members li').filter({ hasText: 'deepseek/deepseek-chat' }).locator('.is-warning')).toHaveCount(0);
+    await expect(groupCard(page, '便宜优先').getByText('冷却中 · 约 3 分钟')).toBeVisible();
+    const aside = page.getByRole('region', { name: '冷却中的成员' });
+    await expect(aside.getByRole('listitem')).toHaveCount(2);
+
+    // 有冷却时每 10 秒轮询一次；冷却结束后标记与右栏一起消失。
+    await ipc.override('gateway_routing_cooldowns', { value: [] });
+    await page.clock.runFor(10_000).catch(() => undefined);
+    await expect(aside).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByText(/冷却中 · 约/)).toHaveCount(0);
+  });
+
   test('冷却与子组：决策解释链写明首选冷却中后移、候选来自哪个子组', async ({ page, ipc }) => {
     const ts = new Date(Date.parse(MOCK_NOW) - 60_000).toISOString();
     await ipc.override('gateway_recent_route_decisions', { value: [{
