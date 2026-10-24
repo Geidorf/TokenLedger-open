@@ -278,3 +278,22 @@ fn a_file_past_the_line_cap_is_refused_not_imported_in_part() {
     assert!(parse_usage(&path).unwrap_err().contains("行"));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn an_overlong_line_is_skipped_without_holding_it_whole() {
+    let mut text = "y".repeat(MAX_LINE_BYTES * 4);
+    text.push('\n');
+    text.push_str("z\n");
+    let mut reader = std::io::BufReader::new(text.as_bytes());
+    let mut buffer = Vec::new();
+    assert_eq!(
+        read_line_capped(&mut reader, &mut buffer).unwrap(),
+        MAX_LINE_BYTES * 4 + 1
+    );
+    assert_eq!(buffer.len(), MAX_LINE_BYTES + 1);
+    buffer.clear();
+    assert_eq!(read_line_capped(&mut reader, &mut buffer).unwrap(), 2);
+    assert_eq!(buffer, b"z\n");
+    buffer.clear();
+    assert_eq!(read_line_capped(&mut reader, &mut buffer).unwrap(), 0);
+}
