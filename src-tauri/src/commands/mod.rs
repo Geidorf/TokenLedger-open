@@ -6795,6 +6795,7 @@ fn read_local_rows_filtered(
         .map_err(|e| e.to_string())
 }
 
+pub(crate) mod anomaly_rows;
 mod gateway_cloud;
 mod gateway_overlay;
 pub mod magpie_import;

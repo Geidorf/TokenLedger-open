@@ -47,6 +47,7 @@ mod scanner;
 mod session_analysis;
 mod settings;
 mod stats_query;
+mod usage_anomaly;
 mod wallpaper;
 mod widget_window;
 
@@ -189,6 +190,8 @@ pub(crate) fn refresh_tray_status(ctx: &AppContext, app_handle: &tauri::AppHandl
     // Budgets read the same local stats, so they are re-checked on every
     // refresh: alerts fire here and near/over budgets add a tooltip line.
     let budget_line = budget::tray_summary(&budget::check_budget_alerts(ctx));
+    // Anomaly alerts are off by default and throttle themselves.
+    usage_anomaly::check_anomaly_alerts(ctx);
     widget_window::refresh_tray_status(ctx, app_handle, tray_text_enabled, budget_line);
 }
 
@@ -361,7 +364,9 @@ fn start_background_scheduler(
                 sync_quota_and_notify(&ctx, &app_handle);
                 // Gateway requests land in the ledger without a scan, so
                 // budgets get their own five-minute check.
-                if !budget::load_settings(ctx.app_data_dir()).rules.is_empty() {
+                if !budget::load_settings(ctx.app_data_dir()).rules.is_empty()
+                    || usage_anomaly::load_settings(ctx.app_data_dir()).notify
+                {
                     refresh_tray_status(&ctx, &app_handle);
                 }
                 next_quota_sync = now + Duration::from_secs(5 * 60);
@@ -1010,6 +1015,9 @@ pub fn run() {
             budget::get_budget_settings,
             budget::set_budget_settings,
             budget::get_budget_status,
+            usage_anomaly::get_usage_anomalies,
+            usage_anomaly::get_usage_anomaly_settings,
+            usage_anomaly::set_usage_anomaly_settings,
             quota_sync::get_quota_snapshot_sync_status,
             quota_sync::set_quota_snapshot_sync_enabled,
             quota_sync::sync_quota_snapshots_now,
