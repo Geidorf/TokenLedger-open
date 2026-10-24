@@ -15,7 +15,7 @@ name: TokenLedger Unsigned Linux Packages
 # 在 ubuntu-22.04 上构建：AppImage 只能在 glibc 不低于构建机的系统上运行，
 # 用较老的 LTS 覆盖面更广。
 #
-# 触发：手动 dispatch，在 v* tag 上运行，或改动本文件与冒烟脚本的 PR（只构建、不发布）。
+# 触发：手动 dispatch，在 v* tag 上运行，或改动本文件、冒烟脚本与 Rust 依赖的 PR（只构建、不发布）。
 
 on:
   workflow_dispatch:
@@ -33,6 +33,9 @@ on:
       - 'scripts/linux-package-smoke.sh'
       - 'scripts/linux-tray-watcher.py'
       - 'src-tauri/src/autostart.rs'
+      # 依赖变化（例如 Linux 密钥存储后端）要在真实 Linux 包上重跑一遍。
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
 
 permissions:
   # 上传 release 资产需要 contents: write。

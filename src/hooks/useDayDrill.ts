@@ -94,6 +94,7 @@ const ORIGIN_TAB_LABELS: Record<Tab, string> = {
   agents: 'Agent',
   providers: '供应商',
   gateway: '网关',
+  gatewaylog: '请求日志',
   routing: '路由',
 };
 
