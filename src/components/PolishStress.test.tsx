@@ -552,7 +552,7 @@ describe('Empirical Stress Test: DashboardTab Zero-Data Diagnostics & Actions', 
     expect(screen.getByText('~/.minimax')).toBeInTheDocument();
 
     // Verify action buttons
-    const scanBtn = screen.getByRole('button', { name: '立即扫描' });
+    const scanBtn = screen.getByRole('button', { name: '扫描本地日志' });
     fireEvent.click(scanBtn);
     expect(onScan).toHaveBeenCalledTimes(1);
 
@@ -600,7 +600,7 @@ describe('Empirical Stress Test: DashboardTab Zero-Data Diagnostics & Actions', 
       />,
     );
 
-    expect(screen.getByRole('button', { name: '立即扫描' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '正在扫描本地日志' })).toBeDisabled();
   });
 
   it('does not render zero-data diagnostics when stats has token volume', () => {

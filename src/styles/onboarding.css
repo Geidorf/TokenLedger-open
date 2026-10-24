@@ -414,3 +414,49 @@
 .onboarding-dialog:focus {
   outline: none;
 }
+
+/* ---- Overview empty panel ----------------------------------------------- */
+/* The overview keeps its own markup (tests and the cloud variant rely on it);
+   these rules give it the same face as .tl-empty. */
+
+.empty-panel[aria-label='暂无数据看板'] {
+  gap: 12px;
+  padding: 40px 24px 28px;
+}
+
+.empty-panel[aria-label='暂无数据看板'] .empty-icon {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--color-primary-soft-bg);
+  color: var(--color-primary);
+}
+
+.empty-panel[aria-label='暂无数据看板'] h2 {
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+
+.empty-panel[aria-label='暂无数据看板'] p {
+  max-width: 460px;
+  line-height: 1.55;
+}
+
+.empty-panel[aria-label='暂无数据看板'] .zero-data-diagnostics {
+  width: min(640px, 100%);
+  margin-top: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: transparent;
+}
+
+.empty-panel[aria-label='暂无数据看板'] .zero-data-path-chip {
+  border: 1px solid var(--color-border);
+  background: transparent;
+}
+
+.empty-panel[aria-label='暂无数据看板'] .zero-data-diagnostics-tips {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}

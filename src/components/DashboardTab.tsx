@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Cloud, FolderSearch, RefreshCw, Settings, SlidersHorizontal, TriangleAlert } from 'lucide-react';
+import { Cloud, FolderSearch, RefreshCw, Settings, SlidersHorizontal, Sparkles, TriangleAlert } from 'lucide-react';
+import { requestOpenOnboarding } from '../features/onboarding/onboardingState';
 import { CacheFlowPanel } from './CacheFlowPanel';
 import { CostEfficiencyQuadrantPanel } from './CostEfficiencyQuadrantPanel';
 import { HeatmapSection } from './HeatmapSection';
@@ -709,7 +710,7 @@ export function DashboardTab({
           </div>
           <div>
             <h2>{scope === 'cloud' ? '云端暂无 Token 记录' : '暂无 Token 记录'}</h2>
-            <p>{scope === 'cloud' ? '将本机数据同步到云端，或切换设备范围。' : '先扫描本地日志，生成第一份使用看板。'}</p>
+            <p>{scope === 'cloud' ? '将本机数据同步到云端，或切换设备范围。' : '扫描一次本机日志，就能看到每天用了多少 Token、花在哪些模型和工具上。只在本机计算，不上传。'}</p>
           </div>
           <button
             className="primary-inline"
@@ -731,7 +732,7 @@ export function DashboardTab({
             <div className="zero-data-diagnostics" role="region" aria-label="本地日志扫描诊断与支持目录">
               <div className="zero-data-diagnostics-head">
                 <FolderSearch className="h-4 w-4 text-primary" />
-                <span>自动扫描的本地工具与默认日志路径</span>
+                <span>会自动读取这些工具的默认日志目录</span>
               </div>
               <div className="zero-data-paths-grid">
                 <div className="zero-data-path-chip">
@@ -764,12 +765,12 @@ export function DashboardTab({
                 </div>
               </div>
               <p className="zero-data-diagnostics-tips">
-                TokenLedger 自动解析上述目录中的日志与会话记录。若刚安装工具或尚未产生对话，请在对应工具中发起一次对话调用后点击“扫描本地日志”。
+                扫描后仍为空：刚安装的工具还没有对话记录，先在工具里发起一次对话再扫描。
               </p>
               <div className="zero-data-diagnostics-actions">
-                <button className="secondary-inline" type="button" onClick={onScan} disabled={scanBusy}>
-                  <RefreshCw className={`h-3.5 w-3.5 ${scanBusy ? 'animate-spin' : ''}`} />
-                  立即扫描
+                <button className="secondary-inline" type="button" onClick={requestOpenOnboarding}>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  打开新手引导
                 </button>
                 <button className="ghost-inline" type="button" onClick={onOpenQuotaSettings}>
                   <Settings className="h-3.5 w-3.5" />
