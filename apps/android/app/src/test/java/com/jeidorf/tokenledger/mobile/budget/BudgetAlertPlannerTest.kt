@@ -94,4 +94,17 @@ class BudgetAlertPlannerTest {
         val plan = BudgetAlertPlanner.plan(emptyList(), ledger, now, prime = false)
         assertEquals(setOf("a|b|2026-10-01|warn"), plan.ledger.keys)
     }
+
+    @Test
+    fun trimmingNeverDropsBudgetsThatAreStillNearOrOver() {
+        val ids = (0 until 32).map { "%016x".format(it + 1) }
+        val snapshots = BudgetSnapshots.parse(body(*ids.map { budget(it, "over", 120) }.toTypedArray()))
+        val primed = BudgetAlertPlanner.plan(snapshots, emptyMap(), now - 1_000, prime = true)
+        // 更新、但已不在快照里的历史记录多到超过上限。
+        val history = (0 until 1_100).associate { "old|$it|2026-10-01|warn" to now }
+        val again = BudgetAlertPlanner.plan(snapshots, primed.ledger + history, now, prime = false)
+        assertTrue(again.notifications.isEmpty())
+        assertTrue(again.ledger.size <= 1_024)
+        assertTrue(primed.ledger.keys.all { it in again.ledger })
+    }
 }

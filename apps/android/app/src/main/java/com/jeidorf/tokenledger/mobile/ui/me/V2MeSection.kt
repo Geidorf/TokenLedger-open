@@ -43,6 +43,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -552,6 +553,12 @@ private fun V2MeBudgetAlertRow(palette: MobileV2Palette) {
     val store = remember(context, preview) { if (preview) null else BudgetAlertStore(context) }
     var enabled by remember(store) { mutableStateOf(store?.enabled == true) }
     var canPost by remember(store) { mutableStateOf(store != null && BudgetAlertNotifier.canPost(context)) }
+    var lastResult by remember(store) { mutableStateOf(store?.lastResult) }
+    // 后台读取写回结果时刷新说明，不必离开页面再回来。
+    DisposableEffect(store) {
+        val unsubscribe = store?.observe { lastResult = store.lastResult }
+        onDispose { unsubscribe?.invoke() }
+    }
     val apply = { on: Boolean ->
         store?.enabled = on
         enabled = on
@@ -563,7 +570,7 @@ private fun V2MeBudgetAlertRow(palette: MobileV2Palette) {
     V2MeSwitchRow(
         palette,
         "预算提醒",
-        budgetAlertMeta(enabled, canPost, store?.lastResult),
+        budgetAlertMeta(enabled, canPost, lastResult),
         enabled
     ) { on ->
         if (on && !BudgetAlertNotifier.canPost(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

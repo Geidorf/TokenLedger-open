@@ -116,7 +116,8 @@ object BudgetAlertPlanner {
     const val MAX_AGE_SECONDS = 12L * 60 * 60
     const val MAX_PER_READ = 3
     private const val RETENTION_MILLIS = 40L * 24 * 60 * 60 * 1000
-    private const val MAX_LEDGER = 256
+    /** 8 台设备 × 32 条 × 接近/超出两档 = 512，再留同样多给过期周期的记录。 */
+    private const val MAX_LEDGER = 1024
 
     /**
      * [prime] 为 true（刚打开开关、换了账号）时只把当前已接近或超出的预算记为已推，不补发。
@@ -147,13 +148,23 @@ object BudgetAlertPlanner {
             if (item.level == BudgetLevel.Over) next.putIfAbsent(item.key(BudgetLevel.Warn), nowMillis)
             if (!prime) notifications += notification(item)
         }
+        // 超出上限时先丢不在当前快照里的旧记录；仍在接近或超出的预算一条也不丢，否则下次会重推。
         val trimmed = if (next.size > MAX_LEDGER) {
-            next.entries.sortedByDescending { it.value }.take(MAX_LEDGER).associate { it.key to it.value }
+            val active = activeKeys(snapshots)
+            val (kept, rest) = next.entries.partition { it.key in active }
+            (kept + rest.sortedByDescending { it.value }.take((MAX_LEDGER - kept.size).coerceAtLeast(0)))
+                .associate { it.key to it.value }
         } else {
             next
         }
         return BudgetAlertPlan(notifications, trimmed)
     }
+
+    private fun activeKeys(snapshots: List<BudgetDeviceSnapshot>): Set<String> = snapshots
+        .flatMap { it.budgets }
+        .filter { it.level != BudgetLevel.Ok }
+        .flatMap { listOf(it.key(), it.key(BudgetLevel.Warn)) }
+        .toSet()
 
     /** 与桌面系统通知同一写法，不写金额。 */
     fun notification(item: BudgetItem): BudgetNotification {

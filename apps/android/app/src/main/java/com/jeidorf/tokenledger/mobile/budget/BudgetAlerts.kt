@@ -30,6 +30,8 @@ import com.jeidorf.tokenledger.mobile.SupabaseHttpException
 import com.jeidorf.tokenledger.mobile.BUDGET_SNAPSHOTS_READ_FUNCTION
 import com.jeidorf.tokenledger.mobile.isMissingRpcSignature
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 
 /**
@@ -65,6 +67,15 @@ internal class BudgetAlertStore(context: Context) {
         set(value) {
             prefs.edit().putString(KEY_RESULT, value).apply()
         }
+
+    /** 监听后台写回的读取结果；返回取消监听的函数。 */
+    fun observe(onChange: () -> Unit): () -> Unit {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_RESULT) onChange()
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     private companion object {
         const val PREFS = "tokenledger_budget_alerts"
@@ -143,19 +154,24 @@ internal class BudgetAlertWorker(context: Context, params: WorkerParameters) : C
             store.lastResult = RESULT_FAILED
             return Result.retry()
         }
-        // 读的过程中关掉了开关：什么也不推。
-        if (!store.enabled) return Result.success()
         val owner = checkNotNull(account)
-        val (ledger, prime) = store.ledgerFor(owner)
-        val plan = BudgetAlertPlanner.plan(snapshots, ledger, System.currentTimeMillis(), prime)
-        val posted = BudgetAlertNotifier.post(context, plan.notifications)
-        // 没有通知权限时不记为已推，授权后下次读取再推。
-        store.save(owner, if (posted || plan.notifications.isEmpty()) plan.ledger else ledger)
+        // 定时与立即两个任务可能同时读完：读记录、推送、写回必须一次一个，否则同一条会推两次。
+        LEDGER_LOCK.withLock {
+            // 读的过程中关掉了开关：什么也不推。
+            if (!store.enabled) return Result.success()
+            val (ledger, prime) = store.ledgerFor(owner)
+            val plan = BudgetAlertPlanner.plan(snapshots, ledger, System.currentTimeMillis(), prime)
+            val posted = BudgetAlertNotifier.post(context, plan.notifications)
+            // 没有通知权限或渠道被关时不记为已推，恢复后下次读取再推。
+            store.save(owner, if (posted || plan.notifications.isEmpty()) plan.ledger else ledger)
+        }
         store.lastResult = if (snapshots.isEmpty()) RESULT_NO_DESKTOP else RESULT_OK
         return Result.success()
     }
 
     companion object {
+        private val LEDGER_LOCK = Mutex()
+
         const val RESULT_OK = "ok"
         const val RESULT_NO_DESKTOP = "no-desktop"
         const val RESULT_SIGNED_OUT = "signed-out"
@@ -171,13 +187,20 @@ internal object BudgetAlertNotifier {
         (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED) &&
-            NotificationManagerCompat.from(context).areNotificationsEnabled()
+            NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+            !channelBlocked(context)
 
-    /** 返回 false 表示没有通知权限，一条也没发。 */
+    /** 用户只关了「预算提醒」这个渠道时，发出去也会被系统静默丢掉。 */
+    private fun channelBlocked(context: Context): Boolean =
+        context.getSystemService(NotificationManager::class.java)
+            ?.getNotificationChannel(CHANNEL_ID)
+            ?.importance == NotificationManager.IMPORTANCE_NONE
+
+    /** 返回 false 表示没有通知权限或渠道被关，一条也没发。 */
     fun post(context: Context, notifications: List<BudgetNotification>): Boolean {
         if (notifications.isEmpty()) return true
-        if (!canPost(context)) return false
         ensureChannel(context)
+        if (!canPost(context)) return false
         val manager = NotificationManagerCompat.from(context)
         notifications.forEach { item ->
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
