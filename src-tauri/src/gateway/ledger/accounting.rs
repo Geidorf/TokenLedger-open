@@ -556,6 +556,7 @@ pub(crate) fn read_page(
                         group: None,
                         member: None,
                         context: context_from_row(row, 15)?,
+                        first_token_ms: None,
                     },
                 ))
             },
@@ -648,6 +649,7 @@ mod tests {
             group: Some("g".into()),
             member: Some("p/m".into()),
             context: None,
+            first_token_ms: None,
         }
     }
 

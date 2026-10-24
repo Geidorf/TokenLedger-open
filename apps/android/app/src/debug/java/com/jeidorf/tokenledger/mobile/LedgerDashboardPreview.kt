@@ -257,7 +257,8 @@ internal fun ledgerSnapshotFixture(
             comparison = comparison != null,
             details = true,
             entityDashboard = true
-        )
+        ),
+        machineDistribution = ledgerMachineDistributionFixture()
     )
     return DashboardUiState(
         configured = true,
@@ -678,6 +679,18 @@ private fun ledgerQuotaFixture(): QuotaUiState.Available {
         evaluatedAtEpochMillis = evaluatedAt
     )
 }
+
+/** 两台设备，合计与 [ledgerSnapshotSummary] 一致，供「用量拆分」按设备拆。 */
+internal fun ledgerMachineDistributionFixture(): List<CompositionEntry> = listOf(
+    CompositionEntry(
+        "MacBook-Pro", tokens = 952_000, inputTokens = 690_000, outputTokens = 262_000,
+        cachedTokens = 171_200, requests = 2_100, cost = 12.884
+    ),
+    CompositionEntry(
+        "Windows-Workstation", tokens = 328_000, inputTokens = 230_000, outputTokens = 98_000,
+        cachedTokens = 77_200, requests = 1_027, cost = 5.513
+    )
+)
 
 private fun ledgerSnapshotSummary(): Summary = Summary(
     totalTokens = 1_280_000,

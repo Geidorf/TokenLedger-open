@@ -12,6 +12,7 @@ import {
   type AnomalyReport,
 } from '../utils/usageAnomaly';
 import { InfoTip } from './InfoTip';
+import { isRealSessionId, openSessionDetail } from '../features/sessionDetail/sessionDetailRoute';
 import '../styles/usageAnomaly.css';
 
 const VISIBLE_FINDINGS = 6;
@@ -33,6 +34,8 @@ interface UsageAnomalyViewProps extends UsageAnomalyPanelProps {
 function FindingCard({ finding, today, onSelectDate }: { finding: AnomalyFinding; today?: Date; onSelectDate?: UsageAnomalyPanelProps['onSelectDate'] }) {
   const copy = describeFinding(finding, today);
   const drill = onSelectDate ? findingDrill(finding) : null;
+  // 昂贵会话没有单日下钻，改为打开这个会话的详情。
+  const session = finding.kind === 'expensiveSession' && isRealSessionId(finding.subject) ? finding.subject : null;
   const body = (
     <>
       <div className="anomaly-item-head">
@@ -44,14 +47,26 @@ function FindingCard({ finding, today, onSelectDate }: { finding: AnomalyFinding
       {finding.kind === 'expensiveSession' && finding.subject && (
         <div className="usage-anomaly-subject" title={finding.subject}>会话 {finding.subject.slice(0, 12)}</div>
       )}
-      {drill && (
+      {(drill || session) && (
         <div className="anomaly-item-action font-medium" aria-hidden="true">
-          查看当日调用明细
+          {session ? '查看会话详情' : '查看当日调用明细'}
           <ArrowRight className="h-3.5 w-3.5 ml-1" />
         </div>
       )}
     </>
   );
+  if (session) {
+    return (
+      <button
+        type="button"
+        className="anomaly-item-card usage-anomaly-card"
+        aria-label={`${copy.title}，${copy.when}，${copy.value}，${copy.comparison}。点击查看会话详情`}
+        onClick={() => openSessionDetail({ sessionId: session, tool: finding.tool })}
+      >
+        {body}
+      </button>
+    );
+  }
   if (!drill || !onSelectDate) return <div className="anomaly-item-card usage-anomaly-card">{body}</div>;
   return (
     <button

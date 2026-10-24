@@ -5,6 +5,7 @@ use super::codex::*;
 use super::copilot::*;
 use super::dsh::*;
 use super::gemini::*;
+use super::goose::*;
 use super::grok::*;
 use super::helpers::*;
 use super::kimi::*;
@@ -178,6 +179,7 @@ pub(crate) fn model_discovery_key(model: &str) -> Option<String> {
         "cline-unknown",
         "roo-unknown",
         "kilocode-unknown",
+        "goose-unknown",
     ];
     if PLACEHOLDERS.contains(&key.as_str())
         || key == "auto"
@@ -418,6 +420,10 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     timed_scan_step!(
         "cline",
         scan_cline_family(&mut logs, &cline_checkpoints, &mut pending_checkpoints)
+    );
+    timed_scan_step!(
+        "goose",
+        scan_goose(&mut logs, &scan_cursors, &mut pending_cursors)
     );
 
     let mut outcome = timed_scan_step!(

@@ -128,6 +128,7 @@ fn request(id: &str, input: u64) -> LedgerRecord {
         cache_read: 0,
         cache_write: 0,
         latency_ms: 120,
+        first_token_ms: None,
         error: None,
         group: None,
         member: None,
