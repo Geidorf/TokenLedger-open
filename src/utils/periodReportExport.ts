@@ -68,7 +68,7 @@ function breakdownTable(title: string, rows: ReportBreakdownRow[], hideCosts: bo
   const body = rows.map((row) => `
         <tr>
           <td class="name-cell"><span>${escapeHtml(row.name)}</span><span class="rank-bar" aria-hidden="true"><i style="width:${row.share === null ? 0 : Math.min(100, row.share * 100).toFixed(1)}%"></i></span></td>
-          <td class="num">${formatTokens(row.tokens)}</td>
+          <td class="num">${row.tokens === null ? '不可得' : formatTokens(row.tokens)}</td>
           <td class="num">${percentText(row.share)}</td>
           <td class="num">${formatNum(row.requests)}</td>
           <td class="num cost-cell">${costText(row.cost, hideCosts)}</td>
@@ -394,7 +394,7 @@ export function renderPeriodReportImage(report: PeriodReport, options: PeriodRep
     ctx.fillStyle = p.series[Math.min(index, p.series.length - 1)];
     ctx.fillRect(M + 28, y - 18, 18, 18);
     text(ctx, row.name, M + 58, y, 24, p.text, 600, 'left', SHARE_FONT_FAMILIES.sans, 520);
-    text(ctx, `${formatTokens(row.tokens)} · ${percentText(row.share, 0)}`, W - M - 28, y, 24, p.muted, 600, 'right', SHARE_FONT_FAMILIES.number);
+    text(ctx, row.tokens === null ? '不可得' : `${formatTokens(row.tokens)} · ${percentText(row.share, 0)}`, W - M - 28, y, 24, p.muted, 600, 'right', SHARE_FONT_FAMILIES.number);
   });
   if (agents.length === 0) text(ctx, '本期没有用量', M + 28, 1140, 24, p.faint);
 

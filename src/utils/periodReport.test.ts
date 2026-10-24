@@ -99,6 +99,17 @@ describe('buildPeriodReport', () => {
     expect(local.deltas.tokens).toEqual({ kind: 'new' });
   });
 
+  it('keeps a breakdown row without input or output as unknown, not zero', () => {
+    const current = stats(1500, 500);
+    current.tools.claude = { name: 'claude', cached: 0, total: 0, cost: 3.5, requests: 10 } as unknown as typeof current.tools.claude;
+    const report = buildPeriodReport({ period, scope: 'local', current, previous: stats(750, 250) });
+    const claude = report.agents.find((row) => row.id === 'claude');
+    expect(claude).toMatchObject({ tokens: null, share: null, delta: { kind: 'unavailable' }, requests: 10 });
+    expect(report.agents.map((row) => row.id)).toEqual(['codex', 'claude']);
+    expect(report.highlights.join()).not.toContain('用量最多');
+    expect(generatePeriodReportHtml(report)).toContain('不可得');
+  });
+
   it('orders sessions by known cost and keeps unpriced ones last', () => {
     const behavior = {
       meta: { sessionsTruncated: false, sessionLimit: 100 },

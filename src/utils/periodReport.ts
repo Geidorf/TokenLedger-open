@@ -173,7 +173,8 @@ export interface ReportTotals {
 export interface ReportBreakdownRow {
   id: string;
   name: string;
-  tokens: number;
+  /** 有效 Token；接口缺输入或输出时为 null（不可得），不按 0 算。 */
+  tokens: number | null;
   requests: number;
   cost: number | null;
   /** 占本期有效 Token 的比例 0–1。 */
@@ -282,8 +283,8 @@ function totalsFor(stats: StatsData, start: string, end: string): ReportTotals {
 
 type BreakdownSource = Pick<ToolStat, 'name' | 'requests'> & { input?: number; output?: number; cost?: number };
 
-function rowTokens(row: { input?: number; output?: number }): number {
-  return (row.input || 0) + (row.output || 0);
+function rowTokens(row: { input?: number; output?: number }): number | null {
+  return finite(row.input) && row.input >= 0 && finite(row.output) && row.output >= 0 ? row.input + row.output : null;
 }
 
 function breakdown(
@@ -297,22 +298,27 @@ function breakdown(
     .map(([id, row]) => {
       const tokens = rowTokens(row);
       const before = previous ? previous[id] : undefined;
+      const beforeTokens = before ? rowTokens(before) : 0;
       return {
         id,
         name: displayName(row.name || id),
         tokens,
         requests: row.requests || 0,
         cost: knownCost(row.cost),
-        share: effectiveTotal > 0 ? tokens / effectiveTotal : null,
-        delta: previous ? compareValues(tokens, before ? rowTokens(before) : 0) : { kind: 'unavailable' } as ReportDelta,
+        share: tokens !== null && effectiveTotal > 0 ? tokens / effectiveTotal : null,
+        delta: previous && tokens !== null && beforeTokens !== null ? compareValues(tokens, beforeTokens) : { kind: 'unavailable' } as ReportDelta,
       };
     })
-    .filter((row) => row.tokens > 0 || row.requests > 0)
-    .sort((left, right) => right.tokens - left.tokens || left.name.localeCompare(right.name));
+    .filter((row) => row.tokens === null || row.tokens > 0 || row.requests > 0)
+    // Token 不可得的行排在已知行之后，按记录数排，不当成 0 混进排名。
+    .sort((left, right) => {
+      if ((left.tokens === null) !== (right.tokens === null)) return left.tokens === null ? 1 : -1;
+      return (right.tokens ?? 0) - (left.tokens ?? 0) || right.requests - left.requests || left.name.localeCompare(right.name);
+    });
   if (rows.length <= limit) return rows;
   const head = rows.slice(0, limit - 1);
   const rest = rows.slice(limit - 1);
-  const restTokens = rest.reduce((sum, row) => sum + row.tokens, 0);
+  const restTokens = rest.every((row) => row.tokens !== null) ? rest.reduce((sum, row) => sum + (row.tokens as number), 0) : null;
   const restCosts = rest.map((row) => row.cost);
   return [...head, {
     id: '__other__',
@@ -320,7 +326,7 @@ function breakdown(
     tokens: restTokens,
     requests: rest.reduce((sum, row) => sum + row.requests, 0),
     cost: restCosts.every((cost) => cost !== null) ? restCosts.reduce<number>((sum, cost) => sum + (cost as number), 0) : null,
-    share: effectiveTotal > 0 ? restTokens / effectiveTotal : null,
+    share: restTokens !== null && effectiveTotal > 0 ? restTokens / effectiveTotal : null,
     delta: { kind: 'unavailable' },
   }];
 }
@@ -433,7 +439,8 @@ function buildHighlights(report: Omit<PeriodReport, 'highlights'>): string[] {
     lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}，${period.previousLabel}${deltas.tokens.kind === 'new' ? '没有记录' : '持平'}`);
   }
   const [lead] = report.agents;
-  if (lead && lead.share !== null && lead.id !== '__other__') lines.push(`${lead.name} 用量最多，占 ${(lead.share * 100).toFixed(0)}%`);
+  // 有 Agent 的 Token 不可得时说不准谁最多，不写这句。
+  if (lead && lead.share !== null && lead.id !== '__other__' && report.agents.every((row) => row.tokens !== null)) lines.push(`${lead.name} 用量最多，占 ${(lead.share * 100).toFixed(0)}%`);
   if (report.peakDay && report.days.length > 1) lines.push(`最忙的一天是 ${zhDay(report.peakDay.date)}，用了 ${formatCompactTokens(report.peakDay.tokens)}`);
   if (totals.cacheReuse !== null) {
     const points = deltas.cacheReusePoints;

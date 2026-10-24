@@ -68,7 +68,7 @@ function Breakdown({ title, rows, hideCosts, empty }: { title: string; rows: Rep
             <li key={row.id}>
               <div className="report-rank-line">
                 <span className="report-rank-name" title={row.name}>{row.name}</span>
-                <span className="report-rank-value">{formatTokens(row.tokens)}</span>
+                <span className="report-rank-value">{row.tokens === null ? '不可得' : formatTokens(row.tokens)}</span>
               </div>
               <div className="report-rank-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, (row.share ?? 0) * 100)}%` }} /></div>
               <div className="report-rank-meta">
