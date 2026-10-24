@@ -283,6 +283,7 @@ pub(super) fn call_to_row(
         cache_write_tokens: call.cache_write,
         machine_id: Some(machine_id(&call.computer)),
         latency_ms: call.ms,
+        context: None,
     })
 }
 
