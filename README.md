@@ -8,6 +8,8 @@ TokenLedger 是一款基于 **Tauri 2 + React + Rust** 的跨平台 AI 工具 To
 
 发行包见 [Releases](https://github.com/Geidorf/TokenLedger-open/releases)。Linux 用户也可以从源码构建，步骤见下方「从源码构建」。
 
+安装步骤（含未签名安装包在 Windows 与 macOS 上的放行方法）、各页面说明、云端同步与手机端、隐私说明和常见问题见**用户手册**：[中文](docs/guide/zh/README.md) · [English](docs/guide/en/README.md)。
+
 ## 从源码构建
 
 需要 Node.js 22+、Rust 1.96+；构建 Android APK 另需 Android SDK 与 JDK 17。
