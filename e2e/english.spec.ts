@@ -98,7 +98,10 @@ test.describe('英文界面', () => {
     await expect(page.getByRole('heading', { name: 'China vendors' })).toBeVisible();
     await openEnglish(page, 'agents');
     await expect(page.getByText(/models and routing groups · agent configs get only the gateway URL/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Setup steps' }).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Setup steps' }).last().click();
+    const manual = page.getByRole('dialog', { name: 'Claude Desktop manual setup' });
+    await expect(manual.getByText(/Gateway base URL: Enter the root URL without \/v1/)).toBeVisible();
+    await expect(manual.getByText('Model list', { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 

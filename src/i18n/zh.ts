@@ -931,6 +931,23 @@ export const zh = {
   'agents.loadFailed': '读取模型列表失败：{error}',
   'agents.soon': '即将支持',
   'agents.groupNote': '选路由组后，切换成员在路由页完成，不用再改 Agent 配置。',
+
+  // 手动接入的 Agent
+  'agents.cline.reason': 'Cline 把供应商设置存在编辑器扩展的内部存储里，格式未公开，扩展运行时还会覆盖外部写入，所以不自动写入。',
+  'agents.cline.where': '在编辑器里打开 Cline → 设置（齿轮）→ API Configuration，按下面逐项填写后保存。',
+  'agents.claudeDesktop.reason': 'Claude Desktop 的第三方推理设置由应用内表单写入，存储格式未公开为可编辑文件，所以不自动写入。',
+  'agents.claudeDesktop.where': '在 Claude Desktop 的第三方推理配置窗口里按下面的步骤填写。',
+  'agents.claudeDesktop.step1': '菜单栏（Windows 为左上角 ☰ 菜单）选 Help → Troubleshooting → Enable Developer Mode，应用会带 Developer 菜单重启。',
+  'agents.claudeDesktop.step2': '打开 Developer → Configure Third-Party Inference…，在 Connection 里把 Inference provider 选为 Gateway。',
+  'agents.claudeDesktop.step3': '在 Gateway credentials 里填入下面的地址和本地 token，Credential kind 保持 Static API key，Gateway auth scheme 保持 Bearer。',
+  'agents.claudeDesktop.step4': '在 Models 里的模型列表（inferenceModels）手动添加下面选中的模型名：网关模型名不是 Claude 官方名字，自动发现会把它过滤掉。列表第一个是默认模型。',
+  'agents.claudeDesktop.step5': '点 Apply Changes，应用重启后生效。',
+  'agents.claudeDesktop.baseUrlHint': '填根地址，不带 /v1，Claude Desktop 会自己拼接 /v1/messages。',
+  'agents.claudeDesktop.models': '模型列表',
+  'agents.claudeDesktop.modelsHint': '选一个模型复制，添加到 Models 的模型列表里；可以添加多个。',
+  'agents.claudeDesktop.note1': '启用第三方推理后，Claude Desktop 只运行本机会话，不使用 Claude 订阅账号，也不提供云端环境与 Remote Control。',
+  'agents.claudeDesktop.note2': '如果设备上有组织下发的托管配置，它会覆盖本地表单，配置窗口也会变成只读。',
+  'agents.openchamber.note': '运行在 OpenCode 之上，接入上方 OpenCode 即生效，无需单独写入',
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof zh;

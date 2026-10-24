@@ -26,6 +26,7 @@ const FULLY_LOCALIZED = [
   'src/features/gateway/ProviderHealth.tsx',
   'src/features/gateway/ProvidersPage.tsx',
   'src/features/gateway/AgentsPage.tsx',
+  'src/features/gateway/agents.ts',
   'src/components/settings/RoutingPublishCard.tsx',
   'src/components/settings/PeerSharedUsageCard.tsx',
   'src/components/LogsTable.tsx',
