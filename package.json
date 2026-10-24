@@ -34,6 +34,7 @@
     "check:gates": "node scripts/check-required-gates.mjs",
     "check:paths": "node scripts/check-path-length.mjs",
     "test:paths": "node --test scripts/check-path-length.test.mjs",
+    "test:android-perf-probe": "node --test scripts/android-perf-probe.test.mjs",
     "test:run-health": "node --test scripts/check-run-health.test.mjs",
     "branch:audit": "node scripts/branch-audit.mjs --out cleanup-plan.json",
     "check:android:widget-previews": "node scripts/check-widget-preview-assets.mjs",

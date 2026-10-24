@@ -89,6 +89,48 @@ export interface CoolingMember {
   failures: number;
 }
 
+export type HealthStatus = 'healthy' | 'degraded' | 'down' | 'idle';
+
+/** Passive health from the gateway's own ledger over the last day. */
+export interface HealthStats {
+  requests: number;
+  ok: number;
+  successRate: number | null;
+  p50Ms: number | null;
+  p95Ms: number | null;
+  rateLimited: number;
+  skipped: number;
+  /** Trace reason codes (see TRACE_REASON_LABEL), most frequent first. */
+  codes: { code: string; count: number }[];
+  statuses: { status: number; count: number }[];
+  lastOkAt: string | null;
+  lastFailureAt: string | null;
+}
+
+export interface HealthBucket {
+  start: string;
+  requests: number;
+  failed: number;
+  p95Ms: number | null;
+}
+
+export interface ProviderHealth {
+  provider: string;
+  status: HealthStatus;
+  reasons: string[];
+  stats: HealthStats;
+  models: { model: string; status: HealthStatus; stats: HealthStats }[];
+  buckets: HealthBucket[];
+  recentFailures: { ts: string; model: string; status: number; code: string; error: string | null }[];
+  cooling: CoolingMember[];
+}
+
+export interface HealthReport {
+  generatedAt: string;
+  windowHours: number;
+  providers: ProviderHealth[];
+}
+
 export interface RouteAttempt {
   member: string;
   outcome: 'ok' | 'rejected' | 'failed' | 'skipped' | string;

@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 import type { FacetOption } from '../types';
 import { formatNum } from '../utils/format';
+import { t, useLang } from '../i18n';
 
 interface FilterMultiSelectProps {
   label: string;
@@ -122,6 +123,7 @@ export function FilterMultiSelect({
   disabled = false,
   onChange,
 }: FilterMultiSelectProps) {
+  useLang();
   const [open, setOpen] = useState(false);
   const [alignEnd, setAlignEnd] = useState(false);
   const [alignTop, setAlignTop] = useState(false);
@@ -227,10 +229,10 @@ export function FilterMultiSelect({
   }, [open]);
 
   const summary = values.length === 0
-    ? `全部${label}`
+    ? t('multiselect.all', { label })
     : values.length === 1
       ? values[0]
-      : `已选 ${values.length} 项`;
+      : t('multiselect.selected', { count: values.length });
 
   const openPopover = () => {
     setDraftValues(values);
@@ -292,14 +294,14 @@ export function FilterMultiSelect({
         ref={triggerRef}
         className="detail-multiselect-trigger"
         type="button"
-        aria-label={`${label}：${summary}`}
+        aria-label={t('multiselect.triggerAria', { label, summary })}
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-haspopup="dialog"
         disabled={disabled}
         onClick={() => (open ? cancelPopover() : openPopover())}
       >
-        <span title={values.join('、')}>{summary}</span>
+        <span title={values.join(t('multiselect.joiner'))}>{summary}</span>
         {values.length > 0 && <span className="detail-multiselect-count">{values.length}</span>}
         <ChevronDown className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -308,7 +310,7 @@ export function FilterMultiSelect({
           id={listId}
           className={`detail-multiselect-popover${alignEnd ? ' align-end' : ''}${alignTop ? ' align-top' : ''}`}
           role="dialog"
-          aria-label={`${label}多选`}
+          aria-label={t('multiselect.aria', { label })}
           aria-describedby={selectionSummaryId}
           style={{
             left: popoverLeft !== null ? `${popoverLeft}px` : undefined,
@@ -319,22 +321,22 @@ export function FilterMultiSelect({
         >
           <label className="detail-option-search">
             <Search className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only">搜索{label}</span>
+            <span className="sr-only">{t('multiselect.search', { label })}</span>
             <input
               ref={optionSearchInputRef}
               value={optionSearch}
               onChange={(event) => setOptionSearch(event.target.value)}
-              placeholder={`搜索${label}`}
+              placeholder={t('multiselect.search', { label })}
             />
             {optionSearch && (
-              <button type="button" onClick={() => setOptionSearch('')} aria-label={`清除${label}搜索`}>
+              <button type="button" onClick={() => setOptionSearch('')} aria-label={t('multiselect.clearSearch', { label })}>
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </label>
           <div ref={optionListRef} className="detail-option-list tl-scrollbar" onKeyDown={handleOptionListKeyDown}>
             {mergedOptions.length === 0 ? (
-              <div className="detail-option-empty" role="status" aria-live="polite">没有匹配的{label}</div>
+              <div className="detail-option-empty" role="status" aria-live="polite">{t('multiselect.empty', { label })}</div>
             ) : mergedOptions.map((option) => {
               const checked = draftValues.includes(option.value);
               const selectionLimitReached = !checked && draftValues.length >= SELECTION_LIMIT;
@@ -364,12 +366,12 @@ export function FilterMultiSelect({
               aria-live="polite"
               aria-atomic="true"
             >
-              已选 {draftValues.length} 项（上限 {SELECTION_LIMIT}）· 应用后生效
+              {t('multiselect.summary', { count: draftValues.length, limit: SELECTION_LIMIT })}
             </span>
             <div className="detail-option-footer-actions">
-              <button type="button" onClick={() => setDraftValues([])}>清空</button>
-              <button type="button" onClick={cancelPopover}>取消</button>
-              <button type="button" className="detail-option-apply" onClick={applyPopover}>应用筛选</button>
+              <button type="button" onClick={() => setDraftValues([])}>{t('multiselect.clear')}</button>
+              <button type="button" onClick={cancelPopover}>{t('multiselect.cancel')}</button>
+              <button type="button" className="detail-option-apply" onClick={applyPopover}>{t('multiselect.apply')}</button>
             </div>
           </div>
         </div>

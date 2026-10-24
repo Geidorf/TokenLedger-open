@@ -4,7 +4,7 @@
 
 ## 迁移清单
 
-`supabase/migrations/` 共 25 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
+`supabase/migrations/` 共 26 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
 
 | 迁移 | 内容 |
 |---|---|
@@ -33,6 +33,20 @@
 | `20261010170540_quota_recovery_metadata_and_write_guards` | 额度清空恢复元数据与写入防护 |
 | `20261024010000_routing_snapshot_sync` | 实时路由快照中转（Android 动态壁纸） |
 | `20261024030000_cloud_heatmap_metrics_and_activity_rhythm` | 云端热力图逐日记录数与费用、活动节律 RPC |
+| `20261024040000_security_hardening` | 权限收紧（v9）：`sync_state` 仅服务角色、v1 RPC 用户校验与空 `search_path`、pgcrypto 移出 public、`token_logs` 撤多余权限 |
+
+## v9 变更（2026-10-24 权限收紧）
+
+迁移 `migrations/20261024040000_security_hardening.sql` 不改变任何公共 RPC 签名或返回载荷：
+
+- `public.sync_state` 是全局刷新簿记行，没有客户端读取。删除 `sync_state_select_own`（`using (true)`），撤销 `anon/authenticated` 全部权限，只授予 `service_role` 只读；RLS 保持开启且无客户端 policy。触发器与 `request_refresh()` 等 SECURITY DEFINER 路径不变。v8 的「authenticated 只读」由此收紧。
+- 旧版 `get_dashboard_stats(uuid,text,text,text)`、`get_yesterday_stats(uuid,text,text)` 的用户校验对齐 v2（`p_user is null or (select auth.uid()) is distinct from p_user` 时拒绝），并固定空 `search_path`（函数体内对象均已带 schema 前缀）。改写只替换这一行，校验点不唯一时迁移直接失败。
+- pgcrypto 若装在 `public`，移到 `extensions`（托管项目默认已在 `extensions`，此时不做操作）。仓库内没有函数调用 pgcrypto。
+- 撤销 `public/anon/authenticated` 对 `public.token_logs` 的 TRUNCATE、TRIGGER、REFERENCES；行级读写仍由 RLS 管理。
+
+`tests/release_readiness_regression.sql` 随之改为验证：`sync_state` 只有 `service_role` 可读、客户端读写都被拒、无客户端 policy；两条 v1 RPC 的空 `search_path`、对 NULL/他人用户报 42501 且仍能返回本人数据；pgcrypto 不在 `public`；`token_logs` 的三项权限已撤销且 authenticated 不能 TRUNCATE。
+
+上线：需要在本机对生产项目执行一次 `supabase db push`。
 
 ## 2026-10-24 云端热力图逐日记录数与费用、活动节律（activity-rhythm-cloud-v1）
 
