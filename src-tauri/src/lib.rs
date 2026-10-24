@@ -125,8 +125,10 @@ fn background_usage_sync(ctx: &AppContext) -> bool {
     if crate::settings::background_sync_paused_now(ctx) {
         return false;
     }
-    match block_on_async(commands::sync_to_supabase_impl(ctx)) {
-        Ok(result) => sync_result_has_stats_changes(&result),
+    // 排队等前一次上传期间被暂停时，拿锁后的复验让它不再启动（返回 None）。
+    match block_on_async(commands::background_sync_to_supabase_impl(ctx)) {
+        Ok(Some(result)) => sync_result_has_stats_changes(&result),
+        Ok(None) => false,
         Err(e) => {
             log::debug!("Background cloud sync skipped/failed: {}", e);
             false

@@ -12057,7 +12057,7 @@ fn spawn_post_scan_sync(app: &AppContext) -> bool {
             .enable_all()
             .build()
             .unwrap();
-        if let Err(e) = rt.block_on(sync_to_supabase_impl(&handle)) {
+        if let Err(e) = rt.block_on(background_sync_to_supabase_impl(&handle)) {
             log::debug!("Post-scan cloud sync skipped/failed: {}", e);
         }
     });
@@ -12089,6 +12089,42 @@ mod post_scan_sync_tests {
         )
         .expect("pause sync");
         assert!(!spawn_post_scan_sync(&app));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sync_paused_while_queued_behind_another_upload_starts_no_new_upload() {
+        let dir = std::env::temp_dir().join(format!(
+            "tokenledger-queued-sync-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        let app = AppContext::for_test(dir.clone());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            // 前一次上传占着 singleflight，自动上传排队（此时同步还开着）。
+            let held = acquire_cloud_sync_singleflight().await;
+            let queued_app = app.clone();
+            let queued =
+                tokio::spawn(async move { background_sync_to_supabase_impl(&queued_app).await });
+            tokio::task::yield_now().await;
+            // 排队期间用户暂停同步，然后前一次上传结束、释放锁。
+            crate::settings::update_background_pause(
+                &app,
+                crate::settings::BackgroundPause::Sync,
+                true,
+            )
+            .expect("pause sync");
+            drop(held);
+            // 排队的自动上传拿到锁后看到暂停，不新启动上传（也不会去读云端会话）。
+            assert_eq!(queued.await.expect("join"), Ok(None));
+        });
         let _ = std::fs::remove_dir_all(dir);
     }
 }
@@ -15070,7 +15106,25 @@ fn mark_uploaded_revisions(
 mod sync_revision_tests;
 
 pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
-    let _sync_flight = acquire_cloud_sync_singleflight().await;
+    let sync_flight = acquire_cloud_sync_singleflight().await;
+    sync_to_supabase_locked(app, sync_flight).await
+}
+
+/// 自动上传（调度器与刷新扫描后）。托盘面板「后台同步」的暂停状态在拿到 singleflight 之后才读：
+/// 排队等前一次上传期间被暂停，就不再新启动这一次；返回 `Ok(None)`。显式手动同步走
+/// [`sync_to_supabase_impl`]，不受暂停影响。
+pub async fn background_sync_to_supabase_impl(app: &AppContext) -> Result<Option<Value>, String> {
+    let sync_flight = acquire_cloud_sync_singleflight().await;
+    if crate::settings::background_sync_paused_now(app) {
+        return Ok(None);
+    }
+    sync_to_supabase_locked(app, sync_flight).await.map(Some)
+}
+
+async fn sync_to_supabase_locked(
+    app: &AppContext,
+    _sync_flight: tokio::sync::MutexGuard<'static, ()>,
+) -> Result<Value, String> {
     let (config, session_lease) = acquire_current_cloud_session(app).await?;
     let session = config
         .session

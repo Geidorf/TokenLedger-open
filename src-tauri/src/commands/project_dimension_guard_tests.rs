@@ -120,7 +120,8 @@ fn sql_tables(sql: &str) -> Vec<String> {
 
 #[test]
 fn g1_sync_payload_and_aggregation_key_are_fixed() {
-    let body = fn_source(COMMANDS_SOURCE, "pub async fn sync_to_supabase_impl(");
+    // 上传主体在拿到 singleflight 之后的 `sync_to_supabase_locked` 里（手动与自动上传共用）。
+    let body = fn_source(COMMANDS_SOURCE, "async fn sync_to_supabase_locked(");
     let payload = between(body, "sync_logs.push(json!({", "}));");
     let keys: Vec<&str> = payload
         .lines()
