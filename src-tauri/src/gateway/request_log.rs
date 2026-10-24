@@ -266,12 +266,27 @@ pub fn group_records(
             .push(record);
     }
     let mut entries: Vec<RequestLogEntry> = order
-        .into_iter()
+        .iter()
         .filter_map(|id| {
-            let attempts = groups.remove(&id)?;
-            Some(entry_of(id, &attempts, decisions))
+            let attempts = groups.get(id)?;
+            Some(entry_of(id.clone(), attempts, decisions))
         })
         .collect();
+    // A group request whose every member was unusable (provider deleted or
+    // disabled) never reached an upstream, so it has no ledger line: show it
+    // from its decision alone so the failure is not invisible.
+    let oldest = records.first().and_then(|record| parse_ts(&record.ts));
+    entries.extend(
+        decisions
+            .values()
+            .filter(|decision| !groups.contains_key(&decision.request_id))
+            .filter(|decision| decision.attempts.iter().all(|a| a.outcome == "skipped"))
+            .filter(|decision| match (oldest, parse_ts(&decision.ts)) {
+                (Some(oldest), Some(ts)) => ts >= oldest,
+                _ => true,
+            })
+            .map(decision_only_entry),
+    );
     entries.sort_by(|a, b| b.ts.cmp(&a.ts).then_with(|| b.id.cmp(&a.id)));
     entries
 }
@@ -336,6 +351,45 @@ fn entry_of(
         attempts: attempts.iter().map(|a| attempt_of(a)).collect(),
         decision: decisions.get(&id).cloned(),
         id,
+    }
+}
+
+fn decision_only_entry(decision: &StoredDecision) -> RequestLogEntry {
+    let last = decision.attempts.last();
+    let member = last.map_or("", |attempt| attempt.member.as_str());
+    let (provider, upstream_model) = member.split_once('/').unwrap_or((member, ""));
+    RequestLogEntry {
+        id: decision.request_id.clone(),
+        started_at: decision.ts.clone(),
+        ts: decision.ts.clone(),
+        agent: None,
+        session: None,
+        endpoint: String::new(),
+        wire: String::new(),
+        stream: false,
+        requested_model: format!("group/{}", decision.group),
+        group: Some(decision.group.clone()),
+        provider: provider.to_string(),
+        upstream_model: upstream_model.to_string(),
+        // The client got the last member's 404, or 503 when nothing was tried.
+        status: if last.is_some() { 404 } else { 503 },
+        ok: false,
+        error: last
+            .and_then(|attempt| attempt.error.clone())
+            .or_else(|| Some("路由组没有可用成员。".to_string())),
+        latency_ms: 0,
+        first_token_ms: None,
+        output_tps: None,
+        input: 0,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        cost_usd: Some(0.0),
+        context: None,
+        retries: decision.attempts.len().saturating_sub(1),
+        switched: decision.attempts.len() > 1,
+        attempts: Vec::new(),
+        decision: Some(decision.clone()),
     }
 }
 
@@ -655,5 +709,48 @@ mod tests {
             Some("p2/m")
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn group_requests_that_never_reached_an_upstream_still_show() {
+        let skipped = StoredDecision {
+            ts: "2026-10-24T03:00:00Z".into(),
+            request_id: "L3".into(),
+            group: "fast".into(),
+            reason: "failover".into(),
+            detail: String::new(),
+            chosen: None,
+            attempts: vec![StoredDecisionAttempt {
+                member: "gone/m".into(),
+                outcome: "skipped".into(),
+                status: None,
+                error: Some("没有启用的供应商「gone」。".into()),
+            }],
+            trace: vec![],
+        };
+        let stale = StoredDecision {
+            ts: "2026-10-23T00:00:00Z".into(),
+            request_id: "L0".into(),
+            ..skipped.clone()
+        };
+        let decisions = HashMap::from([("L3".to_string(), skipped), ("L0".to_string(), stale)]);
+        let entries = group_records(&sample(), &decisions);
+        let ids: Vec<_> = entries.iter().map(|e| e.id.as_str()).collect();
+        // L0 predates every ledger line still on disk: it rotated out.
+        assert_eq!(ids, vec!["L3", "L2", "L1"]);
+        let l3 = &entries[0];
+        assert_eq!(
+            (l3.ok, l3.status, l3.provider.as_str()),
+            (false, 404, "gone")
+        );
+        assert!(filter_all(
+            entries.clone(),
+            &RequestLogQuery {
+                status: Some("error".into()),
+                ..Default::default()
+            }
+        )
+        .iter()
+        .any(|e| e.id == "L3"));
     }
 }

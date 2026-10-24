@@ -85,6 +85,19 @@ describe('RequestLogPage', () => {
     await waitFor(() => expect(within(screen.getByRole('table', { name: '网关请求日志' })).getAllByRole('row')).toHaveLength(2));
   });
 
+  it('筛选变了以后，较慢的旧查询结果不会覆盖新结果', async () => {
+    let releaseFirst: (() => void) | undefined;
+    vi.mocked(api.requestLog).mockImplementationOnce((query: RequestLogQuery) => new Promise((resolve) => {
+      releaseFirst = () => resolve(mockRequestLog(records, decisions, { ...query, since: null }));
+    }));
+    render(<RequestLogPage />);
+    await waitFor(() => expect(releaseFirst).toBeDefined());
+    fireEvent.change(screen.getByRole('combobox', { name: '状态' }), { target: { value: 'retried' } });
+    await waitFor(() => expect(within(screen.getByRole('table', { name: '网关请求日志' })).getAllByRole('row')).toHaveLength(2));
+    await act(async () => { releaseFirst?.(); });
+    expect(within(screen.getByRole('table', { name: '网关请求日志' })).getAllByRole('row')).toHaveLength(2);
+  });
+
   it('实时尾随按间隔重新读取，窗口隐藏时跳过', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<RequestLogPage />);

@@ -197,6 +197,9 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
   const [open, setOpen] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const seen = useRef<Set<string>>(new Set());
+  // Only the latest load may apply its result: an older, slower query must not
+  // overwrite the page after the filters changed.
+  const generation = useRef(0);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -208,9 +211,11 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
   }, [searchText]);
 
   const load = useCallback(async () => {
+    const mine = ++generation.current;
     setLoading(true);
     try {
       const next = await requestLog(toQuery(filters, offset));
+      if (mine !== generation.current) return;
       // 尾随时新到的行短暂高亮；首次加载不算新。
       const ids = next.entries.map((entry) => entry.id);
       const arrived = seen.current.size === 0 ? new Set<string>() : new Set(ids.filter((id) => !seen.current.has(id)));
@@ -219,9 +224,9 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
       setPage(next);
       setError(null);
     } catch (reason) {
-      setError(errorText(reason));
+      if (mine === generation.current) setError(errorText(reason));
     } finally {
-      setLoading(false);
+      if (mine === generation.current) setLoading(false);
     }
   }, [filters, offset]);
 
