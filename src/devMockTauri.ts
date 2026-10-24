@@ -2149,6 +2149,8 @@ export function installDevMockTauri() {
     const webhook = mockAlertWebhookCommand(cmd, payload);
     if (webhook.handled) return webhook.value;
     switch (cmd) {
+      case 'get_device_id':
+        return 'Studio-PC';
       case 'get_cloud_config':
         if (mockFreshInstall && !mockCloudAuthenticated) return { supabase_url: '', supabase_key: '' };
         return { supabase_url: 'https://demo.supabase.co', supabase_key: 'sb_publishable_demo' };

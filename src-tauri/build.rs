@@ -74,6 +74,7 @@ fn main() {
         "gateway_external_feed",
         "gateway_reveal_local_token",
         "get_app_version",
+        "get_device_id",
         "get_claude_statusline_command",
         "get_claude_quota_setup",
         "detect_quota_sources",

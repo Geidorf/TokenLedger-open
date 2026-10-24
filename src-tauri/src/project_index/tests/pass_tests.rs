@@ -668,10 +668,18 @@ fn d1_ledger_rows_checkpoints_and_cursors_are_unchanged() {
         slots().get(&disabled.db).and_then(|slot| slot.pending),
         None
     );
+    // Each fixture folder has its own random device id; compare the rest.
+    let snapshot = |db: &std::path::Path| -> Vec<String> {
+        let device = crate::device_identity::for_db(db).expect("fixture device id");
+        ledger_snapshot(db)
+            .into_iter()
+            .map(|row| row.replace(&device, "<device>"))
+            .collect()
+    };
     let before = ledger_snapshot(&enabled.db);
     assert_eq!(
-        before,
-        ledger_snapshot(&disabled.db),
+        snapshot(&enabled.db),
+        snapshot(&disabled.db),
         "the scan wrote the same ledger with the index on and off"
     );
     assert_eq!(
@@ -686,7 +694,7 @@ fn d1_ledger_rows_checkpoints_and_cursors_are_unchanged() {
     assert!(enabled.row_count() > 0);
     let after = ledger_snapshot(&enabled.db);
     assert_eq!(before, after, "the index must never write the ledger");
-    assert_eq!(after, ledger_snapshot(&disabled.db));
+    assert_eq!(snapshot(&enabled.db), snapshot(&disabled.db));
 }
 
 fn ledger_snapshot(db: &Path) -> Vec<String> {

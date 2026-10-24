@@ -1209,9 +1209,7 @@ pub(crate) fn scan_codex(
     roots.extend(multica.roots);
     roots.extend(super::cindy::cindy_codex_roots_in(&home));
     roots.extend(configured_codex_roots(extra_codex_dirs, &home));
-    let machine_id = hostname::get()
-        .map(|hostname| hostname.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown_machine".to_string());
+    let machine_id = crate::device_identity::for_db_or_unknown(db_path);
     let conn = crate::db::get_connection(db_path)?;
     let rebuild_pending = crate::db::codex_rebuild_pending(&conn, &machine_id)?;
     let checkpoints = crate::db::load_scan_checkpoints(&conn, CODEX_CHECKPOINT_SOURCE_KIND)?;

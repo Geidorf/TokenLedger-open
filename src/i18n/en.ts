@@ -703,6 +703,7 @@ export const en: Record<MessageKey, string> = {
   'tokenMode.total': 'With cache',
   'cloudDevice.aria': 'Cloud device filter',
   'cloudDevice.all': 'All devices',
+  'cloudDevice.thisDevice': 'This device ({id})',
   'shareCard.title': 'Create and share a usage card image',
   'shareCard.label': 'Share',
   'multiselect.all': 'All {label}s',

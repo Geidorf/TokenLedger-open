@@ -470,6 +470,27 @@ pub(super) fn save_state(db_path: &Path, state: &CloudState) -> Result<(), Strin
     Ok(())
 }
 
+/// After the cloud rows of `user_id` moved from `legacy` to `device_id`, the
+/// state follows them, so keys the merge stops producing are still deleted.
+pub(super) fn move_state(
+    state: &CloudState,
+    user_id: &str,
+    legacy: &str,
+    device_id: &str,
+) -> Option<CloudState> {
+    if state.user_id != user_id || state.machine_id != legacy {
+        return None;
+    }
+    let mut moved = state.clone();
+    moved.machine_id = device_id.to_string();
+    for hour in moved.hours.values_mut() {
+        for key in &mut hour.keys {
+            *key = crate::device_identity::moved_unique_key(key, legacy, device_id);
+        }
+    }
+    Some(moved)
+}
+
 #[cfg(test)]
 #[path = "gateway_cloud_tests.rs"]
 mod tests;

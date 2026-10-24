@@ -896,7 +896,7 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
             settings,
             gateway,
         };
-        let publisher = Publisher::new(crate::commands::local_machine_id(), &io);
+        let publisher = Publisher::new(crate::commands::local_machine_id(&io.app), &io);
         publisher.run(io).await;
     });
 }

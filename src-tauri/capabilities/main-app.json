@@ -11,6 +11,7 @@
     "allow-gateway-routing-feed",
     "allow-gateway-external-feed",
     "allow-get-app-version",
+    "allow-get-device-id",
     "allow-get-claude-statusline-command",
     "allow-get-claude-quota-setup",
     "allow-detect-quota-sources",

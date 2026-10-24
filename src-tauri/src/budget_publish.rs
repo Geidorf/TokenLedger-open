@@ -498,7 +498,8 @@ impl<I: PublishIo> Publisher<I> {
 /// Runs for the life of the process; a pass is a settings read when the switch is off.
 pub fn start(app: Arc<AppContext>) {
     tauri::async_runtime::spawn(async move {
-        let mut publisher = Publisher::new(AppIo { app }, crate::commands::local_machine_id());
+        let machine = crate::commands::local_machine_id(&app);
+        let mut publisher = Publisher::new(AppIo { app }, machine);
         loop {
             let deadline = Instant::now() + publisher.tick().await;
             loop {

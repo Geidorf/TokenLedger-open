@@ -299,6 +299,15 @@ fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Res
     }
 
     run_schema_upgrades(&conn)?;
+    // After the upgrades: they queue cloud purges under the hostname the
+    // rows were uploaded with, and this moves those rows to the device id.
+    let device_id = crate::device_identity::for_db(db_path)
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(error.into()))?;
+    crate::device_identity::migrate_local(
+        &conn,
+        &crate::device_identity::legacy_machine_id(),
+        &device_id,
+    )?;
 
     init_local_cache(&conn)?;
     init_scan_checkpoints(&conn)?;
@@ -1369,9 +1378,7 @@ fn migrate_legacy_db(new_db_path: &PathBuf) -> Result<()> {
     #[cfg(not(target_os = "macos"))]
     let old_paths = vec![current_dir.join("tokenboard.db")];
 
-    let machine_id = hostname::get()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown_machine".to_string());
+    let machine_id = crate::device_identity::for_db_or_unknown(new_db_path);
 
     for old_p in old_paths {
         if !old_p.exists() || old_p == *new_db_path {
@@ -2508,10 +2515,12 @@ mod schema_upgrade_tests {
                 |row| row.get(0),
             )
             .expect("count codex row");
+        // init_db already staged one under the device id; v10 stages its
+        // purge under the hostname the old rows were uploaded with.
         let purges: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM pending_cloud_purges WHERE tool = 'zcode'",
-                [],
+                "SELECT COUNT(*) FROM pending_cloud_purges WHERE tool = 'zcode' AND machine_id = ?1",
+                [crate::device_identity::legacy_machine_id()],
                 |row| row.get(0),
             )
             .expect("count zcode purge");
@@ -2528,8 +2537,8 @@ mod schema_upgrade_tests {
         run_schema_upgrades(&conn).expect("rerun upgrades");
         let purges_again: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM pending_cloud_purges WHERE tool = 'zcode'",
-                [],
+                "SELECT COUNT(*) FROM pending_cloud_purges WHERE tool = 'zcode' AND machine_id = ?1",
+                [crate::device_identity::legacy_machine_id()],
                 |row| row.get(0),
             )
             .expect("count zcode purge after rerun");
