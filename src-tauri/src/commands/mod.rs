@@ -11064,6 +11064,52 @@ pub fn get_prices_impl(app: &AppContext) -> Result<Value, String> {
     Ok(load_prices(app))
 }
 
+/// Only what the user changed in the price editor, for a local backup
+/// (`local-backup-v1`): the defaults (online table, else bundled) are left
+/// out so a restore never pins older defaults over newer ones.
+pub(crate) fn price_overrides_for_backup(app: &AppContext) -> Map<String, Value> {
+    let _guard = lock_price_overrides();
+    price_overrides_locked(app)
+}
+
+fn price_overrides_locked(app: &AppContext) -> Map<String, Value> {
+    read_price_overrides(
+        app.app_data_dir(),
+        &price_feed::effective_defaults(app.app_data_dir()),
+    )
+    .0
+    .unwrap_or_default()
+}
+
+/// Replaces the user's price overrides with `merge(current)` through the
+/// editor's save path, so costs are recalculated where rates change. Reading,
+/// merging and saving share the lock an online update takes to install a new
+/// table: the defaults cannot change in between. Returns whether anything
+/// changed.
+pub(crate) fn restore_price_overrides(
+    app: &AppContext,
+    merge: impl FnOnce(&Map<String, Value>) -> Map<String, Value>,
+) -> Result<bool, String> {
+    let _guard = lock_price_overrides();
+    let local = price_overrides_locked(app);
+    let merged = merge(&local);
+    if merged == local {
+        return Ok(false);
+    }
+    let table = merge_discovered_prices(
+        apply_price_overrides(&price_feed::effective_defaults(app.app_data_dir()), &merged),
+        &load_discovered_model_prices(app),
+    );
+    save_prices_locked(app, table)?;
+    Ok(true)
+}
+
+/// Writes `prices` as a downloaded table newer than the bundled one.
+#[cfg(test)]
+pub(crate) fn install_test_price_feed(app: &AppContext, prices: Value) {
+    price_feed::install_for_test(app.app_data_dir(), prices);
+}
+
 fn price_rate_snapshot(prices: &Value) -> Value {
     let mut snapshot = Map::new();
     let Some(models) = prices.as_object() else {

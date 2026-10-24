@@ -14,6 +14,8 @@ import {
 } from './SettingsPrimitives';
 import { ProjectDimensionCard } from './ProjectDimensionCard';
 import { MagpieImportCard } from './MagpieImportCard';
+import { LocalBackupCard } from './LocalBackupCard';
+import { DatabaseHealthCard } from './DatabaseHealthCard';
 import { PeerSharedUsageCard } from './PeerSharedUsageCard';
 import { PeerSyncCard } from './PeerSyncCard';
 import { LanguageCard } from './LanguageCard';
@@ -184,6 +186,10 @@ export function DataHelpSection(props: DataHelpSectionProps) {
       </SettingsCard>
 
       <ProjectDimensionCard />
+
+      <LocalBackupCard />
+
+      <DatabaseHealthCard />
 
       <MagpieImportCard />
 

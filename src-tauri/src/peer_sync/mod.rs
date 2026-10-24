@@ -458,7 +458,7 @@ pub struct ImportResult {
     pub skipped: Vec<String>,
 }
 
-fn same_origin(left: &str, right: &str) -> bool {
+pub(crate) fn same_origin(left: &str, right: &str) -> bool {
     let origin = |url: &str| {
         reqwest::Url::parse(url.trim()).ok().map(|url| {
             (

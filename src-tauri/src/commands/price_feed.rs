@@ -227,6 +227,20 @@ fn usable_feed(app_dir: &Path, bundled: &TableMeta) -> Option<CachedFeed> {
     checked.filter(|feed| feed.meta.revision > bundled.revision)
 }
 
+#[cfg(test)]
+pub(super) fn install_for_test(app_dir: &Path, prices: Value) {
+    let bytes = serde_json::to_vec(&prices).unwrap();
+    let mut meta = bundled_meta();
+    meta.revision += 1;
+    meta.prices_sha256 = Some(sha256_hex(&bytes));
+    let feed = CachedFeed {
+        meta,
+        prices,
+        fetched_at: Utc::now(),
+    };
+    write_json_atomically(&app_dir.join(FEED_FILE), &feed).unwrap();
+}
+
 /// 用户覆盖之下的「默认价」：可用的在线表，否则内置表。
 pub(super) fn effective_defaults(app_dir: &Path) -> Value {
     usable_feed(app_dir, &bundled_meta())
