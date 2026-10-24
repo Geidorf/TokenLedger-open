@@ -1,6 +1,7 @@
 package com.jeidorf.tokenledger.mobile.routing
 
 import com.jeidorf.tokenledger.mobile.BuildConfig
+import com.jeidorf.tokenledger.mobile.DashboardRepository
 import com.jeidorf.tokenledger.mobile.MobileSession
 import com.jeidorf.tokenledger.mobile.ROUTING_SNAPSHOTS_READ_FUNCTION
 import com.jeidorf.tokenledger.mobile.SupabaseGateway
@@ -21,6 +22,13 @@ class RoutingRepository(
     override suspend fun fetch(session: MobileSession): RoutingSnapshotsResult =
         RoutingSnapshots.parse(gateway.fetchRoutingSnapshots(session))
 }
+
+/**
+ * 用 App 已保存的登录读快照：与看板共用同一个 SessionAuthority，访问令牌快到期或被拒（401）时续期一次。
+ * 返回 null 表示手机上没有登录。锁屏动态壁纸在后台读取时用它，不依赖用量页先刷新。
+ */
+suspend fun RoutingSnapshotSource.fetchWithStoredSession(dashboard: DashboardRepository): RoutingSnapshotsResult? =
+    dashboard.readWithStoredSession { session -> fetch(session) }
 
 /** 读取失败的原因，决定页面上怎么说。 */
 enum class RoutingReadFailure {

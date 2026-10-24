@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_wallpaper_label">TokenLedger · 实时路由</string>
+    <string name="routing_wallpaper_description">在锁屏上显示电脑端网关的实时路由：请求从 Agent 经网关流向供应商，失败切换逐跳可见。需要在电脑端打开「把实时路由同步到手机」，延迟几秒到一分钟。</string>
+</resources>
