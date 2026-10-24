@@ -567,7 +567,20 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
         let mut backoff = TICK;
         let mut delay = TICK;
         loop {
-            tokio::time::sleep(delay).await;
+            // Waits in tick-sized slices so flipping the switch cuts a backoff short: turning
+            // it off must not wait out a five-minute publish retry before clearing.
+            let deadline = Instant::now() + delay;
+            let was_on = enabled(&settings);
+            loop {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                tokio::time::sleep(left.min(TICK)).await;
+                if enabled(&settings) != was_on {
+                    break;
+                }
+            }
             delay = TICK;
 
             if !enabled(&settings) {
