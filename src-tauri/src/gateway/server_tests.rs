@@ -1286,6 +1286,7 @@ fn upstream_error_text_masks_anything_shaped_like_a_credential() {
         "model not found: gpt-4o-mini",
         "rate limit exceeded, retry after 20s",
         "task-scheduler busy",
+        "error code key_not_found_in_request",
         "sk-short",
     ] {
         assert_eq!(redact_key(text, ""), text);

@@ -1223,7 +1223,7 @@ fn redact_key(text: &str, key: &str) -> String {
     static SHAPES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(concat!(
             r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}",
-            r"|\b(?:sk|pk|rk|ak|xai|gsk|key)[-_][A-Za-z0-9._-]{12,}",
+            r"|\b(?:sk|pk|rk|ak|xai|gsk)[-_][A-Za-z0-9._-]{12,}",
             r"|\bAIza[0-9A-Za-z_-]{20,}",
             r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
         ))
