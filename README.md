@@ -37,6 +37,7 @@ npm run tauri build      # 桌面安装包
 - **桌面/锁屏壁纸**：基于本地或云端统计生成动态壁纸；Windows 支持桌面和锁屏，macOS/Linux 当前仅提供桌面相关能力或占位实现。
 - **命令行工具**：`tokenledger-cli` 查看今日/本周/本月用量（可按 Agent、模型、账号拆分）、额度剩余、预算状态、网关状态与最近路由，触发扫描，导出 CSV/JSON；每个命令都有表格与 `--json` 输出，便于脚本和状态栏插件调用。数字与桌面端同一套 Rust 实现，见 [命令行文档](docs/cli.md)。
 - **系统托盘**：支持最小化到托盘、托盘显示主窗口、安全退出，以及启动时最小化；当启动配置使窗口默认驻留托盘时，可用 `--show` 显式恢复主窗口。
+- **VS Code 状态栏插件**：`extensions/vscode/` 在编辑器状态栏显示今日预估费用或最紧额度的可用%，悬停看额度条、今日拆分、预算与网关健康；数字全部来自本机命令行 `tokenledger-cli`，不读密钥、不联网。打成 .vsix 手动安装，不上架市场，见 [插件说明](extensions/vscode/README.md)。
 - **价格配置**：可在设置页维护模型输入/输出 Token 单价，保存后后续扫描立即使用。
 - **新模型自动发现**：本地日志出现未匹配的模型 ID 时，价格表会自动增加“待核价”项，以当前工具兜底费率暂估；待核价行可按原始模型 ID 搜索 models.dev，选择具体供应商的报价并一键导入。日期快照复用已有模型族，模式名、占位符和异常文本不会进入价格表。
 
@@ -263,6 +264,7 @@ TokenLedger/
 │       ├── app_paths.rs         # 跨平台应用数据目录
 │       └── wallpaper.rs         # 壁纸渲染与平台集成
 ├── apps/android/                # 原生 Android 只读云端看板
+├── extensions/vscode/           # VS Code 状态栏插件（读 tokenledger-cli 的 JSON，零依赖）
 ├── scripts/                     # 构建与版本一致性检查脚本
 ├── supabase/                    # Supabase schema 与部署说明
 ├── package.json

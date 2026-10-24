@@ -32,7 +32,7 @@ npm run typecheck:e2e                    # 用例类型检查
 - `session-detail.spec.ts`：会话详情（从会话排行、请求展开行与概览「会话异常昂贵」卡片打开、返回列表、最贵请求跳到时间线、回到按会话筛选的请求明细、英文文案），用 `preview-session-refactor` 预览会话。
 - `routing-live.spec.ts`：路由页顶部实时路由动画（失败切换逐跳可见、轮询更新、网关未运行空态、外部本机网关）。
 - `english.spec.ts`：英文界面（`?lang=en` 或设置里选 English）下的首次启动引导、语言切换与保存、会话/额度/Agent/供应商空状态。
-- `visual.spec.ts`：六张截图基线（概览、请求、网关、设置 @1280，概览 @420，英文首次启动引导 @1280），只在 Linux 上的 `chromium-zh` 项目比对。
+- `visual.spec.ts`：九张截图基线（概览、请求、网关、设置 @1280，概览 @420；英文的首次启动引导、路由、网关、请求 @1280），只在 Linux 上的 `chromium-zh` 项目比对。
 - `guide-screenshots.spec.ts`：不是回归用例，平时跳过。设环境变量 `TOKENLEDGER_GUIDE_SHOTS=1` 运行时，为用户手册（`docs/guide/`）重新生成桌面配图，见 [docs/guide/README.md](../docs/guide/README.md)。
 
 界面默认中文，English 由用户在设置里选（文案表在 `src/i18n/`，逐页迁移中）。英文项目验证的是英文系统语言下（数字、日期格式和浏览器默认值不同）页面照样正常；英文文案的断言放在 `english.spec.ts`，它在四个项目里都跑。
