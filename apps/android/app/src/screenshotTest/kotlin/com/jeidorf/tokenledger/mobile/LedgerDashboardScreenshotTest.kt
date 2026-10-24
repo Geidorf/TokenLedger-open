@@ -1338,6 +1338,25 @@ fun LedgerDashboardStandbyScreenshot() {
 
 @PreviewTest
 @Preview(
+    name = "Standby large text 390x1800",
+    device = "spec:width=390dp,height=1800dp,dpi=160",
+    fontScale = 2.0f,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true,
+    backgroundColor = 0xFF08090C
+)
+@Composable
+fun LedgerDashboardStandbyFontScale200Screenshot() {
+    LedgerDashboardPreviewHost(
+        appearance = LedgerAppearance.Dark,
+        destination = MobileDestination.Me,
+        ambientMode = AmbientMode.Pulse,
+        mePage = V2MePage.Standby
+    )
+}
+
+@PreviewTest
+@Preview(
     name = "Me 390x844",
     device = "spec:width=390dp,height=844dp,dpi=160",
     uiMode = Configuration.UI_MODE_NIGHT_YES,
