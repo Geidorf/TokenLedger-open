@@ -37,6 +37,36 @@ class DashboardCacheTest {
     }
 
     @Test
+    fun snapshotJsonRoundTripsOptionalHeatmapMetricsIncludingZeroCost() {
+        val key = DashboardCacheKey(
+            userId = "user-1",
+            range = RangeKey.Month,
+            machine = DashboardQuery.ALL_MACHINES,
+            timezoneId = "Asia/Shanghai"
+        )
+        val stats = completeStats().copy(
+            heatmapRequests = mapOf("2026-07-15" to 3L),
+            heatmapCost = mapOf("2026-07-15" to 0.0)
+        )
+        val snapshot = DashboardCachedSnapshot(stats, savedAtEpochMillis = 1_750_000_000_000L)
+
+        val decoded = requireNotNull(
+            DashboardSnapshotJson.decode(
+                DashboardSnapshotJson.encode(
+                    key,
+                    snapshot,
+                    DashboardCacheWriteMetadata("process-1", requestId = 43L)
+                ),
+                key
+            )
+        )
+
+        assertEquals(mapOf("2026-07-15" to 3L), decoded.stats.heatmapRequests)
+        assertEquals(mapOf("2026-07-15" to 0.0), decoded.stats.heatmapCost)
+        assertEquals(snapshot, decoded)
+    }
+
+    @Test
     fun snapshotWithoutWriteMetadataRemainsReadableAcrossTheUpgrade() {
         val key = DashboardCacheKey(
             userId = "user-1",

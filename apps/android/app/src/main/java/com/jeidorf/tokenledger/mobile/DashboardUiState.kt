@@ -127,7 +127,10 @@ sealed interface CalendarHeatmapUiState {
         val coverageStart: String,
         val coverageEnd: String,
         val showingCachedData: Boolean,
-        val warning: String? = null
+        val warning: String? = null,
+        /** §2.6 逐日记录数与费用，各自可缺；缺了日历只能按有效 Token 着色。 */
+        val heatmapRequests: Map<String, Long>? = null,
+        val heatmapCost: Map<String, Double>? = null
     ) : CalendarHeatmapUiState
 
     data class Unavailable(

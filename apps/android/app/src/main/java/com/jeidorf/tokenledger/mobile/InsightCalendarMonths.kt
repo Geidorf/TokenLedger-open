@@ -146,7 +146,11 @@ internal fun monthPanelDays(axis: InsightCalendarAxis, yearMonth: YearMonth): Li
  * 月节点读屏摘要：合计、活跃天数与最高日；没有可信日子时不编造数字（C9）。月内有日子落在当前查询范围、
  * 或有覆盖外（未查询）的日子时，按连续段说出来（方案 §6.1，R-69 P2-3）；没有就不说。
  */
-internal fun monthAccessibilitySummary(yearMonth: YearMonth, cells: List<InsightCalendarCell?>): String {
+internal fun monthAccessibilitySummary(
+    yearMonth: YearMonth,
+    cells: List<InsightCalendarCell?>,
+    format: HeatmapValueFormat = HeatmapValueFormat()
+): String {
     val days = cells.filterNotNull()
     val covered = days.filter(InsightCalendarCell::selectable)
     val monthLabel = "${yearMonth.monthValue}月"
@@ -160,7 +164,7 @@ internal fun monthAccessibilitySummary(yearMonth: YearMonth, cells: List<Insight
     val activeDays = covered.count { (it.knownTokens ?: 0L) > 0L }
     val peak = covered.filter { (it.knownTokens ?: 0L) > 0L }.maxByOrNull { it.knownTokens ?: 0L }
     val peakPhrase = peak?.let { "，最高 ${it.date.dayOfMonth} 日" } ?: ""
-    return "$monthLabel：合计 ${v2FormatTokens(total)}，活跃 $activeDays 天$peakPhrase$rangeNotes。双击选择日期"
+    return "$monthLabel：合计 ${format.format(total)}，活跃 $activeDays 天$peakPhrase$rangeNotes。双击选择日期"
 }
 
 /** 把同一个月里的若干天按连续段读成「1 日至 4 日、9 日」；一天都没有时返回 null。 */
@@ -184,13 +188,16 @@ private fun dayRunsPhrase(days: List<InsightCalendarCell>): String? {
 }
 
 /** 日节点读屏状态：未来 / 未查询 / 已知为零 / 具体数值——四选一，不靠颜色区分（T10.173 §6.1）。 */
-internal fun dayAccessibilityLabel(cell: InsightCalendarCell): String {
+internal fun dayAccessibilityLabel(
+    cell: InsightCalendarCell,
+    format: HeatmapValueFormat = HeatmapValueFormat()
+): String {
     val dateLabel = "${cell.date.monthValue}月${cell.date.dayOfMonth}日"
     return when {
         cell.isFuture -> "$dateLabel，未来"
         !cell.selectable -> "$dateLabel，未查询"
-        (cell.knownTokens ?: 0L) <= 0L -> "$dateLabel，无消耗"
-        else -> "$dateLabel，${v2FormatTokens(cell.knownTokens!!)}"
+        (cell.knownTokens ?: 0L) <= 0L -> "$dateLabel，${format.metric.emptyLabel}"
+        else -> "$dateLabel，${format.format(cell.knownTokens!!)}"
     }
 }
 

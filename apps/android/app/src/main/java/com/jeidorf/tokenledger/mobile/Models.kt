@@ -418,7 +418,11 @@ data class StatsData(
     /** null 表示云端尚未支持 T6.3；空列表表示支持但当前查询没有设备数据。 */
     val machineDistribution: List<CompositionEntry>? = null,
     /** null 表示旧响应、缺字段或整个可选扩展未通过严格契约校验。 */
-    val dailyCosts: DailyCosts? = null
+    val dailyCosts: DailyCosts? = null,
+    /** §2.6 逐日记录数；null 表示响应没带或未通过校验（与 [heatmapCost] 各自独立）。 */
+    val heatmapRequests: Map<String, Long>? = null,
+    /** §2.6 逐日费用（美元）；null 表示响应没带、有一天不可信或未通过校验。 */
+    val heatmapCost: Map<String, Double>? = null
 )
 
 data class MobileSession(
@@ -476,7 +480,9 @@ object StatsJson {
                 }
             } else {
                 null
-            }
+            },
+            heatmapRequests = parseHeatmapRequests(root.optJSONObject("heatmapRequests"), heatmap),
+            heatmapCost = parseHeatmapCost(root.optJSONObject("heatmapCost"), heatmap)
         )
     }
 
