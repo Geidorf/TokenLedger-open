@@ -553,7 +553,16 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>, gateway: A
         let machine = crate::commands::local_machine_id();
         let mut published: Option<Published> = None;
         // A device row still to delete after the switch went off; kept until the clear lands.
-        let mut pending_clear: Option<Published> = None;
+        // The device ID is derived, so a clear that failed before the last exit is retried
+        // once per launch for the stored account (a no-op when nothing was published).
+        let mut pending_clear: Option<Published> = stored_user(&app)
+            .filter(|user| !user.is_empty())
+            .map(|user| Published {
+                device: device_id(&user, &machine),
+                user,
+                key: String::new(),
+                at: Instant::now(),
+            });
         let mut backoff = TICK;
         let mut delay = TICK;
         loop {
