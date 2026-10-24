@@ -130,15 +130,20 @@ internal fun LazyListScope.v2MeItems(
     onAmbientModeChange: (AmbientMode) -> Unit,
     onTokenDisplayModeChange: (TokenDisplayMode) -> Unit,
     onOpenLowPowerDisplay: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    embedded: Boolean = false
 ) {
     when (page) {
         V2MePage.Standby -> {
             item(key = "me-standby-header", contentType = "heading") {
                 // 预览按用量页当前的查询出数，顶栏在「我的」不挂查询摘要，这里补上范围与筛选，免得小计没有出处。
-                V2MeSubPageHeader(palette, "待机屏 / 墨水屏", dashboardQuerySummary(state.query)) {
-                    onPageChange(V2MePage.Root)
-                }
+                // 平板双栏时待机屏常驻右栏，没有可返回的上一层，不画返回键。
+                V2MeSubPageHeader(
+                    palette,
+                    "待机屏 / 墨水屏",
+                    dashboardQuerySummary(state.query),
+                    onBack = if (embedded) null else ({ onPageChange(V2MePage.Root) })
+                )
             }
             if (stats != null) {
                 v2MeStandbyItems(
@@ -293,9 +298,14 @@ private fun V2MeIconTile(palette: MobileV2Palette, icon: ImageVector) {
 }
 
 @Composable
-private fun V2MeSubPageHeader(palette: MobileV2Palette, title: String, subtitle: String, onBack: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Box(
+private fun V2MeSubPageHeader(palette: MobileV2Palette, title: String, subtitle: String, onBack: (() -> Unit)?) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onBack == null) Modifier.padding(start = 2.dp, top = 12.dp) else Modifier)
+    ) {
+        if (onBack != null) Box(
             Modifier
                 .size(V2_TOUCH_TARGET)
                 .clip(CircleShape)

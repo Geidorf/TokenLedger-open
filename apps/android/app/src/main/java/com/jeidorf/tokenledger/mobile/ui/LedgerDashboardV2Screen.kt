@@ -90,6 +90,12 @@ import com.jeidorf.tokenledger.mobile.ledgerTween
 import com.jeidorf.tokenledger.mobile.ui.rhythm.RhythmFeed
 import com.jeidorf.tokenledger.mobile.ui.rhythm.rememberRhythmFeed
 import com.jeidorf.tokenledger.mobile.ui.rhythm.v2RhythmItems
+import com.jeidorf.tokenledger.mobile.ui.adaptive.V2AdaptivePanes
+import com.jeidorf.tokenledger.mobile.ui.adaptive.V2PaneArrangement
+import com.jeidorf.tokenledger.mobile.ui.adaptive.V2PaneEyebrow
+import com.jeidorf.tokenledger.mobile.ui.adaptive.v2CompanionPane
+import com.jeidorf.tokenledger.mobile.ui.adaptive.v2PaneArrangement
+import com.jeidorf.tokenledger.mobile.ui.adaptive.v2UsesTwoPane
 import com.jeidorf.tokenledger.mobile.ui.routing.rememberRoutingFeed
 import com.jeidorf.tokenledger.mobile.ui.routing.v2RoutingItems
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2DayReviewSummary
@@ -331,6 +337,8 @@ internal fun LedgerDashboardV2Screen(
             val fontScale = LocalDensity.current.fontScale
             val layoutMode = dashboardLayoutMode(maxWidth.value.toInt(), fontScale)
             val wide = maxWidth >= 600.dp && layoutMode == DashboardLayoutMode.Standard
+            // 平板横屏、手机横屏、折叠屏展开横放：Expanded 宽度再拆成双栏。
+            val twoPane = wide && v2UsesTwoPane(maxWidth.value.toInt(), fontScale)
             val contentBottomPadding = dashboardContentBottomPaddingDp(maxWidth.value.toInt(), fontScale).dp
             val navWidth = if (wide && !showSettings && !entityMode) 76.dp else 0.dp
             Scaffold(
@@ -438,6 +446,7 @@ internal fun LedgerDashboardV2Screen(
                             state = state,
                             displayedStats = displayedData,
                             wide = wide,
+                            twoPane = twoPane,
                             contentBottomPadding = contentBottomPadding,
                             onRangeChange = onRangeChange,
                             onFilter = { filterSheet = V2FilterSheet.All },
@@ -543,6 +552,7 @@ internal fun V2DestinationContent(
     state: DashboardUiState,
     displayedStats: StatsData?,
     wide: Boolean,
+    twoPane: Boolean = false,
     contentBottomPadding: Dp,
     onRangeChange: (RangeKey) -> Unit,
     onFilter: () -> Unit,
@@ -589,7 +599,8 @@ internal fun V2DestinationContent(
     )
     val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
     var mePage by rememberSaveable { mutableStateOf(initialMePage) }
-    BackHandler(enabled = destination == MobileDestination.Me && mePage != V2MePage.Root) { mePage = V2MePage.Root }
+    // 双栏时待机屏常驻右栏，返回键不用先退子页。
+    BackHandler(enabled = destination == MobileDestination.Me && mePage != V2MePage.Root && !twoPane) { mePage = V2MePage.Root }
 
     val trendListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_trend") { LazyListState() }
     val sourcesListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_insight_sources") { LazyListState() }
@@ -608,7 +619,8 @@ internal fun V2DestinationContent(
         }
         MobileDestination.Routing -> routingListState
         MobileDestination.Quota -> quotaListState
-        MobileDestination.Me -> if (mePage == V2MePage.Root) widgetListState else meStandbyListState
+        // 双栏时左栏固定是「我的」根页，待机屏的列表状态归右栏。
+        MobileDestination.Me -> if (mePage == V2MePage.Root || twoPane) widgetListState else meStandbyListState
     }
     val revealMotion = ledgerMotionEnabled(palette.isEInk)
     val revealDensity = LocalDensity.current
@@ -669,74 +681,144 @@ internal fun V2DestinationContent(
             },
             label = "destinationReveal"
         ) { (targetDestination, targetPane) ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                state = listStateFor(targetDestination, targetPane),
-                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = contentBottomPadding),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                val meItems: () -> Unit = {
-                    v2MeItems(
-                        palette, mePage, { mePage = it }, state, stats, appearance, ambientMode,
-                        tokenDisplayMode, meActions, onAmbientModeChange, onTokenDisplayModeChange,
-                        onOpenLowPowerDisplay, onRefresh
-                    )
-                }
-                if (stats == null) {
-                    // 只有路由页与「我的」会在没有统计时走到这里；切页过渡里旧页也可能短暂落在这一支。
-                    when (targetDestination) {
-                        MobileDestination.Routing -> v2RoutingItems(palette, routingFeed)
-                        MobileDestination.Me -> meItems()
-                        else -> Unit
+            val arrangement = v2PaneArrangement(wide, twoPane, targetDestination, targetPane)
+            val split = arrangement == V2PaneArrangement.Split
+            val spread = arrangement == V2PaneArrangement.Spread
+            val companionPane = if (split && targetDestination == MobileDestination.Usage) targetPane.v2CompanionPane() else null
+            // 右栏（伴随栏）：用量子页配一个相关子页，「我的」配待机屏子页；没有统计时用量不拆栏。
+            val secondary: (@Composable (Modifier) -> Unit)? = when {
+                !split -> null
+                targetDestination == MobileDestination.Me -> @Composable { paneModifier: Modifier ->
+                    LazyColumn(
+                        modifier = paneModifier,
+                        state = meStandbyListState,
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = contentBottomPadding),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        v2MeItems(
+                            palette, V2MePage.Standby, { mePage = it }, state, stats, appearance, ambientMode,
+                            tokenDisplayMode, meActions, onAmbientModeChange, onTokenDisplayModeChange,
+                            onOpenLowPowerDisplay, onRefresh, embedded = true
+                        )
                     }
-                    return@LazyColumn
                 }
-                when (targetDestination) {
-                    MobileDestination.Usage -> if (targetPane == InsightPane.Overview) v2OverviewItems(
-                        palette,
-                        state,
-                        stats,
-                        tokenDisplayMode,
-                        onRangeChange,
-                        onTokenDisplayModeChange,
-                        onFilter,
-                        onOpenInsights,
-                        onOpenQuota,
-                        onOpenTool,
-                        onRequestCustomRange,
-                        onRefresh
-                    ) else v2InsightsItems(
-                        palette,
-                        state,
-                        stats,
-                        targetPane,
-                        wide,
-                        tokenDisplayMode,
-                        onInsightPaneChange,
-                        onTokenDisplayModeChange,
-                        onOpenTool,
-                        onOpenModel,
-                        onToolFilterChange,
-                        onSearchChange,
-                        onLoadMore,
-                        { date -> calendarOpenedDate = date; onOpenDay(date) },
-                        onReturnFromDay,
-                        calendarOpenedDate,
-                        trendMetric, trendCurrency,
-                        { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
-                        onRefresh,
-                        rhythmFeed = rhythmFeed
-                    )
-                    MobileDestination.Routing -> v2RoutingItems(palette, routingFeed)
-                    MobileDestination.Quota -> v2QuotaItems(
-                        palette = palette,
-                        quota = state.quota,
-                        onRefresh = onRefresh,
-                        dashboardLoading = state.dashboardLoading
-                    )
-                    MobileDestination.Me -> meItems()
+                companionPane != null && stats != null -> @Composable { paneModifier: Modifier ->
+                    val companionListState = rememberSaveable(
+                        saver = LazyListState.Saver,
+                        key = "v2_scroll_companion_${companionPane.name}"
+                    ) { LazyListState() }
+                    LazyColumn(
+                        modifier = paneModifier,
+                        state = companionListState,
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = contentBottomPadding),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item(key = "companion-eyebrow", contentType = "eyebrow") {
+                            V2PaneEyebrow(palette, companionPane.label)
+                        }
+                        v2InsightsItems(
+                            palette,
+                            state,
+                            stats,
+                            companionPane,
+                            true,
+                            tokenDisplayMode,
+                            onInsightPaneChange,
+                            onTokenDisplayModeChange,
+                            onOpenTool,
+                            onOpenModel,
+                            onToolFilterChange,
+                            onSearchChange,
+                            onLoadMore,
+                            { date -> calendarOpenedDate = date; onOpenDay(date) },
+                            onReturnFromDay,
+                            calendarOpenedDate,
+                            trendMetric, trendCurrency,
+                            { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
+                            onRefresh,
+                            showTabs = false
+                        )
+                    }
                 }
+                else -> null
             }
+            V2AdaptivePanes(
+                arrangement = arrangement,
+                secondary = secondary,
+                primary = { paneModifier ->
+                    LazyColumn(
+                        modifier = paneModifier,
+                        state = listStateFor(targetDestination, targetPane),
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = contentBottomPadding),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val meItems: () -> Unit = {
+                            v2MeItems(
+                                palette, if (secondary != null) V2MePage.Root else mePage, { mePage = it }, state, stats,
+                                appearance, ambientMode, tokenDisplayMode, meActions, onAmbientModeChange,
+                                onTokenDisplayModeChange, onOpenLowPowerDisplay, onRefresh
+                            )
+                        }
+                        if (stats == null) {
+                            // 只有路由页与「我的」会在没有统计时走到这里；切页过渡里旧页也可能短暂落在这一支。
+                            when (targetDestination) {
+                                MobileDestination.Routing -> v2RoutingItems(palette, routingFeed, spread)
+                                MobileDestination.Me -> meItems()
+                                else -> Unit
+                            }
+                            return@LazyColumn
+                        }
+                        when (targetDestination) {
+                            MobileDestination.Usage -> if (targetPane == InsightPane.Overview) v2OverviewItems(
+                                palette,
+                                state,
+                                stats,
+                                tokenDisplayMode,
+                                onRangeChange,
+                                onTokenDisplayModeChange,
+                                onFilter,
+                                onOpenInsights,
+                                onOpenQuota,
+                                onOpenTool,
+                                onRequestCustomRange,
+                                onRefresh,
+                                // 双栏时右栏就是完整的来源，左栏不再重复「主要来源」前几名。
+                                showSources = companionPane != InsightPane.Sources
+                            ) else v2InsightsItems(
+                                palette,
+                                state,
+                                stats,
+                                targetPane,
+                                wide,
+                                tokenDisplayMode,
+                                onInsightPaneChange,
+                                onTokenDisplayModeChange,
+                                onOpenTool,
+                                onOpenModel,
+                                onToolFilterChange,
+                                onSearchChange,
+                                onLoadMore,
+                                { date -> calendarOpenedDate = date; onOpenDay(date) },
+                                onReturnFromDay,
+                                calendarOpenedDate,
+                                trendMetric, trendCurrency,
+                                { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
+                                onRefresh,
+                                rhythmFeed = rhythmFeed
+                            )
+                            MobileDestination.Routing -> v2RoutingItems(palette, routingFeed, spread)
+                            MobileDestination.Quota -> v2QuotaItems(
+                                palette = palette,
+                                quota = state.quota,
+                                onRefresh = onRefresh,
+                                dashboardLoading = state.dashboardLoading,
+                                columns = if (spread) 2 else 1
+                            )
+                            MobileDestination.Me -> meItems()
+                        }
+                    }
+                }
+            )
         }
     }
 }
@@ -788,7 +870,8 @@ internal fun LazyListScope.v2OverviewItems(
     onOpenQuota: () -> Unit,
     onOpenTool: (String) -> Unit,
     onRequestCustomRange: () -> Unit,
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    showSources: Boolean = true
 ) {
     item(key = "overview-tabs", contentType = "controls") {
         V2InsightStrip(palette, InsightPane.Overview, onOpenInsights)
@@ -807,7 +890,7 @@ internal fun LazyListScope.v2OverviewItems(
     item(key = "overview-hero", contentType = "hero") {
         V2HeroCard(palette, stats, tokenDisplayMode, onTokenDisplayModeChange, onOpenInsights)
     }
-    item(key = "overview-tools", contentType = "chart") {
+    if (showSources) item(key = "overview-tools", contentType = "chart") {
         V2ToolDistributionCard(
             palette = palette,
             stats = stats,
@@ -848,9 +931,10 @@ internal fun LazyListScope.v2InsightsItems(
     onOpenTrendDay: (String, InsightPane) -> Unit,
     calendarAxis: InsightCalendarAxis,
     onRefresh: () -> Unit = {},
-    rhythmFeed: RhythmFeed = RhythmFeed(signedIn = false)
+    rhythmFeed: RhythmFeed = RhythmFeed(signedIn = false),
+    showTabs: Boolean = true
 ) {
-    item(key = "insights-tabs", contentType = "controls") { V2InsightStrip(palette, pane, onPaneChange) }
+    if (showTabs) item(key = "insights-tabs", contentType = "controls") { V2InsightStrip(palette, pane, onPaneChange) }
     if (pane != InsightPane.Overview && v2HasDesktopData(stats, state.hasActiveFilters) == false) {
         item(key = "insights-no-desktop", contentType = "status") {
             V2NoDesktopDataState(palette, quota = false, onRefresh = onRefresh, refreshing = state.dashboardLoading)
