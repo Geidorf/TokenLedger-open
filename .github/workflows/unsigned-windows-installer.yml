@@ -1,0 +1,125 @@
+name: TokenLedger Unsigned Windows Installer
+
+# 为公开发行版产出**未签名**的 Windows x64 安装包（NSIS 与 MSI）。
+#
+# 与 ci.yml 的 windows-native-build 分工：CI 只编译 exe（--no-bundle），
+# 不验证安装包能否打出来；本 workflow 走完整的 bundle 流程，供验收工位
+# 在真机上安装试用。与 unsigned-macos-dmg.yml 对称：未签名产物不得表述为
+# 已签名的 RC，只上传到 release 的 pre-release 资产，且必须如实标注签名状态。
+#
+# 触发：手动 dispatch，在 v* tag 上运行，或改动本文件的 PR（只构建、不发布）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '上传到哪个 release tag（留空则不发布，只构建）'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/unsigned-windows-installer.yml'
+
+permissions:
+  # 上传 release 资产需要 contents: write。
+  contents: write
+
+concurrency:
+  group: tokenledger-unsigned-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unsigned-windows:
+    name: Unsigned Windows x64 NSIS & MSI
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      # 同 ci.yml：超长 golden 路径会让 checkout 直接失败。
+      - name: Allow long paths on the Windows runner
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Build unsigned NSIS and MSI installers
+        run: npm run build -- --bundles nsis,msi --ci
+
+      - name: Stage the installers and record hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE=release-stage/windows
+          mkdir -p "$STAGE"
+
+          EXE_PATH=src-tauri/target/release/tokenledger.exe
+          NSIS_PATH="$(find src-tauri/target/release/bundle/nsis -maxdepth 1 -name '*.exe' -print -quit)"
+          MSI_PATH="$(find src-tauri/target/release/bundle/msi -maxdepth 1 -name '*.msi' -print -quit)"
+          test -s "$EXE_PATH"
+          test -n "$NSIS_PATH"
+          test -n "$MSI_PATH"
+
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$VERSION" != "$TAG_VERSION" ]; then
+              echo "package version $VERSION != tag version $TAG_VERSION" >&2
+              exit 1
+            fi
+          fi
+
+          # 记录签名状态：未签名产物必须如实标注，不能被表述为已签名。
+          {
+            echo "signature=unsigned"
+            echo "package_version=$VERSION"
+            echo "source_sha=$GITHUB_SHA"
+            echo "build_environment=GitHub Actions windows-latest x64; run $GITHUB_RUN_ID"
+          } > "$STAGE/windows-signature.txt"
+
+          cp "$NSIS_PATH" "$STAGE/TokenLedger_Windows_${VERSION}_x64-unsigned-setup.exe"
+          cp "$MSI_PATH" "$STAGE/TokenLedger_Windows_${VERSION}_x64-unsigned.msi"
+          # 安装包内容是压缩的，扫描脚本看不到里面；改扫打包前的同一个 exe。
+          cp "$EXE_PATH" "$STAGE/tokenledger.exe"
+
+          sha256sum "$STAGE"/*.exe "$STAGE"/*.msi | tee "$STAGE/windows-sha256.txt"
+
+      - name: Verify the packaged executable contains no forbidden strings
+        env:
+          # 维护者标识清单从 secret 注入；未配置时脚本只跑通用规则并给出警告。
+          TOKENLEDGER_FORBIDDEN_JSON: ${{ secrets.RELEASE_FORBIDDEN_JSON }}
+        run: node scripts/verify-release-artifact-clean.mjs release-stage/windows/tokenledger.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows
+          path: release-stage/windows
+          if-no-files-found: error
+
+      - name: Upload to the release as pre-release assets
+        if: github.event_name != 'pull_request' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-stage/windows/*-setup.exe release-stage/windows/*.msi --clobber
+            echo "uploaded to existing release $RELEASE_TAG"
+          else
+            echo "release $RELEASE_TAG does not exist; artifacts stay in this run only" >&2
+          fi
