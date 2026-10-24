@@ -50,6 +50,8 @@ export interface LocalBackupRowCounts {
   total: number;
   new: number;
   known: number;
+  /** 另一台电脑还没上传的行：留给那台电脑上传，不在这里恢复。 */
+  skipped: number;
   first: string | null;
   last: string | null;
 }
@@ -298,9 +300,9 @@ export function LocalBackupCard() {
         if (key === 'gatewayRequests' && counts.total > 0 && !preview.gatewayRequestsRestorable) {
           return t('backup.preview.gatewayOtherMachine');
         }
-        return counts.total === 0
-          ? t('backup.preview.none')
-          : t('backup.preview.rows', { total: formatNum(counts.total), added: formatNum(counts.new), known: formatNum(counts.known) });
+        if (counts.total === 0) return t('backup.preview.none');
+        const rows = t('backup.preview.rows', { total: formatNum(counts.total), added: formatNum(counts.new), known: formatNum(counts.known) });
+        return counts.skipped > 0 ? `${rows}${t('backup.preview.rowsSkipped', { skipped: formatNum(counts.skipped) })}` : rows;
       }
       case 'providers':
       case 'routingGroups':

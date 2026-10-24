@@ -42,8 +42,8 @@ impl Computer {
             .execute(
                 "INSERT INTO token_logs (tool, model, input_tokens, output_tokens, cached_tokens,
                      cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status)
-                 VALUES ('claude', 'claude-sonnet-5', ?1, 10, 0, 0, '2026-10-20 10:00:00', 's1', ?2, 0.5, 'old-pc', 1)",
-                params![input, key],
+                 VALUES ('claude', 'claude-sonnet-5', ?1, 10, 0, 0, '2026-10-20 10:00:00', 's1', ?2, 0.5, ?3, 1)",
+                params![input, key, crate::commands::local_machine_id()],
             )
             .unwrap();
     }
@@ -942,4 +942,53 @@ fn pruning_keeps_the_newest_backup_written_in_the_same_second() {
     assert!(dir
         .join("TokenLedger-auto-20261024-010000-10.tlbackup")
         .exists());
+}
+
+#[test]
+fn another_computers_rows_it_had_not_uploaded_stay_with_it() {
+    let old = Computer::new("old");
+    let row = |key: &str, machine: &str, status: i64, user: Option<&str>| {
+        old.conn()
+            .execute(
+                "INSERT INTO token_logs (tool, model, input_tokens, output_tokens, cached_tokens,
+                     cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id,
+                     sync_status, cloud_user_id)
+                 VALUES ('claude', 'claude-sonnet-5', 10, 1, 0, 0, '2026-10-20 10:00:00', 's1', ?1, 0.1, ?2, ?3, ?4)",
+                params![key, machine, status, user],
+            )
+            .unwrap();
+    };
+    row("uploaded", "pc-a", 1, Some("user-1"));
+    row("pending", "pc-a", 0, None);
+    row("never-signed-in", "pc-a", 1, None);
+    row("no-machine", "", 1, Some("user-1"));
+    let mut bundle = sealed_roundtrip(&old.export());
+    bundle.machine = "pc-a".to_string();
+
+    let new = Computer::new("new");
+    let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
+    assert_eq!((plan.ledger.new, plan.ledger.skipped), (2, 2));
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(result.ledger_added, 2);
+    let machine_of = |key: &str| -> Option<String> {
+        new.conn()
+            .query_row(
+                "SELECT machine_id FROM token_logs WHERE unique_key = ?1",
+                [key],
+                |row| row.get(0),
+            )
+            .ok()
+    };
+    assert_eq!(machine_of("uploaded").as_deref(), Some("pc-a"));
+    // A row without an id keeps counting under the computer it came from.
+    assert_eq!(machine_of("no-machine").as_deref(), Some("pc-a"));
+    assert_eq!(machine_of("pending"), None);
+    assert_eq!(machine_of("never-signed-in"), None);
 }

@@ -510,6 +510,33 @@ export function useQuotaAlertSettings() {
     };
   }, []);
 
+  // 本机备份恢复了额度提醒（或别处改了设置）后重读，免得下一次修改把旧整份写回去。
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    const install = async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const cleanup = await listen('settings-updated', () => {
+          invoke<unknown>('get_quota_alert_settings')
+            .then((value) => {
+              if (!cancelled) setSettings(parseQuotaAlertSettings(value));
+            })
+            .catch(() => {});
+        });
+        if (cancelled) cleanup();
+        else unlisten = cleanup;
+      } catch {
+        // 浏览器 fixture 没有原生事件桥。
+      }
+    };
+    void install();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   const save = useCallback(async (next: QuotaAlertSettings) => {
     const requestId = beginRequest(saveId);
     const previous = settings;

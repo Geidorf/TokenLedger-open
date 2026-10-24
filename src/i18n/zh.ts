@@ -667,6 +667,7 @@ export const zh = {
   'backup.preview.gatewayOtherMachine': '只能恢复到产生它们的那台电脑（换电脑时由原电脑继续统计与上传）',
   'backup.preview.none': '备份里没有',
   'backup.preview.rows': '共 {total} 行，新增 {added} 行，本机已有 {known} 行（跳过）',
+  'backup.preview.rowsSkipped': '；另有 {skipped} 行是原电脑还没上传云端的，留给原电脑上传，不在这里恢复',
   'backup.preview.items': '共 {total} 项，新增 {added}，与本机不同 {differs}',
   'backup.preview.needKeys': '这些供应商在本机还没有 API key，恢复后需要到「供应商」页补填：{ids}',
   'backup.status.new': '本机没有，将新增',

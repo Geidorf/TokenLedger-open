@@ -492,6 +492,9 @@ pub struct RowCounts {
     pub new: usize,
     /// Rows already here (the same `unique_key` or accounting identity).
     pub known: usize,
+    /// Rows another computer had not uploaded yet: that computer uploads
+    /// them; uploaded here they would replace its newer cloud totals.
+    pub skipped: usize,
     pub first: Option<String>,
     pub last: Option<String>,
 }
@@ -535,6 +538,69 @@ fn unique_key_index(columns: &[String]) -> Result<usize, String> {
         .iter()
         .position(|column| column == "unique_key")
         .ok_or_else(|| "备份里的账本缺少去重键。".to_string())
+}
+
+/// How ledger rows from another computer are restored. That computer's
+/// cloud totals are its own: an hour it uploaded is replaced by whatever this
+/// computer aggregates for it, so a row it had not uploaded yet would bring
+/// that hour back here partially and overwrite the newer total. Such rows
+/// are skipped; uploaded ones come in as they were, under the source
+/// computer's id even when the row had none.
+struct Provenance {
+    machine: Option<usize>,
+    sync_status: Option<usize>,
+    cloud_user: Option<usize>,
+    local: String,
+    /// The backup's computer when it is not this one.
+    foreign: Option<String>,
+}
+
+impl Provenance {
+    fn new(columns: &[String], bundle_machine: &str) -> Self {
+        let at = |name: &str| columns.iter().position(|column| column == name);
+        let local = crate::commands::local_machine_id();
+        Self {
+            machine: at("machine_id"),
+            sync_status: at("sync_status"),
+            cloud_user: at("cloud_user_id"),
+            foreign: (!bundle_machine.is_empty() && bundle_machine != local)
+                .then(|| bundle_machine.to_string()),
+            local,
+        }
+    }
+
+    /// The machine a row counts under, when it is not this computer.
+    fn foreign_machine(&self, row: &[Value]) -> Option<String> {
+        let own = self
+            .machine
+            .and_then(|at| row.get(at))
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty());
+        match own {
+            Some(id) if id != self.local => Some(id.to_string()),
+            Some(_) => None,
+            None => self.foreign.clone(),
+        }
+    }
+
+    fn pending(&self, row: &[Value]) -> bool {
+        let status = self
+            .sync_status
+            .and_then(|at| row.get(at))
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        let user = self
+            .cloud_user
+            .and_then(|at| row.get(at))
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty());
+        status == 0 || user.is_none()
+    }
+
+    /// Whether a row is another computer's and not uploaded yet.
+    fn skip(&self, row: &[Value]) -> bool {
+        self.foreign_machine(row).is_some() && self.pending(row)
+    }
 }
 
 /// The cumulative source a ledger row belongs to: its key before any
@@ -582,6 +648,7 @@ fn ledger_counts(
     db_path: &Path,
     table: &LedgerTable,
     cumulative: &LedgerTable,
+    bundle_machine: &str,
 ) -> Result<RowCounts, String> {
     let mut counts = RowCounts {
         total: table.rows.len(),
@@ -593,6 +660,7 @@ fn ledger_counts(
     let key = unique_key_index(&table.columns)?;
     let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
     let shared = shared_cumulative_sources(&conn, cumulative)?;
+    let provenance = Provenance::new(&table.columns, bundle_machine);
     let mut stmt = conn
         .prepare(&format!(
             "SELECT 1 FROM {LEDGER_TABLE} WHERE unique_key = ?1"
@@ -602,6 +670,10 @@ fn ledger_counts(
         let Some(Value::String(unique_key)) = row.get(key) else {
             continue;
         };
+        if provenance.skip(row) {
+            counts.skipped += 1;
+            continue;
+        }
         if shared.contains(source_key(unique_key))
             || stmt
                 .exists([unique_key])
@@ -610,7 +682,7 @@ fn ledger_counts(
             counts.known += 1;
         }
     }
-    counts.new = counts.total - counts.known;
+    counts.new = counts.total - counts.known - counts.skipped;
     if let Some(at) = table
         .columns
         .iter()
@@ -632,6 +704,7 @@ fn gateway_counts(gateway: &Gateway, records: &[LedgerRecord]) -> Result<RowCoun
         total: records.len(),
         new: records.len().saturating_sub(known),
         known,
+        skipped: 0,
         first: records.iter().map(|record| record.ts.clone()).min(),
         last: records.iter().map(|record| record.ts.clone()).max(),
     })
@@ -736,7 +809,12 @@ pub fn preview(
         app_version: bundle.app_version.clone(),
         machine: bundle.machine.clone(),
         same_machine: same_machine(bundle),
-        ledger: ledger_counts(&db_path, &bundle.ledger, &bundle.scan_cumulative)?,
+        ledger: ledger_counts(
+            &db_path,
+            &bundle.ledger,
+            &bundle.scan_cumulative,
+            &bundle.machine,
+        )?,
         gateway_requests_restorable: same_machine(bundle),
         gateway_requests: gateway_counts(gateway, &bundle.gateway_requests)?,
         providers,
@@ -919,13 +997,14 @@ fn restore_ledger(
     db_path: &Path,
     ledger: &LedgerTable,
     cumulative: &LedgerTable,
+    bundle_machine: &str,
 ) -> Result<usize, String> {
     let mut conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|error| format!("写入账本失败：{error}"))?;
     let shared = shared_cumulative_sources(&tx, cumulative)?;
-    let added = import_ledger(&tx, ledger, &shared)?;
+    let added = import_ledger(&tx, ledger, &shared, bundle_machine)?;
     import_cumulative(&tx, cumulative, &shared)?;
     tx.commit()
         .map_err(|error| format!("写入账本失败：{error}"))?;
@@ -936,7 +1015,9 @@ fn import_ledger(
     tx: &rusqlite::Transaction,
     table: &LedgerTable,
     shared: &BTreeSet<String>,
+    bundle_machine: &str,
 ) -> Result<usize, String> {
+    let provenance = Provenance::new(&table.columns, bundle_machine);
     if table.rows.is_empty() {
         return Ok(0);
     }
@@ -969,9 +1050,16 @@ fn import_ledger(
                     continue;
                 }
             }
+            if provenance.skip(row) {
+                continue;
+            }
+            let foreign = provenance.foreign_machine(row);
             let values: Vec<SqlValue> = picked
                 .iter()
-                .map(|(index, _)| row.get(*index).map_or(SqlValue::Null, json_to_sql))
+                .map(|(index, name)| match (&foreign, name.as_str()) {
+                    (Some(machine), "machine_id") => SqlValue::Text(machine.clone()),
+                    _ => row.get(*index).map_or(SqlValue::Null, json_to_sql),
+                })
                 .collect();
             match stmt.execute(params_from_iter(values)) {
                 Ok(changed) => added += changed,
@@ -1215,7 +1303,12 @@ pub fn apply(
     };
     let db_path = db::get_db_path(app);
     if sections.ledger {
-        result.ledger_added = restore_ledger(&db_path, &bundle.ledger, &bundle.scan_cumulative)?;
+        result.ledger_added = restore_ledger(
+            &db_path,
+            &bundle.ledger,
+            &bundle.scan_cumulative,
+            &bundle.machine,
+        )?;
     }
     if sections.gateway_requests && same_machine(bundle) {
         let created = bundle.created.clone();
@@ -1455,8 +1548,8 @@ pub async fn local_backup_apply(
             serde_json::json!({ "source": "local-backup" }),
         );
     }
-    if result.settings_restored {
-        // Open settings pages reload, so a later edit does not save the
+    if result.settings_restored || result.quota_alerts_restored {
+        // Open settings pages (quota alerts included) reload, so a later edit does not save the
         // pre-restore values back over the restored ones.
         use tauri::Emitter;
         let _ = app_handle.emit(
