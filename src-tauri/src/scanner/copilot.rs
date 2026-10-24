@@ -1,5 +1,5 @@
 use super::checkpoints::*;
-use super::gemini::{gemini_counter_value, gemini_timestamp};
+use super::gemini::gemini_timestamp;
 use super::helpers::*;
 use super::types::LogRecord;
 use serde_json::Value;
@@ -10,6 +10,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 pub(crate) const COPILOT_CLI_CHECKPOINT_SOURCE_KIND: &str = "copilot-cli-events-jsonl-v1";
+const COPILOT_MAX_SESSION_COUNTER: i64 = i64::MAX / 8;
 
 /// GitHub Copilot CLI keeps one event log per session at
 /// `<COPILOT_HOME or ~/.copilot>/session-state/<sessionId>/events.jsonl`.
@@ -243,15 +244,28 @@ fn copilot_shutdown_records(
 }
 
 /// All four counters are required; a malformed, fractional or negative one
-/// drops the model entry instead of booking a fabricated zero.
+/// drops the model entry instead of booking a fabricated zero. These are
+/// session totals over many calls, so no per-request cap applies; the bound
+/// only keeps later sums and differences clear of `i64` overflow.
 fn copilot_usage(usage: &Value) -> Option<CopilotUsage> {
-    let counter = |name: &str| usage.get(name).and_then(gemini_counter_value);
+    let counter = |name: &str| usage.get(name).and_then(copilot_counter_value);
     Some(CopilotUsage {
         input: counter("inputTokens")?,
         output: counter("outputTokens")?,
         cache_read: counter("cacheReadTokens")?,
         cache_write: counter("cacheWriteTokens")?,
     })
+}
+
+fn copilot_counter_value(value: &Value) -> Option<i64> {
+    let parsed = match value {
+        Value::Number(number) => number.as_i64(),
+        Value::String(raw) => raw.trim().parse::<i64>().ok(),
+        _ => None,
+    }?;
+    (0..=COPILOT_MAX_SESSION_COUNTER)
+        .contains(&parsed)
+        .then_some(parsed)
 }
 
 /// Copilot reports the prompt OpenAI-style, so `inputTokens` normally
@@ -377,6 +391,20 @@ mod scanner_copilot_tests {
         .join("\n");
         write_session(&root, "s", &content);
         assert!(scan(&root).is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn session_totals_above_a_per_request_cap_are_kept() {
+        let root = temp_root();
+        let event = json!({"type":"session.shutdown","id":"big","timestamp":"2026-10-21T10:00:00Z",
+            "data":{"modelMetrics":{"m":{"usage":{"inputTokens":3_500_000_000_i64,"outputTokens":2_000_000,
+                "cacheReadTokens":3_000_000_000_i64,"cacheWriteTokens":0}}}}});
+        write_session(&root, "s", &event.to_string());
+        let logs = scan(&root);
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].input_tokens, 500_000_000);
+        assert_eq!(logs[0].cached_tokens, 3_000_000_000);
         let _ = fs::remove_dir_all(root);
     }
 
