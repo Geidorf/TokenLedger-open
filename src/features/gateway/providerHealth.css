@@ -1,9 +1,9 @@
 /* 供应商健康度：徽标、24 小时趋势条与供应商详情里的统计区。只用设计令牌。 */
 .mw-health-chip i { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
 .mw-health-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 999px; background: var(--color-text-faint); }
-.mw-health-dot.is-success { background: var(--color-success); }
-.mw-health-dot.is-warning { background: var(--color-warning); }
-.mw-health-dot.is-danger { background: var(--color-danger); }
+.mw-health-dot.is-healthy { background: var(--color-success); }
+.mw-health-dot.is-degraded { background: var(--color-warning); }
+.mw-health-dot.is-down { background: var(--color-danger); }
 .mw-health-spark { flex: none; display: block; }
 .mw-health-spark .is-ok { fill: color-mix(in srgb, var(--color-success) 55%, transparent); }
 .mw-health-spark .is-empty { fill: var(--color-border-faint); }

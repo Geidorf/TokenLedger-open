@@ -50,7 +50,7 @@ describe('ProviderHealth', () => {
     const { rerender } = render(<HealthBadge health={degraded} />);
     expect(screen.getByText('降级')).toHaveAttribute('title', healthSummary(degraded));
     rerender(<HealthBadge health={degraded} compact />);
-    expect(screen.getByRole('img', { name: '健康度：降级' })).toHaveClass('is-warning');
+    expect(screen.getByRole('img', { name: '健康度：降级' })).toHaveClass('is-degraded');
     rerender(<HealthBadge health={undefined} />);
     expect(screen.queryByText('降级')).toBeNull();
   });

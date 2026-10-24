@@ -48,7 +48,8 @@ export function HealthBadge({ health, compact = false }: { health: ProviderHealt
   if (!health) return null;
   const label = HEALTH_LABEL[health.status];
   const title = healthSummary(health);
-  if (compact) return <span className={`mw-health-dot ${HEALTH_TONE[health.status]}`} role="img" aria-label={`健康度：${label}`} title={`${label} · ${title}`} />;
+  // Own class names: `.is-warning` on a member row already means 「冷却中」.
+  if (compact) return <span className={`mw-health-dot is-${health.status}`} role="img" aria-label={`健康度：${label}`} title={`${label} · ${title}`} />;
   return <span className={`mw-chip mw-health-chip ${HEALTH_TONE[health.status]}`} title={title}><i aria-hidden="true" />{label}</span>;
 }
 
