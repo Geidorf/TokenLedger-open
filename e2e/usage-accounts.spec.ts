@@ -71,6 +71,33 @@ test.describe('用量拆分：账号维度', () => {
   });
 });
 
+test.describe('用量明细：按账号筛选', () => {
+  test.use({ viewport: { width: 1280, height: 860 } });
+
+  test('热力图只看某账号时点日期，单日明细带上账号筛选，移除标签后不再带', async ({ page, ipc }) => {
+    await withAccounts(page, ipc);
+    const split = page.locator('section.usage-split');
+    await split.scrollIntoViewIfNeeded();
+    await split.getByRole('group', { name: '拆分维度' }).getByRole('button', { name: '账号' }).click();
+    await split.locator('.usage-split-pick').filter({ hasText: 'deepseek-main' }).click();
+    await expect(split.getByRole('status')).toContainText('只看账号 deepseek-main');
+
+    await page.getByRole('button', { name: /2026-07-14.*点击查看当日明细/ }).click();
+    const chips = page.getByRole('group', { name: '账号筛选' });
+    await expect(chips).toContainText('deepseek-main');
+    await expect(chips).toContainText('只含经网关记录的请求');
+    const queries = async () => (await ipc.calls('get_usage_details')).map(call => (call.args as { query: { providers?: string[] } }).query);
+    await expect.poll(async () => (await queries()).some(query => query.providers?.join() === 'deepseek-main')).toBe(true);
+
+    const before = (await ipc.calls('get_usage_details')).length;
+    await chips.getByRole('button', { name: '移除账号筛选：deepseek-main' }).click();
+    await expect(chips).toHaveCount(0);
+    await expect.poll(async () => (await ipc.calls('get_usage_details')).length).toBeGreaterThan(before);
+    const last = (await queries()).at(-1)!;
+    expect(last.providers ?? []).toEqual([]);
+  });
+});
+
 test.describe('请求展开行：Context 构成', () => {
   const context = { systemBytes: 8_000, toolsBytes: 24_000, historyBytes: 40_000, toolResultsBytes: 6_000, attachmentsBytes: 2_000, messages: 38, toolResults: 4, attachments: 1 };
 
