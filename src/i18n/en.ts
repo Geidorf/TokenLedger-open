@@ -516,6 +516,7 @@ export const en: Record<MessageKey, string> = {
   'usage.sub.requests': 'Requests',
   'usage.sub.sessions': 'Sessions',
   'usage.sub.allowances': 'Allowances',
+  'usage.sub.reports': 'Reports',
 
   'publish.off': 'When off, no routing data is uploaded and this computer’s cloud snapshot is deleted.',
   'publish.starting': 'Getting ready; syncing starts in a few seconds.',

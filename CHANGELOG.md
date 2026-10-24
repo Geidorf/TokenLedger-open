@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Weekly and monthly usage reports under Usage › Reports: totals, cache reuse, splits by Agent, model and account, change against the previous period, the most expensive sessions, quota readings and budget results. Reports export as a share image, a single-file HTML page or a PDF via print, and an optional reminder posts a system notification every Monday (or on the 1st) at 09:00.
 - Unsigned Linux x64 packages (AppImage, deb, rpm) built by `unsigned-linux-packages.yml`, with `tokenledger-cli` bundled. Every build installs the deb and runs the AppImage under Xvfb to check the main window, tray registration, start-at-login entry, XDG data folder, first scan and single-instance handoff.
 - Start at login on Linux: the toggle in Settings › Scan & startup writes an XDG autostart entry (for the AppImage it points at the image file and follows it when moved). Windows and macOS still show it as unsupported.
 - Command-line tool `tokenledger-cli`: today/week/month usage with Agent, model and account breakdowns, quota remaining, budget status, gateway state and recent routes, on-demand scans, and CSV/JSON ledger export. Every command has table output and `--json` for scripts and status bars; numbers come from the same Rust code as the desktop app. See `docs/cli.md`.
