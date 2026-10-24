@@ -230,15 +230,13 @@ private fun V2MeStandbyScreenGroup(
         V2MeDivider(palette)
         V2MeRow(palette, title = "刷新", value = ambientCadenceLabel(profile))
         V2MeDivider(palette)
+        // 只写全屏真正做的事：反色刷新由硬件识别决定（MainActivity 的 forceEInkRefresh），
+        // 不随外观或模式开启，所以这里不按 profile.ghostBusting 许诺消影。
         V2MeRow(
             palette,
             title = "防残影",
-            meta = if (eink) null else "省电、过热或关闭动画时停止位移",
-            value = when {
-                profile.ghostBusting -> "重绘前反色消影"
-                eink -> "静态绘制"
-                else -> "每分钟像素位移"
-            }
+            meta = if (eink) "识别为墨水屏的设备，进入或回到全屏时整屏刷新一次" else "省电、过热或关闭动画时停止位移",
+            value = if (eink) "静态绘制" else "每分钟像素位移"
         )
         V2MeDivider(palette)
         V2MeRow(palette, title = "常亮", meta = "全屏期间不熄屏，也不在后台刷新", value = "仅全屏时")
