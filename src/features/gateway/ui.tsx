@@ -6,6 +6,7 @@ import '../../prototypes/model-workspace-prototype.css';
 import './gateway.css';
 import { BrandIcon } from '../../prototypes/prototypeKit';
 import { presetFor } from './presets';
+import { t, useLang } from '../../i18n';
 
 /** 供应商品牌图标：供应商页与网关模型目录共用，认不出的供应商退回字母徽标。 */
 export function ProviderIcon({ provider, size }: { provider: { id: string; baseUrl: string; name: string }; size: number }) {
@@ -14,6 +15,7 @@ export function ProviderIcon({ provider, size }: { provider: { id: string; baseU
 }
 
 export function Sheet({ title, subtitle, icon, onClose, children }: { title: string; subtitle: string; icon: ReactNode; onClose: () => void; children: ReactNode }) {
+  useLang();
   const dialog = useRef<HTMLElement>(null);
   const titleId = useId();
   useModalFocus(dialog, onClose);
@@ -23,7 +25,7 @@ export function Sheet({ title, subtitle, icon, onClose, children }: { title: str
         <header className="mw-sheet-head">
           {icon}
           <div className="mw-card-title"><strong id={titleId}>{title}</strong><span>{subtitle}</span></div>
-          <button type="button" className="mw-icon-btn" aria-label="关闭" onClick={onClose}><X className="h-4 w-4" /></button>
+          <button type="button" className="mw-icon-btn" aria-label={t('ui.close')} onClick={onClose}><X className="h-4 w-4" /></button>
         </header>
         {children}
       </aside>
@@ -66,6 +68,7 @@ export function CopyButton({ text, label, children }: { text: string; label: str
  * goes straight to the clipboard, so secrets stay out of React state.
  */
 export function RevealCopyButton({ resolve, label, children }: { resolve: () => Promise<string>; label: string; children: ReactNode }) {
+  useLang();
   const [state, setState] = useState<'idle' | 'busy' | 'copied' | 'failed'>('idle');
   const [error, setError] = useState('');
   useEffect(() => {
@@ -77,10 +80,10 @@ export function RevealCopyButton({ resolve, label, children }: { resolve: () => 
     setState('busy');
     try {
       const ok = await writeClipboard(await resolve());
-      setError(ok ? '' : '无法写入剪贴板。');
+      setError(ok ? '' : t('ui.copy.clipboardFailed'));
       setState(ok ? 'copied' : 'failed');
     } catch (cause) {
-      setError(typeof cause === 'string' ? cause : cause instanceof Error ? cause.message : '读取失败，请重试。');
+      setError(typeof cause === 'string' ? cause : cause instanceof Error ? cause.message : t('ui.copy.readFailed'));
       setState('failed');
     }
   };
@@ -88,9 +91,9 @@ export function RevealCopyButton({ resolve, label, children }: { resolve: () => 
     <>
       <button type="button" className="mw-btn is-ghost" aria-label={label} title={label} disabled={state === 'busy'} onClick={() => { void copy(); }}>
         {state === 'copied' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        {state === 'copied' ? '已复制' : children}
+        {state === 'copied' ? t('ui.copy.copied') : children}
       </button>
-      <span className="mw-caption" role="status" aria-live="polite">{state === 'failed' ? `复制失败：${error}` : ''}</span>
+      <span className="mw-caption" role="status" aria-live="polite">{state === 'failed' ? t('ui.copy.failed', { error }) : ''}</span>
     </>
   );
 }

@@ -14,6 +14,7 @@
 
 import { GROUP_PREFIX, traceHeadline } from './helpers';
 import type { MemberTrace, RoutingFeedDecision, RoutingFeedRequest } from './types';
+import { t } from '../../i18n';
 
 /** How long a finished flow stays lit on the stage (12 s). */
 export const FLOW_LINGER_MS = 12_000;
@@ -220,7 +221,7 @@ function flowsFromExternal(snapshot: ExternalLiveSnapshot, now: number): SceneFl
       id: `ext:${route.id}`,
       source: 'external',
       agent: agentName(route.agent),
-      via: route.model || '外部网关',
+      via: route.model || t('stage.source.external'),
       hops,
       phase: hops.some((hop) => hop.outcome === 'ok') ? 'done' : 'failed',
       at,
@@ -235,7 +236,7 @@ function flowsFromExternal(snapshot: ExternalLiveSnapshot, now: number): SceneFl
       id: `ext:${request.id}`,
       source: 'external',
       agent: agentName(request.agent),
-      via: request.model || '外部网关',
+      via: request.model || t('stage.source.external'),
       hops: target ? [{ target, outcome: 'pending' as const }] : [],
       phase: 'inflight' as const,
       at,
@@ -260,12 +261,12 @@ export function buildRoutingScene(input: SceneInput): RoutingScene {
   if (input.gateway) {
     const { running, readError } = input.gateway;
     sources.push(readError
-      ? { id: 'tokenledger', reachable: false, note: `读取网关路由记录失败：${readError}`, readError: true }
-      : { id: 'tokenledger', reachable: running, note: running ? undefined : '网关未运行' });
+      ? { id: 'tokenledger', reachable: false, note: t('scene.readError', { error: readError }), readError: true }
+      : { id: 'tokenledger', reachable: running, note: running ? undefined : t('scene.gatewayStopped') });
     flows = flows.concat(flowsFromGateway(input.gateway, now));
   }
   if (input.external) {
-    sources.push({ id: 'external', reachable: input.external.reachable, note: input.external.reachable ? undefined : '外部网关未运行' });
+    sources.push({ id: 'external', reachable: input.external.reachable, note: input.external.reachable ? undefined : t('scene.externalStopped') });
     // recent comes from the external gateway's own log and is returned even when its
     // gateway is down; in-flight requests only exist while it runs.
     flows = flows.concat(flowsFromExternal(input.external.reachable ? input.external : { ...input.external, active: [] }, now));
@@ -388,22 +389,25 @@ export function fitLabel(label: string, max: number): string {
 
 /** One sentence for the caption under the stage (aria-live). */
 export function describeFlow(flow: SceneFlow): string {
-  const who = flow.agent === UNKNOWN_AGENT ? '请求' : `${flow.agent} 的请求`;
+  const who = flow.agent === UNKNOWN_AGENT ? t('flow.who.unknown') : t('flow.who.agent', { agent: flow.agent });
+  const via = flow.via;
   if (flow.phase === 'inflight') {
     const target = flow.hops[0]?.target;
-    const wait = flow.waitingOn === 'slot' ? '排队等空位' : flow.waitingOn === 'rpm' ? '等速率限制' : flow.waitingOn === 'upstream' ? '等上游回复' : '处理中';
-    return target ? `${who}正发往 ${target}，${wait}` : `${who}正在选路，${wait}`;
+    const wait = t(flow.waitingOn === 'slot' ? 'flow.wait.slot' : flow.waitingOn === 'rpm' ? 'flow.wait.rpm' : flow.waitingOn === 'upstream' ? 'flow.wait.upstream' : 'flow.wait.other');
+    return target ? t('flow.inflight.target', { who, target, wait }) : t('flow.inflight.routing', { who, wait });
   }
   const failedHops = flow.hops.filter((hop) => hop.outcome !== 'ok');
   const last = flow.hops[flow.hops.length - 1];
   const switched = failedHops.length > 0 && flow.phase !== 'failed'
-    ? `${failedHops.map((hop) => `${hop.target}${hop.status ? ` 返回 ${hop.status}` : ' 失败'}`).join('，')}，已切换到 ${last.target}`
+    ? t('flow.switched', {
+      hops: failedHops.map((hop) => (hop.status ? t('flow.hop.status', { target: hop.target, status: hop.status }) : t('flow.hop.failed', { target: hop.target }))).join(t('flow.hop.separator')),
+      target: last.target,
+    })
     : null;
   if (flow.phase === 'failed') {
-    return flow.hops.length > 1
-      ? `${who}（${flow.via}）依次试了 ${flow.hops.length} 个成员都没成功`
-      : `${who}（${flow.via}）失败${last?.status ? `：${last.status}` : ''}`;
+    if (flow.hops.length > 1) return t('flow.failed.all', { who, via, count: flow.hops.length });
+    return last?.status ? t('flow.failed.status', { who, via, status: last.status }) : t('flow.failed', { who, via });
   }
-  if (flow.phase === 'routed') return switched ? `${who}（${flow.via}）：${switched}，已接通` : `${who}（${flow.via}）已接通 ${last.target}`;
-  return switched ? `${who}：${switched}，已完成` : `${who}由 ${last.target} 完成`;
+  if (flow.phase === 'routed') return switched ? t('flow.routed.switched', { who, via, switched }) : t('flow.routed', { who, via, target: last.target });
+  return switched ? t('flow.done.switched', { who, switched }) : t('flow.done', { who, target: last.target });
 }

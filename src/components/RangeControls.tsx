@@ -6,13 +6,14 @@ import type { CustomDateRange, RangeKey } from '../types';
 import { customRangeSpanDays, isoCalendarDayValue, MAX_CUSTOM_RANGE_DAYS } from '../utils/frontendContracts';
 import { formatCustomRangeLabel } from '../utils/rangeDisplay';
 import { FOCUSABLE_SELECTOR, focusAfterPopoverTrigger, useAnchoredPopover } from './anchoredPopover';
+import { t, useLang, type MessageKey } from '../i18n';
 
-const RANGE_OPTIONS: Array<[RangeKey, string]> = [
-  ['today', '今日'],
-  ['week', '本周'],
-  ['month', '本月'],
-  ['year', '今年'],
-  ['all', '总计'],
+const RANGE_OPTIONS: Array<[RangeKey, MessageKey]> = [
+  ['today', 'range.today'],
+  ['week', 'range.week'],
+  ['month', 'range.month'],
+  ['year', 'range.year'],
+  ['all', 'range.all'],
 ];
 
 const defaultNow = () => new Date();
@@ -37,17 +38,17 @@ export interface CustomRangePreset {
 export const CUSTOM_RANGE_PRESETS: ReadonlyArray<CustomRangePreset> = [
   {
     id: 'yesterday',
-    label: '昨天',
+    get label() { return t('range.preset.yesterday'); },
     resolve: (today) => {
       const day = isoDay(shiftDays(today, -1));
       return { start: day, end: day };
     },
   },
-  { id: 'last-7-days', label: '最近 7 天', resolve: (today) => ({ start: isoDay(shiftDays(today, -6)), end: isoDay(today) }) },
-  { id: 'last-30-days', label: '最近 30 天', resolve: (today) => ({ start: isoDay(shiftDays(today, -29)), end: isoDay(today) }) },
+  { id: 'last-7-days', get label() { return t('range.preset.last7'); }, resolve: (today) => ({ start: isoDay(shiftDays(today, -6)), end: isoDay(today) }) },
+  { id: 'last-30-days', get label() { return t('range.preset.last30'); }, resolve: (today) => ({ start: isoDay(shiftDays(today, -29)), end: isoDay(today) }) },
   {
     id: 'last-week',
-    label: '上周',
+    get label() { return t('range.preset.lastWeek'); },
     resolve: (today) => {
       const monday = shiftDays(today, -((today.getDay() + 6) % 7));
       const start = shiftDays(monday, -7);
@@ -56,7 +57,7 @@ export const CUSTOM_RANGE_PRESETS: ReadonlyArray<CustomRangePreset> = [
   },
   {
     id: 'last-month',
-    label: '上月',
+    get label() { return t('range.preset.lastMonth'); },
     resolve: (today) => ({
       start: isoDay(new Date(today.getFullYear(), today.getMonth() - 1, 1)),
       end: isoDay(new Date(today.getFullYear(), today.getMonth(), 0)),
@@ -64,7 +65,7 @@ export const CUSTOM_RANGE_PRESETS: ReadonlyArray<CustomRangePreset> = [
   },
   {
     id: 'this-quarter',
-    label: '本季度',
+    get label() { return t('range.preset.thisQuarter'); },
     resolve: (today) => ({
       start: isoDay(new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1)),
       end: isoDay(today),
@@ -72,7 +73,7 @@ export const CUSTOM_RANGE_PRESETS: ReadonlyArray<CustomRangePreset> = [
   },
   {
     id: 'last-quarter',
-    label: '上季度',
+    get label() { return t('range.preset.lastQuarter'); },
     resolve: (today) => {
       const quarterStart = Math.floor(today.getMonth() / 3) * 3;
       return {
@@ -85,12 +86,12 @@ export const CUSTOM_RANGE_PRESETS: ReadonlyArray<CustomRangePreset> = [
 
 /** 返回给用户看的校验错误；通过时返回 null。规则与 `normalizeStatsQuery` / Rust 一致。 */
 export function validateCustomRangeInput(start: string, end: string, todayIso: string): string | null {
-  if (!start || !end) return '请选择开始和结束日期';
-  if (isoCalendarDayValue(start) === null || isoCalendarDayValue(end) === null) return '日期格式无效，请使用 YYYY-MM-DD';
-  if (start > todayIso) return '开始日期不能晚于今天';
+  if (!start || !end) return t('range.error.missing');
+  if (isoCalendarDayValue(start) === null || isoCalendarDayValue(end) === null) return t('range.error.format');
+  if (start > todayIso) return t('range.error.future');
   const span = customRangeSpanDays(start, end);
-  if (span === null) return '开始日期不能晚于结束日期';
-  if (span > MAX_CUSTOM_RANGE_DAYS) return `最多支持 ${MAX_CUSTOM_RANGE_DAYS} 天（约两年）`;
+  if (span === null) return t('range.error.order');
+  if (span > MAX_CUSTOM_RANGE_DAYS) return t('range.error.tooLong', { days: MAX_CUSTOM_RANGE_DAYS });
   return null;
 }
 
@@ -105,6 +106,7 @@ interface RangeControlProps {
 
 /** 全局统计时间范围：五个预设 + 「自定义」日期弹层。顶栏（活动明细）与用量工具行共用。 */
 export function RangeControl({ range, customRange = null, onRangeChange, now = defaultNow }: RangeControlProps) {
+  useLang();
   const [customMenuOpen, setCustomMenuOpen] = useState(false);
   const [draftStart, setDraftStart] = useState('');
   const [draftEnd, setDraftEnd] = useState('');
@@ -114,7 +116,7 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
   const customButtonRef = useRef<HTMLButtonElement>(null);
   const customStartRef = useRef<HTMLInputElement>(null);
   const todayIso = isoDay(now());
-  const customRangeLabel = customRange ? formatCustomRangeLabel(customRange.start, customRange.end) : '自定义';
+  const customRangeLabel = customRange ? formatCustomRangeLabel(customRange.start, customRange.end) : t('range.custom');
   // One sliding selection pill per segmented group (T10.150); aria-pressed stays the source of truth.
   const rangeIndicatorRef = useSegmentedIndicator<HTMLDivElement>();
   const customPopoverStyle = useAnchoredPopover(customMenuOpen, customButtonRef, customPopoverRef, 10, 344);
@@ -200,7 +202,7 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
   };
 
   return (
-    <div ref={rangeIndicatorRef} className="segmented range-control tl-seg" role="group" aria-label="统计时间范围">
+    <div ref={rangeIndicatorRef} className="segmented range-control tl-seg" role="group" data-range-control aria-label={t('range.groupAria')}>
       {RANGE_OPTIONS.map(([key, label]) => (
         <button
           key={key}
@@ -208,7 +210,7 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
           aria-pressed={range === key}
           onClick={() => onRangeChange(key)}
         >
-          {label}
+          {t(label)}
         </button>
       ))}
       <div className="custom-range-menu" ref={customMenuRef}>
@@ -219,12 +221,12 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
           aria-pressed={range === 'custom'}
           aria-haspopup="dialog"
           aria-expanded={customMenuOpen}
-          aria-label={range === 'custom' && customRange ? `自定义范围：${customRangeLabel}` : '自定义日期范围'}
-          title="按指定日期或时间段复盘"
+          aria-label={range === 'custom' && customRange ? t('range.customAria', { label: customRangeLabel }) : t('range.customDialog')}
+          title={t('range.customTitle')}
           onClick={toggleCustomMenu}
         >
           <Calendar className="h-3.5 w-3.5" />
-          <span>{range === 'custom' && customRange ? customRangeLabel : '自定义'}</span>
+          <span>{range === 'custom' && customRange ? customRangeLabel : t('range.custom')}</span>
         </button>
         {customMenuOpen && createPortal(
           <div
@@ -232,12 +234,12 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
             data-header-popover
             ref={customPopoverRef}
             role="dialog"
-            aria-label="自定义日期范围"
+            aria-label={t('range.customDialog')}
             style={customPopoverStyle}
             onKeyDown={handleCustomMenuKeyDown}
           >
-            <div className="theme-menu-heading">自定义日期范围</div>
-            <div className="custom-range-presets" role="group" aria-label="常用区间">
+            <div className="theme-menu-heading">{t('range.customDialog')}</div>
+            <div className="custom-range-presets" role="group" aria-label={t('range.presetsAria')}>
               {CUSTOM_RANGE_PRESETS.map((preset) => (
                 <button
                   key={preset.id}
@@ -251,7 +253,7 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
             </div>
             <div className="custom-range-fields">
               <label className="custom-range-field">
-                <span>开始日期</span>
+                <span>{t('range.start')}</span>
                 <input
                   ref={customStartRef}
                   type="date"
@@ -261,7 +263,7 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
                 />
               </label>
               <label className="custom-range-field">
-                <span>结束日期</span>
+                <span>{t('range.end')}</span>
                 <input
                   type="date"
                   value={draftEnd}
@@ -273,8 +275,8 @@ export function RangeControl({ range, customRange = null, onRangeChange, now = d
             </div>
             {customError && <p className="custom-range-error" role="alert">{customError}</p>}
             <div className="custom-range-actions">
-              <span className="custom-range-hint">含首尾两天，最长 {MAX_CUSTOM_RANGE_DAYS} 天；自动与紧邻的上一段等长区间对比。</span>
-              <button type="button" className="custom-range-apply" onClick={submitCustomDraft}>应用</button>
+              <span className="custom-range-hint">{t('range.hint', { days: MAX_CUSTOM_RANGE_DAYS })}</span>
+              <button type="button" className="custom-range-apply" onClick={submitCustomDraft}>{t('range.apply')}</button>
             </div>
           </div>,
           document.body,
@@ -292,28 +294,29 @@ interface TokenModeToggleProps {
 
 /** 概览指标的「有效 / 含缓存」口径；趋势与专属分析始终用有效 Token。 */
 export function TokenModeToggle({ showTotalTokens, onToggleTokenMode, cachedTokens }: TokenModeToggleProps) {
+  useLang();
   const tokenModeIndicatorRef = useSegmentedIndicator<HTMLDivElement>();
   return (
-    <div ref={tokenModeIndicatorRef} className="segmented tl-seg" role="group" aria-label="概览 Token 口径">
+    <div ref={tokenModeIndicatorRef} className="segmented tl-seg" role="group" aria-label={t('tokenMode.aria')}>
       <button
         className={!showTotalTokens ? 'active' : ''}
         aria-pressed={!showTotalTokens}
         onClick={() => showTotalTokens && onToggleTokenMode()}
         title={cachedTokens === 0
-          ? '当前周期未记录到缓存 Token；概览指标使用输入 + 输出 Token'
-          : '概览指标使用输入 + 输出 Token；趋势与专属分析始终使用此有效口径'}
+          ? t('tokenMode.effectiveNoCache')
+          : t('tokenMode.effectiveTitle')}
       >
-        概览有效
+        {t('tokenMode.effective')}
       </button>
       <button
         className={showTotalTokens ? 'active' : ''}
         aria-pressed={showTotalTokens}
         onClick={() => !showTotalTokens && onToggleTokenMode()}
         title={cachedTokens === 0
-          ? '当前周期未记录到缓存 Token，概览有效与含缓存数值相同'
-          : '仅概览指标加入缓存量；趋势与专属分析仍保持有效 Token 口径'}
+          ? t('tokenMode.totalNoCache')
+          : t('tokenMode.totalTitle')}
       >
-        概览含缓存
+        {t('tokenMode.total')}
       </button>
     </div>
   );
@@ -327,14 +330,15 @@ interface CloudDeviceSelectProps {
 
 /** 云端汇总下的设备筛选；本机视图没有这一项。 */
 export function CloudDeviceSelect({ deviceFilter, deviceList, onDeviceFilterChange }: CloudDeviceSelectProps) {
+  useLang();
   return (
     <select
       className="control-select"
-      aria-label="云端设备筛选"
+      aria-label={t('cloudDevice.aria')}
       value={deviceFilter}
       onChange={(event) => onDeviceFilterChange(event.target.value)}
     >
-      <option value="all_cloud">全部设备</option>
+      <option value="all_cloud">{t('cloudDevice.all')}</option>
       {deviceList.map((machine) => (
         <option key={machine} value={machine}>
           {machine}
@@ -345,15 +349,16 @@ export function CloudDeviceSelect({ deviceFilter, deviceList, onDeviceFilterChan
 }
 
 export function ShareCardButton({ onOpenShareCard }: { onOpenShareCard: () => void }) {
+  useLang();
   return (
     <button
       className="icon-command share-card-toggle"
-      title="生成并分享数据战报图片"
-      aria-label="生成并分享数据战报图片"
+      title={t('shareCard.title')}
+      aria-label={t('shareCard.title')}
       onClick={onOpenShareCard}
     >
       <Share2 className="h-4 w-4" />
-      <span>战报</span>
+      <span>{t('shareCard.label')}</span>
     </button>
   );
 }
