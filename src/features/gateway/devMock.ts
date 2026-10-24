@@ -1,6 +1,6 @@
 // In-memory gateway backend for the browser dev preview only. Keys are
 // tracked as a boolean, matching the real backend's write-only contract.
-import type { AgentInspection, AgentPreview, CodexInspection, LedgerRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
+import type { AgentInspection, AgentPreview, CodexInspection, HealthBucket, HealthReport, HealthStats, LedgerRecord, ProviderView, RouteDecision, RoutingGroup } from './types';
 
 const PORT = 3462;
 const minutesAgo = (minutes: number) => new Date(Date.UTC(2026, 9, 3, 16, 30 - minutes, 12)).toISOString();
@@ -165,6 +165,68 @@ export function resetGatewayMockToFresh() {
   decisions = [];
 }
 
+const NOW = Date.UTC(2026, 9, 3, 16, 30, 12);
+const emptyStats = (): HealthStats => ({ requests: 0, ok: 0, successRate: null, p50Ms: null, p95Ms: null, rateLimited: 0, skipped: 0, codes: [], statuses: [], lastOkAt: null, lastFailureAt: null });
+
+function mockBuckets(base: number, failEvery: number, p95: number): HealthBucket[] {
+  const firstHour = Math.floor(NOW / 3_600_000) * 3_600_000 - 23 * 3_600_000;
+  return Array.from({ length: 24 }, (_, hour) => {
+    const requests = base === 0 ? 0 : base + ((hour * 7) % 11);
+    const failed = failEvery > 0 && hour % failEvery === 0 ? Math.max(1, Math.round(requests / 4)) : 0;
+    return { start: new Date(firstHour + hour * 3_600_000).toISOString(), requests, failed, p95Ms: requests > failed ? p95 + ((hour * 13) % 9) * 120 : null };
+  });
+}
+
+/** Deterministic health for the preview: one healthy, one degraded, one never-used provider. */
+function mockHealth(): HealthReport {
+  const shapes: Record<string, { status: HealthReport['providers'][number]['status']; base: number; failEvery: number; p50: number; p95: number }> = {
+    openai: { status: 'healthy', base: 18, failEvery: 0, p50: 1840, p95: 4210 },
+    deepseek: { status: 'degraded', base: 12, failEvery: 3, p50: 2260, p95: 7380 },
+  };
+  const report = providers.map((provider) => {
+    const shape = shapes[provider.id];
+    if (!shape) {
+      const stats = emptyStats();
+      if (provider.enabled && !provider.hasKey && provider.authMode !== 'none') {
+        stats.skipped = 2;
+        stats.codes = [{ code: 'key_missing', count: 2 }];
+        stats.statuses = [{ status: 401, count: 2 }];
+        stats.lastFailureAt = minutesAgo(12);
+      }
+      const down = stats.skipped > 0;
+      return {
+        provider: provider.id, status: down ? 'down' as const : 'idle' as const, reasons: down ? ['key_missing'] : [], stats, models: [], buckets: mockBuckets(0, 0, 0),
+        recentFailures: down ? [{ ts: minutesAgo(12), model: provider.models[0] ?? '', status: 401, code: 'key_missing', error: `供应商「${provider.name}」还没有设置 API key。` }] : [],
+        cooling: [],
+      };
+    }
+    const buckets = mockBuckets(shape.base, shape.failEvery, shape.p95);
+    const requests = buckets.reduce((sum, bucket) => sum + bucket.requests, 0);
+    const failed = buckets.reduce((sum, bucket) => sum + bucket.failed, 0);
+    const rateLimited = Math.ceil(failed / 2);
+    const stats: HealthStats = {
+      requests, ok: requests - failed, successRate: requests ? (requests - failed) / requests : null, p50Ms: shape.p50, p95Ms: shape.p95, rateLimited, skipped: 0,
+      codes: failed ? [{ code: 'rate_limited', count: rateLimited }, { code: 'upstream_failed', count: failed - rateLimited }] : [],
+      statuses: failed ? [{ status: 429, count: rateLimited }, { status: 503, count: failed - rateLimited }] : [],
+      lastOkAt: minutesAgo(1), lastFailureAt: failed ? minutesAgo(7) : null,
+    };
+    const degraded = shape.status === 'degraded';
+    return {
+      provider: provider.id, status: shape.status, reasons: degraded ? ['cooling_down', 'rate_limited'] : [], stats,
+      models: provider.models.map((model, index) => ({ model, status: index === 0 ? shape.status : 'healthy' as const, stats: index === 0 ? stats : { ...emptyStats(), requests: 6, ok: 6, successRate: 1, p50Ms: shape.p50 + 900, p95Ms: shape.p95 + 1200, lastOkAt: minutesAgo(9) } })),
+      buckets,
+      recentFailures: degraded ? [
+        { ts: minutesAgo(7), model: provider.models[0], status: 429, code: 'rate_limited', error: '上游返回 429 Too Many Requests：Rate limit reached, retry after 20s' },
+        { ts: minutesAgo(46), model: provider.models[0], status: 503, code: 'upstream_failed', error: '上游返回 503 Service Unavailable：server overloaded' },
+      ] : [],
+      cooling: degraded ? [{ member: `${provider.id}/${provider.models[0]}`, remainingSecs: 42, failures: 2 }] : [],
+    };
+  });
+  const rank = { down: 0, degraded: 1, healthy: 2, idle: 3 };
+  report.sort((a, b) => rank[a.status] - rank[b.status] || a.provider.localeCompare(b.provider));
+  return { generatedAt: new Date(NOW).toISOString(), windowHours: 24, providers: report };
+}
+
 /** Returns undefined when the command is not a gateway command. */
 export function handleGatewayMock(cmd: string, payload: Record<string, unknown>): unknown {
   switch (cmd) {
@@ -216,6 +278,8 @@ export function handleGatewayMock(cmd: string, payload: Record<string, unknown>)
       return decisions;
     case 'gateway_routing_cooldowns':
       return [];
+    case 'gateway_provider_health':
+      return mockHealth();
     case 'gateway_routing_feed': {
       const running = providers.some((provider) => provider.enabled);
       if (!running) return { running, decisions: [], requests: [] };

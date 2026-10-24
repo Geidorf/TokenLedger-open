@@ -17,6 +17,7 @@ const sqlNames = [
   'quota_snapshot_v3_regression.sql', 'quota_recovery_regression.sql',
   'quota_snapshot_capacity_regression.sql', 'quota_balance_reason_regression.sql',
   'gateway_aggregate_provenance_regression.sql', 'routing_snapshot_regression.sql',
+  'budget_snapshot_regression.sql',
   'cloud_heatmap_metrics_activity_rhythm_regression.sql', 'release_readiness_regression.sql',
 ];
 const sql = new Map(sqlNames.map(name => [name, fs.readFileSync(path.join(root, 'supabase/tests', name), 'utf8')]));

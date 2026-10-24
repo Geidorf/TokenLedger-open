@@ -1,5 +1,5 @@
-import { useId, useMemo, useState } from 'react';
-import { Bell, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { Bell, Pencil, Plus, Smartphone, Trash2, Wallet } from 'lucide-react';
 import {
   BUDGET_METRICS,
   BUDGET_METRIC_LABELS,
@@ -11,6 +11,7 @@ import {
   EMPTY_BUDGET_CHOICES,
   MAX_BUDGET_RULES,
   newBudgetRuleId,
+  OFF_PHONE_SYNC,
   useBudgetSettings,
   useBudgetStatus,
   type BudgetMetric,
@@ -18,6 +19,7 @@ import {
   type BudgetRule,
   type BudgetScopeKind,
   type BudgetStatus,
+  type PhoneSyncStatus,
 } from '../../hooks/useBudget';
 import { formatEstimatedUsd, formatTokens } from '../../utils/format';
 import { toolDisplayName } from '../../utils/toolDisplayName';
@@ -56,6 +58,26 @@ export function budgetScopeName(rule: Pick<BudgetRule, 'scopeKind' | 'scopeId'>)
   if (rule.scopeKind === 'all') return BUDGET_SCOPE_LABELS.all;
   const name = rule.scopeKind === 'tool' ? toolDisplayName(rule.scopeId) : rule.scopeId;
   return `${BUDGET_SCOPE_LABELS[rule.scopeKind]} · ${name}`;
+}
+
+/** 「同步到手机」开关下面的说明：开着时说清现在有没有送到云端。 */
+export function phoneSyncHint(enabled: boolean, status: PhoneSyncStatus): string {
+  const base = '手机端读到接近或超出时推本地通知。只上传范围名、周期和已用百分比，不上传金额与上限。';
+  if (!enabled) return base;
+  switch (status.state) {
+    case 'ok':
+      return status.lastPublishedAt
+        ? `已同步，最近一次 ${new Date(status.lastPublishedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}。`
+        : '已同步。';
+    case 'signed-out':
+      return '需要先在「云同步」登录，手机用同一账号登录后才能收到。';
+    case 'not-deployed':
+      return '云端尚未部署预算同步，部署后自动开始。';
+    case 'error':
+      return `同步失败：${status.error ?? '未知原因'}，稍后自动重试。`;
+    default:
+      return '正在准备同步…';
+  }
 }
 
 export function budgetRuleTitle(rule: BudgetRule): string {
@@ -102,7 +124,14 @@ function parseLimit(metric: BudgetMetric, raw: string): number | null {
 export function BudgetSection() {
   useLang();
   const { settings, loaded, saving, error, save } = useBudgetSettings();
-  const { report, error: statusError } = useBudgetStatus(settings);
+  const { report, error: statusError, reload } = useBudgetStatus(settings);
+  const phoneState = report?.phoneSync.state ?? 'off';
+  // 打开同步后发布在后台进行，几秒后再读一次状态，不让说明停在「正在准备」。
+  useEffect(() => {
+    if (!settings.syncToPhone || phoneState !== 'off') return undefined;
+    const timer = setTimeout(reload, 3000);
+    return () => clearTimeout(timer);
+  }, [settings.syncToPhone, phoneState, reload]);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [formError, setFormError] = useState('');
   const listId = useId();
@@ -173,6 +202,15 @@ export function BudgetSection() {
             disabled={disabled}
             busy={saving}
             onChange={(notify) => void save({ ...settings, notify })}
+          />
+          <SettingsToggleRow
+            label="同步到手机"
+            hint={phoneSyncHint(settings.syncToPhone, report?.phoneSync ?? OFF_PHONE_SYNC)}
+            icon={Smartphone}
+            checked={settings.syncToPhone}
+            disabled={disabled}
+            busy={saving}
+            onChange={(syncToPhone) => void save({ ...settings, syncToPhone })}
           />
           {error && <p className="settings-error" role="alert">{error}</p>}
         </SettingsGroup>
