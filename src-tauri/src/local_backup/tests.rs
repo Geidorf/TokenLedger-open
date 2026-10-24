@@ -189,6 +189,7 @@ fn restore_merges_rows_by_unique_key_and_adds_setup() {
     budget::save_settings(
         old.app.app_data_dir(),
         &BudgetSettings {
+            sync_to_phone: false,
             notify: true,
             rules: vec![budget_rule("daily", 5.0)],
         },
@@ -265,6 +266,7 @@ fn conflicts_keep_local_unless_the_backup_should_win() {
     budget::save_settings(
         old.app.app_data_dir(),
         &BudgetSettings {
+            sync_to_phone: false,
             notify: false,
             rules: vec![budget_rule("daily", 9.0)],
         },
@@ -285,6 +287,7 @@ fn conflicts_keep_local_unless_the_backup_should_win() {
     budget::save_settings(
         new.app.app_data_dir(),
         &BudgetSettings {
+            sync_to_phone: false,
             notify: true,
             rules: vec![budget_rule("daily", 3.0)],
         },
