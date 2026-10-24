@@ -31,6 +31,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.jeidorf.tokenledger.mobile.toolChartSlot
+import com.jeidorf.tokenledger.mobile.ui.sources.V2SourceTile
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -59,6 +61,7 @@ import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
 import com.jeidorf.tokenledger.mobile.localizedDisplayName
 import com.jeidorf.tokenledger.mobile.localizedWindowLabel
+import com.jeidorf.tokenledger.mobile.quotaProviderCanonicalName
 import com.jeidorf.tokenledger.mobile.quotaCacheTimestamp
 import com.jeidorf.tokenledger.mobile.quotaCardPresentation
 import com.jeidorf.tokenledger.mobile.quotaFullTimestamp
@@ -129,6 +132,11 @@ internal fun V2ProviderCard(
             }
         } else {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                // 图块按规范名取字与配色（Codex → Cd），和来源页同一工具一致；显示名带“订阅额度”等后缀、
+                // 来源 ID 带连字符（codex-app-server → CA），都不适合取字。
+                val tileName = quotaProviderCanonicalName(provider.providerId) ?: providerName
+                V2SourceTile(palette, tileName, palette.tokens.chartSlot(toolChartSlot(tileName)))
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         providerName, color = palette.text, style = LedgerType.titleM,
@@ -269,6 +277,19 @@ internal fun V2ProviderWindowRow(
         "${if (value == null) "上次记录重置" else "重置"} ${v2RelativeReset(window.resetsAt, LocalLedgerNow.current())}"
     val severity = (value as? QuotaDisplayValue.Progress)
         ?.let { quotaSeverityForFraction(v2QuotaRemainingFraction(it)) }
+    val now = LocalLedgerNow.current()
+    val okProgress = (value as? QuotaDisplayValue.Progress)
+        ?.takeIf { presentation.status == QuotaWindowStatus.Ok }
+    val remainingFraction = okProgress?.let(::v2QuotaRemainingFraction)
+    // experimental 来源的窗口时长或重置时间由推断得到，匀速线不画（与桌面速度规则同一资格）。
+    // 用尽预测按 GLB-11 / T10.172 Q5 待桌面稳定一个版本后再移植，这里只画按时间的匀速参考线。
+    val trustedTimeline = quotaCapabilityTrustsTimeline(provider.capability)
+    val pace = okProgress?.takeIf { trustedTimeline }
+        ?.let { quotaPaceRemainingFraction(window.windowMinutes, window.resetsAt, now) }
+    // 匀速线只画在画布上，读屏要靠这里的文字拿到同样的比较（父级 clearAndSetSemantics 会吞掉子节点语义）。
+    val paceNote = if (remainingFraction != null && pace != null) {
+        quotaPaceAccessibilityNote(remainingFraction, pace)
+    } else null
     val statusColor = when {
         presentation.status == QuotaWindowStatus.Stale ||
             presentation.status == QuotaWindowStatus.AuthRequired -> palette.amber
@@ -286,7 +307,7 @@ internal fun V2ProviderWindowRow(
                     provider.localizedDisplayName(), name, presentation.status.localizedLabel(),
                     quotaValueLabel(value)?.let { label -> severity?.let { "$label（${it.label}）" } ?: label },
                     resetText, quotaFullTimestamp(window.observedAt)
-                )
+                ) + paceNote?.let { "，$it" }.orEmpty()
             },
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -319,7 +340,8 @@ internal fun V2ProviderWindowRow(
             V2QuotaProgressBar(
                 palette = palette,
                 fraction = v2QuotaRemainingFraction(value),
-                degraded = presentation.status != QuotaWindowStatus.Ok
+                degraded = presentation.status != QuotaWindowStatus.Ok,
+                pace = pace
             )
         }
 

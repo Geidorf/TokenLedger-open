@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -38,6 +39,8 @@ import com.jeidorf.tokenledger.mobile.detailRequestCountLabel
 import com.jeidorf.tokenledger.mobile.displayedTokenCount
 import com.jeidorf.tokenledger.mobile.shortTime
 import com.jeidorf.tokenledger.mobile.ui.foundation.MobileV2Palette
+import com.jeidorf.tokenledger.mobile.ui.sources.V2SourceTile
+import com.jeidorf.tokenledger.mobile.toolChartSlot
 import com.jeidorf.tokenledger.mobile.ui.foundation.V2Card
 import com.jeidorf.tokenledger.mobile.ui.foundation.v2FormatMoney
 import com.jeidorf.tokenledger.mobile.v2FormatTokens
@@ -134,15 +137,15 @@ internal fun V2DetailRow(
                     HorizontalDivider(color = palette.divider)
                     Text("Token 构成:", color = palette.text, fontSize = LedgerFont.label, fontWeight = FontWeight.Medium)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("输入 Token:", color = palette.blue, fontSize = LedgerFont.caption)
+                        Text("输入 Token:", color = palette.muted, fontSize = LedgerFont.caption)
                         Text(v2FormatTokens(detail.inputTokens), color = palette.text, fontSize = LedgerFont.caption)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("输出 Token:", color = palette.green, fontSize = LedgerFont.caption)
+                        Text("输出 Token:", color = palette.muted, fontSize = LedgerFont.caption)
                         Text(v2FormatTokens(detail.outputTokens), color = palette.text, fontSize = LedgerFont.caption)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("缓存 Token:", color = palette.amber, fontSize = LedgerFont.caption)
+                        Text("缓存 Token:", color = palette.muted, fontSize = LedgerFont.caption)
                         Text(v2FormatTokens(detail.cachedTokens), color = palette.text, fontSize = LedgerFont.caption)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -152,7 +155,7 @@ internal fun V2DetailRow(
                     if (!costMasked) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("预估费用:", color = palette.text, fontSize = LedgerFont.caption)
-                            Text(v2FormatMoney(context, detail.cost, costMasked, currency, CostPrecision.Record), color = palette.amber, fontSize = LedgerFont.caption, fontWeight = FontWeight.SemiBold)
+                            Text(v2FormatMoney(context, detail.cost, costMasked, currency, CostPrecision.Record), color = palette.text, fontSize = LedgerFont.caption, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -188,6 +191,8 @@ internal fun V2DetailRow(
         contentPadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            V2SourceTile(palette, detail.tool, palette.tokens.chartSlot(toolChartSlot(detail.tool)))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     "${detail.tool} · ${detail.model}",
@@ -226,9 +231,9 @@ internal fun V2DetailRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text("输入 ${v2FormatTokens(detail.inputTokens)}", color = palette.blue, fontSize = LedgerFont.caption)
-                Text("输出 ${v2FormatTokens(detail.outputTokens)}", color = palette.green, fontSize = LedgerFont.caption)
-                Text("缓存 ${v2FormatTokens(detail.cachedTokens)}", color = palette.amber, fontSize = LedgerFont.caption)
+                Text("输入 ${v2FormatTokens(detail.inputTokens)}", color = palette.muted, fontSize = LedgerFont.caption)
+                Text("输出 ${v2FormatTokens(detail.outputTokens)}", color = palette.muted, fontSize = LedgerFont.caption)
+                Text("缓存 ${v2FormatTokens(detail.cachedTokens)}", color = palette.muted, fontSize = LedgerFont.caption)
                 detailRequestCountLabel(detail.requests)?.let { requestLabel ->
                     Text(requestLabel, color = palette.faint, fontSize = LedgerFont.caption)
                 }
@@ -241,21 +246,21 @@ internal fun V2DetailRow(
             ) {
                 Text(
                     text = "输入 ${v2FormatTokens(detail.inputTokens)}",
-                    color = palette.blue,
+                    color = palette.muted,
                     fontSize = LedgerFont.caption,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "输出 ${v2FormatTokens(detail.outputTokens)}",
-                    color = palette.green,
+                    color = palette.muted,
                     fontSize = LedgerFont.caption,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "缓存 ${v2FormatTokens(detail.cachedTokens)}",
-                    color = palette.amber,
+                    color = palette.muted,
                     fontSize = LedgerFont.caption,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

@@ -108,7 +108,7 @@ class Milestone3DenoisingChallengerStressTest {
         assertEquals(QuotaSeverity.Healthy, severityZeroUsed)
 
         val lightPalette = v2Palette(LedgerAppearance.Light)
-        assertEquals(lightPalette.green, v2SeverityColor(lightPalette, severityZeroUsed))
+        assertEquals(lightPalette.tokens.quotaHealthy, v2SeverityColor(lightPalette, severityZeroUsed))
 
         // Case B: 0 quota remaining (100% exhausted)
         val fullyExhausted = QuotaDisplayValue.Progress(
@@ -122,7 +122,7 @@ class Milestone3DenoisingChallengerStressTest {
         assertEquals(0.0f, remainingFractionExhausted, 0.0001f)
         val severityExhausted = quotaSeverityForFraction(remainingFractionExhausted)
         assertEquals(QuotaSeverity.Critical, severityExhausted)
-        assertEquals(lightPalette.danger, v2SeverityColor(lightPalette, severityExhausted))
+        assertEquals(lightPalette.tokens.quotaCritical, v2SeverityColor(lightPalette, severityExhausted))
 
         // Case C: Over-quota (120% used, -20% remaining)
         val overQuota = QuotaDisplayValue.Progress(
