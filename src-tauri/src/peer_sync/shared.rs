@@ -212,7 +212,7 @@ impl SharedSource {
     }
 
     /// Every shared call of the `selected` computers still on the server,
-    /// one computer's sealed days in memory at a time.
+    /// one sealed day in memory at a time.
     pub async fn pull(
         &self,
         selected: &[String],
@@ -224,22 +224,21 @@ impl SharedSource {
             let Some(list) = days.get(id) else {
                 continue;
             };
-            let mut fetched = Vec::new();
-            for (_, name) in list {
-                fetched.push((id.clone(), self.fetch(name).await?));
-            }
             let mut computer = SharedComputer {
                 id: id.clone(),
                 ..SharedComputer::default()
             };
-            for day in self.open_all(fetched).await? {
-                // Days come oldest first: the newest name wins.
-                if !day.name.is_empty() {
-                    computer.name = day.name;
+            for (_, name) in list {
+                let fetched = vec![(id.clone(), self.fetch(name).await?)];
+                for day in self.open_all(fetched).await? {
+                    // Days come oldest first: the newest name wins.
+                    if !day.name.is_empty() {
+                        computer.name = day.name;
+                    }
+                    computer.days += 1;
+                    computer.calls += day.calls.len();
+                    calls.extend(day.calls);
                 }
-                computer.days += 1;
-                computer.calls += day.calls.len();
-                calls.extend(day.calls);
             }
             computers.push(computer);
         }
@@ -480,6 +479,34 @@ mod tests {
         assert_eq!(
             opener.open(&first, backup::BACKUP_FORMAT),
             Err(backup::OpenError::NotSealed)
+        );
+    }
+
+    #[test]
+    fn the_opener_stops_deriving_past_its_budget() {
+        // `seal` picks a fresh salt each time: two files, two keys.
+        let first = backup::seal(b"one", "pass", backup::DATA_FORMAT, 100_000).unwrap();
+        let second = backup::seal(b"two", "pass", backup::DATA_FORMAT, 100_000).unwrap();
+        let mut opener = Opener::with_rounds("pass", 150_000);
+        assert_eq!(opener.open(&first, backup::DATA_FORMAT).unwrap(), b"one");
+        assert_eq!(
+            opener.open(&second, backup::DATA_FORMAT),
+            Err(backup::OpenError::TooManyKeys)
+        );
+        // A key already derived costs nothing more.
+        assert_eq!(opener.open(&first, backup::DATA_FORMAT).unwrap(), b"one");
+    }
+
+    #[test]
+    fn iteration_counts_past_the_cap_are_refused_before_deriving() {
+        let sealed = backup::seal(b"x", "pass", backup::DATA_FORMAT, 100_000).unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&sealed).unwrap();
+        value["iterations"] = serde_json::json!(backup::MAX_ITERATIONS + 1);
+        let heavy = serde_json::to_vec(&value).unwrap();
+        let mut opener = Opener::with_rounds("pass", u64::MAX);
+        assert_eq!(
+            opener.open(&heavy, backup::DATA_FORMAT),
+            Err(backup::OpenError::Corrupt)
         );
     }
 }

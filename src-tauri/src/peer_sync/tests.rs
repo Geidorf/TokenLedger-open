@@ -445,3 +445,16 @@ fn the_shared_selection_survives_saving_the_setup() {
         .contains("sharedComputers"));
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn importing_needs_the_backup_that_was_previewed() {
+    let previewed = backup_digest(&go_backup());
+    assert_eq!(previewed.len(), 64);
+    assert_eq!(previewed, backup_digest(&go_backup()));
+    assert!(check_digest(&previewed, &backup_digest(&go_backup())).is_ok());
+    assert!(check_digest(&previewed.to_ascii_uppercase(), &previewed).is_ok());
+    let mut swapped = go_backup();
+    swapped.push(b'\n');
+    assert!(check_digest(&previewed, &backup_digest(&swapped)).is_err());
+    assert!(check_digest("", &previewed).is_err());
+}
