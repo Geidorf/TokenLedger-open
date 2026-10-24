@@ -76,6 +76,9 @@ html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'
 .widget-root[data-layout='quota'] { --wl-card-h: 272px; }
 .widget-root[data-layout='compact'] { --wl-card-h: 104px; }
 .widget-root[data-layout='routing'] { --wl-card-h: 300px; }
+.widget-root[data-layout='panel'] { --wl-card-h: 560px; }
+/* 小屏高缩放下窗口会被截到工作区高度（widget_window::fit_size_to_work_area），此时整张面板纵向滚动，底部快捷开关仍够得到。 */
+.widget-root[data-layout='panel'] { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .wl-card { position: relative; display: flex; flex-direction: column; flex: none; height: var(--wl-card-h, 100%); min-width: 0; padding: 16px 18px; }
 /* 托盘挂件：顶栏（12px 上边距 + 30px）替掉卡片顶部 16px 内边距，整体比桌面小组件高 26px。 */
 .widget-root[data-mode='popover'] .wl-card { height: calc(var(--wl-card-h, 100%) - 16px); padding-top: 0; }
@@ -248,11 +251,13 @@ html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'
 .widget-root[data-layout='quota'] .wl-toolbar { top: 7px; }
 .widget-root[data-layout='compact'] .wl-toolbar { top: 7px; }
 .widget-root[data-layout='routing'] .wl-toolbar { top: 7px; }
+.widget-root[data-layout='panel'] .wl-toolbar { top: 7px; }
 .wl-toolbar[data-at='bottom'] { top: auto; bottom: 8px; }
 .wl-under-toolbar { transition: opacity 120ms ease-out; }
 .widget-root[data-toolbar='shown'] .wl-under-toolbar { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .wl-toolbar, .wl-toolbar[data-shown='true'], .wl-under-toolbar, .wl-icon-btn, .wl-seg-btn { transition: none; }
+  .wl-qbar-track > i, .wl-toggle { transition: none; }
 }
 
 /* ── 设置页静态预览（P12）：按 §6.4 尺寸画，设置页窄时整体等比缩小。 ── */
@@ -287,8 +292,78 @@ html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'
   .wl-trend-tick { fill: CanvasText; }
   .wl-tools-bar > i, .wl-legend li > i { forced-color-adjust: none; background: CanvasText !important; }
   .widget-root button:focus-visible { outline-color: Highlight; }
+  .wl-qbar-track, .wl-toggle { border: 1px solid CanvasText; }
+  .wl-qbar-track > i { forced-color-adjust: none; background: Highlight !important; }
+  .wl-toggle[data-on='true'] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
 }
 
 /* ── T10.192 修复轮 P2-1：额度整次读取失败画虚线空槽，与「没有来源」的纯文字提示区分
       （DESIGN §6.4、T10.190 方案 §5）。只加这一条，不改上面任何既有规则。 ── */
 .wl-ring[data-unavailable='true'] .wl-ring-track { stroke-dasharray: 3 3; }
+
+/* ── 托盘面板 364×560（菜单栏 / 托盘增强）：14 + 今日 16+6+52 + 12+1+12 + 额度 16+8+4×26+3×9（155）
+      + 12+1+12 + 网关 16+4+舞台（至多 132）+ 最近 3×18 + 12 + 开关 36 + 14。额度少于四条时余量给舞台。 ── */
+.wl-card[data-layout='panel'] {
+  padding-top: 14px; padding-bottom: 14px;
+  --color-bg-elevated: var(--wl-face);
+  --color-border: var(--wl-track);
+  --color-text-primary: var(--wl-text);
+  --color-text-secondary: var(--wl-text-2);
+  --color-text-muted: var(--wl-text-3);
+  --color-danger: var(--wl-danger);
+}
+.widget-root[data-mode='popover'] .wl-card[data-layout='panel'] { padding-top: 0; }
+.wl-card[data-layout='panel'] > .wl-hr { margin: 12px 0; }
+.wl-panel-usage, .wl-panel-quota { flex: none; }
+.wl-panel-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.wl-panel-hero-main { display: flex; flex-direction: column; min-width: 0; }
+.wl-panel-cost { font-size: 32px; line-height: 34px; }
+.wl-panel-hero-main .wl-meta { margin-top: 3px; }
+.wl-panel-hero-side { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
+.wl-panel-tokens { color: var(--wl-text-2); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wl-panel-tokens b { color: var(--wl-text); font-size: 15px; font-weight: 600; }
+
+.wl-qbars { display: flex; flex-direction: column; gap: 9px; margin: 8px 0 0; padding: 0; list-style: none; }
+.wl-qbar { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wl-qbar-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.wl-qbar-name { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--wl-text); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.wl-qbar-value { flex: none; color: var(--wl-text); font-size: 12px; font-weight: 600; line-height: 16px; font-variant-numeric: tabular-nums; }
+.wl-qbar-track { height: 6px; overflow: hidden; border-radius: 3px; background: var(--wl-track); }
+.wl-qbar-track > i { display: block; height: 100%; border-radius: 3px; background: var(--wl-ok); transition: width 180ms ease-out; }
+.wl-qbar[data-level='warn'] .wl-qbar-track > i { background: var(--wl-warn); }
+.wl-qbar[data-level='critical'] .wl-qbar-track > i { background: var(--wl-danger); }
+.wl-qbar[data-level='warn'] .wl-qbar-value { color: var(--wl-warn-text); }
+.wl-qbar[data-level='critical'] .wl-qbar-value { color: var(--wl-danger-text); }
+.wl-qbar[data-stale='true'] .wl-qbar-track > i { opacity: 0.45; }
+.wl-qbar-tail { flex: none; color: var(--wl-text-3); font-size: 11px; line-height: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wl-panel-quota .wl-notice { min-height: 44px; margin-top: 8px; }
+
+.wl-panel-gateway { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.wl-gw-state { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--wl-text-2); font-size: 11px; line-height: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wl-gw-state > i { width: 7px; height: 7px; border-radius: 50%; background: var(--wl-text-3); }
+.wl-gw-state[data-tone='ok'] > i { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+.wl-gw-state[data-tone='warn'] { color: var(--wl-warn-text); }
+.wl-gw-state[data-tone='warn'] > i { background: var(--wl-warn); }
+.wl-panel-stage { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: center; min-height: 0; margin-top: 4px; overflow: hidden; }
+.wl-panel-stage .rs-stage svg { max-height: 132px; }
+/* 舞台自带的说明句在面板里由下面的「最近路由」列表代替；保留给读屏。 */
+.wl-panel-stage .rs-caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wl-recent { display: flex; flex: none; flex-direction: column; gap: 3px; margin: 6px 0 0; padding: 0; list-style: none; }
+.wl-recent li { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 11.5px; line-height: 15px; }
+.wl-recent li > i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+.wl-recent li[data-outcome='failed'] > i { background: var(--wl-danger); }
+.wl-recent li[data-outcome='pending'] > i { background: var(--wl-ok); }
+.wl-recent-path { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--wl-text-2); text-overflow: ellipsis; white-space: nowrap; }
+.wl-recent .wl-meta { flex: none; }
+
+.wl-toggles { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.wl-toggle { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--wl-seg); color: var(--wl-text-3); font: inherit; font-size: 12px; line-height: 16px; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; }
+.wl-toggle:hover:not(:disabled) { background: var(--wl-hover); }
+.wl-toggle[data-on='true'] { background: color-mix(in srgb, var(--wl-ok) 16%, transparent); color: var(--wl-text); }
+.wl-toggle[data-on='true'] svg { color: var(--wl-ok); }
+.wl-toggle:disabled { cursor: default; }
+.wl-toggle[data-pending='true'] { opacity: 0.6; }
+.wl-toggle-label { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.wl-toggle-state { flex: none; color: var(--wl-text-3); font-size: 11px; }
+.wl-toggle[data-on='true'] .wl-toggle-state { color: var(--wl-ok); font-weight: 600; }
+.wl-panel-error { margin-top: 6px; }

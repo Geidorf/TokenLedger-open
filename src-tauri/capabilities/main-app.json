@@ -111,6 +111,8 @@
     "allow-widget-pointer-hover",
     "allow-set-desktop-widget-enabled",
     "allow-focus-main-window",
-    "allow-open-main-settings"
+    "allow-open-main-settings",
+    "allow-tray-panel-status",
+    "allow-tray-panel-toggle"
   ]
 }

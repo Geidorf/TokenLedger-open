@@ -11,6 +11,7 @@ import {
 import { buildCardModel, widgetCardSize, WIDGET_CARD_WIDTH, type CardQuota, type CardQuotaItem, type CardTheme } from './cardModel';
 import { LedgerCard } from './LedgerCard';
 import { RoutingCard } from './RoutingCard';
+import { PanelCard } from './PanelCard';
 import { TrayTopBar } from './WidgetChrome';
 import '../../styles/widget.css';
 
@@ -200,10 +201,19 @@ export function WidgetPreview({ surface, config }: { surface: WidgetSurface; con
     quota: sampleQuota(now),
     theme,
   }), [config.range, now, theme]);
+  // 「托盘面板」固定看今日。
+  const panelModel = useMemo(() => buildCardModel({
+    range: 'today',
+    stats: sampleStats('today'),
+    loadedAt: SAMPLE_LOADED_AT,
+    error: '',
+    quota: sampleQuota(now),
+    theme,
+  }), [now, theme]);
   const [frameRef, scale] = usePreviewScale<HTMLDivElement>();
   const size = widgetCardSize(surface, config.layout);
   const layoutLabel = WIDGET_LAYOUTS.find((item) => item.id === config.layout)?.label ?? '';
-  const rangeLabel = WIDGET_RANGES.find((item) => item.id === config.range)?.label ?? '';
+  const rangeLabel = config.layout === 'panel' ? '今日' : WIDGET_RANGES.find((item) => item.id === config.range)?.label ?? '';
   return (
     <figure className="wl-preview">
       <div ref={frameRef} className="wl-preview-frame" style={{ height: Math.round(size.height * scale) }} aria-hidden="true" inert>
@@ -216,12 +226,14 @@ export function WidgetPreview({ surface, config }: { surface: WidgetSurface; con
           style={{ width: size.width, height: size.height, transform: scale < 1 ? `scale(${scale})` : undefined }}
         >
           {surface === 'popover' && (
-            <TrayTopBar range={config.range} showRange={config.layout !== 'quota' && config.layout !== 'routing'} actions={null} staticPreview />
+            <TrayTopBar range={config.range} showRange={config.layout !== 'quota' && config.layout !== 'routing' && config.layout !== 'panel'} actions={null} staticPreview />
           )}
           {/* 实时路由没有可信的示例数据可画：预览只说明这块会显示什么，不放示意动画。 */}
-          {config.layout === 'routing'
-            ? <RoutingCard scene={null} loaded={false} />
-            : <LedgerCard layout={config.layout} model={model} now={now} />}
+          {config.layout === 'panel'
+            ? <PanelCard model={panelModel} now={now} scene={null} loaded={false} controls={null} staticPreview />
+            : config.layout === 'routing'
+              ? <RoutingCard scene={null} loaded={false} />
+              : <LedgerCard layout={config.layout} model={model} now={now} />}
         </div>
       </div>
       <figcaption className="wl-preview-caption">

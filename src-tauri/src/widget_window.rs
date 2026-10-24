@@ -7,8 +7,9 @@
 //! 现场改尺寸。窗口本身不采集数据：挂件 Webview 复用 `get_cached_stats`
 //! 与本机额度命令，并订阅调度器广播的 `stats-updated`。
 //!
-//! 托盘状态文字（B6）同样在这里：tooltip 始终写今日预估费用与有效 Token；
-//! macOS 菜单栏标题只在用户开启 `tray_text_enabled` 后显示，关闭即恢复纯图标。
+//! 托盘状态文字（B6）同样在这里：tooltip 始终写今日预估费用与有效 Token，读到额度时再写最紧额度；
+//! 用户开启 `tray_text_enabled` 后，macOS 菜单栏图标旁写今日费用或最紧额度可用%
+//!（`tray_text_metric`），Windows / Linux 把托盘图标换成带同一个数字的徽章，关闭即恢复原图标。
 //!
 //! T10.110 追加两件事：
 //! 1. 托盘弹层的显隐状态机——指向托盘图标即临时显示（窗口不可获焦，不打断当前
@@ -29,6 +30,9 @@ use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, Webvie
 use crate::app_paths::AppContext;
 use crate::commands;
 use crate::settings::{self, AppSettings};
+#[cfg(not(target_os = "macos"))]
+use crate::tray_badge;
+use crate::tray_panel::TightestQuota;
 
 pub const WIDGET_LABEL: &str = "widget";
 pub const DESKTOP_WIDGET_LABEL: &str = "desktop-widget";
@@ -203,6 +207,7 @@ fn desktop_layout_height(layout: &str) -> f64 {
         "quota" => 272.0,
         "compact" => 104.0,
         "routing" => 300.0,
+        "panel" => 560.0,
         _ => 388.0,
     }
 }
@@ -418,6 +423,14 @@ pub fn show<R: tauri::Runtime>(
     Ok(())
 }
 
+/// 窗口不得比当前显示器工作区（扣掉两侧边距）更大：1366×768、150% 缩放下「托盘面板」要
+/// 879 物理像素高，超出整块屏幕。截短后卡片在窗口里纵向滚动（widget.css），底部快捷开关仍够得到。
+fn fit_size_to_work_area(size: (f64, f64), bounds: Bounds, margin: f64) -> (f64, f64) {
+    let max_width = (bounds.width - margin * 2.0).max(1.0);
+    let max_height = (bounds.height - margin * 2.0).max(1.0);
+    (size.0.min(max_width), size.1.min(max_height))
+}
+
 /// 按目标尺寸摆好窗口（W4、U-13）。创建时或带新锚点（托盘点击/悬停）时整套重新定位——沿用
 /// [`place_widget`]：锚点居中或贴右下角；已有窗口且没有新锚点（菜单/启动等重新弹出）时，尺寸
 /// 没变就保持用户拖动过的位置不动，尺寸变了（换了板式）则按 [`resize_anchored_to_nearest_corner`]
@@ -432,7 +445,11 @@ fn reposition_for_size<R: tauri::Runtime>(
     logical_size: (f64, f64),
     margin: f64,
 ) -> Option<(i32, i32)> {
-    let size = (logical_size.0 * scale, logical_size.1 * scale);
+    let size = fit_size_to_work_area(
+        (logical_size.0 * scale, logical_size.1 * scale),
+        bounds,
+        margin,
+    );
     if created || anchor.is_some() {
         let _ = window.set_size(PhysicalSize::new(
             size.0.round() as u32,
@@ -1144,11 +1161,56 @@ fn summary_numbers(stats: &Value) -> (Option<i64>, Option<f64>) {
     (tokens, cost)
 }
 
+/// 托盘悬停提示末尾的额度半句（菜单栏 / 托盘增强）：读到最紧额度时写「最紧额度 来源 窗口 可用 N%」，
+/// 读不到就不写，不把未知写成 0%。
+pub fn tray_quota_phrase(tightest: Option<&TightestQuota>) -> Option<String> {
+    tightest.map(|item| {
+        format!(
+            "最紧额度 {} {} 可用 {}%",
+            item.source, item.window, item.remaining
+        )
+    })
+}
+
+/// 悬停提示：费用与 Token 一句（`tray_status_text`），读到额度时在「悬停或单击查看挂件」之前插入额度半句。
+pub fn tray_tooltip(tooltip: &str, quota: Option<&TightestQuota>) -> String {
+    match tray_quota_phrase(quota) {
+        Some(phrase) => tooltip.replacen(
+            " · 悬停或单击查看挂件",
+            &format!(" · {phrase} · 悬停或单击查看挂件"),
+            1,
+        ),
+        None => tooltip.to_string(),
+    }
+}
+
+/// 托盘上那几个字：`cost` 写看板同款金额；`quota` 写最紧额度的可用百分比，读不到写「额度 —」。
+/// 只有 macOS 有标题位；其他平台画成徽章（`tray_badge`）。
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+pub fn tray_title(metric: &str, cost_title: &str, quota: Option<&TightestQuota>) -> String {
+    if metric == "quota" {
+        match quota {
+            Some(item) => format!("{}%", item.remaining),
+            None => "额度 —".to_string(),
+        }
+    } else {
+        cost_title.to_string()
+    }
+}
+
+/// Windows / Linux：上一次画到托盘上的徽章文字，没变就不重设图标（避免每次扫描都闪一下）。
+#[cfg(not(target_os = "macos"))]
+fn last_badge() -> &'static Mutex<Option<String>> {
+    static LAST: std::sync::OnceLock<Mutex<Option<String>>> = std::sync::OnceLock::new();
+    LAST.get_or_init(|| Mutex::new(None))
+}
+
 /// 用本机“今日”统计刷新托盘文字。读取走缓存过的本地统计路径，失败只记日志。
 pub fn refresh_tray_status(
     ctx: &AppContext,
     app: &tauri::AppHandle,
     tray_text_enabled: bool,
+    tray_text_metric: &str,
     budget_line: Option<String>,
 ) {
     let stats = match commands::get_stats_impl(ctx, "today".to_string()) {
@@ -1159,7 +1221,9 @@ pub fn refresh_tray_status(
         }
     };
     let (tokens, cost) = summary_numbers(&stats);
-    let (mut tooltip, title) = tray_status_text(tokens, cost);
+    let (tooltip, cost_title) = tray_status_text(tokens, cost);
+    let quota = crate::tray_panel::current_tightest_quota();
+    let mut tooltip = tray_tooltip(&tooltip, quota.as_ref());
     if let Some(line) = budget_line {
         tooltip = format!("{tooltip}\n{line}");
     }
@@ -1171,15 +1235,48 @@ pub fn refresh_tray_status(
     }
     #[cfg(target_os = "macos")]
     {
-        let title = if tray_text_enabled { Some(title) } else { None };
+        let title =
+            tray_text_enabled.then(|| tray_title(tray_text_metric, &cost_title, quota.as_ref()));
         if let Err(error) = tray.set_title(title) {
             log::debug!("tray title update failed: {error}");
         }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        // Windows/Linux 托盘没有标题位；开关只影响 macOS 菜单栏。
-        let _ = (tray_text_enabled, title);
+        // Windows/Linux 托盘没有标题位：开启后把整枚图标换成带数字的徽章，关闭时换回应用图标。
+        let _ = cost_title;
+        let spec = tray_text_enabled.then(|| {
+            if tray_text_metric == "quota" {
+                tray_badge::quota_badge(quota.as_ref().map(|item| item.remaining))
+            } else {
+                tray_badge::cost_badge(cost)
+            }
+        });
+        let pixels = spec
+            .as_ref()
+            .and_then(|spec| tray_badge::render_badge(spec, tray_badge::BADGE_SIZE));
+        let key = spec
+            .as_ref()
+            .filter(|_| pixels.is_some())
+            .map(|spec| format!("{:?}:{}", spec.tone, spec.candidates.join("|")));
+        let mut last = last_badge()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *last == key {
+            return;
+        }
+        let icon = match pixels {
+            Some(pixels) => tauri::image::Image::new_owned(
+                pixels,
+                tray_badge::BADGE_SIZE,
+                tray_badge::BADGE_SIZE,
+            ),
+            None => tauri::include_image!("icons/32x32.png"),
+        };
+        match tray.set_icon(Some(icon)) {
+            Ok(()) => *last = key,
+            Err(error) => log::debug!("tray icon update failed: {error}"),
+        }
     }
 }
 
@@ -1298,6 +1395,37 @@ mod tests {
             "TokenLedger · 今日预估费用 ≈$0.00 · 950 有效 Token · 悬停或单击查看挂件"
         );
         assert_eq!(format_tokens(Some(45_600)), "45.6K");
+    }
+
+    #[test]
+    fn tray_tooltip_adds_the_tightest_quota_and_title_follows_the_metric() {
+        let quota = TightestQuota {
+            remaining: 37,
+            source: "Claude".to_string(),
+            window: "5 小时额度".to_string(),
+        };
+        let (tooltip, title) = tray_status_text(Some(1_234_567), Some(12.345));
+        assert_eq!(
+            tray_tooltip(&tooltip, Some(&quota)),
+            "TokenLedger · 今日预估费用 ≈$12.35 · 1.23M 有效 Token · 最紧额度 Claude 5 小时额度 可用 37% · 悬停或单击查看挂件"
+        );
+        assert_eq!(tray_tooltip(&tooltip, None), tooltip);
+        assert_eq!(tray_title("cost", &title, Some(&quota)), "≈$12.35");
+        assert_eq!(tray_title("quota", &title, Some(&quota)), "37%");
+        // 读不到额度不写 0%（GLB-01）。
+        assert_eq!(tray_title("quota", &title, None), "额度 —");
+    }
+
+    #[test]
+    fn panel_layout_has_its_own_height_and_the_popover_adds_the_bar() {
+        assert_eq!(
+            widget_card_size("desktop", "panel"),
+            (WIDGET_CARD_WIDTH, 560.0)
+        );
+        assert_eq!(
+            widget_card_size("popover", "panel"),
+            (WIDGET_CARD_WIDTH, 560.0 + WIDGET_TRAY_BAR_EXTRA)
+        );
     }
 
     #[test]
@@ -1645,6 +1773,25 @@ mod tests {
         assert_eq!(x, old_rect.0 + old_rect.2 - 364.0);
         assert_eq!(y, old_rect.1 + old_rect.3 - 172.0);
         assert!(x >= SECONDARY_MONITOR.x + 12.0);
+    }
+
+    #[test]
+    fn the_window_never_grows_past_the_work_area() {
+        // 1366×768 屏、150% 缩放、任务栏 72 物理像素：工作区 1366×696 物理像素，
+        // 「托盘面板」要 586×1.5 = 879 高，截到工作区减两侧边距。
+        let bounds = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 1366.0,
+            height: 696.0,
+        };
+        let panel = widget_card_size("popover", "panel");
+        let (width, height) = fit_size_to_work_area((panel.0 * 1.5, panel.1 * 1.5), bounds, 18.0);
+        assert_eq!(width, panel.0 * 1.5);
+        assert_eq!(height, 696.0 - 36.0);
+        // 放得下时尺寸不变。
+        let small = fit_size_to_work_area((300.0, 200.0), bounds, 12.0);
+        assert_eq!(small, (300.0, 200.0));
     }
 
     #[test]

@@ -173,6 +173,8 @@ fn main() {
         "toggle_widget_window",
         "widget_pointer_hover",
         "set_desktop_widget_enabled",
+        "tray_panel_status",
+        "tray_panel_toggle",
         "focus_main_window",
         "open_main_settings",
     ];

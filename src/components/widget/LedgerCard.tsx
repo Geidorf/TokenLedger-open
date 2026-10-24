@@ -42,7 +42,7 @@ interface LedgerCardProps {
   toolbar?: ReactNode;
 }
 
-function Status({ status, className = '' }: { status: CardStatus; className?: string }) {
+export function Status({ status, className = '' }: { status: CardStatus; className?: string }) {
   if (status.error) {
     return (
       <span className={`wl-meta is-error ${className}`} role="alert" title={status.description ?? status.text}>
@@ -55,7 +55,7 @@ function Status({ status, className = '' }: { status: CardStatus; className?: st
 }
 
 /** 较上期同期胶囊：中性色，不用红绿表达好坏；读屏读完整句子（与看板 KPI 同一个 description）。 */
-function ChangeChip({ change, short = false }: { change: MetricChange | null; short?: boolean }) {
+export function ChangeChip({ change, short = false }: { change: MetricChange | null; short?: boolean }) {
   if (!change) return null;
   return (
     <span className="wl-chip" data-direction={change.direction ?? 'none'}>
@@ -84,7 +84,7 @@ function WindowName({ item, withProvider }: { item: CardQuotaItem; withProvider:
   );
 }
 
-function QuotaNotice({ quota, actions, ringSize }: {
+export function QuotaNotice({ quota, actions, ringSize }: {
   quota: Exclude<CardQuota, { kind: 'ready' }>;
   actions?: QuotaNoticeActions | null;
   /** 只有「读取失败」用得到：虚线空槽按所在板式平时画的环尺寸给，其余状态不画环（P2-1）。 */

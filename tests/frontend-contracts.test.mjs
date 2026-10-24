@@ -4072,7 +4072,8 @@ test('native startup keeps the shell hidden until the resolved window mode is ap
   assert.match(nativeSource, /CheckMenuItemBuilder::with_id\(\s*"desktop-widget",\s*"桌面小组件（长驻桌面）",?\s*\)/);
   assert.match(nativeSource, /DESKTOP_WIDGET_LABEL \{[\s\S]*?widget_window::on_desktop_widget_closed\(/);
   assert.match(nativeSource, /WindowEvent::Moved\(position\)[\s\S]*?DESKTOP_WIDGET_LABEL[\s\S]*?widget_window::on_desktop_widget_moved\(/);
-  assert.match(nativeSource, /"open-settings",\s*serde_json::json!\(\{ "anchor": "settings-widget" \}\)/);
+  assert.match(nativeSource, /"open-settings",\s*serde_json::json!\(\{ "anchor": anchor \}\)/);
+  assert.match(nativeSource, /fn main_settings_anchor[\s\S]*?_ => "settings-widget",/);
   const widgetWindowSource = readSource(path.join(process.cwd(), 'src-tauri', 'src', 'widget_window.rs'));
   assert.match(widgetWindowSource, /pub const HOVER_HIDE_DELAY_MS: u64 = 450;/);
   assert.match(widgetWindowSource, /window\.set_focusable\(focus\)/, 'hover-shown widget must not steal focus');
@@ -6361,10 +6362,14 @@ test('两块挂件各存一份内容配置，取值与 Rust 侧的闭合集合�
     path.join(process.cwd(), 'src', 'components', 'settings', 'WidgetSection.tsx'));
 
   // 前后端用同一组字符串；任一边加了取值而另一边没加，这里就红。
-  assert.ok(rust.includes('pub const WIDGET_LAYOUTS: [&str; 5] = ["usage", "combo", "quota", "compact", "routing"];'));
+  assert.ok(rust.includes('pub const WIDGET_LAYOUTS: [&str; 6] = ["usage", "combo", "quota", "compact", "routing", "panel"];'));
+  // 托盘挂件默认「托盘面板」，两端同一个值；托盘数字的两种取值同样逐字对齐。
+  assert.ok(rust.includes('pub const DEFAULT_POPOVER_LAYOUT: &str = "panel";'));
+  assert.ok(config.includes("export const DEFAULT_POPOVER_LAYOUT: WidgetLayout = 'panel';"));
+  assert.ok(rust.includes('pub const TRAY_TEXT_METRICS: [&str; 2] = ["cost", "quota"];'));
   assert.ok(rust.includes('pub const WIDGET_THEMES: [&str; 3] = ["system", "light", "dark"];'));
   assert.ok(rust.includes('pub const WIDGET_RANGES: [&str; 3] = ["today", "week", "month"];'));
-  assert.deepEqual(WIDGET_LAYOUTS.map((item) => item.id), ['usage', 'combo', 'quota', 'compact', 'routing']);
+  assert.deepEqual(WIDGET_LAYOUTS.map((item) => item.id), ['usage', 'combo', 'quota', 'compact', 'routing', 'panel']);
   assert.deepEqual(WIDGET_THEMES.map((item) => item.id), ['system', 'light', 'dark']);
   assert.deepEqual(WIDGET_RANGES.map((item) => item.id), ['today', 'week', 'month']);
   // 写盘的是自由字符串（旧版本、手改文件、未来新取值都可能出现），
@@ -6388,8 +6393,9 @@ test('两块挂件各存一份内容配置，取值与 Rust 侧的闭合集合�
   assert.equal(
     widgetConfigFromSettings({ widget_popover_layout: 'compact', widget_desktop_layout: 'quota' }, 'desktop').layout,
     'quota');
-  // 未知取值回落默认，不能渲染成空白。
-  assert.equal(widgetConfigFromSettings({ widget_popover_layout: 'multi_ring' }, 'popover').layout, 'usage');
+  // 未知取值回落各自的默认，不能渲染成空白：托盘挂件是「托盘面板」，桌面小组件是「用量详情」。
+  assert.equal(widgetConfigFromSettings({ widget_popover_layout: 'multi_ring' }, 'popover').layout, 'panel');
+  assert.equal(widgetConfigFromSettings({ widget_desktop_layout: 'multi_ring' }, 'desktop').layout, 'usage');
 
   // 钉住的来源读不到时给空集合并报缺。Android 的 widgetLayoutProviders
   // 用 `?: providers` 兜底，结果钉在单一来源上的小组件在该来源掉线后
@@ -6411,14 +6417,16 @@ test('两块挂件各存一份内容配置，取值与 Rust 侧的闭合集合�
   assert.ok(rustWindow.includes('pub fn resize_anchored_to_nearest_corner('));
   for (const layout of WIDGET_LAYOUTS) {
     // 真正的板式分支在 LedgerCard.tsx；这里查 WidgetView.tsx 曾经空转过一轮，删分支也不会变红（P3-6）。
-    // 「实时路由」不是账本卡片，分支在 WidgetView.tsx 与设置页预览里，画的是 RoutingCard。
-    if (layout.id === 'routing') continue;
+    // 「实时路由」「托盘面板」不是账本卡片，分支在 WidgetView.tsx 与设置页预览里，画的是 RoutingCard / PanelCard。
+    if (layout.id === 'routing' || layout.id === 'panel') continue;
     assert.ok(ledgerCard.includes(`layout === '${layout.id}'`) || layout.id === 'usage',
       `LedgerCard 没有渲染分支 ${layout.id}`);
   }
   assert.ok(widgetView.includes("layout === 'routing' ? (") && widgetView.includes('<RoutingCard'), 'WidgetView 没有渲染「实时路由」分支');
   const widgetPreview = readSource(path.join(process.cwd(), 'src', 'components', 'widget', 'WidgetPreview.tsx'));
   assert.ok(widgetPreview.includes("config.layout === 'routing'") && widgetPreview.includes('<RoutingCard'), '设置页预览没有「实时路由」分支');
+  assert.ok(widgetView.includes("layout === 'panel' ? (") && widgetView.includes('<PanelCard'), 'WidgetView 没有渲染「托盘面板」分支');
+  assert.ok(widgetPreview.includes("config.layout === 'panel'") && widgetPreview.includes('<PanelCard'), '设置页预览没有「托盘面板」分支');
 
   // T10.123 的「暂不可自定义」占位卡已经兑现，不能再留在页上。
   assert.ok(!widgetSection.includes('暂不可自定义'));

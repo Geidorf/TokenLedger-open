@@ -14,6 +14,8 @@
     "allow-gateway-external-feed",
     "allow-refresh-scan",
     "allow-focus-main-window",
-    "allow-open-main-settings"
+    "allow-open-main-settings",
+    "allow-tray-panel-status",
+    "allow-tray-panel-toggle"
   ]
 }

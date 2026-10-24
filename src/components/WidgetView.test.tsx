@@ -262,6 +262,80 @@ describe('WidgetView', () => {
     expect(container.querySelector('.wl-compact-num')).toHaveTextContent('123.5K');
   });
 
+  it('「托盘面板」一屏画今日用量、可用% 额度条、网关与最近路由，快捷开关只走专用命令', async () => {
+    settings.widget_popover_layout = 'panel';
+    settings.widget_popover_range = 'week';
+    const at = new Date(Date.now() - 2_000).toISOString();
+    let status = {
+      gatewayEnabled: true, gatewayRunning: true, gatewayPort: 3421, gatewayFailed: false, gatewayNoProvider: false,
+      syncPaused: false, scanPaused: false, scanIntervalSecs: 900,
+    };
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === 'get_settings') return settings;
+      if (command === 'get_cached_stats') return buildStats((payload as { range: 'today' }).range, 123_456);
+      if (command === 'get_local_quota_providers') return [CLAUDE_PROVIDER];
+      if (command === 'tray_panel_status') return status;
+      if (command === 'tray_panel_toggle') {
+        const { target, enabled } = payload as { target: string; enabled: boolean };
+        if (target === 'scan') status = { ...status, scanPaused: !enabled };
+        return status;
+      }
+      if (command === 'gateway_routing_feed') {
+        return {
+          running: true,
+          decisions: [],
+          requests: [{ ts: at, requestId: 'a1', logicalRequestId: 'a1', agent: 'claude', provider: 'anthropic', requestedModel: 'claude-opus', upstreamModel: 'claude-opus', status: 200, ok: true }],
+        };
+      }
+      return null;
+    });
+    const { container } = render(<WidgetView />);
+    await screen.findByText('123.5K');
+    expect(container.querySelector('.widget-root')).toHaveAttribute('data-layout', 'panel');
+    // 固定读今日，范围分段不画，即使设置里的默认范围是本周。
+    expect(invokeMock).toHaveBeenCalledWith('get_cached_stats', expect.objectContaining({ range: 'today' }));
+    expect(invokeMock).not.toHaveBeenCalledWith('get_cached_stats', expect.objectContaining({ range: 'week' }));
+    expect(screen.queryByRole('button', { name: '本周' })).not.toBeInTheDocument();
+    // 额度条写「可用」，与 Android 小组件同一口径。
+    const bar = await screen.findByRole('listitem', { name: /Claude.*可用 13%/ });
+    expect(bar).toHaveAttribute('data-level', 'critical');
+    expect(within(bar).getByText('可用 13%')).toBeInTheDocument();
+    expect(await screen.findByText('运行中 · :3421')).toBeInTheDocument();
+    expect(await screen.findByText('claude → anthropic/claude-opus')).toBeInTheDocument();
+    const scan = await screen.findByRole('switch', { name: /后台扫描/ });
+    expect(scan).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(scan);
+    await waitFor(() => expect(screen.getByRole('switch', { name: /后台扫描/ })).toHaveAttribute('aria-checked', 'false'));
+    expect(invokeMock).toHaveBeenCalledWith('tray_panel_toggle', { target: 'scan', enabled: false });
+    // 网关开着时点它不直接关：去主窗口「模型接入」，那里先检查仍指向网关的 Agent。
+    fireEvent.click(screen.getByRole('switch', { name: '网关' }));
+    expect(invokeMock).toHaveBeenCalledWith('open_main_settings', { anchor: 'settings-model-access' });
+    expect(invokeMock).not.toHaveBeenCalledWith('tray_panel_toggle', expect.objectContaining({ target: 'gateway' }));
+    expect(invokeMock.mock.calls.some(([command]) => command === 'save_settings' || command === 'gateway_set_model_access')).toBe(false);
+  });
+
+  it('「托盘面板」切换失败时写明原因，开关保持原状', async () => {
+    settings.widget_popover_layout = 'panel';
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === 'get_settings') return settings;
+      if (command === 'get_cached_stats') return buildStats((payload as { range: 'today' }).range, 123_456);
+      if (command === 'tray_panel_status') {
+        return { gatewayEnabled: false, gatewayRunning: false, gatewayPort: 3421, gatewayFailed: false, gatewayNoProvider: false, syncPaused: true, scanPaused: false, scanIntervalSecs: 900 };
+      }
+      if (command === 'tray_panel_toggle') throw new Error('denied');
+      if (command === 'gateway_routing_feed') return { running: false, decisions: [], requests: [] };
+      return null;
+    });
+    render(<WidgetView />);
+    expect(await screen.findByText('已关闭')).toBeInTheDocument();
+    const gateway = await screen.findByRole('switch', { name: /网关/ });
+    expect(gateway).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: /后台同步/ })).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(gateway);
+    expect(await screen.findByRole('alert')).toHaveTextContent('切换失败，请到主窗口重试');
+    expect(screen.getByRole('switch', { name: /网关/ })).toHaveAttribute('aria-checked', 'false');
+  });
+
   it('「实时路由」读脱敏的网关视图画失败切换，不读额度、不出现范围分段', async () => {
     settings.widget_popover_layout = 'routing';
     const at = new Date(Date.now() - 1_000).toISOString();

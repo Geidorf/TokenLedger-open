@@ -293,6 +293,11 @@ impl Gateway {
             })
     }
 
+    /// 有没有至少一个启用的供应商；没有时 `start_if_needed` 不会启动监听。
+    pub fn has_enabled_provider(&self) -> bool {
+        self.providers().iter().any(|provider| provider.enabled)
+    }
+
     fn providers(&self) -> Vec<ProviderRecord> {
         self.shared
             .providers

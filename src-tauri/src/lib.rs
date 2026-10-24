@@ -50,6 +50,10 @@ mod scanner;
 mod session_analysis;
 mod settings;
 mod stats_query;
+// macOS 把数字写在菜单栏标题位，徽章只在 Windows / Linux 托盘上画；单测在所有平台都跑。
+#[cfg_attr(all(target_os = "macos", not(test)), allow(dead_code))]
+mod tray_badge;
+mod tray_panel;
 mod usage_anomaly;
 mod wallpaper;
 mod widget_window;
@@ -123,6 +127,23 @@ fn sync_result_has_stats_changes(result: &serde_json::Value) -> bool {
     })
 }
 
+/// 后台用量上传；返回云端是否带回了统计变化。托盘面板「后台同步」关掉时不上传（设置页与
+/// 手动同步不受影响），暂停状态在真正上传前才读：扫描途中关掉同步也不会再上传。
+fn background_usage_sync(ctx: &AppContext) -> bool {
+    if crate::settings::background_sync_paused_now(ctx) {
+        return false;
+    }
+    // 排队等前一次上传期间被暂停时，拿锁后的复验让它不再启动（返回 None）。
+    match block_on_async(commands::background_sync_to_supabase_impl(ctx)) {
+        Ok(Some(result)) => sync_result_has_stats_changes(&result),
+        Ok(None) => false,
+        Err(e) => {
+            log::debug!("Background cloud sync skipped/failed: {}", e);
+            false
+        }
+    }
+}
+
 fn scan_sync_and_notify(
     ctx: &AppContext,
     app_handle: &tauri::AppHandle,
@@ -160,14 +181,7 @@ fn scan_sync_and_notify(
     }
 
     if persisted_changes || allow_idle_sync_retry {
-        match block_on_async(commands::sync_to_supabase_impl(ctx)) {
-            Ok(result) => {
-                stats_changed |= sync_result_has_stats_changes(&result);
-            }
-            Err(e) => {
-                log::debug!("Background cloud sync skipped/failed: {}", e);
-            }
-        }
+        stats_changed |= background_usage_sync(ctx);
     }
     if prices_changed {
         let _ = app_handle.emit(
@@ -186,16 +200,27 @@ fn scan_sync_and_notify(
 /// `commands::refresh_scan`（手动刷新，R-52）也要在同一次调用里立即刷新一次，不必等下一次
 /// 后台扫描周期。
 pub(crate) fn refresh_tray_status(ctx: &AppContext, app_handle: &tauri::AppHandle) {
-    let tray_text_enabled = app_handle
+    let (tray_text_enabled, tray_text_metric) = app_handle
         .try_state::<Arc<Mutex<AppSettings>>>()
-        .and_then(|state| state.lock().ok().map(|guard| guard.tray_text_enabled))
-        .unwrap_or(false);
+        .and_then(|state| {
+            state
+                .lock()
+                .ok()
+                .map(|guard| (guard.tray_text_enabled, guard.tray_text_metric.clone()))
+        })
+        .unwrap_or_else(|| (false, "cost".to_string()));
     // Budgets read the same local stats, so they are re-checked on every
     // refresh: alerts fire here and near/over budgets add a tooltip line.
     let budget_line = budget::tray_summary(&budget::check_budget_alerts(ctx));
     // Anomaly alerts are off by default and throttle themselves.
     usage_anomaly::check_anomaly_alerts(ctx);
-    widget_window::refresh_tray_status(ctx, app_handle, tray_text_enabled, budget_line);
+    widget_window::refresh_tray_status(
+        ctx,
+        app_handle,
+        tray_text_enabled,
+        &tray_text_metric,
+        budget_line,
+    );
 }
 
 /// 跨日检测（R-52）：与上次记录的本地日历日不同就该立即刷新一次托盘文字（“今日”的统计换了
@@ -211,7 +236,7 @@ fn sync_quota_and_notify(ctx: &AppContext, app_handle: &tauri::AppHandle) {
         );
         return;
     }
-    match block_on_async(quota_sync::sync_quota_snapshots_impl(ctx)) {
+    match block_on_async(quota_sync::background_sync_quota_snapshots_impl(ctx)) {
         Ok(status) => {
             let _ = app_handle.emit("quota-sync-updated", status);
         }
@@ -287,7 +312,10 @@ fn start_background_scheduler(
         // database must not trigger a surprise cloud/keychain operation.
         // Newly inserted rows still sync through `persisted_changes`; an idle
         // retry is deliberately deferred to the first 15-minute retry window.
-        let _ = scan_sync_and_notify(&ctx, &app_handle, false);
+        // 托盘面板「后台扫描」关着时冷启动也不扫，等用户手动刷新或重新打开。
+        if !initial.background_scan_paused {
+            let _ = scan_sync_and_notify(&ctx, &app_handle, false);
+        }
         // 冷启动无论有没有新行，托盘文字都要先落一次“今日”数字。
         refresh_tray_status(&ctx, &app_handle);
         // Quota transport has its own five-minute cadence. Deferring the first
@@ -340,6 +368,18 @@ fn start_background_scheduler(
 
             #[cfg(target_os = "windows")]
             let mut stats_changed = false;
+            // 托盘面板「后台扫描」关掉时跳过定时扫描（计时照走，打开后按原节奏继续）；手动刷新照常。
+            if now >= next_scan && cfg.background_scan_paused {
+                // 扫描停了，上传照旧按 15 分钟重试：网关请求不经扫描也会进账本，之前没传完的也要补传。
+                if now >= next_cloud_sync_retry {
+                    if background_usage_sync(&ctx) {
+                        emit_stats_updated(&app_handle);
+                        refresh_tray_status(&ctx, &app_handle);
+                    }
+                    next_cloud_sync_retry = now + Duration::from_secs(15 * 60);
+                }
+                next_scan = now + Duration::from_secs(cfg.scan_interval_secs);
+            }
             if now >= next_scan {
                 let allow_idle_sync_retry = now >= next_cloud_sync_retry;
                 let scan_stats_changed =
@@ -359,11 +399,17 @@ fn start_background_scheduler(
             if now >= next_quota_sync {
                 // The main window only polls quotas while visible; a tray-resident
                 // app still needs a fresh local read for alerts. No keychain retry.
-                if quota::alerts::load_settings(ctx.app_data_dir()).enabled {
+                // 托盘显示最紧额度时同样要后台读一次，否则主窗口不开时数字不会更新。
+                let tray_shows_quota = cfg.tray_text_enabled && cfg.tray_text_metric == "quota";
+                if tray_shows_quota || quota::alerts::load_settings(ctx.app_data_dir()).enabled {
                     let _ =
                         tauri::async_runtime::block_on(quota::get_local_quota_providers_impl(&ctx));
+                    refresh_tray_status(&ctx, &app_handle);
                 }
-                sync_quota_and_notify(&ctx, &app_handle);
+                // 额度读取可能要几秒，同步前重新读暂停状态，不用这一轮开始时的 cfg。
+                if !crate::settings::background_sync_paused_now(&ctx) {
+                    sync_quota_and_notify(&ctx, &app_handle);
+                }
                 // Gateway requests land in the ledger without a scan, so
                 // budgets get their own five-minute check.
                 if !budget::load_settings(ctx.app_data_dir()).rules.is_empty()
@@ -550,18 +596,25 @@ fn focus_main_window(
 fn open_main_settings(
     app_handle: tauri::AppHandle,
     tray_state: tauri::State<'_, Arc<TrayWindowState>>,
+    anchor: Option<String>,
 ) -> Result<(), String> {
+    let anchor = main_settings_anchor(anchor.as_deref());
     let tray_state = tray_state.inner().clone();
     let handle = app_handle.clone();
     app_handle
         .run_on_main_thread(move || {
             show_main_window_from_tray(&handle, &tray_state);
-            let _ = handle.emit(
-                "open-settings",
-                serde_json::json!({ "anchor": "settings-widget" }),
-            );
+            let _ = handle.emit("open-settings", serde_json::json!({ "anchor": anchor }));
         })
         .map_err(|error| error.to_string())
+}
+
+/// 挂件能跳到的设置分区是闭合集合：默认「桌面挂件」，托盘面板关网关时跳「模型接入」。
+fn main_settings_anchor(requested: Option<&str>) -> &'static str {
+    match requested {
+        Some("settings-model-access") => "settings-model-access",
+        _ => "settings-widget",
+    }
 }
 
 pub fn run() {
@@ -699,6 +752,7 @@ pub fn run() {
                 }
             }
 
+            tray_panel::install_tray_refresher(app.handle().clone());
             // Create System Tray
             let quit_i = tauri::menu::MenuItemBuilder::with_id("quit", "退出").build(app)?;
             let show_i = tauri::menu::MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
@@ -1024,6 +1078,8 @@ pub fn run() {
             widget_window::toggle_widget_window,
             widget_window::widget_pointer_hover,
             widget_window::set_desktop_widget_enabled,
+            tray_panel::tray_panel_status,
+            tray_panel::tray_panel_toggle,
             focus_main_window,
             open_main_settings,
         ])
@@ -1050,6 +1106,19 @@ pub fn run() {
 #[cfg(test)]
 mod scheduler_tests {
     use super::*;
+
+    #[test]
+    fn widgets_can_only_open_the_two_allowed_settings_sections() {
+        assert_eq!(main_settings_anchor(None), "settings-widget");
+        assert_eq!(
+            main_settings_anchor(Some("settings-model-access")),
+            "settings-model-access"
+        );
+        assert_eq!(
+            main_settings_anchor(Some("settings-cloud")),
+            "settings-widget"
+        );
+    }
 
     #[test]
     fn lockscreen_only_settings_schedule_work_on_windows_only() {

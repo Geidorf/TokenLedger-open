@@ -150,6 +150,18 @@ pub struct AppSettings {
     /// 带着这份摘要；只有常驻的菜单栏标题需要用户开启。
     #[serde(default)]
     pub tray_text_enabled: bool,
+    /// 托盘文字显示哪一项：`cost` 今日预估费用（默认）、`quota` 最紧额度的可用百分比。
+    /// macOS 写在菜单栏图标旁；Windows / Linux 托盘没有标题位，改把它画成图标本身。
+    #[serde(default = "default_tray_text_metric")]
+    pub tray_text_metric: String,
+    /// 托盘面板的快捷开关：暂停后台定时扫描（手动刷新照常）。只经
+    /// `update_background_pause` 写入，通用 `save_settings` 不合并它。
+    #[serde(default)]
+    pub background_scan_paused: bool,
+    /// 托盘面板的快捷开关：暂停后台云端同步（扫描后的用量同步与额度快照同步；手动同步照常）。
+    /// 只经 `update_background_pause` 写入，通用 `save_settings` 不合并它。
+    #[serde(default)]
+    pub background_sync_paused: bool,
     /// Show the tray widget while the pointer hovers the tray icon and hide it
     /// again once the pointer has left both the icon and the widget; a click
     /// pins it instead (T10.110). Default on: this is the status-bar popover
@@ -179,7 +191,7 @@ pub struct AppSettings {
     /// per-instance `WidgetConfig`. Unknown strings fall back to the default
     /// in `sanitized`, so a settings file written by a newer build never
     /// leaves an older one rendering nothing.
-    #[serde(default = "default_widget_layout")]
+    #[serde(default = "default_popover_layout")]
     pub widget_popover_layout: String,
     #[serde(default = "default_widget_theme")]
     pub widget_popover_theme: String,
@@ -269,7 +281,12 @@ pub struct AppSettings {
     /// 一次性迁移标记：0 表示旧设置文件还没按升级前的使用情况决定上面的开关。
     #[serde(default)]
     pub model_access_version: u32,
+    /// 一次性迁移标记：0 表示托盘挂件还停在旧默认板式「用量详情」时，要换成新默认「托盘面板」。
+    #[serde(default)]
+    pub widget_panel_version: u32,
 }
+
+pub const WIDGET_PANEL_VERSION: u32 = 1;
 
 pub const MODEL_ACCESS_VERSION: u32 = 1;
 
@@ -298,12 +315,23 @@ fn default_tray_hover_delay_ms() -> u64 {
 
 /// 挂件板式的闭合取值。前端 `src/utils/widgetConfig.ts` 用同一组字符串；
 /// 两端都以「未知即回落到默认」为准，不做静默丢弃。
-pub const WIDGET_LAYOUTS: [&str; 5] = ["usage", "combo", "quota", "compact", "routing"];
+pub const WIDGET_LAYOUTS: [&str; 6] = ["usage", "combo", "quota", "compact", "routing", "panel"];
+/// 托盘挂件的默认板式：额度、今日用量、网关与快捷开关一屏看完。
+pub const DEFAULT_POPOVER_LAYOUT: &str = "panel";
+pub const TRAY_TEXT_METRICS: [&str; 2] = ["cost", "quota"];
 pub const WIDGET_THEMES: [&str; 3] = ["system", "light", "dark"];
 pub const WIDGET_RANGES: [&str; 3] = ["today", "week", "month"];
 
 fn default_widget_layout() -> String {
     WIDGET_LAYOUTS[0].to_string()
+}
+
+fn default_popover_layout() -> String {
+    DEFAULT_POPOVER_LAYOUT.to_string()
+}
+
+fn default_tray_text_metric() -> String {
+    TRAY_TEXT_METRICS[0].to_string()
 }
 
 fn default_widget_theme() -> String {
@@ -337,12 +365,15 @@ impl Default for AppSettings {
             start_minimized: false,
             widget_open_at_startup: false,
             tray_text_enabled: false,
+            tray_text_metric: default_tray_text_metric(),
+            background_scan_paused: false,
+            background_sync_paused: false,
             tray_hover_widget_enabled: true,
             tray_hover_delay_ms: default_tray_hover_delay_ms(),
             desktop_widget_enabled: false,
             routing_publish_enabled: false,
             desktop_widget_position: None,
-            widget_popover_layout: default_widget_layout(),
+            widget_popover_layout: default_popover_layout(),
             widget_popover_theme: default_widget_theme(),
             widget_popover_range: default_widget_range(),
             widget_popover_provider: None,
@@ -367,6 +398,7 @@ impl Default for AppSettings {
             cost_profile_revision: 0,
             model_access_enabled: false,
             model_access_version: MODEL_ACCESS_VERSION,
+            widget_panel_version: WIDGET_PANEL_VERSION,
         }
     }
 }
@@ -423,7 +455,12 @@ impl AppSettings {
         self.widget_popover_layout = sanitize_enum(
             &self.widget_popover_layout,
             &WIDGET_LAYOUTS,
-            WIDGET_LAYOUTS[0],
+            DEFAULT_POPOVER_LAYOUT,
+        );
+        self.tray_text_metric = sanitize_enum(
+            &self.tray_text_metric,
+            &TRAY_TEXT_METRICS,
+            TRAY_TEXT_METRICS[0],
         );
         self.widget_desktop_layout = sanitize_enum(
             &self.widget_desktop_layout,
@@ -495,6 +532,14 @@ pub fn load_settings(app: &AppContext) -> AppSettings {
             settings.scan_interval_secs = 900;
         }
         settings.scan_policy_version = 1;
+        should_persist = true;
+    }
+    if settings.widget_panel_version < WIDGET_PANEL_VERSION {
+        // 只替换旧默认值：用户主动选过的其他板式保持不动。
+        if settings.widget_popover_layout == WIDGET_LAYOUTS[0] {
+            settings.widget_popover_layout = DEFAULT_POPOVER_LAYOUT.to_string();
+        }
+        settings.widget_panel_version = WIDGET_PANEL_VERSION;
         should_persist = true;
     }
     settings = settings.sanitized();
@@ -694,6 +739,35 @@ pub(crate) fn update_model_access_enabled(
     })
 }
 
+/// 托盘面板快捷开关里的两项后台暂停：只改这一项，其余字段保留磁盘上的值。
+pub(crate) fn update_background_pause(
+    app: &AppContext,
+    target: BackgroundPause,
+    paused: bool,
+) -> Result<AppSettings, String> {
+    with_settings_write_lock(app, || {
+        let mut current = load_settings_result_unlocked(app)?;
+        match target {
+            BackgroundPause::Scan => current.background_scan_paused = paused,
+            BackgroundPause::Sync => current.background_sync_paused = paused,
+        }
+        save_settings_file_unlocked(app, &current)?;
+        Ok(current)
+    })
+}
+
+/// 自动同步真正启动前的最后一道检查：每次都从磁盘读最新的「后台同步」暂停状态，
+/// 不用扫描或额度读取开始前拿到的旧设置——用户可能在长扫描途中关掉同步。
+pub(crate) fn background_sync_paused_now(app: &AppContext) -> bool {
+    load_settings(app).background_sync_paused
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BackgroundPause {
+    Scan,
+    Sync,
+}
+
 /// Remembers where the user dragged the desktop widget (physical pixels).
 pub(crate) fn update_desktop_widget_position(
     app: &AppContext,
@@ -739,6 +813,7 @@ pub(crate) fn save_general_settings_preserving_quota_sync(
         merge_changed_field!(tray_text_enabled);
         merge_changed_field!(widget_open_at_startup);
         merge_changed_field!(tray_text_enabled);
+        merge_changed_field!(tray_text_metric);
         merge_changed_field!(tray_hover_widget_enabled);
         merge_changed_field!(tray_hover_delay_ms);
         merge_changed_field!(desktop_widget_enabled);
@@ -1150,6 +1225,79 @@ mod tests {
         assert!(!parsed.quota_antigravity_codexbar_enabled);
         assert!(parsed.quota_custom_endpoints.is_empty());
         assert!(!parsed.quota_snapshot_sync_enabled);
+    }
+
+    #[test]
+    fn old_default_popover_layout_moves_to_the_tray_panel_once() {
+        let legacy = |label: &str, layout: &str| {
+            let app = test_app_context(label);
+            fs::create_dir_all(app.app_data_dir()).expect("create settings directory");
+            let value = serde_json::json!({
+                "scan_interval_secs": 900,
+                "scan_policy_version": 1,
+                "desktop_interval_secs": 60,
+                "lockscreen_interval_secs": 300,
+                "wallpaper_desktop_enabled": false,
+                "wallpaper_lockscreen_enabled": false,
+                "autostart_enabled": false,
+                "start_minimized": false,
+                "wallpaper_use_cloud": false,
+                "widget_popover_layout": layout,
+                "widget_desktop_layout": "usage"
+            });
+            fs::write(
+                app.app_data_dir().join(SETTINGS_FILE),
+                serde_json::to_vec_pretty(&value).expect("serialize legacy settings"),
+            )
+            .expect("write legacy settings");
+            app
+        };
+        let app = legacy("panel-migration-default", "usage");
+        let migrated = load_settings(&app);
+        assert_eq!(migrated.widget_popover_layout, "panel");
+        // 桌面小组件不跟着换；新字段取默认值。
+        assert_eq!(migrated.widget_desktop_layout, "usage");
+        assert_eq!(migrated.tray_text_metric, "cost");
+        assert!(!migrated.background_scan_paused && !migrated.background_sync_paused);
+        // 迁移只做一次：之后用户再选回「用量详情」要保留。
+        let mut chosen = migrated.clone();
+        chosen.widget_popover_layout = "usage".to_string();
+        save_settings_file_unlocked(&app, &chosen).expect("save chosen layout");
+        assert_eq!(load_settings(&app).widget_popover_layout, "usage");
+        let _ = fs::remove_dir_all(app.app_data_dir());
+
+        let app = legacy("panel-migration-custom", "routing");
+        assert_eq!(load_settings(&app).widget_popover_layout, "routing");
+        let _ = fs::remove_dir_all(app.app_data_dir());
+    }
+
+    #[test]
+    fn background_pauses_and_tray_metric_only_change_through_their_own_paths() {
+        let app = test_app_context("background-pause");
+        let saved = update_background_pause(&app, BackgroundPause::Scan, true).expect("pause scan");
+        assert!(saved.background_scan_paused && !saved.background_sync_paused);
+        let saved = update_background_pause(&app, BackgroundPause::Sync, true).expect("pause sync");
+        assert!(saved.background_scan_paused && saved.background_sync_paused);
+        assert!(background_sync_paused_now(&app));
+
+        // 通用保存带着陈旧的「未暂停」也不能把暂停改回去；托盘数字的取值则照常合并。
+        let previous = AppSettings::default();
+        let mut incoming = previous.clone();
+        incoming.tray_text_metric = "quota".to_string();
+        let merged = save_general_settings_preserving_quota_sync(&app, &previous, incoming)
+            .expect("general save");
+        assert!(merged.background_scan_paused && merged.background_sync_paused);
+        assert_eq!(merged.tray_text_metric, "quota");
+
+        let unknown = AppSettings {
+            tray_text_metric: "tokens".to_string(),
+            widget_popover_layout: "future".to_string(),
+            ..AppSettings::default()
+        }
+        .sanitized();
+        assert_eq!(unknown.tray_text_metric, "cost");
+        assert_eq!(unknown.widget_popover_layout, "panel");
+        let _ = fs::remove_dir_all(app.app_data_dir());
     }
 
     #[test]

@@ -13,6 +13,7 @@ import {
 import { buildCardModel, buildCardQuota, type CardTheme, type WidgetQuotaRead } from './widget/cardModel';
 import { LedgerCard } from './widget/LedgerCard';
 import { RoutingCard } from './widget/RoutingCard';
+import { PanelCard, type PanelToggleTarget, type TrayPanelStatus } from './widget/PanelCard';
 import { failedWidgetQuota, readWidgetQuota } from './widget/quotaRead';
 import { DesktopToolbar, TrayTopBar, type WidgetActions } from './widget/WidgetChrome';
 import { toExternalSnapshot, useRoutingLive } from '../features/gateway/useRoutingLive';
@@ -43,6 +44,8 @@ export function readWidgetMode(search: string = window.location.search): WidgetM
 }
 
 const VISIBLE_RECONCILE_MS = 5 * 60 * 1000;
+/** 「托盘面板」看得见时多久重读一次开关与网关状态（网关可能在别处被开关）。 */
+const PANEL_STATUS_POLL_MS = 5_000;
 
 /** 「实时路由」板式的数据：挂件窗口只被授权读这一条已脱敏的网关视图。 */
 const readRoutingFeed = () => invoke<RoutingFeed>('gateway_routing_feed', { limit: 30 });
@@ -76,14 +79,18 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
   const [hovered, setHovered] = useState(false);
   const generation = useRef(0);
   const lastLoadedAt = useRef(0);
-  const range = rangeOverride ?? config.range;
+  const layout = config.layout;
+  // 「托盘面板」只看今日：范围分段不画，统计也固定读今日。
+  const range = layout === 'panel' ? 'today' : rangeOverride ?? config.range;
   const rangeRef = useRef(range);
   rangeRef.current = range;
-  const layout = config.layout;
+  const [panelStatus, setPanelStatus] = useState<TrayPanelStatus | null>(null);
+  const [panelPending, setPanelPending] = useState<PanelToggleTarget | null>(null);
+  const [panelError, setPanelError] = useState('');
   // 「单行消耗」「实时路由」不画额度：不去读可能要几十秒的额度来源。换到别的板式时重新读一次。
   const needsQuota = !(layout === 'compact' || layout === 'routing');
-  // 「实时路由」只在选了这个板式时轮询网关（挂件唯一能读的网关命令，已脱敏）。
-  const routing = useRoutingLive({ enabled: configReady && layout === 'routing', readFeed: readRoutingFeed, readExternal: readExternalFeed });
+  // 「实时路由」与「托盘面板」才轮询网关（挂件唯一能读的网关命令，已脱敏）。
+  const routing = useRoutingLive({ enabled: configReady && (layout === 'routing' || layout === 'panel'), readFeed: readRoutingFeed, readExternal: readExternalFeed });
   const needsQuotaRef = useRef(needsQuota);
   needsQuotaRef.current = needsQuota;
 
@@ -215,6 +222,48 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
     };
   }, [load]);
 
+  const loadPanelStatus = useCallback(async () => {
+    try {
+      setPanelStatus(await invoke<TrayPanelStatus>('tray_panel_status'));
+    } catch {
+      // 读不到就保持上一份；开关按钮在拿到第一份状态前不可点。
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!configReady || layout !== 'panel') return undefined;
+    void loadPanelStatus();
+    let disposed = false;
+    let dispose: (() => void) | undefined;
+    void listen('settings-updated', () => void loadPanelStatus())
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else dispose = unlisten;
+      })
+      .catch(() => undefined);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadPanelStatus();
+    }, PANEL_STATUS_POLL_MS);
+    return () => {
+      disposed = true;
+      dispose?.();
+      window.clearInterval(timer);
+    };
+  }, [configReady, layout, loadPanelStatus]);
+
+  const togglePanel = async (target: PanelToggleTarget, enabled: boolean) => {
+    if (panelPending) return;
+    setPanelPending(target);
+    setPanelError('');
+    try {
+      setPanelStatus(await invoke<TrayPanelStatus>('tray_panel_toggle', { target, enabled }));
+    } catch {
+      setPanelError('切换失败，请到主窗口重试');
+    } finally {
+      setPanelPending(null);
+    }
+  };
+
   const changeRange = (next: WidgetRange) => {
     if (next === range) return;
     setRangeOverride(next);
@@ -256,6 +305,11 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
     void invoke('open_main_settings').catch(() => undefined);
   };
 
+  // 托盘面板关网关：去主窗口「模型接入」，那里会先检查仍指向网关的 Agent 并提供恢复。
+  const openModelAccess = () => {
+    void invoke('open_main_settings', { anchor: 'settings-model-access' }).catch(() => undefined);
+  };
+
   const removeFromDesktop = () => {
     void invoke('set_desktop_widget_enabled', { enabled: false }).catch(() => undefined);
   };
@@ -277,7 +331,7 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
     close: mode === 'desktop' ? removeFromDesktop : hide,
   };
   // 「额度总览」只看额度，范围分段对它没有意义，藏起来而不是留一组点了没反应的按钮。
-  const showsRange = !(layout === 'quota' || layout === 'routing');
+  const showsRange = !(layout === 'quota' || layout === 'routing' || layout === 'panel');
   // 工具条盖在“更新于”上：「额度与用量」的“更新于”在右栏底部，其余板式在右上角。
   const toolbarAt = layout === 'combo' ? 'bottom' : 'top';
 
@@ -307,7 +361,23 @@ export function WidgetView({ mode: modeProp }: { mode?: WidgetMode } = {}) {
       {mode === 'popover' && (
         <TrayTopBar range={range} showRange={showsRange} onRange={changeRange} actions={actions} busy={busy} />
       )}
-      {layout === 'routing' ? (
+      {layout === 'panel' ? (
+        <PanelCard
+          model={model}
+          now={now}
+          scene={routing.scene}
+          loaded={routing.loaded}
+          controls={{
+            status: panelStatus,
+            pending: panelPending,
+            error: panelError,
+            onToggle: (target, enabled) => void togglePanel(target, enabled),
+            onCloseGateway: openModelAccess,
+          }}
+          noticeActions={mode === 'popover' ? { openSettings, openMain } : null}
+          toolbar={mode === 'desktop' ? <DesktopToolbar shown={hovered} at="top" actions={actions} busy={busy} /> : null}
+        />
+      ) : layout === 'routing' ? (
         <RoutingCard
           scene={routing.scene}
           loaded={routing.loaded}
