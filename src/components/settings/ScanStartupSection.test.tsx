@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ScanStartupSection, scanFrequencyHint } from "./ScanStartupSection";
+import { ScanStartupSection, parseExtraDirs, scanFrequencyHint } from "./ScanStartupSection";
 
 const props = {
   appSettings: { scan_interval_secs: 900 },
@@ -31,6 +31,35 @@ describe("ScanStartupSection", () => {
     />);
     fireEvent.click(screen.getByRole("switch", { name: "启动时最小化到托盘" }));
     expect(onSettingChange).toHaveBeenCalledExactlyOnceWith("start_minimized", true);
+  });
+
+  it("额外 Codex 目录每行一个，失焦时去重保存", () => {
+    const onSettingChange = vi.fn();
+    render(<ScanStartupSection {...props}
+      appSettings={{ ...props.appSettings, codex_extra_dirs: [] }}
+      onSettingChange={onSettingChange}
+    />);
+    const input = screen.getByRole("textbox", { name: "额外的 Codex 日志目录" });
+    fireEvent.change(input, {
+      target: { value: " %APPDATA%\\Example\\codex-home \n\n~/codex\n~/codex" },
+    });
+    expect(onSettingChange).not.toHaveBeenCalled();
+    fireEvent.blur(input);
+    expect(onSettingChange).toHaveBeenCalledExactlyOnceWith("codex_extra_dirs", [
+      "%APPDATA%\\Example\\codex-home",
+      "~/codex",
+    ]);
+  });
+
+  it("目录未变时失焦不重复保存", () => {
+    const onSettingChange = vi.fn();
+    render(<ScanStartupSection {...props}
+      appSettings={{ ...props.appSettings, codex_extra_dirs: ["~/codex"] }}
+      onSettingChange={onSettingChange}
+    />);
+    fireEvent.blur(screen.getByRole("textbox", { name: "额外的 Codex 日志目录" }));
+    expect(onSettingChange).not.toHaveBeenCalled();
+    expect(parseExtraDirs("a\r\n a \nb")).toEqual(["a", "b"]);
   });
 
   it("把秒数翻译成用户可读的扫描频率", () => {
