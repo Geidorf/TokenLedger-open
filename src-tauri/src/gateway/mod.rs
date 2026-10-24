@@ -438,6 +438,8 @@ impl Gateway {
         }
         let key = input.key.trim();
         let account = provider_account(&input.id);
+        // Probe results were for the old key.
+        self.prober.forget(&input.id);
         if key.is_empty() {
             return self.shared.secrets.delete(&account);
         }
@@ -470,6 +472,7 @@ impl Gateway {
             *providers = next;
         }
         self.shared.secrets.delete(&provider_account(id))?;
+        self.prober.forget(id);
         self.list_providers()
     }
 
@@ -688,26 +691,31 @@ impl Gateway {
         self.prober.set(settings)
     }
 
-    /// Probes every enabled provider once, one after another.
+    /// Probes every enabled provider once, a few at a time.
     pub async fn probe_providers(&self) {
         use futures_util::StreamExt;
+        let generation = self.prober.generation();
         let providers: Vec<ProviderRecord> =
             self.providers().into_iter().filter(|p| p.enabled).collect();
         let ids: Vec<String> = providers.iter().map(|p| p.id.clone()).collect();
         self.prober.retain(&ids);
         // A few at a time, so one slow provider (20 s timeout) does not hold up the rest.
-        let results: Vec<(String, probe::ProbeResult)> = futures_util::stream::iter(providers)
-            .map(|provider| self.probe_one(provider))
-            .buffer_unordered(PROBE_CONCURRENCY)
-            .filter_map(std::future::ready)
-            .collect()
-            .await;
+        let results: Vec<(String, Option<probe::ProbeResult>)> =
+            futures_util::stream::iter(providers)
+                .map(|provider| self.probe_one(provider))
+                .buffer_unordered(PROBE_CONCURRENCY)
+                .collect()
+                .await;
         for (id, result) in results {
-            self.prober.record(&id, result);
+            match result {
+                Some(result) => self.prober.record(generation, &id, result),
+                // Not probed this round: an older result would be stale.
+                None => self.prober.forget(&id),
+            }
         }
     }
 
-    async fn probe_one(&self, provider: ProviderRecord) -> Option<(String, probe::ProbeResult)> {
+    async fn probe_one(&self, provider: ProviderRecord) -> (String, Option<probe::ProbeResult>) {
         let key = if provider.auth_mode == AuthMode::None {
             None
         } else {
@@ -716,13 +724,15 @@ impl Gateway {
             match tauri::async_runtime::spawn_blocking(move || secrets.get(&account)).await {
                 Ok(Ok(Some(key))) => Some(key),
                 // No key: the passive report already says so; never probe keyless.
-                _ => return None,
+                _ => return (provider.id, None),
             }
         };
-        let url = probe::models_url(&provider).ok()?;
+        let Ok(url) = probe::models_url(&provider) else {
+            return (provider.id, None);
+        };
         let client = server::upstream_client(&url);
         let result = probe::probe(&provider, key.as_deref(), client, url.clone()).await;
-        Some((provider.id, result))
+        (provider.id, Some(result))
     }
 
     /// Timed probes while model access is on; checks once a minute whether
@@ -1296,9 +1306,10 @@ mod tests {
             .upsert_provider(provider("nokey", 1, WireApi::Chat))
             .unwrap();
         tauri::async_runtime::block_on(gateway.probe_providers());
-        assert_eq!(
-            harness.seen.auth.lock().unwrap().as_deref(),
-            Some("Bearer sk-chat"),
+        // Providers are probed concurrently, so either key may be the last seen.
+        let auth = harness.seen.auth.lock().unwrap().clone();
+        assert!(
+            matches!(auth.as_deref(), Some("Bearer sk-chat" | "Bearer sk-resp")),
             "the probe sends the provider's own key"
         );
         let report = gateway.provider_health().unwrap();
@@ -1313,6 +1324,21 @@ mod tests {
             assert_eq!(by_id(id).status, "healthy");
         }
         assert!(by_id("nokey").probes.is_empty());
+        // Removing a key forgets that provider's earlier probe.
+        gateway
+            .set_provider_key(SetProviderKeyInput {
+                id: "chat".into(),
+                key: String::new(),
+            })
+            .unwrap();
+        let report = gateway.provider_health().unwrap();
+        assert!(report
+            .providers
+            .iter()
+            .find(|p| p.provider == "chat")
+            .unwrap()
+            .probes
+            .is_empty());
         // Probes never reach the usage ledger.
         assert!(gateway.recent_requests(10).unwrap().is_empty());
     }

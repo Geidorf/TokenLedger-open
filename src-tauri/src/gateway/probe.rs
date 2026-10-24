@@ -72,8 +72,16 @@ impl ProbeResult {
 pub struct Prober {
     path: PathBuf,
     settings: Mutex<ProbeSettings>,
-    results: Mutex<HashMap<String, VecDeque<ProbeResult>>>,
+    results: Mutex<Results>,
     last_round: Mutex<Option<Instant>>,
+}
+
+/// Results plus a generation that turning the probe off bumps, so a round
+/// still in flight at that moment cannot write its results back.
+#[derive(Default)]
+struct Results {
+    generation: u64,
+    by_provider: HashMap<String, VecDeque<ProbeResult>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -93,7 +101,7 @@ impl Prober {
         Self {
             path,
             settings: Mutex::new(settings),
-            results: Mutex::new(HashMap::new()),
+            results: Mutex::new(Results::default()),
             last_round: Mutex::new(None),
         }
     }
@@ -112,7 +120,9 @@ impl Prober {
         write_json_atomic(&self.path, &body)?;
         *lock(&self.settings) = next;
         if !next.enabled {
-            lock(&self.results).clear();
+            let mut results = lock(&self.results);
+            results.generation += 1;
+            results.by_provider.clear();
         }
         Ok(next)
     }
@@ -120,21 +130,38 @@ impl Prober {
     /// Newest first, per provider id.
     pub fn results(&self) -> HashMap<String, Vec<ProbeResult>> {
         lock(&self.results)
+            .by_provider
             .iter()
             .map(|(id, list)| (id.clone(), list.iter().cloned().collect()))
             .collect()
     }
 
-    pub fn record(&self, provider: &str, result: ProbeResult) {
-        let mut map = lock(&self.results);
-        let list = map.entry(provider.to_string()).or_default();
+    /// The generation a round starts in; pass it back to [`Prober::record`].
+    pub fn generation(&self) -> u64 {
+        lock(&self.results).generation
+    }
+
+    /// Keeps the result unless the probe was turned off since `generation`.
+    pub fn record(&self, generation: u64, provider: &str, result: ProbeResult) {
+        let mut results = lock(&self.results);
+        if results.generation != generation {
+            return;
+        }
+        let list = results.by_provider.entry(provider.to_string()).or_default();
         list.push_front(result);
         list.truncate(KEEP);
     }
 
     /// Drops results of providers that are gone or disabled.
     pub fn retain(&self, ids: &[String]) {
-        lock(&self.results).retain(|id, _| ids.contains(id));
+        lock(&self.results)
+            .by_provider
+            .retain(|id, _| ids.contains(id));
+    }
+
+    /// Drops one provider's results, e.g. after its key changed or went away.
+    pub fn forget(&self, provider: &str) {
+        lock(&self.results).by_provider.remove(provider);
     }
 
     /// True when a timed round is due now; marks it started.
@@ -210,26 +237,26 @@ pub async fn probe(
         code,
         error: error.map(|text| clip(&text)),
     };
-    let client = match client_for.await {
-        Ok(client) => client,
-        Err(error) => return done(None, "connect_failed", Some(error)),
-    };
-    let mut request = client.get(url);
-    if provider.wire == WireApi::Anthropic {
-        request = request.header("anthropic-version", anthropic::DEFAULT_VERSION);
-        if let (AuthMode::Key, Some(key)) = (provider.auth_mode, key) {
-            request = request.header("x-api-key", key);
+    // One deadline for resolving the upstream, connecting and the reply.
+    let attempt = async {
+        let client = client_for.await?;
+        let mut request = client.get(url);
+        if provider.wire == WireApi::Anthropic {
+            request = request.header("anthropic-version", anthropic::DEFAULT_VERSION);
+            if let (AuthMode::Key, Some(key)) = (provider.auth_mode, key) {
+                request = request.header("x-api-key", key);
+            }
+        } else if let (AuthMode::Key, Some(key)) = (provider.auth_mode, key) {
+            request = request.bearer_auth(key);
         }
-    } else if let (AuthMode::Key, Some(key)) = (provider.auth_mode, key) {
-        request = request.bearer_auth(key);
-    }
-    match tokio::time::timeout(PROBE_TIMEOUT, request.send()).await {
+        request
+            .send()
+            .await
+            .map_err(|error| format!("连接上游失败：{}", error.without_url()))
+    };
+    match tokio::time::timeout(PROBE_TIMEOUT, attempt).await {
         Err(_) => done(None, "connect_failed", Some("探活等待超过 20 秒。".into())),
-        Ok(Err(error)) => done(
-            None,
-            "connect_failed",
-            Some(format!("连接上游失败：{}", error.without_url())),
-        ),
+        Ok(Err(error)) => done(None, "connect_failed", Some(error)),
         Ok(Ok(response)) => {
             let status = response.status().as_u16();
             let code = status_code(status);
@@ -322,9 +349,9 @@ mod tests {
             error: None,
         };
         for _ in 0..(KEEP + 3) {
-            prober.record("a", result(true));
+            prober.record(0, "a", result(true));
         }
-        prober.record("b", result(true));
+        prober.record(0, "b", result(true));
         assert_eq!(prober.results()["a"].len(), KEEP);
         prober.retain(&["a".to_string()]);
         assert!(!prober.results().contains_key("b"));
@@ -335,6 +362,14 @@ mod tests {
             })
             .unwrap();
         assert!(prober.results().is_empty(), "turning off forgets results");
+        prober.record(0, "a", result(true));
+        assert!(
+            prober.results().is_empty(),
+            "a round started before turning off cannot write back"
+        );
+        prober.record(prober.generation(), "a", result(true));
+        prober.forget("a");
+        assert!(prober.results().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
