@@ -140,7 +140,7 @@ import com.jeidorf.tokenledger.mobile.ui.onboarding.v2HasDesktopData
 import com.jeidorf.tokenledger.mobile.ui.onboarding.v2ShouldAutoOpenGuide
 import com.jeidorf.tokenledger.mobile.ui.sources.V2EntityContent
 import com.jeidorf.tokenledger.mobile.ui.sources.V2PaginationErrorCard
-import com.jeidorf.tokenledger.mobile.ui.sources.V2SourceAnalysis
+import com.jeidorf.tokenledger.mobile.ui.split.V2UsageSplitCard
 import com.jeidorf.tokenledger.mobile.ui.sources.V2ToolDistributionCard
 import com.jeidorf.tokenledger.mobile.ui.trend.V2TrendInsightCard
 import com.jeidorf.tokenledger.mobile.widget.TokenLedgerWidget
@@ -858,9 +858,11 @@ internal fun LazyListScope.v2InsightsItems(
                 TextButton(onClick = onReturnFromDay) { Text("返回原查询与复盘") }
             }
             item(key = "insights-sources", contentType = "sources") {
-                V2SourceAnalysis(
-                    palette, stats, tokenDisplayMode, onTokenDisplayModeChange,
-                    state.query.tools, onToolFilterChange, onOpenTool, onOpenModel
+                V2UsageSplitCard(
+                    palette, stats, tokenDisplayMode,
+                    machineFiltered = state.query.machines.isNotEmpty(),
+                    onOpenTool = onOpenTool,
+                    onOpenModel = onOpenModel
                 )
             }
         }
