@@ -423,7 +423,10 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         "cline",
         scan_cline_family(&mut logs, &cline_checkpoints, &mut pending_checkpoints)
     );
-    timed_scan_step!("goose", scan_goose(&mut logs));
+    timed_scan_step!(
+        "goose",
+        scan_goose(&mut logs, &scan_cursors, &mut pending_cursors)
+    );
 
     let mut outcome = timed_scan_step!(
         "persist",

@@ -1,3 +1,4 @@
+use super::checkpoints::*;
 use super::helpers::*;
 use super::types::LogRecord;
 use chrono::TimeZone;
@@ -55,10 +56,17 @@ fn goose_hash(value: &str) -> String {
         .collect()
 }
 
-pub(crate) fn scan_goose(logs: &mut Vec<LogRecord>) -> usize {
+pub(crate) const GOOSE_LEDGER_SOURCE_KIND: &str = "goose-usage-ledger-v1";
+const GOOSE_PARSER_VERSION: i64 = 1;
+
+pub(crate) fn scan_goose(
+    logs: &mut Vec<LogRecord>,
+    cursors: &SourceCursorMap,
+    pending_cursors: &mut Vec<crate::db::ScanSourceCursor>,
+) -> usize {
     goose_db_candidates(&get_home_dir())
         .iter()
-        .map(|db| scan_goose_db(db, logs))
+        .map(|db| scan_goose_db(db, logs, cursors, pending_cursors))
         .sum()
 }
 
@@ -70,11 +78,28 @@ pub(crate) fn scan_goose(logs: &mut Vec<LogRecord>) -> usize {
 /// goose stores the whole prompt in `input_tokens` (cache reads and writes
 /// included, for both Anthropic- and OpenAI-style providers); the ledger
 /// keeps net input and books cache traffic separately. Rows never change
-/// after insert, so they dedupe by the ledger's primary key.
-pub(crate) fn scan_goose_db(db_path: &Path, logs: &mut Vec<LogRecord>) -> usize {
+/// after insert and the AUTOINCREMENT id only grows, so they dedupe by that
+/// key and a per-database cursor keeps idle scans from rereading history.
+pub(crate) fn scan_goose_db(
+    db_path: &Path,
+    logs: &mut Vec<LogRecord>,
+    cursors: &SourceCursorMap,
+    pending_cursors: &mut Vec<crate::db::ScanSourceCursor>,
+) -> usize {
     if !db_path.is_file() {
         return 0;
     }
+    let Ok(fingerprint) = source_fingerprint(db_path) else {
+        return 0;
+    };
+    let after_id = active_source_cursor(
+        cursors,
+        &fingerprint,
+        GOOSE_LEDGER_SOURCE_KIND,
+        GOOSE_PARSER_VERSION,
+    )
+    .and_then(|cursor| cursor.cursor_primary.parse::<i64>().ok())
+    .unwrap_or(i64::MIN);
     let Ok(conn) = Connection::open_with_flags(
         db_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -94,11 +119,11 @@ pub(crate) fn scan_goose_db(db_path: &Path, logs: &mut Vec<LogRecord>) -> usize 
     let Ok(mut stmt) = conn.prepare(
         "SELECT id, session_id, created_timestamp, model, input_tokens, output_tokens,
                 cache_read_tokens, cache_write_tokens, cost, cost_source
-         FROM usage_ledger ORDER BY id",
+         FROM usage_ledger WHERE id > ?1 ORDER BY id",
     ) else {
         return 0;
     };
-    let Ok(rows) = stmt.query_map([], |row| {
+    let Ok(rows) = stmt.query_map([after_id], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, String>(1)?,
@@ -116,7 +141,14 @@ pub(crate) fn scan_goose_db(db_path: &Path, logs: &mut Vec<LogRecord>) -> usize 
     };
 
     let mut count = 0;
-    for row in rows.flatten() {
+    let mut last_id = None;
+    for row in rows {
+        // A row that fails to decode stops the batch so the cursor never
+        // moves past it.
+        let Ok(row) = row else {
+            break;
+        };
+        last_id = Some(row.0);
         let (
             id,
             session_id,
@@ -174,6 +206,14 @@ pub(crate) fn scan_goose_db(db_path: &Path, logs: &mut Vec<LogRecord>) -> usize 
         });
         count += 1;
     }
+    if let Some(last_id) = last_id {
+        pending_cursors.push(fingerprint.source_cursor(
+            GOOSE_LEDGER_SOURCE_KIND,
+            last_id.to_string(),
+            "",
+            GOOSE_PARSER_VERSION,
+        ));
+    }
     count
 }
 
@@ -202,7 +242,11 @@ mod scanner_goose_tests {
     fn reads_ledger_rows_as_net_input_with_cache_split() {
         let (root, db) = fixture_db();
         let mut logs = Vec::new();
-        assert_eq!(scan_goose_db(&db, &mut logs), 3);
+        let mut pending = Vec::new();
+        assert_eq!(
+            scan_goose_db(&db, &mut logs, &SourceCursorMap::new(), &mut pending),
+            3
+        );
 
         let first = &logs[0];
         assert_eq!(first.tool, "goose");
@@ -223,6 +267,47 @@ mod scanner_goose_tests {
     }
 
     #[test]
+    fn cursor_skips_rows_already_read() {
+        let (root, db) = fixture_db();
+        let mut pending = Vec::new();
+        let mut first = Vec::new();
+        scan_goose_db(&db, &mut first, &SourceCursorMap::new(), &mut pending);
+        assert_eq!(pending.len(), 1);
+        let cursors: SourceCursorMap = pending
+            .drain(..)
+            .map(|cursor| {
+                (
+                    (cursor.source_kind.clone(), cursor.source_path.clone()),
+                    cursor,
+                )
+            })
+            .collect();
+
+        let mut idle = Vec::new();
+        assert_eq!(scan_goose_db(&db, &mut idle, &cursors, &mut pending), 0);
+        assert!(idle.is_empty());
+        assert!(pending.is_empty(), "no new rows keeps the cursor as is");
+
+        Connection::open(&db)
+            .expect("open fixture db")
+            .execute(
+                "INSERT INTO usage_ledger (session_id, created_timestamp, model,
+                     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+                 VALUES ('20261021_1', 1761030000, 'gpt-5.4', 900, 100, 0, 0)",
+                [],
+            )
+            .expect("append row");
+        let mut fresh = Vec::new();
+        assert_eq!(scan_goose_db(&db, &mut fresh, &cursors, &mut pending), 1);
+        assert_eq!(fresh[0].input_tokens, 900);
+        assert!(first
+            .iter()
+            .all(|log| log.unique_key != fresh[0].unique_key));
+        assert_eq!(pending.len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn database_without_ledger_yields_nothing() {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -235,9 +320,18 @@ mod scanner_goose_tests {
                 "CREATE TABLE sessions (id TEXT PRIMARY KEY, accumulated_input_tokens INTEGER);",
             )
             .expect("create");
-        assert_eq!(scan_goose_db(&db, &mut Vec::new()), 0);
+        let none = SourceCursorMap::new();
         assert_eq!(
-            scan_goose_db(Path::new("/missing/sessions.db"), &mut Vec::new()),
+            scan_goose_db(&db, &mut Vec::new(), &none, &mut Vec::new()),
+            0
+        );
+        assert_eq!(
+            scan_goose_db(
+                Path::new("/missing/sessions.db"),
+                &mut Vec::new(),
+                &none,
+                &mut Vec::new()
+            ),
             0
         );
         let _ = fs::remove_file(db);
