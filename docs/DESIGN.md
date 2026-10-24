@@ -568,11 +568,12 @@ T10.306h 后台小组件两条缓存写入在网络前捕获请求身份，最�
 
 ### 6.4 Android 桌面小组件 · Ledger Rings
 
-视觉基础为 [Ledger Rings v1](design/android-widget-ledger-rings-v1.png)，SHA-256 `0c1174ba783796a6b4b9fe8e3c0b3701272031d75a825caf5a91263b6869c90e`；多 Provider 版当前渲染事实由 `WidgetDesignScreenshotTest` 的深/浅色 golden（`apps/android/app/src/screenshotTestDebug/reference/.../WidgetDesignScreenshotTestKt/LedgerRings{Dark,Light}Screenshot_*.png`）锁定；golden 每次重录都会变，文档不再抄写其哈希。它延续 Android V2 的编辑式黑底、克制蓝色和数字优先层级，但把桌面小组件收敛为三种用途明确的实例，而不是在一个卡片里用尺寸或顶栏轮播暗中改写内容。
+视觉基础为 [Ledger Rings v1](design/android-widget-ledger-rings-v1.png)，SHA-256 `0c1174ba783796a6b4b9fe8e3c0b3701272031d75a825caf5a91263b6869c90e`；多 Provider 版当前渲染事实由 `WidgetDesignScreenshotTest` 的深/浅色 golden（`apps/android/app/src/screenshotTestDebug/reference/.../WidgetDesignScreenshotTestKt/LedgerRings{Dark,Light}Screenshot_*.png`）锁定；golden 每次重录都会变，文档不再抄写其哈希。它延续 Android V2 的编辑式黑底、克制蓝色和数字优先层级，但把桌面小组件收敛为四种用途明确的实例，而不是在一个卡片里用尺寸或顶栏轮播暗中改写内容。
 
 - 额度圆环：最多三个 Provider 并列；圆环中心只保留可用百分比/绝对值，Provider 与窗口语义位于环外，避免在 40–58dp 圆内堆叠三行文字。2×2 按可用宽度缩为 40dp，4×2 提升到 58dp，单来源可放大到 72dp。圆环按档位着色（充足主色蓝、偏紧琥珀、告急红）；来源 stale 时圆环淡化并写「待刷新」与观测日期（用户决定，T10.173 V-Q2；随 T10.173 的视觉任务（A9 小组件）实施。现行 stale 的圆环改用琥珀色、不按档位着色，文字写「历史」「历史数据」，「待刷新」字样由 A9 新增）；错误态画虚线空槽并写「不可用」（root 决定 R-4，以 T10.173 规范 §4.14 为准，随 A9 实施；现行为完整红环，环心写破折号、环外写“不可用”）。
 - 额度横条：Codex、Claude、Antigravity 以稳定顺序纵排，每行固定为状态点、Provider、窗口/状态、可用值与共宽轨道；4×1 压缩文字和轨道而不删除来源，4×2 保留窗口语义。错误态不绘制伪造的百分比进度。
 - 额度与消耗：4×2 上部把有效 Token 与预估费用放入互不推动的双数值轨道，下部按实际高度呈现一至三个完整 Provider 可用额度横条；大字或窄宽时纵向收束并至少保留一项额度与消耗，确实无法同时承载时明确提示尺寸不足，不把组合卡静默降级成另一组件类型（T10.118d）。
+- 额度条：4×3 为主要形态，每个额度窗口一行，左写「来源 · 窗口」，右写「N 分钟后重置」与「可用 N%」，下方 4dp 细条；截断按受限窗口选择规则，放不下的窗口在卡头写「+N 个窗口」，大字或窄卡时卡头让出用量以保住该文字。配置页「实时路由」开关（默认关）打开后，底部一行写最近一次网关调用；后台刷新时读一次 routing-snapshot-v1，只存按账号绑定的摘要，不存设备名与凭据。
 - 交互：卡片整体点击只打开 TokenLedger。样式、来源、范围与主题通过 Launcher 的添加/重新配置 Activity 修改；卡片内不提供字符图标或循环轮播，避免误触后实例用途变化。全部来源为默认值，也允许某个实例固定单一来源。
 - 主题：`WidgetThemeMode.System/Light/Dark` 按 appWidgetId 持久化。System 在渲染时读取 `uiMode`，Light/Dark 使用固定语义色，不反向修改 `LedgerAppearance`。
 - 数据：`WidgetStateRepository` 只读 owner-bound LKG；Provider 复用 Android 稳定排序 helper。百分比从 `remaining / limit` 映射为 available fraction，费用按构建配置汇率换算为人民币；来源时效取当前 Provider 窗口最大 `observedAt`。
@@ -583,9 +584,9 @@ T10.306h 后台小组件两条缓存写入在网络前捕获请求身份，最�
 
 ### 6.5 小组件 Provider 升级兼容
 
-旧 `TokenLedgerWidgetReceiver` 保留为隐藏的兼容 Provider，继续读取旧实例的 mode；Launcher 新增入口只暴露环形额度、单行消耗和组合卡三个固定 Provider。`WidgetMode.SingleUsage` 承担 4×1 单行消耗，旧存储值 `usage` 映射到该模式；历史 `MultiBar` 仍可渲染但不作为新实例选择。
+旧 `TokenLedgerWidgetReceiver` 保留为隐藏的兼容 Provider，继续读取旧实例的 mode；Launcher 新增入口只暴露环形额度、单行消耗、组合卡和额度条四个固定 Provider。`WidgetMode.SingleUsage` 承担 4×1 单行消耗，旧存储值 `usage` 映射到该模式；历史 `MultiBar` 仍可渲染但不作为新实例选择。
 
-三个固定 Provider 都指向配置 Activity 并通过自身 Component 锁定类型，只允许修改来源、范围和主题；旧隐藏 Provider 才能保留历史类型选择。全局 WorkManager 周期任务按四个 Provider 的实例总数管理，任一 `onDisabled` 都必须重新查询总数，只有总数为零才取消。卡片、登录态、空态与错误态整体点击打开主应用；字符型刷新符号不进入 RemoteViews。
+四个固定 Provider 都指向配置 Activity 并通过自身 Component 锁定类型，只允许修改来源、范围和主题；旧隐藏 Provider 才能保留历史类型选择。全局 WorkManager 周期任务按五个 Provider 的实例总数管理，任一 `onDisabled` 都必须重新查询总数，只有总数为零才取消。卡片、登录态、空态与错误态整体点击打开主应用；字符型刷新符号不进入 RemoteViews。
 
 ### 6.6 Android 周期总结与 PNG 分享（REQ-SHARE-01）
 
