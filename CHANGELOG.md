@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unsigned Linux x64 packages (AppImage, deb, rpm) built by `unsigned-linux-packages.yml`, with `tokenledger-cli` bundled. Every build installs the deb and runs the AppImage under Xvfb to check the main window, tray registration, start-at-login entry, XDG data folder, first scan and single-instance handoff.
 - Start at login on Linux: the toggle in Settings › Scan & startup writes an XDG autostart entry (for the AppImage it points at the image file and follows it when moved). Windows and macOS still show it as unsupported.
 - Command-line tool `tokenledger-cli`: today/week/month usage with Agent, model and account breakdowns, quota remaining, budget status, gateway state and recent routes, on-demand scans, and CSV/JSON ledger export. Every command has table output and `--json` for scripts and status bars; numbers come from the same Rust code as the desktop app. See `docs/cli.md`.
+- Local MCP server `tokenledger-cli mcp` (stdio, read-only): agents such as Claude Code and Codex can query usage and breakdowns, quota remaining, budget status, gateway health and recent routes, and usage anomalies, plus a `pace_usage` prompt for conserving tokens when quota is low. It opens no ports and never returns keys, credentials or request content. See `docs/mcp.md`.
 - Local model gateway with a persistent accounting ledger: old logs import idempotently, and both local statistics and cloud aggregates read from that ledger. A failed import preserves newly billed usage instead of dropping it.
 - Antigravity CLI scanning across both of its roots, reading real input, output, and cache-read values. Local schema advanced to v16 to record usage provenance and the "cache write unknown" state; rows estimated by older versions carry an estimate badge.
 - Quota clearing now persists a local stop before dispatching, so an interrupted clear can recover. Compatible with older PostgREST versions; the cloud rejects observations more than five minutes in the future.
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Linux secrets (cloud sign-in, provider API keys) are now kept in the Secret Service instead of only the kernel session keyring, so they survive logout and reboot.
 - Linux scan paths honour `XDG_DATA_HOME` and `XDG_CONFIG_HOME` (OpenCode, Kilo, Hermes, Kimi Desktop, Trae, DeepSeek GUI, WorkBuddy), and the Marvis path on Linux no longer points at a macOS-style folder.
 
 - The source and cross-platform build version moved from 1.2.77 to 2.0.0; the Android `versionCode` moved from 1002077 to 2000000.

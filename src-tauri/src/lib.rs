@@ -27,6 +27,7 @@ mod budget;
 mod budget_publish;
 mod cache;
 mod cli;
+mod mcp;
 pub use cli::run_cli;
 mod commands;
 mod cost_profile;
@@ -928,6 +929,8 @@ pub fn run() {
             gateway::gateway_provider_health,
             gateway::gateway_set_health_probe,
             gateway::gateway_probe_providers,
+            commands::gateway_request_log::gateway_request_log,
+            commands::gateway_request_log::gateway_request_log_export,
             gateway::gateway_routing_feed,
             gateway::gateway_external_feed,
             gateway::gateway_reveal_local_token,

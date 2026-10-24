@@ -1,0 +1,335 @@
+/* 用量 › 会话 › 会话详情：沿用桌面视觉刷新的平面卡片、细线与 13px 正文。 */
+
+.session-detail {
+  --behavior-accent: var(--color-primary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.session-detail-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.session-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.session-detail-bar .ghost-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-detail-bar .ghost-inline[aria-disabled="true"] { cursor: progress; }
+
+.session-detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+}
+
+.session-detail-eyebrow {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-label);
+}
+
+.session-detail-head h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: var(--weight-title);
+}
+
+.session-detail-head h2:focus { outline: none; }
+
+.session-detail-id {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.session-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.session-detail-muted {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.session-detail-notice {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-button);
+  background: var(--color-warning-subtle);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.session-detail-state {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  min-height: 10rem;
+  padding: 24px;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+
+.session-detail-state h3 { margin: 0; color: var(--color-text-primary); font-size: 14px; }
+.session-detail-state p { margin: 0; font-size: 13px; }
+
+/* 概要条：与会话页指标条同一种「一张卡、细线分格」。 */
+.session-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-panel);
+}
+
+.session-detail-stats > .session-detail-stat {
+  display: flex;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: -1px 0 0 var(--color-border), 0 -1px 0 var(--color-border);
+  padding: 13px 16px 12px;
+}
+
+.session-detail-stat .behavior-stat-note {
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.session-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-5);
+}
+
+.session-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.session-detail-card > .workbuddy-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.session-detail-card > .workbuddy-card-header h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: var(--weight-title);
+}
+
+.session-detail-card > .workbuddy-card-header > span {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-detail-chart { height: 15rem; min-height: 11rem; }
+.session-detail-empty-chart { display: grid; place-items: center; min-height: 11rem; text-align: center; }
+
+.session-detail-peer {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-detail-peer th,
+.session-detail-peer td {
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+}
+
+.session-detail-peer th:first-child { text-align: left; }
+.session-detail-peer thead th { color: var(--color-text-tertiary); font-size: 12px; font-weight: var(--weight-label); }
+.session-detail-peer tbody th { color: var(--color-text-secondary); font-weight: var(--weight-label); }
+.session-detail-peer tbody tr:last-child > * { border-bottom: 0; }
+
+.session-detail-ratio {
+  display: inline-block;
+  min-width: 3.2em;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.session-detail-ratio.is-high { background: var(--color-warning-subtle); color: var(--color-warning-text); }
+.session-detail-ratio.is-low { background: var(--color-success-soft-bg); color: var(--color-success); }
+
+.session-detail-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-detail-top button {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  overflow: hidden;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-hover, 140ms) var(--motion-decelerate, ease-out);
+}
+
+.session-detail-top button:hover { background: var(--color-bg-hover-soft); }
+.session-detail-top button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+.session-detail-top-main,
+.session-detail-top-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.session-detail-top-main strong { color: var(--color-text-primary); font-size: 14px; font-variant-numeric: tabular-nums; }
+.session-detail-top-meta > span { overflow: hidden; color: var(--color-text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.session-detail-top small { color: var(--color-text-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.session-detail-top-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-primary);
+  opacity: 0.7;
+}
+
+.session-detail-table-wrap {
+  overflow: auto;
+  max-height: 32rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+}
+
+.session-detail-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-detail-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-panel);
+  color: var(--color-text-tertiary);
+  font-weight: var(--weight-label);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.session-detail-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-border-faint);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.session-detail-table tbody tr:last-child td { border-bottom: 0; }
+.session-detail-table tbody tr:hover td { background: var(--color-bg-hover-soft); }
+.session-detail-table tbody tr:focus { outline: none; }
+.session-detail-table tbody tr.is-highlighted td { background: var(--color-primary-soft-bg); }
+.session-detail-table .is-num { text-align: right; }
+.session-detail-table .is-index,
+.session-detail-table .is-muted { color: var(--color-text-tertiary); }
+
+.session-detail-table .is-model {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-detail-aggregated {
+  margin-left: 6px;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+}
+
+.session-detail-switch {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-soft-bg);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: var(--weight-label);
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+.session-detail-more { align-self: center; }
+
+@media (max-width: 1100px) {
+  .session-detail-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .session-detail-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .session-detail-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

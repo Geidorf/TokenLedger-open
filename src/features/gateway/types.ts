@@ -1,6 +1,8 @@
 // Mirrors src-tauri/src/gateway (camelCase over IPC). Provider keys never
 // appear here: the frontend can set or delete a key, never read one back.
 
+import type { RequestContext } from '../../types';
+
 export type WireApi = 'responses' | 'chat' | 'anthropic';
 
 export interface GatewayStatus {
@@ -50,6 +52,10 @@ export interface LedgerRecord {
   error?: string | null;
   group?: string | null;
   member?: string | null;
+  /** Prompt 各部分的大小，不含内容。 */
+  context?: RequestContext | null;
+  /** 本次尝试从开始到首个输出事件的毫秒数，仅流式。 */
+  firstTokenMs?: number | null;
 }
 
 export type RoutingStrategy = 'failover' | 'rotate' | 'manual' | 'weighted';
@@ -248,4 +254,79 @@ export interface LegacyInspection {
   configVersion: string | null;
   canRestore: boolean;
   reason: string | null;
+}
+
+/** `gateway_request_log` 的筛选；空值表示不限。 */
+export interface RequestLogQuery {
+  since?: string | null;
+  until?: string | null;
+  agent?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  /** `ok` | `error` | `4xx` | `5xx` | `retried` | 具体状态码 */
+  status?: string | null;
+  minLatencyMs?: number | null;
+  maxLatencyMs?: number | null;
+  search?: string | null;
+  offset?: number;
+  limit?: number;
+}
+
+export interface RequestLogAttempt {
+  ts: string;
+  requestId: string;
+  provider: string;
+  upstreamModel: string;
+  member?: string | null;
+  status: number;
+  ok: boolean;
+  latencyMs: number;
+  firstTokenMs?: number | null;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  error?: string | null;
+  costUsd?: number | null;
+}
+
+/** 一条逻辑请求：同一请求的多次尝试（重试、切换）合成一行。只有元数据，没有请求或回复内容。 */
+export interface RequestLogEntry {
+  id: string;
+  startedAt: string;
+  ts: string;
+  agent?: string | null;
+  session?: string | null;
+  endpoint: string;
+  wire: string;
+  stream: boolean;
+  requestedModel: string;
+  group?: string | null;
+  provider: string;
+  upstreamModel: string;
+  status: number;
+  ok: boolean;
+  error?: string | null;
+  latencyMs: number;
+  firstTokenMs?: number | null;
+  outputTps?: number | null;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  costUsd?: number | null;
+  context?: RequestContext | null;
+  retries: number;
+  switched: boolean;
+  attempts: RequestLogAttempt[];
+  decision?: RouteDecision | null;
+}
+
+export interface RequestLogPage {
+  entries: RequestLogEntry[];
+  total: number;
+  offset: number;
+  retained: number;
+  oldest?: string | null;
+  facets: { agents: string[]; providers: string[]; models: string[] };
 }

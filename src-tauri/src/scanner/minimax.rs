@@ -475,8 +475,8 @@ pub(crate) fn scan_minimax_connection(
         };
         let timestamp = normalize_timestamp(&ts_json);
         let cache_write = cache_write.unwrap_or(0);
-        let cached_tokens = cache_read.unwrap_or(0) + cache_write;
-        let output_tokens = output_tokens + reasoning_tokens.unwrap_or(0);
+        let cached_tokens = cache_read.unwrap_or(0).saturating_add(cache_write);
+        let output_tokens = output_tokens.saturating_add(reasoning_tokens.unwrap_or(0));
         let session_id = session_id.unwrap_or_else(|| "unknown_session".to_string());
 
         // Keep the established namespace across legacy and v2. Migrated rows

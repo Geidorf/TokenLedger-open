@@ -68,6 +68,8 @@ fn main() {
         "gateway_provider_health",
         "gateway_set_health_probe",
         "gateway_probe_providers",
+        "gateway_request_log",
+        "gateway_request_log_export",
         "gateway_routing_feed",
         "gateway_external_feed",
         "gateway_reveal_local_token",
