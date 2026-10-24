@@ -143,7 +143,9 @@ internal data class WidgetUsage(
     val requests: Long,
     val freshnessText: String,
     /** 同期涨跌，来自缓存中的 comparison.delta.tokens；缓存不含 comparison 时为 null。 */
-    val tokenDelta: WidgetDelta?
+    val tokenDelta: WidgetDelta?,
+    /** 这份统计写入缓存的时间；「今日」跨过零点后就不再是今天的数。未知时为 null。 */
+    val savedAtEpochMillis: Long? = null
 )
 
 internal data class WidgetDelta(

@@ -526,6 +526,7 @@ export const zh = {
   'usage.sub.requests': '请求',
   'usage.sub.sessions': '会话',
   'usage.sub.allowances': '额度',
+  'usage.sub.reports': '报告',
 
   // 设置新卡片：手机动态壁纸同步、其他电脑的共享用量
   'publish.off': '关闭时不上传任何路由数据，并删除云端本机那一份快照。',

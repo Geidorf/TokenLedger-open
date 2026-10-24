@@ -105,6 +105,8 @@ fn main() {
         "get_budget_settings",
         "set_budget_settings",
         "get_budget_status",
+        "get_period_report_settings",
+        "set_period_report_settings",
         "get_usage_anomalies",
         "get_usage_anomaly_settings",
         "set_usage_anomaly_settings",

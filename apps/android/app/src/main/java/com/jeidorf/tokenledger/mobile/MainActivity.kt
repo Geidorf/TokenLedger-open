@@ -303,7 +303,7 @@ private fun TokenLedgerApp(
             WidgetScheduler.ensurePeriodicRefresh(widgetContext)
             WidgetRefresher.notifyDataChanged(widgetContext)
         } else if (
-            shouldCancelWidgetRefresh(WidgetConfigStore.installedWidgetIds(widgetContext).size)
+            shouldCancelWidgetRefresh(WidgetConfigStore.backgroundConsumerCount(widgetContext))
         ) {
             WidgetScheduler.cancelPeriodicRefresh(widgetContext)
         }

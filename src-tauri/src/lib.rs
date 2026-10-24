@@ -41,6 +41,7 @@ mod macos_wallpaper_window;
 mod peer_live;
 mod peer_sync;
 mod peer_wire;
+mod period_report;
 mod quota_sync;
 mod redact;
 mod routing_publish;
@@ -369,6 +370,7 @@ fn start_background_scheduler(
                 {
                     refresh_tray_status(&ctx, &app_handle);
                 }
+                period_report::check_due(&ctx, &app_handle);
                 next_quota_sync = now + Duration::from_secs(5 * 60);
             }
 
@@ -966,6 +968,8 @@ pub fn run() {
             budget::get_budget_settings,
             budget::set_budget_settings,
             budget::get_budget_status,
+            period_report::get_period_report_settings,
+            period_report::set_period_report_settings,
             usage_anomaly::get_usage_anomalies,
             usage_anomaly::get_usage_anomaly_settings,
             usage_anomaly::set_usage_anomaly_settings,

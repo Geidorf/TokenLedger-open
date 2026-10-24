@@ -61,6 +61,7 @@ const ModelWorkspaceHeader = lazy(() => import('./features/gateway/ModelWorkspac
 const SettingsTab = lazy(() => import('./components/SettingsTab'));
 const ShareCardModal = lazy(() => import('./components/ShareCardModal'));
 const WidgetView = lazy(() => import('./components/WidgetView'));
+const PeriodReportView = lazy(() => import('./components/report/PeriodReportView'));
 
 function currentTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -116,7 +117,7 @@ function MainApp() {
   // Tab & Scroll state
   const [activeTab, setActiveTab] = useState<Tab>(() => initialTabFromLocation());
   const contentRef = useRef<HTMLElement>(null);
-  const tabScrollPositions = useRef<Record<Tab, number>>({ dashboard: 0, logs: 0, behavior: 0, allowances: 0, settings: 0, agents: 0, providers: 0, gateway: 0, gatewaylog: 0, routing: 0 });
+  const tabScrollPositions = useRef<Record<Tab, number>>({ dashboard: 0, logs: 0, behavior: 0, allowances: 0, reports: 0, settings: 0, agents: 0, providers: 0, gateway: 0, gatewaylog: 0, routing: 0 });
   const [gatewayRefreshKey, setGatewayRefreshKey] = useState(0);
   const [settingsAnchor, setSettingsAnchor] = useState<string | null>(null);
 
@@ -130,6 +131,24 @@ function MainApp() {
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const confirmationResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const showMessage = useCallback((type: ToastType, text: string) => setMessage({ type, text }), []);
+  // 每周一 / 每月 1 日后台生成报告提醒时（`period_report.rs`），开着的窗口也提示一次。
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event')
+      .then(({ listen }) => listen<{ kind?: string }>('period-report-ready', (event) => {
+        showMessage('info', `${event.payload?.kind === 'month' ? '上月月报' : '上周周报'}已生成，在「用量 › 报告」查看并导出`);
+      }))
+      .then((cleanup) => {
+        if (cancelled) cleanup();
+        else unlisten = cleanup;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [showMessage]);
   const requestConfirmation = useCallback<RequestConfirmation>((request) => new Promise((resolve) => {
     confirmationResolverRef.current?.(false);
     confirmationResolverRef.current = resolve;
@@ -926,6 +945,17 @@ function MainApp() {
                   onOpenSettings={openQuotaSettings}
                   onNotify={(text) => showMessage('info', text)}
                 />
+              )}
+              reports={activeTab === 'reports' && (
+                <Suspense fallback={<LoadingSkeleton className="h-64" />}>
+                  <PeriodReportView
+                    scope={statsHook.dataScope}
+                    timezone={currentTimezone()}
+                    quotaProviders={quota.quotaProviders}
+                    appVersion={settings.appVersion}
+                    onNotify={showMessage}
+                  />
+                </Suspense>
               )}
             />
           )}
