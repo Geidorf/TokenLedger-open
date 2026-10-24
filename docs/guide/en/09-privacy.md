@@ -12,7 +12,7 @@ In short: **everything is counted on your computer first, and nothing is uploade
 | The per-request usage ledger (session IDs, times, models, tokens) | Local database `tokenboard.db` |
 | Prompts, model replies, file contents | TokenLedger does not read or keep them; it only takes the usage fields from logs |
 | Provider API keys, company quota keys, cloud sign-in session | System keychain (Windows Credential Manager / macOS Keychain) |
-| The model gateway's request ledger | Local app data folder |
+| The model gateway's request ledger and provider health | Local app data folder |
 | Budget rules and alert history | Local app data folder |
 | Project folder names (when per-project usage is on) | Local database, never synced |
 | Usage shared by other computers through an external gateway's WebDAV folder | Only added to local totals, never uploaded |
@@ -29,6 +29,7 @@ Everything goes to the Supabase project you entered in **Settings › Cloud acco
 | Cloud sync (after sign-in) | Rows aggregated by device × tool × model × hour: device name (the computer's host name), tool, model, hour, input / output / cache tokens, request count, estimated cost and how many of those requests went through the gateway | Session IDs, prompts, replies, file paths, project names, provider keys |
 | Account | The email you registered with, kept by Supabase Auth | — |
 | Quota sync across devices (separate switch, off by default) | Available share, reset time, observation time and source name for each quota window; for provider balances you turned on, only the amount and currency | Subscription credentials, cookies, account emails or organization names |
+| Budget sync to phone (separate switch, off by default) | For each budget: the scope name (the same as in system notifications: the agent, model or account display name, or "All usage"), period, used percentage (rounded) and level. The device is a one-way hashed ID, not the host name | Amounts, limits, budgets without a reading; deleted when you turn the switch off, and snapshots not updated for 3 days are removed by the cloud |
 | Phone live wallpaper (separate switch, off by default) | A routing snapshot of the last few minutes: agent names, `provider/model`, status codes and times | Sessions, accounts, keys, error bodies, request content; deleted when you turn the switch off, and old snapshots are cleaned up daily |
 
 If you don't want your computer's host name in the cloud, rename the computer to something without personal details before turning on sync.
