@@ -119,6 +119,21 @@ fn sync_result_has_stats_changes(result: &serde_json::Value) -> bool {
     })
 }
 
+/// 后台用量上传；返回云端是否带回了统计变化。托盘面板「后台同步」关掉时不上传（设置页与
+/// 手动同步不受影响），暂停状态在真正上传前才读：扫描途中关掉同步也不会再上传。
+fn background_usage_sync(ctx: &AppContext) -> bool {
+    if crate::settings::background_sync_paused_now(ctx) {
+        return false;
+    }
+    match block_on_async(commands::sync_to_supabase_impl(ctx)) {
+        Ok(result) => sync_result_has_stats_changes(&result),
+        Err(e) => {
+            log::debug!("Background cloud sync skipped/failed: {}", e);
+            false
+        }
+    }
+}
+
 fn scan_sync_and_notify(
     ctx: &AppContext,
     app_handle: &tauri::AppHandle,
@@ -155,19 +170,8 @@ fn scan_sync_and_notify(
         }
     }
 
-    // 托盘面板「后台同步」关掉时只停这条自动同步；设置页与手动同步不受影响。
-    // 扫描结束后才读最新状态：扫描途中关掉同步也不会再上传。
-    if (persisted_changes || allow_idle_sync_retry)
-        && !crate::settings::background_sync_paused_now(ctx)
-    {
-        match block_on_async(commands::sync_to_supabase_impl(ctx)) {
-            Ok(result) => {
-                stats_changed |= sync_result_has_stats_changes(&result);
-            }
-            Err(e) => {
-                log::debug!("Background cloud sync skipped/failed: {}", e);
-            }
-        }
+    if persisted_changes || allow_idle_sync_retry {
+        stats_changed |= background_usage_sync(ctx);
     }
     if prices_changed {
         let _ = app_handle.emit(
@@ -354,6 +358,14 @@ fn start_background_scheduler(
             let mut stats_changed = false;
             // 托盘面板「后台扫描」关掉时跳过定时扫描（计时照走，打开后按原节奏继续）；手动刷新照常。
             if now >= next_scan && cfg.background_scan_paused {
+                // 扫描停了，上传照旧按 15 分钟重试：网关请求不经扫描也会进账本，之前没传完的也要补传。
+                if now >= next_cloud_sync_retry {
+                    if background_usage_sync(&ctx) {
+                        emit_stats_updated(&app_handle);
+                        refresh_tray_status(&ctx, &app_handle);
+                    }
+                    next_cloud_sync_retry = now + Duration::from_secs(15 * 60);
+                }
                 next_scan = now + Duration::from_secs(cfg.scan_interval_secs);
             }
             if now >= next_scan {

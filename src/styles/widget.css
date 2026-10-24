@@ -77,6 +77,8 @@ html[data-view='widget'], html[data-view='widget'] body, html[data-view='widget'
 .widget-root[data-layout='compact'] { --wl-card-h: 104px; }
 .widget-root[data-layout='routing'] { --wl-card-h: 300px; }
 .widget-root[data-layout='panel'] { --wl-card-h: 560px; }
+/* 小屏高缩放下窗口会被截到工作区高度（widget_window::fit_size_to_work_area），此时整张面板纵向滚动，底部快捷开关仍够得到。 */
+.widget-root[data-layout='panel'] { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .wl-card { position: relative; display: flex; flex-direction: column; flex: none; height: var(--wl-card-h, 100%); min-width: 0; padding: 16px 18px; }
 /* 托盘挂件：顶栏（12px 上边距 + 30px）替掉卡片顶部 16px 内边距，整体比桌面小组件高 26px。 */
 .widget-root[data-mode='popover'] .wl-card { height: calc(var(--wl-card-h, 100%) - 16px); padding-top: 0; }

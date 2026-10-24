@@ -423,6 +423,14 @@ pub fn show<R: tauri::Runtime>(
     Ok(())
 }
 
+/// 窗口不得比当前显示器工作区（扣掉两侧边距）更大：1366×768、150% 缩放下「托盘面板」要
+/// 879 物理像素高，超出整块屏幕。截短后卡片在窗口里纵向滚动（widget.css），底部快捷开关仍够得到。
+fn fit_size_to_work_area(size: (f64, f64), bounds: Bounds, margin: f64) -> (f64, f64) {
+    let max_width = (bounds.width - margin * 2.0).max(1.0);
+    let max_height = (bounds.height - margin * 2.0).max(1.0);
+    (size.0.min(max_width), size.1.min(max_height))
+}
+
 /// 按目标尺寸摆好窗口（W4、U-13）。创建时或带新锚点（托盘点击/悬停）时整套重新定位——沿用
 /// [`place_widget`]：锚点居中或贴右下角；已有窗口且没有新锚点（菜单/启动等重新弹出）时，尺寸
 /// 没变就保持用户拖动过的位置不动，尺寸变了（换了板式）则按 [`resize_anchored_to_nearest_corner`]
@@ -437,7 +445,11 @@ fn reposition_for_size<R: tauri::Runtime>(
     logical_size: (f64, f64),
     margin: f64,
 ) -> Option<(i32, i32)> {
-    let size = (logical_size.0 * scale, logical_size.1 * scale);
+    let size = fit_size_to_work_area(
+        (logical_size.0 * scale, logical_size.1 * scale),
+        bounds,
+        margin,
+    );
     if created || anchor.is_some() {
         let _ = window.set_size(PhysicalSize::new(
             size.0.round() as u32,
@@ -1761,6 +1773,25 @@ mod tests {
         assert_eq!(x, old_rect.0 + old_rect.2 - 364.0);
         assert_eq!(y, old_rect.1 + old_rect.3 - 172.0);
         assert!(x >= SECONDARY_MONITOR.x + 12.0);
+    }
+
+    #[test]
+    fn the_window_never_grows_past_the_work_area() {
+        // 1366×768 屏、150% 缩放、任务栏 72 物理像素：工作区 1366×696 物理像素，
+        // 「托盘面板」要 586×1.5 = 879 高，截到工作区减两侧边距。
+        let bounds = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 1366.0,
+            height: 696.0,
+        };
+        let panel = widget_card_size("popover", "panel");
+        let (width, height) = fit_size_to_work_area((panel.0 * 1.5, panel.1 * 1.5), bounds, 18.0);
+        assert_eq!(width, panel.0 * 1.5);
+        assert_eq!(height, 696.0 - 36.0);
+        // 放得下时尺寸不变。
+        let small = fit_size_to_work_area((300.0, 200.0), bounds, 12.0);
+        assert_eq!(small, (300.0, 200.0));
     }
 
     #[test]
