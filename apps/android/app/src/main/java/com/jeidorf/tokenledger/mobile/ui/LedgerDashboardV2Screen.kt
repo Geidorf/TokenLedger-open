@@ -87,6 +87,9 @@ import com.jeidorf.tokenledger.mobile.dashboardQuerySummary
 import com.jeidorf.tokenledger.mobile.entityKindLabel
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
 import com.jeidorf.tokenledger.mobile.ledgerTween
+import com.jeidorf.tokenledger.mobile.ui.dimensions.DimensionsFeed
+import com.jeidorf.tokenledger.mobile.ui.dimensions.rememberDimensionsFeed
+import com.jeidorf.tokenledger.mobile.ui.dimensions.v2DimensionItems
 import com.jeidorf.tokenledger.mobile.ui.rhythm.RhythmFeed
 import com.jeidorf.tokenledger.mobile.ui.rhythm.rememberRhythmFeed
 import com.jeidorf.tokenledger.mobile.ui.rhythm.v2RhythmItems
@@ -587,6 +590,12 @@ internal fun V2DestinationContent(
         // 看板每次重新取数（顶部刷新、下拉刷新、跨日）都会换 generatedAt，节律跟着重读。
         refreshKey = state.visibleData?.meta?.generatedAt
     )
+    // 同一子页的会话排行与 Context 构成来自桌面开启后上传的用量维度（usage-dimensions-cloud-v1）。
+    val dimensionsFeed = rememberDimensionsFeed(
+        state.session,
+        state.query,
+        active = destination == MobileDestination.Usage && insightPane == InsightPane.Sessions
+    )
     val meStandbyListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_me_standby") { LazyListState() }
     var mePage by rememberSaveable { mutableStateOf(initialMePage) }
     BackHandler(enabled = destination == MobileDestination.Me && mePage != V2MePage.Root) { mePage = V2MePage.Root }
@@ -725,7 +734,8 @@ internal fun V2DestinationContent(
                         trendMetric, trendCurrency,
                         { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
                         onRefresh,
-                        rhythmFeed = rhythmFeed
+                        rhythmFeed = rhythmFeed,
+                        dimensionsFeed = dimensionsFeed
                     )
                     MobileDestination.Routing -> v2RoutingItems(palette, routingFeed)
                     MobileDestination.Quota -> v2QuotaItems(
@@ -848,7 +858,8 @@ internal fun LazyListScope.v2InsightsItems(
     onOpenTrendDay: (String, InsightPane) -> Unit,
     calendarAxis: InsightCalendarAxis,
     onRefresh: () -> Unit = {},
-    rhythmFeed: RhythmFeed = RhythmFeed(signedIn = false)
+    rhythmFeed: RhythmFeed = RhythmFeed(signedIn = false),
+    dimensionsFeed: DimensionsFeed = DimensionsFeed(signedIn = false)
 ) {
     item(key = "insights-tabs", contentType = "controls") { V2InsightStrip(palette, pane, onPaneChange) }
     if (pane != InsightPane.Overview && v2HasDesktopData(stats, state.hasActiveFilters) == false) {
@@ -860,7 +871,7 @@ internal fun LazyListScope.v2InsightsItems(
     when (pane) {
         // 概览由 v2OverviewItems 渲染，调用方不会以概览进入这里。
         InsightPane.Overview -> Unit
-        InsightPane.Sessions -> v2RhythmItems(palette, rhythmFeed)
+        InsightPane.Sessions -> v2RhythmItems(palette, rhythmFeed) { v2DimensionItems(palette, dimensionsFeed) }
         InsightPane.Trend -> {
             item(key = "insights-trend", contentType = "chart") {
                 V2TrendInsightCard(

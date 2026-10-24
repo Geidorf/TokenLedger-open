@@ -38,7 +38,7 @@ import com.jeidorf.tokenledger.mobile.v2FormatTokens
 import java.time.format.DateTimeFormatter
 
 internal const val RHYTHM_CLOUD_LIMIT_NOTE =
-    "云端只有按小时汇总的数据，没有会话列表和每条记录的请求大小。完整的会话分析在桌面「用量 › 会话」。"
+    "云端没有每条记录的请求大小；会话排行与 Context 构成要在桌面打开对应的云端同步后才有。完整的会话分析在桌面「用量 › 会话」。"
 
 private val WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
 private val RANGE_DATE = DateTimeFormatter.ofPattern("M月d日")
@@ -54,7 +54,11 @@ internal fun rhythmFailureMessage(failure: RhythmReadFailure): String = when (fa
  * 「用量 › 会话」子页（对齐桌面「用量 › 会话」的云端可得部分）：总量、24 小时分布、
  * 星期 × 小时热力、Agent 与模型排行。云端没有会话列表，页底写明。
  */
-internal fun LazyListScope.v2RhythmItems(palette: MobileV2Palette, feed: RhythmFeed) {
+internal fun LazyListScope.v2RhythmItems(
+    palette: MobileV2Palette,
+    feed: RhythmFeed,
+    beforeNote: LazyListScope.() -> Unit = {}
+) {
     val rhythm = feed.rhythm
     if (rhythm == null) {
         item(key = "rhythm-state", contentType = "context") {
@@ -69,11 +73,13 @@ internal fun LazyListScope.v2RhythmItems(palette: MobileV2Palette, feed: RhythmF
                 }
             }
         }
+        beforeNote()
         item(key = "rhythm-note", contentType = "context") { V2RhythmNote(palette) }
         return
     }
     item(key = "rhythm-summary", contentType = "summary") { V2RhythmSummaryCard(palette, rhythm) }
     if (rhythm.summary.requests == 0L) {
+        beforeNote()
         item(key = "rhythm-note", contentType = "context") { V2RhythmNote(palette) }
         return
     }
@@ -85,6 +91,7 @@ internal fun LazyListScope.v2RhythmItems(palette: MobileV2Palette, feed: RhythmF
     item(key = "rhythm-models", contentType = "sources") {
         V2RhythmRanking(palette, "模型", rhythm.modelTotals, rhythm.summary.tokens, agent = false)
     }
+    beforeNote()
     item(key = "rhythm-note", contentType = "context") { V2RhythmNote(palette) }
 }
 
