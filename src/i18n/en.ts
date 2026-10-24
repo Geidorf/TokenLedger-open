@@ -653,6 +653,7 @@ export const en: Record<MessageKey, string> = {
   'backup.preview.source': 'Backed up {created}, TokenLedger {version}. ',
   'backup.preview.sameMachine': 'From this computer.',
   'backup.preview.otherMachine': 'From another computer.',
+  'backup.preview.gatewayOtherMachine': 'Only restores onto the computer that made them (that computer keeps counting and uploading them)',
   'backup.preview.none': 'Not in the backup',
   'backup.preview.rows': '{total} rows: {added} new, {known} already here (skipped)',
   'backup.preview.items': '{total} items: {added} new, {differs} different here',

@@ -16,6 +16,7 @@ const preview: LocalBackupPreview = {
   appVersion: '2.0.0',
   machine: 'old-pc',
   sameMachine: false,
+  gatewayRequestsRestorable: false,
   ledger: { total: 3, new: 2, known: 1, first: null, last: null },
   gatewayRequests: { total: 0, new: 0, known: 0, first: null, last: null },
   providers: [{ id: 'p1', name: 'P1', status: 'new' }],

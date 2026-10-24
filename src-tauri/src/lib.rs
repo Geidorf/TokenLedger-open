@@ -559,29 +559,42 @@ fn open_main_settings(
         .map_err(|error| error.to_string())
 }
 
-pub fn run() {
-    let app_ctx = Arc::new(AppContext::new());
-    let db_path = db::get_db_path(&app_ctx);
-    let init = db::init_db(&db_path).or_else(|error| {
-        // A ledger too damaged to open is rebuilt from the rows that still
-        // read (local-backup-v1 §6); anything else stays fatal.
-        if local_backup::health::recover_after_init_failure(&app_ctx, &db_path, &error) {
-            db::init_db(&db_path)
-        } else {
-            Err(error)
-        }
-    });
-    if let Err(e) = init {
-        report_fatal(&format!(
-            "数据库初始化失败: {e}\n路径: {db_path}\n\n请确认该文件未被其他程序（如旧版 server.js）占用。",
-            db_path = db_path.display()
-        ));
-        return;
-    }
-    if let Ok(conn) = db::get_connection(&db_path) {
+fn init_local_cache(db_path: &std::path::Path) {
+    if let Ok(conn) = db::get_connection(db_path) {
         if let Err(e) = db::init_local_cache(&conn) {
             log::warn!("local stats cache init failed: {e}");
         }
+    }
+}
+
+pub fn run() {
+    let app_ctx = Arc::new(AppContext::new());
+    let db_path = db::get_db_path(&app_ctx);
+    // A ledger too damaged to open is rebuilt from the rows that still read
+    // (local-backup-v1 §6), but only in setup: a second launch must not move
+    // the files a running instance still has open. Anything else stays fatal.
+    let ledger_rebuild_deferred = match db::init_db(&db_path) {
+        Ok(()) => false,
+        Err(error) if local_backup::health::is_corruption(&error) => {
+            if let Err(e) = local_backup::health::schedule_rebuild(&app_ctx, true) {
+                report_fatal(&format!(
+                    "数据库已损坏，且无法安排修复: {e}\n路径: {db_path}",
+                    db_path = db_path.display()
+                ));
+                return;
+            }
+            true
+        }
+        Err(e) => {
+            report_fatal(&format!(
+                "数据库初始化失败: {e}\n路径: {db_path}\n\n请确认该文件未被其他程序（如旧版 server.js）占用。",
+                db_path = db_path.display()
+            ));
+            return;
+        }
+    };
+    if !ledger_rebuild_deferred {
+        init_local_cache(&db_path);
     }
 
     let gateway_state = Arc::new(gateway::Gateway::new(
@@ -690,7 +703,18 @@ pub fn run() {
             // settings page swaps the database file now.
             {
                 let ctx = app.state::<Arc<AppContext>>();
-                local_backup::health::run_pending(&ctx, &db::get_db_path(&ctx));
+                let db_path = db::get_db_path(&ctx);
+                local_backup::health::run_pending(&ctx, &db_path);
+                if ledger_rebuild_deferred {
+                    if let Err(e) = db::init_db(&db_path) {
+                        report_fatal(&format!(
+                            "数据库已损坏，自动修复后仍无法打开: {e}\n路径: {db_path}",
+                            db_path = db_path.display()
+                        ));
+                        std::process::exit(1);
+                    }
+                    init_local_cache(&db_path);
+                }
             }
             // macOS: back the transparent window (see tauri.macos.conf.json,
             // which sets transparent + Overlay titlebar) with a native

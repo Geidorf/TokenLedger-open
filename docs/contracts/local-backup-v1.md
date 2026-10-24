@@ -8,7 +8,7 @@
 
 - 扩展名 `.tlbackup`。手动导出命名 `TokenLedger-<本地时间 YYYYMMDD-HHMMSS>.tlbackup`，自动备份命名 `TokenLedger-auto-<同上>.tlbackup`；重名时追加 `-2`、`-3`。
 - 写入先写同目录临时文件再改名；Unix 上权限 0600。
-- 单个文件读取上限 1 GiB，解压后明文上限 1 GiB（流式解压时就截断，不先整个解开），超出即拒绝。
+- 单个文件读取上限 1 GiB，解压后明文上限 1 GiB（流式解压时就截断，不先整个解开），超出即拒绝。导出时同样检查这两个上限，超出就不写文件、报错，自动备份也不会因此清理旧备份。
 
 ## 2. 加密
 
@@ -25,7 +25,9 @@
 { "kind": "tokenledger-backup-bundle", "schema": 1, "created": "<UTC RFC 3339>",
   "appVersion": "2.0.0", "machine": "<本机 machine_id>",
   "ledger": { "columns": ["tool", "model", "…"], "rows": [["claude", "…"]] },
+  "scanCumulative": { "columns": ["unique_key", "…", "generation"], "rows": [] },
   "gatewayRequests": [<网关 LedgerRecord>],
+  "gatewayCoverage": { "completeFromUtc": "<UTC RFC 3339>|null", "importPending": false },
   "settings": <AppSettings>, "budgets": <BudgetSettings>,
   "providers": [<ProviderRecord>], "routingGroups": [<RoutingGroup>],
   "prices": <价格编辑器看到的生效价格表>, "quotaAlerts": <QuotaAlertSettings> }
@@ -33,8 +35,10 @@
 
 - `kind` 不符视为无法识别；`schema` 大于本版本支持的值视为“更新版本生成”，要求先升级。缺少的字段按空处理，旧版本备份可以少字段。
 - `ledger` 是 `token_logs` 除 `id` 外的全部列，按 `id` 顺序；列随行一起走，所以新版本多出的列旧版本恢复时直接丢弃，旧备份缺的列用本机默认值。BLOB 列不携带。
+- `scanCumulative` 是扫描器的累计来源状态表 `scan_cumulative_state`（各来源的基线与重置代数），同样按列携带。它不是可丢弃的游标：只靠账本行推不回重置代数，丢了以后再次重置会撞上已有的去重键。
+- `gatewayCoverage` 是来源电脑网关记账的历史边界（这个时间之前的小时可能缺旧数据）；`importPending` 表示旧日志还没导完。
 - `gatewayRequests` 是网关记账库（`usage-accounting-v1.sqlite3`）的全部计费行，含 Context 构成；诊断用的轮转 JSONL 不带。
-- 不进备份：任何密钥（供应商 API key、网关本地令牌、云端登录、WebDAV 与同步密码、额度端点 key）；可重建的缓存（统计缓存、项目索引、价格目录缓存）；扫描游标与检查点；云同步状态文件；外部来源导入的原始文件；额度最近一次读数。
+- 不进备份：任何密钥（供应商 API key、网关本地令牌、云端登录、WebDAV 与同步密码、额度端点 key）；可重建的缓存（统计缓存、项目索引、价格目录缓存）；扫描游标与检查点（`scan_cumulative_state` 除外，见上）；云同步状态文件；外部来源导入的原始文件；额度最近一次读数。
 
 ## 4. 预览与恢复
 
@@ -42,8 +46,8 @@
 
 | 部分 | 去重 / 合并规则 |
 |---|---|
-| 用量账本 | 按扫描器的去重键 `unique_key`：`INSERT OR IGNORE`，本机已有的行一律保留，即使数值不同。保留备份里的 `machine_id`、`sync_status`、`cloud_user_id`、`synced_at`，同一云账号下已上传过的行不会重传。 |
-| 网关请求记账 | 按记账标识（与网关实时追加的去重身份相同）；本机已有的保留。本版本不计数的行（全零 Token、身份超长）跳过。 |
+| 用量账本 | 按扫描器的去重键 `unique_key`：`INSERT OR IGNORE`，本机已有的行一律保留，即使数值不同。保留备份里的 `machine_id`、`sync_status`、`cloud_user_id`、`synced_at`，同一云账号下已上传过的行不会重传。累计来源状态随账本一起恢复：本机没有的键新增，本机已有的只在备份的 `generation` 更大时整行替换。 |
+| 网关请求记账 | 只在备份来自这台电脑（`machine` 与本机相同）时可恢复：云端按本机 id 汇总网关请求，别的电脑的请求恢复过来会被当成本机用量再上传一次。按记账标识去重（与网关实时追加的去重身份相同）；本机已有的保留。本版本不计数的行（全零 Token、身份超长）跳过。恢复时本机历史边界取两边较晚的那个：备份 `importPending` 或缺 `gatewayCoverage` 时按备份生成时间算，这样恢复进来的不完整小时不会去覆盖云端更全的历史。 |
 | 供应商 | 按 id。本机没有的新增；同 id 内容不同时按冲突选项。用备份覆盖且接口地址换了主机时，清掉本机原 key（与 `peer-sync-v1` 相同理由）。恢复后本机没有 key 的供应商列出来让用户补填。 |
 | 路由组 | 按 id，先恢复供应商再恢复路由组；组成员引用其他组时多轮重试，网关拒绝的组列出原因，不影响其他组。 |
 | 预算 | 按规则 id 合并；通知开关在“保留本机”时取两边的或。 |
@@ -53,21 +57,22 @@
 
 冲突选项 `keepLocal`（默认）或 `useBackup`，只作用于供应商、路由组、预算；账本行永远本机优先。
 
-恢复前先把本机当前数据存到 `<应用数据目录>/backups/pre-restore-<时间>/`：账本库与网关记账库用 `VACUUM INTO` 拷贝，加上设置、预算、额度提醒、价格覆盖及其状态、供应商、路由组文件；只保留最近 3 份。恢复后清空本机统计缓存并通知界面刷新。
+恢复前先把本机当前数据存到 `<应用数据目录>/backups/pre-restore-<时间>/`（Unix 上目录 0700，两个库的拷贝 0600）：账本库与网关记账库用 `VACUUM INTO` 拷贝，加上设置、预算、额度提醒、价格覆盖及其状态、供应商、路由组文件；只保留最近 3 份。恢复后清空本机统计缓存并通知界面刷新。
 
 ## 5. 自动备份
 
 - 设置存 `<应用数据目录>/local-backup-v1.json`：`enabled`（默认关）、`dir`（绝对路径，默认“文稿/TokenLedger Backups”）、`intervalHours`（24、72、168 之一）、`keep`（1–60，默认 7）、上次运行时间、文件与错误。
 - 开启前必须已有自动备份密码。后台调度每 10 分钟检查一次是否到期；上次失败时 1 小时后重试，不等满一个周期（例如文件夹在未插上的移动硬盘里）。
+- 运行结果只写回上次运行时间、文件与错误，写之前重新读一遍设置；导出期间用户保存的设置不会被覆盖。
 - 只清理本计划写的 `TokenLedger-auto-*.tlbackup`，按文件名中的时间保留最新的 `keep` 份；手动导出的文件从不删除。
 
 ## 6. 数据库自检与修复
 
 - 自检：对账本库与网关记账库各跑 `PRAGMA integrity_check(20)`（只读连接），报告问题原文、文件与 WAL 大小、账本行数。
 - 修复第一步：对受损的库执行 `REINDEX`，再检查；只有索引损坏时到此修好，无需重启。
-- 仍有损坏时安排重建：写 `db-repair-pending-v1.json`，请用户退出并重新打开应用（不自动重启，以免与单实例检查竞争）。下次启动时、调度器和任何窗口打开账本之前（只在主实例里），把还能读出的行逐段搬进新建的库：`token_logs`、`pending_cloud_purges`、`discovered_models`、`scan_cloud_sent_identities`、`scan_cloud_dirty_buckets`；读不出的范围退回逐行读，跳过读不出的行。原文件连同 WAL/SHM 改名为 `tokenboard.db.damaged-<时间>` 保留。
-- 扫描游标、检查点等不搬：重建后扫描从头读各工具日志，坏页上丢失的行能从日志补回，并按 `unique_key` 去重。
-- 启动时账本库打开即报“损坏”或“不是数据库”时，不再直接报致命错误，而是自动按上面的方式重建后再打开；其他错误（如被占用）仍按原样报错。
+- 仍有损坏时安排重建：写 `db-repair-pending-v1.json`，请用户退出并重新打开应用（不自动重启，以免与单实例检查竞争）。下次启动时、调度器和任何窗口打开账本之前（只在主实例里），把还能读出的行逐段搬进新建的库：`token_logs`、`scan_cumulative_state`、`pending_cloud_purges`、`discovered_models`、`scan_cloud_sent_identities`、`scan_cloud_dirty_buckets`；读不出的范围退回逐行读，跳过读不出的行。表的最大 rowid 读不出（最右叶子页坏了）时依次改用倒序查询、`sqlite_sequence`；都不行就一直往后读，直到找到的最后一行之后连续 20 万个 rowid 都为空或读不出为止，不会把“读不出上限”当成空表。原文件连同 WAL/SHM 改名为 `tokenboard.db.damaged-<时间>` 保留。
+- 扫描游标、检查点不搬：重建后扫描从头读各工具日志，坏页上丢失的行能从日志补回，并按 `unique_key` 去重。
+- 启动时账本库打开即报“损坏”或“不是数据库”时，不再直接报致命错误，而是写下自动重建标记，等进程拿到单实例所有权、进入 setup 后按上面的方式重建再打开（第二次启动的进程不会去挪正在运行的那个进程打开着的文件）；重建后仍打不开才报致命错误。其他错误（如被占用）仍按原样报错。
 - 每次重建把时间、是否自动、找回行数、读不出的行数、原文件位置写入 `db-repair-v1.json`，设置页显示。
 - 网关记账库 v1 只做自检与 `REINDEX`，不做重建。
 

@@ -194,13 +194,18 @@ fn restore_merges_rows_by_unique_key_and_adds_setup() {
         },
     )
     .unwrap();
-    accounting::import(old.gateway.dir(), &[request("r1", 50), request("r2", 60)]).unwrap();
+    accounting::import(
+        old.gateway.dir(),
+        &[request("r1", 50), request("r2", 60)],
+        None,
+    )
+    .unwrap();
     let bundle = sealed_roundtrip(&old.export());
 
     let new = Computer::new("new");
     // The new computer already scanned one of the same calls, differently.
     new.insert("k2", 999);
-    accounting::import(new.gateway.dir(), &[request("r2", 60)]).unwrap();
+    accounting::import(new.gateway.dir(), &[request("r2", 60)], None).unwrap();
 
     let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
     assert_eq!(
@@ -565,11 +570,220 @@ fn a_ledger_that_does_not_open_is_rebuilt_at_start() {
     fs::write(&db_path, vec![0x5Au8; 64 * 1024]).unwrap();
     let error = db::init_test_db(&db_path).unwrap_err();
     assert!(health::is_corruption(&error));
-    assert!(health::recover_after_init_failure(
-        &pc.app, &db_path, &error
-    ));
+    // Startup only schedules it; the primary instance rebuilds in setup.
+    health::schedule_rebuild(&pc.app, true).unwrap();
+    assert!(db::init_test_db(&db_path).is_err());
+    health::run_pending(&pc.app, &db_path);
     db::init_test_db(&db_path).unwrap();
     assert_eq!(pc.rows(), 0);
     let notice = health::last_repair(&pc.app).unwrap();
     assert!(notice.automatic);
+}
+
+/// Overwrites the rightmost leaf page of `table`, the one `max(rowid)` reads.
+fn corrupt_rightmost_leaf(path: &Path, table: &str) {
+    let conn = Connection::open(path).unwrap();
+    let page_size: usize = conn
+        .query_row("PRAGMA page_size", [], |row| row.get::<_, i64>(0))
+        .unwrap() as usize;
+    let mut page: usize = conn
+        .query_row(
+            "SELECT rootpage FROM sqlite_master WHERE name = ?1",
+            [table],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap() as usize;
+    drop(conn);
+    let mut bytes = fs::read(path).unwrap();
+    loop {
+        let start = (page - 1) * page_size + if page == 1 { 100 } else { 0 };
+        match bytes[start] {
+            0x05 => {
+                page =
+                    u32::from_be_bytes(bytes[start + 8..start + 12].try_into().unwrap()) as usize;
+            }
+            0x0D => break,
+            other => panic!("unexpected page type {other:#x}"),
+        }
+    }
+    for byte in &mut bytes[(page - 1) * page_size..page * page_size] {
+        *byte = 0xAB;
+    }
+    fs::write(path, bytes).unwrap();
+}
+
+#[test]
+fn salvage_reads_on_when_the_last_rowid_is_unreadable() {
+    // With and without the AUTOINCREMENT record of the highest rowid.
+    for forget_sequence in [false, true] {
+        let pc = Computer::new("pc");
+        let conn = pc.conn();
+        for index in 0..3000 {
+            conn.execute(
+                "INSERT INTO token_logs (tool, model, input_tokens, output_tokens, cached_tokens,
+                     cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status)
+                 VALUES ('claude', 'claude-sonnet-5', ?1, 10, 0, 0, '2026-10-20 10:00:00', 's1', ?2, 0.5, 'pc', 1)",
+                params![index, format!("unique-key-{index:08}")],
+            )
+            .unwrap();
+        }
+        if forget_sequence {
+            conn.execute("DELETE FROM sqlite_sequence", []).unwrap();
+        }
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .unwrap();
+        drop(conn);
+        let db_path = db::get_db_path(&pc.app);
+        corrupt_rightmost_leaf(&db_path, "token_logs");
+        let probe = Connection::open(&db_path).unwrap();
+        assert!(probe
+            .query_row("SELECT max(rowid) FROM token_logs", [], |row| row
+                .get::<_, Option<i64>>(0))
+            .is_err());
+        drop(probe);
+
+        let target = pc.root.join("salvaged.db");
+        let report = health::salvage(&db_path, &target).unwrap();
+        assert!(
+            report.rows_recovered > 2500 && report.rows_recovered < 3000,
+            "{forget_sequence} {report:?}"
+        );
+    }
+}
+
+#[test]
+fn cumulative_scan_state_travels_with_the_ledger() {
+    let state = |pc: &Computer, key: &str| -> Option<(i64, i64)> {
+        pc.conn()
+            .query_row(
+                "SELECT input_tokens, generation FROM scan_cumulative_state WHERE unique_key = ?1",
+                [key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok()
+    };
+    let put = |pc: &Computer, key: &str, input: i64, generation: i64| {
+        pc.conn()
+            .execute(
+                "INSERT OR REPLACE INTO scan_cumulative_state
+                     (unique_key, input_tokens, output_tokens, cached_tokens, cache_write_tokens, cost_usd, generation)
+                 VALUES (?1, ?2, 0, 0, 0, NULL, ?3)",
+                params![key, input, generation],
+            )
+            .unwrap();
+    };
+    let old = Computer::new("old");
+    old.insert("k1", 100);
+    put(&old, "src-a", 50, 2);
+    put(&old, "src-b", 70, 1);
+    put(&old, "src-c", 90, 3);
+    let bundle = sealed_roundtrip(&old.export());
+    assert_eq!(bundle.scan_cumulative.rows.len(), 3);
+
+    let new = Computer::new("new");
+    put(&new, "src-b", 10, 4);
+    put(&new, "src-c", 20, 1);
+    apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    // Missing keys come in; a later generation wins either way.
+    assert_eq!(state(&new, "src-a"), Some((50, 2)));
+    assert_eq!(state(&new, "src-b"), Some((10, 4)));
+    assert_eq!(state(&new, "src-c"), Some((90, 3)));
+}
+
+#[test]
+fn gateway_requests_restore_only_onto_the_computer_that_made_them() {
+    let old = Computer::new("old");
+    accounting::import(old.gateway.dir(), &[request("r1", 50)], None).unwrap();
+    let mut bundle = sealed_roundtrip(&old.export());
+
+    let new = Computer::new("new");
+    let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
+    assert!(plan.same_machine && plan.gateway_requests_restorable);
+
+    bundle.machine = "another-computer".to_string();
+    let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
+    assert!(!plan.same_machine && !plan.gateway_requests_restorable);
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(result.gateway_added, 0);
+    assert!(accounting::read_all(new.gateway.dir()).unwrap().is_empty());
+}
+
+#[test]
+fn restored_gateway_history_keeps_its_completeness_boundary() {
+    let boundary = "2026-10-21T00:00:00+00:00";
+    let old = Computer::new("old");
+    accounting::import(old.gateway.dir(), &[request("r1", 50)], Some(boundary)).unwrap();
+    let bundle = sealed_roundtrip(&old.export());
+    assert_eq!(
+        bundle
+            .gateway_coverage
+            .as_ref()
+            .and_then(|coverage| coverage.complete_from_utc.as_deref()),
+        Some(boundary)
+    );
+
+    let new = Computer::new("new");
+    apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    let coverage = accounting::coverage_of(new.gateway.dir()).unwrap().unwrap();
+    assert_eq!(coverage.complete_from_utc.as_deref(), Some(boundary));
+
+    // A bundle that does not say is treated as unknown before it was made.
+    let mut unknown = bundle.clone();
+    unknown.gateway_coverage = None;
+    unknown.created = "2026-10-22T00:00:00Z".to_string();
+    apply(
+        &new.app,
+        &new.gateway,
+        &unknown,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    let coverage = accounting::coverage_of(new.gateway.dir()).unwrap().unwrap();
+    assert_eq!(
+        coverage.complete_from_utc.as_deref(),
+        Some("2026-10-22T00:00:00Z")
+    );
+}
+
+#[test]
+fn an_export_this_build_could_not_restore_is_refused() {
+    assert!(check_sizes(10, 20, 100, 100).is_ok());
+    assert!(check_sizes(101, 0, 100, 1000).is_err());
+    assert!(check_sizes(10, 101, 1000, 100).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_snapshots_are_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let pc = Computer::new("pc");
+    pc.insert("k1", 1);
+    accounting::import(pc.gateway.dir(), &[request("r1", 50)], None).unwrap();
+    let dir = snapshot(&pc.app, pc.gateway.dir()).unwrap();
+    let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&dir), 0o700);
+    assert_eq!(mode(&dir.join("tokenboard.db")), 0o600);
+    assert_eq!(mode(&dir.join("gateway").join(accounting::FILE)), 0o600);
 }

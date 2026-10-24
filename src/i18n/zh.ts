@@ -664,6 +664,7 @@ export const zh = {
   'backup.preview.source': '备份于 {created}，TokenLedger {version}。',
   'backup.preview.sameMachine': '来自这台电脑。',
   'backup.preview.otherMachine': '来自另一台电脑。',
+  'backup.preview.gatewayOtherMachine': '只能恢复到产生它们的那台电脑（换电脑时由原电脑继续统计与上传）',
   'backup.preview.none': '备份里没有',
   'backup.preview.rows': '共 {total} 行，新增 {added} 行，本机已有 {known} 行（跳过）',
   'backup.preview.items': '共 {total} 项，新增 {added}，与本机不同 {differs}',

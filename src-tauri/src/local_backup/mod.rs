@@ -58,6 +58,10 @@ const SNAPSHOT_DIR: &str = "backups";
 const SNAPSHOT_PREFIX: &str = "pre-restore-";
 const SNAPSHOTS_KEPT: usize = 3;
 const LEDGER_TABLE: &str = "token_logs";
+/// Where the scanner keeps each cumulative source's baseline and reset
+/// generation; without it a restored ledger would re-derive both from the rows
+/// and reuse dedupe keys after the next reset.
+const CUMULATIVE_TABLE: &str = "scan_cumulative_state";
 /// Config files copied into a pre-restore snapshot, relative to the app dir.
 const SNAPSHOT_FILES: [&str; 7] = [
     "app_settings.json",
@@ -85,6 +89,15 @@ pub struct LedgerTable {
     pub rows: Vec<Vec<Value>>,
 }
 
+/// The source computer's gateway history boundary
+/// (`accounting::Coverage`), so a restore keeps protecting hours it may lack.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GatewayCoverage {
+    pub complete_from_utc: Option<String>,
+    pub import_pending: bool,
+}
+
 /// The decrypted content of a backup.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -97,7 +110,12 @@ pub struct Bundle {
     /// The machine id the ledger rows of this computer carry.
     pub machine: String,
     pub ledger: LedgerTable,
+    /// The scanner's cumulative-source state, restored with the ledger.
+    pub scan_cumulative: LedgerTable,
     pub gateway_requests: Vec<LedgerRecord>,
+    /// How complete the gateway's history was on the source computer. `None`
+    /// (a bundle without it) is treated as unknown before `created`.
+    pub gateway_coverage: Option<GatewayCoverage>,
     pub settings: Option<Value>,
     pub budgets: Option<BudgetSettings>,
     pub providers: Vec<ProviderRecord>,
@@ -150,16 +168,18 @@ fn quoted(columns: &[String]) -> String {
         .join(",")
 }
 
-fn read_ledger(db_path: &Path) -> Result<LedgerTable, String> {
-    let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
-    let columns: Vec<String> = table_columns(&conn, LEDGER_TABLE)
+fn read_table(conn: &Connection, table: &str) -> Result<LedgerTable, String> {
+    let columns: Vec<String> = table_columns(conn, table)
         .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|column| column != "id")
         .collect();
+    if columns.is_empty() {
+        return Ok(LedgerTable::default());
+    }
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {} FROM {LEDGER_TABLE} ORDER BY id",
+            "SELECT {} FROM {table} ORDER BY rowid",
             quoted(&columns)
         ))
         .map_err(|error| error.to_string())?;
@@ -176,18 +196,36 @@ fn read_ledger(db_path: &Path) -> Result<LedgerTable, String> {
     Ok(LedgerTable { columns, rows })
 }
 
+fn read_ledger(db_path: &Path) -> Result<(LedgerTable, LedgerTable), String> {
+    let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
+    Ok((
+        read_table(&conn, LEDGER_TABLE)?,
+        read_table(&conn, CUMULATIVE_TABLE)?,
+    ))
+}
+
 /// Everything a backup of this computer holds right now.
 pub fn collect(app: &AppContext, gateway: &Gateway) -> Result<Bundle, String> {
     let db_path = db::get_db_path(app);
     let settings = settings::load_settings_result(app)?;
+    let (ledger, scan_cumulative) = read_ledger(&db_path)?;
     Ok(Bundle {
         kind: KIND.to_string(),
         schema: SCHEMA,
         created: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         machine: crate::commands::local_machine_id(),
-        ledger: read_ledger(&db_path)?,
+        ledger,
+        scan_cumulative,
         gateway_requests: accounting::read_all(gateway.dir())?,
+        gateway_coverage: Some(
+            accounting::coverage_of(gateway.dir())?
+                .map(|coverage| GatewayCoverage {
+                    complete_from_utc: coverage.complete_from_utc,
+                    import_pending: coverage.import_pending,
+                })
+                .unwrap_or_default(),
+        ),
         settings: Some(serde_json::to_value(settings).map_err(|error| error.to_string())?),
         budgets: Some(budget::load_settings(app.app_data_dir())),
         providers: gateway
@@ -211,12 +249,32 @@ pub(crate) fn check_passphrase(passphrase: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Refuses a backup this build could not open again, before anything is
+/// written or an older automatic backup is pruned.
+pub(crate) fn check_sizes(
+    plain: usize,
+    sealed: usize,
+    max_plain: u64,
+    max_sealed: u64,
+) -> Result<(), String> {
+    if plain as u64 > max_plain || sealed as u64 > max_sealed {
+        return Err(format!(
+            "备份内容超过 {} MiB，这个版本无法再恢复它，已停止导出。",
+            max_plain.min(max_sealed) / (1024 * 1024)
+        ));
+    }
+    Ok(())
+}
+
 /// Seals `bundle`: compact JSON, zstd, then the envelope.
 pub fn seal_bundle(bundle: &Bundle, passphrase: &str, iterations: u32) -> Result<Vec<u8>, String> {
     check_passphrase(passphrase)?;
     let json = serde_json::to_vec(bundle).map_err(|error| error.to_string())?;
+    check_sizes(json.len(), 0, MAX_PLAIN_BYTES, MAX_SEALED_BYTES)?;
     let packed = zstd::encode_all(json.as_slice(), 3).map_err(|error| error.to_string())?;
-    seal::seal(&packed, passphrase, FORMAT, iterations)
+    let sealed = seal::seal(&packed, passphrase, FORMAT, iterations)?;
+    check_sizes(json.len(), sealed.len(), MAX_PLAIN_BYTES, MAX_SEALED_BYTES)?;
+    Ok(sealed)
 }
 
 fn open_error(error: seal::OpenError) -> String {
@@ -442,6 +500,10 @@ pub struct Preview {
     pub machine: String,
     pub same_machine: bool,
     pub ledger: RowCounts,
+    /// Gateway requests only restore onto the computer that made them: the
+    /// cloud counts them under this computer's id, so another computer's
+    /// requests would be uploaded a second time as its own.
+    pub gateway_requests_restorable: bool,
     pub gateway_requests: RowCounts,
     pub providers: Vec<ItemDiff>,
     /// Providers the backup would add or change that have no API key here.
@@ -544,6 +606,10 @@ fn provider_needs_key(gateway: &Gateway, record: &ProviderRecord) -> Result<bool
         .any(|view| view.record.id == record.id && view.has_key))
 }
 
+fn same_machine(bundle: &Bundle) -> bool {
+    !bundle.machine.is_empty() && bundle.machine == crate::commands::local_machine_id()
+}
+
 /// What restoring `bundle` here would do, item by item.
 pub fn preview(
     app: &AppContext,
@@ -595,8 +661,9 @@ pub fn preview(
         created: bundle.created.clone(),
         app_version: bundle.app_version.clone(),
         machine: bundle.machine.clone(),
-        same_machine: bundle.machine == crate::commands::local_machine_id(),
+        same_machine: same_machine(bundle),
         ledger: ledger_counts(&db_path, &bundle.ledger)?,
+        gateway_requests_restorable: same_machine(bundle),
         gateway_requests: gateway_counts(gateway, &bundle.gateway_requests)?,
         providers,
         providers_without_key,
@@ -684,7 +751,29 @@ pub struct ApplyResult {
     pub restart_suggested: bool,
 }
 
+/// Creates `dir` (and missing parents) readable by this user only.
+fn private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)
+}
+
 fn vacuum_into(source: &Path, target: &Path) -> Result<(), String> {
+    // VACUUM INTO accepts an empty file; creating it first keeps the copy
+    // owner-only instead of following the umask.
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(target).map_err(|error| error.to_string())?;
     let conn = Connection::open_with_flags(source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| error.to_string())?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
@@ -702,7 +791,8 @@ pub fn snapshot(app: &AppContext, gateway_dir: &Path) -> Result<PathBuf, String>
         "{SNAPSHOT_PREFIX}{}",
         Local::now().format("%Y%m%d-%H%M%S-%3f")
     ));
-    fs::create_dir_all(dir.join("gateway"))
+    private_dir(&root)
+        .and_then(|_| private_dir(&dir.join("gateway")))
         .map_err(|error| format!("创建恢复前快照失败：{error}"))?;
     let db_path = db::get_db_path(app);
     if db_path.exists() {
@@ -797,6 +887,65 @@ fn import_ledger(db_path: &Path, table: &LedgerTable) -> Result<usize, String> {
     Ok(added)
 }
 
+/// Restores the scanner's cumulative-source state: a key this computer lacks
+/// is added, and one it has is replaced only by a later reset generation, so
+/// the next scan continues the numbering instead of reusing a dedupe key.
+fn import_cumulative(db_path: &Path, table: &LedgerTable) -> Result<(), String> {
+    if table.rows.is_empty() || !table.columns.iter().any(|column| column == "unique_key") {
+        return Ok(());
+    }
+    let mut conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
+    let local: BTreeSet<String> = table_columns(&conn, CUMULATIVE_TABLE)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .collect();
+    let picked: Vec<(usize, String)> = table
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(_, column)| local.contains(column.as_str()))
+        .map(|(index, column)| (index, column.clone()))
+        .collect();
+    let names: Vec<String> = picked.iter().map(|(_, name)| name.clone()).collect();
+    let newer = if names.iter().any(|name| name == "generation") {
+        let updates = names
+            .iter()
+            .filter(|name| name.as_str() != "unique_key")
+            .map(|name| format!("\"{name}\"=excluded.\"{name}\""))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            " ON CONFLICT(unique_key) DO UPDATE SET {updates}
+              WHERE excluded.generation > {CUMULATIVE_TABLE}.generation"
+        )
+    } else {
+        " ON CONFLICT(unique_key) DO NOTHING".to_string()
+    };
+    let sql = format!(
+        "INSERT INTO {CUMULATIVE_TABLE} ({}) VALUES ({}){newer}",
+        quoted(&names),
+        vec!["?"; names.len()].join(",")
+    );
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    {
+        let mut stmt = tx.prepare(&sql).map_err(|error| error.to_string())?;
+        for row in &table.rows {
+            let values: Vec<SqlValue> = picked
+                .iter()
+                .map(|(index, _)| row.get(*index).map_or(SqlValue::Null, json_to_sql))
+                .collect();
+            match stmt.execute(params_from_iter(values)) {
+                Ok(_) => {}
+                Err(rusqlite::Error::SqliteFailure(error, _))
+                    if error.code == rusqlite::ErrorCode::ConstraintViolation => {}
+                Err(error) => return Err(format!("写入扫描状态失败：{error}")),
+            }
+        }
+    }
+    tx.commit()
+        .map_err(|error| format!("写入扫描状态失败：{error}"))
+}
+
 fn restore_providers(
     gateway: &Gateway,
     incoming: &[ProviderRecord],
@@ -815,17 +964,21 @@ fn restore_providers(
             Some(_) if conflict == Conflict::KeepLocal => continue,
             _ => {}
         }
-        gateway.upsert_provider(record.clone())?;
         if let Some(previous) = previous {
-            result.providers_replaced += 1;
             if !crate::peer_sync::same_origin(&previous.base_url, &record.base_url) {
                 // A key set for the old host must not follow the restored
-                // address to a host it was never meant for.
+                // address to a host it was never meant for. It goes before
+                // the new address is published, so no request in between
+                // pairs the two, and a failure leaves the old address.
                 gateway.set_provider_key(SetProviderKeyInput {
                     id: record.id.clone(),
                     key: String::new(),
                 })?;
             }
+        }
+        gateway.upsert_provider(record.clone())?;
+        if previous.is_some() {
+            result.providers_replaced += 1;
         } else {
             result.providers_added += 1;
         }
@@ -925,9 +1078,17 @@ pub fn apply(
     let db_path = db::get_db_path(app);
     if sections.ledger {
         result.ledger_added = import_ledger(&db_path, &bundle.ledger)?;
+        import_cumulative(&db_path, &bundle.scan_cumulative)?;
     }
-    if sections.gateway_requests {
-        result.gateway_added = accounting::import(gateway.dir(), &bundle.gateway_requests)?;
+    if sections.gateway_requests && same_machine(bundle) {
+        let created = bundle.created.clone();
+        let boundary = match &bundle.gateway_coverage {
+            Some(coverage) if coverage.import_pending => Some(created),
+            Some(coverage) => coverage.complete_from_utc.clone(),
+            None => Some(created),
+        };
+        result.gateway_added =
+            accounting::import(gateway.dir(), &bundle.gateway_requests, boundary.as_deref())?;
     }
     // Providers before groups: a group's members must name known providers.
     if sections.providers {

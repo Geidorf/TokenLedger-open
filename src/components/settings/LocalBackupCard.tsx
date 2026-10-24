@@ -62,6 +62,8 @@ export interface LocalBackupPreview {
   machine: string;
   sameMachine: boolean;
   ledger: LocalBackupRowCounts;
+  /** 网关请求只恢复到产生它们的那台电脑，否则会被当成本机用量重复上传云端。 */
+  gatewayRequestsRestorable: boolean;
   gatewayRequests: LocalBackupRowCounts;
   providers: LocalBackupItemDiff[];
   providersWithoutKey: string[];
@@ -138,7 +140,7 @@ export function defaultSections(preview: LocalBackupPreview): Sections {
   const differs = (status: LocalBackupItemStatus | null) => status !== null && status !== 'same';
   return {
     ledger: preview.ledger.new > 0,
-    gatewayRequests: preview.gatewayRequests.new > 0,
+    gatewayRequests: preview.gatewayRequestsRestorable && preview.gatewayRequests.new > 0,
     providers: changed(preview.providers),
     routingGroups: changed(preview.routingGroups),
     budgets: changed(preview.budgets),
@@ -293,6 +295,9 @@ export function LocalBackupCard() {
       case 'ledger':
       case 'gatewayRequests': {
         const counts = preview[key];
+        if (key === 'gatewayRequests' && counts.total > 0 && !preview.gatewayRequestsRestorable) {
+          return t('backup.preview.gatewayOtherMachine');
+        }
         return counts.total === 0
           ? t('backup.preview.none')
           : t('backup.preview.rows', { total: formatNum(counts.total), added: formatNum(counts.new), known: formatNum(counts.known) });
@@ -311,8 +316,9 @@ export function LocalBackupCard() {
     if (!preview) return false;
     switch (key) {
       case 'ledger':
+        return preview.ledger.total > 0;
       case 'gatewayRequests':
-        return preview[key].total > 0;
+        return preview.gatewayRequestsRestorable && preview.gatewayRequests.total > 0;
       case 'providers':
       case 'routingGroups':
       case 'budgets':

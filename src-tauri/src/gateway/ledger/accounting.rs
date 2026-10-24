@@ -431,9 +431,44 @@ pub(crate) fn count_known(dir: &Path, records: &[LedgerRecord]) -> Result<usize,
     Ok(known)
 }
 
+/// The history boundary of this computer's accounting, read-only; `None`
+/// when there is no accounting file yet.
+pub(crate) fn coverage_of(dir: &Path) -> Result<Option<Coverage>, String> {
+    let path = dir.join(FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| error.to_string())?;
+    conn.busy_timeout(Duration::from_secs(5))
+        .map_err(|error| error.to_string())?;
+    read_coverage(&conn).map(Some)
+}
+
+/// The later of two history boundaries; one that does not parse wins, since
+/// treating more hours as incomplete is the safe side.
+fn later_boundary(current: Option<String>, incoming: &str) -> String {
+    let parse = |at: &str| DateTime::parse_from_rfc3339(at).ok();
+    match current {
+        Some(current) => match (parse(&current), parse(incoming)) {
+            (Some(local), Some(other)) if local >= other => current,
+            (Some(_), Some(_)) => incoming.to_string(),
+            (None, _) => current,
+            (_, None) => incoming.to_string(),
+        },
+        None => incoming.to_string(),
+    }
+}
+
 /// Adds restored rows in one transaction; rows already held are left alone.
-/// Returns how many were new.
-pub(crate) fn import(dir: &Path, records: &[LedgerRecord]) -> Result<usize, String> {
+/// `boundary` is the source computer's history boundary: hours before it may
+/// lack requests there, so they stay protected from overwriting cloud history
+/// here too. Returns how many were new.
+pub(crate) fn import(
+    dir: &Path,
+    records: &[LedgerRecord],
+    boundary: Option<&str>,
+) -> Result<usize, String> {
     let mut conn = open(dir)?;
     attempt_import(&mut conn, dir)?;
     let tx = conn
@@ -445,6 +480,20 @@ pub(crate) fn import(dir: &Path, records: &[LedgerRecord]) -> Result<usize, Stri
         if validate_record(record).is_ok() && insert(&tx, record)? {
             added += 1;
         }
+    }
+    if let Some(boundary) = boundary {
+        let current: Option<String> = tx
+            .query_row(
+                "SELECT complete_from_utc FROM accounting_meta WHERE singleton=1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        tx.execute(
+            "UPDATE accounting_meta SET complete_from_utc=?1 WHERE singleton=1",
+            [later_boundary(current, boundary)],
+        )
+        .map_err(|error| error.to_string())?;
     }
     tx.commit()
         .map_err(|error| format!("提交网关记账失败：{error}"))?;

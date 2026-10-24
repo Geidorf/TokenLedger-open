@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 
 use chrono::{DateTime, Duration, Local, Utc};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,16 @@ const INTERVALS: [u32; 3] = [24, 72, 168];
 const DEFAULT_INTERVAL: u32 = 24;
 const DEFAULT_KEEP: u32 = 7;
 const MAX_KEEP: u32 = 60;
+
+/// Serialises writes of the config file: a run records its outcome on the
+/// latest settings, never on the copy it read before a long export.
+static CONFIG_LOCK: Mutex<()> = Mutex::new(());
+
+fn config_lock() -> MutexGuard<'static, ()> {
+    CONFIG_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -147,6 +158,7 @@ pub fn save(
     if input.enabled && secrets.get(PASSPHRASE_ACCOUNT)?.is_none() {
         return Err("开启自动备份前请先设置备份密码。".to_string());
     }
+    let _guard = config_lock();
     let previous = load(app);
     let config = AutoConfig {
         enabled: input.enabled,
@@ -188,7 +200,7 @@ pub fn run_now(
     secrets: &dyn SecretStore,
     iterations: u32,
 ) -> Result<String, String> {
-    let mut config = load(app);
+    let config = load(app);
     let dir = if config.dir.is_empty() {
         default_dir(app)
     } else {
@@ -198,6 +210,9 @@ pub fn run_now(
         .get(PASSPHRASE_ACCOUNT)
         .and_then(|passphrase| passphrase.ok_or_else(|| "还没有设置自动备份的密码。".to_string()))
         .and_then(|passphrase| export_to(app, gateway, &dir, AUTO_PREFIX, &passphrase, iterations));
+    // Settings saved while the export ran win; only the outcome is recorded.
+    let _guard = config_lock();
+    let mut config = load(app);
     config.last_run_at = Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
     let result = match outcome {
         Ok(export) => {

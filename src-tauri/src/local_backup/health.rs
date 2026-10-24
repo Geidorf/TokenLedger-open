@@ -8,7 +8,8 @@
 //! beside it, and the scan cursors start over so rows lost with damaged pages
 //! come back from the agents' own logs. A database too damaged to open at
 //! all is repaired the same way at startup without being asked, since the app
-//! cannot run without it.
+//! cannot run without it; that too waits until this process is the only
+//! instance, so a second launch never moves the files a running one has open.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,10 +28,16 @@ const PENDING_FILE: &str = "db-repair-pending-v1.json";
 const NOTICE_FILE: &str = "db-repair-v1.json";
 const MAX_PROBLEMS: usize = 20;
 const CHUNK: i64 = 1000;
+/// With no readable upper rowid, reading goes on until this many rowids past
+/// the last one found have all come back empty or unreadable.
+const PROBE_GAP: i64 = 200_000;
 /// Tables carried over by a rebuild. Everything else in the ledger database
-/// is derived (stats cache, project index) or must start over (scan cursors).
-const SALVAGED_TABLES: [&str; 5] = [
+/// is derived (stats cache, project index) or must start over (scan cursors
+/// and checkpoints). The cumulative-source state is not a cursor: it holds
+/// each source's reset generation, which the rows alone cannot restore.
+const SALVAGED_TABLES: [&str; 6] = [
     "token_logs",
+    "scan_cumulative_state",
     "pending_cloud_purges",
     "discovered_models",
     "scan_cloud_sent_identities",
@@ -193,12 +200,7 @@ pub fn repair(app: &AppContext, gateway_dir: &Path) -> Result<RepairOutcome, Str
             report: after,
         });
     }
-    fs::write(
-        app.app_data_dir().join(PENDING_FILE),
-        serde_json::to_vec(&serde_json::json!({ "requestedAt": Utc::now().to_rfc3339() }))
-            .map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("安排修复失败：{error}"))?;
+    schedule_rebuild(app, false)?;
     let report = check(app, gateway_dir);
     Ok(RepairOutcome {
         fixed: false,
@@ -213,20 +215,40 @@ pub struct SalvageReport {
     pub rows_unreadable: i64,
 }
 
-fn max_rowid(conn: &Connection, table: &str) -> Option<i64> {
-    conn.query_row(&format!("SELECT max(rowid) FROM \"{table}\""), [], |row| {
+/// Where reading a damaged table can stop.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Bound {
+    Empty,
+    Last(i64),
+    /// Every way of finding the last rowid hit damage (the rightmost leaf).
+    Unknown,
+}
+
+fn max_rowid(conn: &Connection, table: &str) -> Bound {
+    let max = conn.query_row(&format!("SELECT max(rowid) FROM \"{table}\""), [], |row| {
         row.get::<_, Option<i64>>(0)
-    })
-    .ok()
-    .flatten()
-    .or_else(|| {
-        conn.query_row(
-            &format!("SELECT rowid FROM \"{table}\" ORDER BY rowid DESC LIMIT 1"),
-            [],
-            |row| row.get(0),
-        )
-        .ok()
-    })
+    });
+    match max {
+        Ok(Some(last)) => return Bound::Last(last),
+        Ok(None) => return Bound::Empty,
+        Err(_) => {}
+    }
+    if let Ok(last) = conn.query_row(
+        &format!("SELECT rowid FROM \"{table}\" ORDER BY rowid DESC LIMIT 1"),
+        [],
+        |row| row.get::<_, i64>(0),
+    ) {
+        return Bound::Last(last);
+    }
+    // AUTOINCREMENT tables record their highest rowid elsewhere.
+    if let Ok(Some(last)) = conn.query_row(
+        "SELECT seq FROM sqlite_sequence WHERE name = ?1",
+        [table],
+        |row| row.get::<_, Option<i64>>(0),
+    ) {
+        return Bound::Last(last);
+    }
+    Bound::Unknown
 }
 
 fn read_rows(
@@ -267,9 +289,10 @@ fn salvage_table(
         return;
     }
     let list = super::quoted(&columns);
-    let Some(last) = max_rowid(damaged, table) else {
+    let bound = max_rowid(damaged, table);
+    if bound == Bound::Empty {
         return;
-    };
+    }
     let range_sql = format!("SELECT {list} FROM \"{table}\" WHERE rowid BETWEEN ?1 AND ?2");
     let one_sql = format!("SELECT {list} FROM \"{table}\" WHERE rowid = ?1");
     let insert_sql = format!(
@@ -281,7 +304,15 @@ fn salvage_table(
     };
     let counted = table == "token_logs";
     let mut start = 0;
-    while start <= last {
+    let mut last_found: i64 = 0;
+    loop {
+        let more = match bound {
+            Bound::Last(last) => start <= last,
+            _ => start <= last_found.saturating_add(PROBE_GAP),
+        };
+        if !more {
+            break;
+        }
         let end = start.saturating_add(CHUNK - 1);
         let rows = match read_rows(damaged, &range_sql, columns.len(), &[start, end]) {
             Ok(rows) => rows,
@@ -298,6 +329,9 @@ fn salvage_table(
                 rows
             }
         };
+        if !rows.is_empty() {
+            last_found = end;
+        }
         for row in rows {
             if insert.execute(params_from_iter(row)).unwrap_or(0) > 0 && counted {
                 report.rows_recovered += 1;
@@ -364,13 +398,37 @@ fn rebuild(app: &AppContext, db_path: &Path, automatic: bool) -> Result<RepairNo
     Ok(notice)
 }
 
-/// Runs a rebuild the user asked for, before the database is opened.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct Pending {
+    requested_at: String,
+    automatic: bool,
+}
+
+/// Asks the next primary instance to rebuild the ledger before opening it.
+pub fn schedule_rebuild(app: &AppContext, automatic: bool) -> Result<(), String> {
+    let pending = Pending {
+        requested_at: Utc::now().to_rfc3339(),
+        automatic,
+    };
+    fs::write(
+        app.app_data_dir().join(PENDING_FILE),
+        serde_json::to_vec(&pending).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("安排修复失败：{error}"))
+}
+
+/// Runs a scheduled rebuild. Only the primary instance calls this, before the
+/// scheduler or any window opens the ledger.
 pub fn run_pending(app: &AppContext, db_path: &Path) {
     let marker = app.app_data_dir().join(PENDING_FILE);
-    if !marker.exists() {
+    let Ok(bytes) = fs::read(&marker) else {
         return;
-    }
-    match rebuild(app, db_path, false) {
+    };
+    let automatic = serde_json::from_slice::<Pending>(&bytes)
+        .map(|pending| pending.automatic)
+        .unwrap_or(false);
+    match rebuild(app, db_path, automatic) {
         Ok(notice) => log::warn!(
             "ledger database rebuilt: {} rows recovered, {} unreadable",
             notice.rows_recovered,
@@ -387,29 +445,4 @@ pub fn is_corruption(error: &rusqlite::Error) -> bool {
         error.sqlite_error_code(),
         Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
     )
-}
-
-/// Rebuilds a ledger that failed to open because it is damaged; returns
-/// whether it did, so the caller can try opening it again.
-pub fn recover_after_init_failure(
-    app: &AppContext,
-    db_path: &Path,
-    error: &rusqlite::Error,
-) -> bool {
-    if !is_corruption(error) {
-        return false;
-    }
-    match rebuild(app, db_path, true) {
-        Ok(notice) => {
-            log::warn!(
-                "damaged ledger database rebuilt at start: {} rows recovered",
-                notice.rows_recovered
-            );
-            true
-        }
-        Err(error) => {
-            log::error!("damaged ledger database could not be rebuilt: {error}");
-            false
-        }
-    }
 }
