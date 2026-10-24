@@ -805,3 +805,48 @@ fn restore_snapshots_are_owner_only() {
     assert_eq!(mode(&dir.join("tokenboard.db")), 0o600);
     assert_eq!(mode(&dir.join("gateway").join(accounting::FILE)), 0o600);
 }
+
+#[test]
+fn only_changed_prices_travel_and_merge_by_model() {
+    let defaults: Value = serde_json::from_str(include_str!("../../prices.json")).unwrap();
+    let models: Vec<String> = defaults
+        .as_object()
+        .unwrap()
+        .keys()
+        .take(2)
+        .cloned()
+        .collect();
+    let edited = |app: &AppContext, model: &str, input: f64| {
+        let mut table = crate::commands::get_prices_impl(app).unwrap();
+        table[model]["input"] = serde_json::json!(input);
+        crate::commands::save_prices_impl(app, table).unwrap();
+    };
+    let old = Computer::new("old");
+    edited(&old.app, &models[0], 123.0);
+    edited(&old.app, &models[1], 7.0);
+    let bundle = sealed_roundtrip(&old.export());
+    let overrides = bundle.price_overrides.clone().unwrap();
+    // Only the two edited models, not the whole bundled table.
+    assert_eq!(overrides.len(), 2, "{overrides:?}");
+
+    let new = Computer::new("new");
+    edited(&new.app, &models[1], 9.0);
+    let plan = preview(&new.app, &new.gateway, &bundle, "d".into()).unwrap();
+    assert_eq!(plan.prices, Some(ItemStatus::Differs));
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert!(result.prices_restored);
+    let table = crate::commands::get_prices_impl(&new.app).unwrap();
+    assert_eq!(table[&models[0]]["input"], serde_json::json!(123.0));
+    assert_eq!(table[&models[1]]["input"], serde_json::json!(9.0));
+    assert_eq!(
+        crate::commands::price_overrides_for_backup(&new.app).len(),
+        2
+    );
+}

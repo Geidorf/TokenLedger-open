@@ -10909,6 +10909,25 @@ pub fn get_prices_impl(app: &AppContext) -> Result<Value, String> {
     Ok(load_prices(app))
 }
 
+/// Only what the user changed in the price editor, for a local backup
+/// (`local-backup-v1`): the bundled defaults are left out so a restore never
+/// pins an older build's defaults over newer ones.
+pub(crate) fn price_overrides_for_backup(app: &AppContext) -> Map<String, Value> {
+    let _guard = lock_price_overrides();
+    read_price_overrides(app.app_data_dir(), &default_prices())
+        .0
+        .unwrap_or_default()
+}
+
+/// The table the price editor would show with `overrides` as the user's
+/// changes; saving it through `save_prices_impl` stores exactly those.
+pub(crate) fn prices_with_overrides(app: &AppContext, overrides: &Map<String, Value>) -> Value {
+    merge_discovered_prices(
+        apply_price_overrides(&default_prices(), overrides),
+        &load_discovered_model_prices(app),
+    )
+}
+
 fn price_rate_snapshot(prices: &Value) -> Value {
     let mut snapshot = Map::new();
     let Some(models) = prices.as_object() else {

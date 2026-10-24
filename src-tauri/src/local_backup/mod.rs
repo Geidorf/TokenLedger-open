@@ -120,8 +120,9 @@ pub struct Bundle {
     pub budgets: Option<BudgetSettings>,
     pub providers: Vec<ProviderRecord>,
     pub routing_groups: Vec<RoutingGroup>,
-    /// The effective price table as the price editor shows it.
-    pub prices: Option<Value>,
+    /// The user's price overrides only (models and fields changed in the
+    /// price editor); the bundled defaults stay this build's.
+    pub price_overrides: Option<serde_json::Map<String, Value>>,
     pub quota_alerts: Option<QuotaAlertSettings>,
 }
 
@@ -240,7 +241,7 @@ pub fn collect(app: &AppContext, gateway: &Gateway) -> Result<Bundle, String> {
             .map(|view| view.record)
             .collect(),
         routing_groups: gateway.list_routing_groups(),
-        prices: crate::commands::get_prices_impl(app).ok(),
+        price_overrides: Some(crate::commands::price_overrides_for_backup(app)),
         quota_alerts: Some(alerts::load_settings(app.app_data_dir())),
     })
 }
@@ -612,6 +613,22 @@ fn provider_needs_key(gateway: &Gateway, record: &ProviderRecord) -> Result<bool
         .any(|view| view.record.id == record.id && view.has_key))
 }
 
+/// The user's price overrides after restoring `incoming`, model by model.
+fn merged_overrides(
+    local: &serde_json::Map<String, Value>,
+    incoming: &serde_json::Map<String, Value>,
+    conflict: Conflict,
+) -> serde_json::Map<String, Value> {
+    let mut merged = local.clone();
+    for (model, entry) in incoming {
+        if conflict == Conflict::KeepLocal && merged.contains_key(model) {
+            continue;
+        }
+        merged.insert(model.clone(), entry.clone());
+    }
+    merged
+}
+
 fn same_machine(bundle: &Bundle) -> bool {
     !bundle.machine.is_empty() && bundle.machine == crate::commands::local_machine_id()
 }
@@ -654,14 +671,18 @@ pub fn preview(
             providers_without_key.push(record.id.clone());
         }
     }
-    let current_prices = crate::commands::get_prices_impl(app).ok();
-    let prices = bundle.prices.as_ref().map(|prices| {
-        if current_prices.as_ref() == Some(prices) {
-            ItemStatus::Same
-        } else {
-            ItemStatus::Differs
-        }
-    });
+    let prices = bundle
+        .price_overrides
+        .as_ref()
+        .filter(|incoming| !incoming.is_empty())
+        .map(|incoming| {
+            let local = crate::commands::price_overrides_for_backup(app);
+            if merged_overrides(&local, incoming, Conflict::UseBackup) == local {
+                ItemStatus::Same
+            } else {
+                ItemStatus::Differs
+            }
+        });
     Ok(Preview {
         digest,
         created: bundle.created.clone(),
@@ -723,8 +744,8 @@ pub struct Sections {
     pub quota_alerts: bool,
 }
 
-/// Which side wins for a provider, routing group or budget rule that exists
-/// on both. Ledger rows already here always win.
+/// Which side wins for a provider, routing group, budget rule or price
+/// override that exists on both. Ledger rows already here always win.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Conflict {
@@ -1146,9 +1167,16 @@ pub fn apply(
         }
     }
     if sections.prices {
-        if let Some(prices) = &bundle.prices {
-            if crate::commands::get_prices_impl(app).ok().as_ref() != Some(prices) {
-                crate::commands::save_prices_impl(app, prices.clone())?;
+        if let Some(incoming) = &bundle.price_overrides {
+            let local = crate::commands::price_overrides_for_backup(app);
+            let merged = merged_overrides(&local, incoming, conflict);
+            if merged != local {
+                // The same save path as the price editor, so costs are
+                // recalculated where the rates changed.
+                crate::commands::save_prices_impl(
+                    app,
+                    crate::commands::prices_with_overrides(app, &merged),
+                )?;
                 result.prices_restored = true;
             }
         }
