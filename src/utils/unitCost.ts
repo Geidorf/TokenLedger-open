@@ -1,4 +1,5 @@
 import { formatUsdApprox } from './format';
+import { t } from '../i18n';
 
 /**
  * 单位费用：每百万有效 Token 的预估费用（T10.154 术语表：单价写「单位费用」，不写「单位成本」）。
@@ -9,17 +10,22 @@ import { formatUsdApprox } from './format';
  * - 大于 0 但不到 $0.01 时显示「<$0.01/百万 Token」，不四舍五入成 $0.00；其余显示「≈$x.xx/百万 Token」，
  *   ≈ 表示按价格表估算。
  *
- * 用法：标签用 `UNIT_COST_LABEL`，值用 `formatUnitCost(computeUnitCostUsd(costUsd, effectiveTokens))`。
+ * 用法：标签用 `unitCostLabel()`，值用 `formatUnitCost(computeUnitCostUsd(costUsd, effectiveTokens))`。
  */
-export const UNIT_COST_LABEL = '单位费用';
+export function unitCostLabel(): string {
+  return t('unitCost.label');
+}
 
 /** 单元格与 tooltip 的口径说明。 */
-export const UNIT_COST_DESCRIPTION = '每百万有效 Token 的预估费用（含缓存读写费用，按价格表估算，非账单）';
+export function unitCostDescription(): string {
+  return t('unitCost.description');
+}
 
 /** 算不出时的显示文字。 */
-export const UNIT_COST_UNAVAILABLE = '不可得';
+export function unitCostUnavailable(): string {
+  return t('unitCost.unavailable');
+}
 
-const PER_MILLION_TOKENS = '/百万 Token';
 
 /** 每百万有效 Token 的预估美元；费用未知或有效 Token 不是正数时返回 null。 */
 export function computeUnitCostUsd(
@@ -33,7 +39,7 @@ export function computeUnitCostUsd(
 
 /** `computeUnitCostUsd` 结果的显示文字：null 写「不可得」，0 < 值 < $0.01 写「<$0.01/百万 Token」。 */
 export function formatUnitCost(valueUsd: number | null | undefined): string {
-  if (typeof valueUsd !== 'number' || !Number.isFinite(valueUsd) || valueUsd < 0) return UNIT_COST_UNAVAILABLE;
-  if (valueUsd > 0 && valueUsd < 0.01) return `<$0.01${PER_MILLION_TOKENS}`;
-  return `${formatUsdApprox(valueUsd)}${PER_MILLION_TOKENS}`;
+  if (typeof valueUsd !== 'number' || !Number.isFinite(valueUsd) || valueUsd < 0) return unitCostUnavailable();
+  if (valueUsd > 0 && valueUsd < 0.01) return `<$0.01${t('unitCost.perMillion')}`;
+  return `${formatUsdApprox(valueUsd)}${t('unitCost.perMillion')}`;
 }

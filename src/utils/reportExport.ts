@@ -2,7 +2,7 @@ import { formatCacheNetSavedUsd } from './cacheSavingsDisplay';
 import type { ComparisonDeltaMetric, CustomDateRange, DataScope, ModelStat, RangeKey, StatsData, ToolStat, UsageComparison } from '../types';
 import { summaryEffectiveTokens } from '../types';
 import { formatEstimatedUsd, formatNum, formatTokens } from './format';
-import { ESTIMATED_COST_NOTE } from './costCopy';
+import { estimatedCostNote } from './costCopy';
 import { buildRhythm, deriveInsightTimeContext, detectSpikes } from './insightRules';
 import { calculateCacheEfficiency, escapeHtml } from './frontendContracts';
 import { resolveCacheBreakdown } from './cacheDisplay';
@@ -123,7 +123,7 @@ export function generateVisualDigestHtml(options: VisualDigestOptions): string {
   assertExportableSummary(stats);
   const nowStr = options.generatedAt || new Date().toLocaleString('zh-CN');
   const effectiveCustomRange = resolveEffectiveCustomRange(options);
-  const rangeName = rangeDisplayName(range, effectiveCustomRange);
+  const rangeName = rangeDisplayName(range, effectiveCustomRange, 'zh');
   const scopeName = scope === 'cloud' ? '已同步账本' : '本机账本';
   const layout = options.layout && Object.prototype.hasOwnProperty.call(DIGEST_THEMES, options.layout) ? options.layout : 'scorecard';
   const theme = DIGEST_THEMES[layout];
@@ -282,7 +282,7 @@ ${DIGEST_STYLES}</style>
         <div class="brand-kicker">TokenLedger</div>
         <span class="edition">${theme.issue}</span>
         <h1 class="brand-title">${escapeHtml(rangeName)} AI 协作简报</h1>
-        <p class="brand-sub">当前范围的输入、输出、缓存与预估费用（${ESTIMATED_COST_NOTE}）</p>
+        <p class="brand-sub">当前范围的输入、输出、缓存与预估费用（${estimatedCostNote('zh')}）</p>
       </div>
       <div class="report-meta">
         <span class="badge">${escapeHtml(scopeName)} · ${escapeHtml(period)}</span>
@@ -332,7 +332,7 @@ ${DIGEST_STYLES}</style>
           <div class="observation-title">缓存观察</div>
           <div class="observation-desc">
             ${cacheBreakdown.kind === 'split'
-              ? `命中缓存读 ${formatTokens(cacheBreakdown.read)} Tokens · 写入 ${formatTokens(cacheBreakdown.write)} Tokens。${escapeHtml(cacheBreakdownText)}（${ESTIMATED_COST_NOTE}）。`
+              ? `命中缓存读 ${formatTokens(cacheBreakdown.read)} Tokens · 写入 ${formatTokens(cacheBreakdown.write)} Tokens。${escapeHtml(cacheBreakdownText)}（${estimatedCostNote('zh')}）。`
               : `缓存合计 ${formatTokens(cacheBreakdown.total)} Tokens；来源未提供读写拆分，不显示流向、复用率或缓存净节省。`}
           </div>
         </div>
@@ -433,7 +433,7 @@ ${DIGEST_STYLES}</style>
     <footer class="report-footer">
       <strong>TokenLedger / ${theme.name}</strong>
       <p>有效 Token = 输入 + 输出；缓存读写另列。不可得表示来源未提供可靠数据，已知零值仍为 0。</p>
-      <p>预估费用${ESTIMATED_COST_NOTE}。</p>
+      <p>预估费用${estimatedCostNote('zh')}。</p>
       <p>${hideCosts ? '费用已隐藏：费用、费用占比与费用变化均未写入文件。' : '本文件含预估费用，转发前请确认分享范围。'} 文件只含本次导出的统计摘要，不含账户、设备标识、会话内容或项目数据。</p>
     </footer>
   </div>

@@ -21,6 +21,7 @@ import {
   UsageDetailsQuery,
   UsageDetailsResponse,
 } from '../types';
+import { getLang, localized, t } from '../i18n';
 
 export const EMPTY_DETAIL_FILTERS: DetailFilters = { tools: [], models: [], machines: [], search: '' };
 
@@ -37,12 +38,12 @@ export function providersEchoMatches(echo: unknown, expected: readonly string[])
   return echoed.length === expected.length && echoed.every((value, index) => value === expected[index]);
 }
 
-const BACKEND_REASON_LABELS: Record<string, string> = {
-  cloud_stats_v2_unavailable: '云端尚未部署 Stats v2 RPC，请联系部署负责人发布最新迁移。',
-  cloud_usage_details_unavailable: '云端消耗明细 RPC 尚未部署，请联系部署负责人发布最新迁移。',
-  cloud_entity_dashboard_unavailable: '云端专属看板 RPC 尚未部署，请联系部署负责人发布最新迁移。',
-  'cloud-stats-v2-rpc-unavailable': '云端尚未部署 Stats v2 RPC，请联系部署负责人发布最新迁移。',
-};
+const BACKEND_REASON_LABELS: Record<string, string> = localized({
+  cloud_stats_v2_unavailable: 'detailsMsg.v2Missing',
+  cloud_usage_details_unavailable: 'detailsMsg.detailsMissing',
+  cloud_entity_dashboard_unavailable: 'detailsMsg.entityMissing',
+  'cloud-stats-v2-rpc-unavailable': 'detailsMsg.v2Missing',
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -116,11 +117,11 @@ export function useUsageDetails({
       limit,
     };
     const response = await invoke<UsageDetailsEnvelope>('get_usage_details', { query });
-    const unavailable = unavailableMessage(response, '当前数据源不支持完整消耗明细。');
-    if (isUnavailableEnvelope(response)) throw new Error(unavailable || '当前数据源不支持完整消耗明细。');
+    const unavailable = unavailableMessage(response, t('detailsMsg.unsupported'));
+    if (isUnavailableEnvelope(response)) throw new Error(unavailable || t('detailsMsg.unsupported'));
     if (!queryEchoMatches(response.meta?.query, canonicalQuery, response.meta?.entity)
       || !providersEchoMatches(response.meta?.query, providers)) {
-      throw new Error('明细响应与当前筛选不一致，请重试。');
+      throw new Error(t('detailsMsg.mismatch'));
     }
     return response;
   }, [currentTimezone, customRange, dataScope, detailFilters.machines, detailFilters.models, detailFilters.providers, detailFilters.search, detailFilters.tools, deviceFilter, range]);
@@ -141,7 +142,7 @@ export function useUsageDetails({
       setDetails(null);
       setDetailsLoading(false);
       setDetailsLoadingMore(false);
-      setDetailsError('当前云端仍使用旧版统计契约，完整消耗明细入口已停用。请联系部署负责人发布最新迁移，或切换到本地机器。');
+      setDetailsError(t('detailsMsg.legacyCloud'));
       return;
     }
     setDetailsError('');
@@ -172,12 +173,12 @@ export function useUsageDetails({
    * 与列表共用同一份查询，导出的就是列表能翻到的全部行。
    */
   const exportDetailsCsv = useCallback(async (): Promise<{ message: string; path: string }> => {
-    if (!details) throw new Error('明细尚未加载，无法导出');
+    if (!details) throw new Error(t('detailsMsg.notLoaded'));
     // 退出登录、切换数据源或改筛选都会让 `detailRequestId` 前进；导出途中一旦变了就放弃，
     // 不把旧账号或旧筛选的数据写到磁盘。
     const generation = detailRequestId.current;
     const assertCurrent = () => {
-      if (detailRequestId.current !== generation) throw new Error('导出期间数据范围或登录状态已变化，已取消导出');
+      if (detailRequestId.current !== generation) throw new Error(t('detailsMsg.changed'));
     };
     setDetailsExporting(true);
     try {
@@ -190,7 +191,7 @@ export function useUsageDetails({
       assertCurrent();
       const result = await invoke<{ message: string; path: string }>('export_usage_csv', { content: requestsToCsv(items, dataScope) });
       return truncated
-        ? { ...result, message: `${result.message}（已达单次上限 ${REQUESTS_CSV_MAX_ROWS.toLocaleString('zh-CN')} 行，请缩小范围导出其余部分）` }
+        ? { ...result, message: t('detailsMsg.truncated', { message: result.message, max: REQUESTS_CSV_MAX_ROWS.toLocaleString(getLang() === 'en' ? 'en-US' : 'zh-CN') }) }
         : result;
     } finally {
       setDetailsExporting(false);

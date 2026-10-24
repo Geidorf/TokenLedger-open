@@ -4,9 +4,10 @@ import { ArrowRight, Database, PiggyBank, TriangleAlert } from 'lucide-react';
 import type { CacheSavings, Summary } from '../types';
 import { formatEstimatedUsd, formatTokens } from '../utils/format';
 import { resolveCacheBreakdown } from '../utils/cacheDisplay';
-import { ESTIMATED_COST_NOTE } from '../utils/costCopy';
+import { estimatedCostNote } from '../utils/costCopy';
 import { parseCacheSavings } from '../utils/contracts/statsQuery';
 import { InfoTip } from './InfoTip';
+import { t, useLang } from '../i18n';
 
 interface CacheFlowPanelProps {
   summary: Summary;
@@ -16,21 +17,21 @@ function CacheSavingsCard({ savings }: { savings: CacheSavings | null }) {
   const savedUsd = savings?.netSavedUsd ?? null;
   return (
     <div className={`cache-flow-savings-card${savedUsd === null ? ' is-unavailable' : ''}`}>
-      <div className="savings-title">缓存净节省（当前范围）</div>
+      <div className="savings-title">{t('cacheFlow.savingsTitle')}</div>
       {savedUsd !== null ? (
         <>
           <div className="savings-value num">{formatCacheNetSavedUsd(savedUsd)}</div>
-          {savings && <div className="savings-sub">缓存读取节省 {formatEstimatedUsd(savings.readSavedUsd)} · 缓存写入溢价 {formatEstimatedUsd(savings.writePremiumUsd)}</div>}
-          <div className="savings-sub">各项分别四舍五入，合计可能相差 $0.01</div>
-          {savedUsd < 0 && <div className="savings-sub">写入溢价高于读取节省</div>}
-          {savings && (savings.fallbackPricedReadTokens > 0 || savings.fallbackPricedWriteTokens > 0) && <div className="savings-sub">含兜底单价 · 读取 {formatTokens(savings.fallbackPricedReadTokens)} / 写入 {formatTokens(savings.fallbackPricedWriteTokens)} Token</div>}
+          {savings && <div className="savings-sub">{t('cacheFlow.savingsParts', { read: formatEstimatedUsd(savings.readSavedUsd), write: formatEstimatedUsd(savings.writePremiumUsd) })}</div>}
+          <div className="savings-sub">{t('cacheFlow.rounding')}</div>
+          {savedUsd < 0 && <div className="savings-sub">{t('cacheFlow.writePremium')}</div>}
+          {savings && (savings.fallbackPricedReadTokens > 0 || savings.fallbackPricedWriteTokens > 0) && <div className="savings-sub">{t('cacheFlow.fallback', { read: formatTokens(savings.fallbackPricedReadTokens), write: formatTokens(savings.fallbackPricedWriteTokens) })}</div>}
         </>
       ) : (
         <>
-          <div className="savings-value num">不可得</div>
+          <div className="savings-value num">{t('cacheFlow.na')}</div>
           <div className="savings-sub">
             <TriangleAlert className="h-3 w-3" />
-            <span>缺少可用价格估算，不显示 0</span>
+            <span>{t('cacheFlow.noPrice')}</span>
           </div>
         </>
       )}
@@ -48,6 +49,7 @@ function CacheSavingsCard({ savings }: { savings: CacheSavings | null }) {
  * - 口径为「当前查询范围」，文案不得写成「累计」。
  */
 function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
+  useLang();
   const cache = resolveCacheBreakdown(summary);
   const inputTokens = Number.isFinite(summary.inputTokens) ? summary.inputTokens : 0;
   const writeTokens = cache.kind === 'split' ? cache.write : 0;
@@ -64,36 +66,36 @@ function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
   const segments = isSplit ? [
     {
       key: 'hit' as const,
-      label: '缓存命中读取',
+      label: t('cacheFlow.hit'),
       value: cacheValue,
       share: cacheShare,
     },
     {
       key: 'miss' as const,
-      label: '未命中全价输入',
+      label: t('cacheFlow.miss'),
       value: inputTokens,
       share: inputShare,
     },
   ] : [];
 
   return (
-    <section className="panel cache-flow-panel" aria-label="Prompt 缓存概览与节省">
+    <section className="panel cache-flow-panel" aria-label={t('cacheFlow.title')}>
       <div className="panel-header">
         <div className="panel-title">
           <span className="panel-icon tone-warning" aria-hidden="true"><PiggyBank className="h-4 w-4" /></span>
-          <span>Prompt 缓存概览与节省</span>
+          <span>{t('cacheFlow.title')}</span>
           {isSplit && (
-            <InfoTip label="缓存口径说明">
-              <span>命中缓存在更低单价下复用前缀上下文，减少全价重算。</span>
-              <span>复用率 = 命中读取 ÷（未命中输入 + 命中缓存读）；上下文输入总量 = 未命中输入 + 命中缓存读。</span>
-              <span>缓存写入单列计费，不计入复用率分母。</span>
-              <span>缓存净节省 = 缓存读取节省 − 缓存写入溢价；三项均{ESTIMATED_COST_NOTE}。</span>
+            <InfoTip label={t('cacheFlow.infoLabel')}>
+              <span>{t('cacheFlow.info1')}</span>
+              <span>{t('cacheFlow.info2')}</span>
+              <span>{t('cacheFlow.info3')}</span>
+              <span>{t('cacheFlow.info4', { note: estimatedCostNote() })}</span>
             </InfoTip>
           )}
         </div>
         {isSplit && (
-          <span className="cache-flow-reuse num" title="缓存命中读取 ÷（未命中输入 + 命中缓存读）">
-            复用率 {cacheShare.toFixed(1)}%
+          <span className="cache-flow-reuse num" title={t('cacheFlow.reuseTitle')}>
+            {t('cacheFlow.reuse', { pct: cacheShare.toFixed(1) })}
           </span>
         )}
       </div>
@@ -101,7 +103,7 @@ function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
       {isSplit ? (
         <div className="cache-flow-visual">
         <div className="cache-flow-step">
-          <div className="cache-flow-step-label">上下文输入总量</div>
+          <div className="cache-flow-step-label">{t('cacheFlow.contextTotal')}</div>
           <div className="cache-flow-step-value num">{formatTokens(totalContext)}</div>
         </div>
 
@@ -114,8 +116,8 @@ function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
             className="cache-flow-bar-meter"
             role="img"
             aria-label={segments
-              .map((segment) => `${segment.label} ${formatTokens(segment.value)}（${segment.share.toFixed(1)}%）`)
-              .join('，')}
+              .map((segment) => t('cacheFlow.segmentAria', { label: segment.label, tokens: formatTokens(segment.value), pct: segment.share.toFixed(1) }))
+              .join(t('cacheFlow.segmentJoin'))}
           >
             {segments.map((segment) => (
               <div
@@ -131,7 +133,7 @@ function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
               <div key={segment.key} className={`legend-item ${segment.key}`}>
                 <span className="legend-dot" />
                 <span>
-                  {segment.label}：<b className="num">{formatTokens(segment.value)}</b> ({segment.share.toFixed(1)}%)
+                  {segment.label}{t('cacheFlow.legendSep')}<b className="num">{formatTokens(segment.value)}</b> ({segment.share.toFixed(1)}%)
                 </span>
               </div>
             ))}
@@ -140,7 +142,7 @@ function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
           {writeTokens > 0 && (
             <div className="cache-flow-write-note">
               <Database className="h-3 w-3" />
-              <span>缓存写入 {formatTokens(writeTokens)}</span>
+              <span>{t('cacheFlow.writes', { tokens: formatTokens(writeTokens) })}</span>
             </div>
           )}
         </div>
@@ -152,14 +154,14 @@ function CacheFlowPanelComponent({ summary }: CacheFlowPanelProps) {
           <CacheSavingsCard savings={savings} />
         </div>
       ) : (
-        <div className="cache-combined-summary" role="group" aria-label="缓存合计，读写未拆分">
+        <div className="cache-combined-summary" role="group" aria-label={t('cacheFlow.combinedAria')}>
           <div className="cache-flow-step">
-            <div className="cache-flow-step-label">仅有缓存合计</div>
+            <div className="cache-flow-step-label">{t('cacheFlow.combinedOnly')}</div>
             <div className="cache-flow-step-value num">{formatTokens(cache.total)}</div>
           </div>
           <details className="text-xs text-muted">
-            <summary className="min-h-11 cursor-pointer py-3">为什么无法计算复用与节省？</summary>
-            <p>缺少可信的缓存读写拆分，无法计算流向、复用率或缓存净节省。</p>
+            <summary className="min-h-11 cursor-pointer py-3">{t('cacheFlow.whyTitle')}</summary>
+            <p>{t('cacheFlow.whyBody')}</p>
           </details>
         </div>
       )}

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { setLangPreference } from '../i18n';
 import { behaviorAnalysisForQuery, mockBehaviorLedger } from '../devMockTauri';
 import type { BehaviorAnalysisResponse } from '../types';
 import { useTheme } from '../utils/useTheme';
@@ -457,6 +458,23 @@ describe('BehaviorAnalysisView refresh state (T10.164)', () => {
     expect(live).toBeEmptyDOMElement();
     expect(screen.getByText('更新于 09:12')).toBeInTheDocument();
     expect(refreshAnnouncer(view.container)).toBe(live);
+  });
+
+  it('switching language mid-refresh still announces the result, in the new language', () => {
+    const at = (hour: number, minute: number) => { const value = new Date(); value.setHours(hour, minute, 0, 0); return value.toISOString(); };
+    const view = renderView({ updatedAt: at(9, 5) });
+    const live = refreshAnnouncer(view.container);
+    const rerender = (props: Partial<ViewProps>) => view.rerender(<BehaviorAnalysisView data={richData()} loading={false} error="" scope="local" range="week" customRange={null} onRangeChange={view.onRangeChange} onRetry={view.onRetry} onViewLocal={view.onViewLocal} {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    rerender({ refreshing: true, updatedAt: at(9, 5) });
+    try {
+      act(() => setLangPreference('en'));
+      expect(live).toHaveTextContent('Refreshing…');
+      rerender({ refreshing: false, updatedAt: at(9, 7) });
+      expect(live).toHaveTextContent('Refreshed, updated');
+    } finally {
+      act(() => setLangPreference('zh'));
+    }
   });
 
   it('leaves a failed manual refresh to the alert banner', () => {
@@ -1044,6 +1062,19 @@ describe('BehaviorAnalysisView 项目维度（TOKE-13）', () => {
     expect(html).not.toContain(secretKey);
     expect(screen.getAllByText('项目 1').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /未归属，来源不记录工作目录/ }).length).toBeGreaterThan(0);
+  });
+
+  it('隐藏项目名后原地切换语言，排行与会话里的代称一起换（#109 评审 P2）', () => {
+    renderView({ data: withProjects('ready') });
+    fireEvent.click(screen.getByRole('switch', { name: '隐藏项目名' }));
+    expect(screen.getAllByText('项目 1').length).toBeGreaterThan(0);
+    try {
+      act(() => setLangPreference('en'));
+      expect(screen.getAllByText('Project 1').length).toBeGreaterThan(0);
+      expect(screen.queryByText('项目 1')).not.toBeInTheDocument();
+    } finally {
+      act(() => setLangPreference('zh'));
+    }
   });
 
   it('云端视图说明项目维度不可用', () => {

@@ -24,6 +24,7 @@
 import type { DataScope, RangeKey, StatsData } from '../types';
 import { isoCalendarDayValue } from './contracts/statsQuery';
 import { deriveInsightTimeContext } from './insightRules';
+import { getLang, t } from '../i18n';
 
 export type ForecastPeriodKind = 'month' | 'week' | 'custom';
 export type ForecastMetricKey = 'tokens' | 'cost';
@@ -437,7 +438,7 @@ function forecastMetric(metric: ForecastMetricKey, context: MetricContext): Metr
   const average = baseSum / n;
   const variance = baseValues.reduce((sum, value) => sum + (value - average) ** 2, 0) / (n - 1);
   const dispersion = Math.max(Math.sqrt(variance), FORECAST_CV_FLOOR * average);
-  const t = tQuantile90(n - 1);
+  const tq = tQuantile90(n - 1);
   // 用量常成片高低：相邻两天正相关时，和的方差按 (1 + r)/(1 − r) 放大。
   const autocorrelation = lag1Autocorrelation(baseValues);
   const inflation = Math.sqrt((1 + autocorrelation) / (1 - autocorrelation));
@@ -472,7 +473,7 @@ function forecastMetric(metric: ForecastMetricKey, context: MetricContext): Metr
     pointCenter += isToday ? Math.max(floor, average) : average;
     lowCenter += isToday ? Math.max(floor, lowDay) : lowDay;
     highCenter += isToday ? Math.max(floor, highDaily) : highDaily;
-    const halfWidth = t * dispersion * inflation * Math.sqrt(step + (step * step) / n);
+    const halfWidth = tq * dispersion * inflation * Math.sqrt(step + (step * step) / n);
     // 累计量只增不减：下限取运行最大值，且不低于已记录量。
     runningLow = Math.max(runningLow, completedTotal + Math.max(floor, lowCenter - halfWidth));
     trajectory.push({
@@ -752,10 +753,10 @@ export function forecastFromStats(
 // 文案：标签、方法与范围必须同时出现（D2），因此由规则层一次性给出。
 
 export interface ForecastCopy {
-  tag: '预测';
+  tag: string;
   title: string;
   /** 被预测的量：有效 Token（输入 + 输出，不含缓存）或预估费用。 */
-  metricLabel: '有效 Token' | '预估费用';
+  metricLabel: string;
   /** 点预测；数据不足或不可得时为 null。Token 值自带“有效 Token”。 */
   value: string | null;
   /** 粗略范围；与 value 同时存在。 */
@@ -837,21 +838,21 @@ export function formatUsdTriple(point: number, low: number, high: number): Forma
 
 function monthDay(date: string): string {
   const [, month, day] = date.split('-').map(Number);
-  return `${month}月${day}日`;
+  return t('forecast.monthDay', { month, day });
 }
 
 function forecastTitle(forecast: PeriodForecast): string {
   const period = forecast.period;
-  if (!period) return '预测';
-  if (period.kind === 'month') return '月末预测';
-  if (period.kind === 'week') return '本周预测（至周日）';
-  return `截至 ${monthDay(period.end)} 预测`;
+  if (!period) return t('forecast.tag');
+  if (period.kind === 'month') return t('forecast.title.month');
+  if (period.kind === 'week') return t('forecast.title.week');
+  return t('forecast.title.until', { date: monthDay(period.end) });
 }
 
 function periodWord(kind: ForecastPeriodKind): string {
-  if (kind === 'month') return '本月';
-  if (kind === 'week') return '本周';
-  return '本区间';
+  if (kind === 'month') return t('forecast.period.month');
+  if (kind === 'week') return t('forecast.period.week');
+  return t('forecast.period.range');
 }
 
 function baselineTruncated(forecast: PeriodForecast): boolean {
@@ -861,8 +862,8 @@ function baselineTruncated(forecast: PeriodForecast): boolean {
 /** 基线的如实说法：基线即全部已完成日时写“已完成 N 天”，被 31 天上限截断时写“最近 N 个完整日”。 */
 function baselinePhrase(forecast: PeriodForecast): string {
   return baselineTruncated(forecast)
-    ? `最近 ${forecast.baselineDays} 个完整日`
-    : `已完成 ${forecast.baselineDays} 天`;
+    ? t('forecast.baseline.recent', { n: forecast.baselineDays })
+    : t('forecast.baseline.completed', { n: forecast.baselineDays });
 }
 
 function percent(value: number): number {
@@ -874,32 +875,34 @@ function insufficientMethod(forecast: PeriodForecast): { method: string; detail:
   const from = forecast.availableFrom;
   if (from === null || forecast.cutoffDate === null) {
     return {
-      method: `区间只有 ${forecast.period?.days ?? 0} 天，不足以预测（至少要 ${required} 个完整日）`,
-      detail: '区间太短，完整日不足以确立日均。',
+      method: t('forecast.tooShort', { days: forecast.period?.days ?? 0, required }),
+      detail: t('forecast.tooShort.detail'),
     };
   }
   const wait = civilDaysBetween(forecast.cutoffDate, from) ?? 0;
-  const when = `${monthDay(from)} 起给出预测`;
+  const when = t('forecast.availableFrom', { date: monthDay(from) });
   if (forecast.reason === 'horizon-too-long') {
     return {
-      method: `距结束还有 ${forecast.remainingDays} 天，超过${baselinePhrase(forecast)}的 ${FORECAST_MAX_HORIZON_RATIO} 倍，${when}`,
-      detail: '外推距离过远时误差会失控，等已完成的天数更多、离结束更近后再给出预测。',
+      method: t('forecast.horizon', { days: forecast.remainingDays, baseline: baselinePhrase(forecast), ratio: FORECAST_MAX_HORIZON_RATIO, when }),
+      detail: t('forecast.horizon.detail'),
     };
   }
   const missing = required - forecast.completedDays;
   return {
     method: wait === missing
-      ? `还需 ${missing} 个完整日（至少 ${required} 天），${when}`
-      : `还需 ${wait} 个完整日（距结束太远），${when}`,
-    detail: '进行中的今天不计入；只有已经结束的日子才用来计算日均。',
+      ? t('forecast.needDays', { missing, required, when })
+      : t('forecast.needDaysFar', { wait, when }),
+    detail: t('forecast.needDays.detail'),
   };
 }
 
 function ariaLabelOf(title: string, value: string | null, interval: string | null, method: string, caveats: string[]): string {
   const head = value === null
-    ? `预测：${title}`
-    : `预测：${title} ${value}${interval ? `，${interval}` : ''}`;
-  return `${[head, method, ...caveats].join('。')}。`;
+    ? t('forecast.ariaHead', { title })
+    : interval
+      ? t('forecast.ariaHeadInterval', { title, value, interval })
+      : t('forecast.ariaHeadValue', { title, value });
+  return `${[head, method, ...caveats].join(t('forecast.sentenceSep'))}${t('forecast.sentenceEnd')}`;
 }
 
 /**
@@ -915,9 +918,9 @@ export function describePeriodForecast(
   }
   const title = forecastTitle(forecast);
   const kind = forecast.period?.kind ?? 'month';
-  const metricLabel = metric === 'tokens' ? '有效 Token' as const : '预估费用' as const;
+  const metricLabel = t(metric === 'tokens' ? 'forecast.metric.tokens' : 'forecast.metric.cost');
   const withoutNumber = (method: string, detail: string): ForecastCopy => ({
-    tag: '预测',
+    tag: t('forecast.tag'),
     title,
     metricLabel,
     value: null,
@@ -936,35 +939,35 @@ export function describePeriodForecast(
   const result = metric === 'tokens' ? forecast.tokens : forecast.cost;
   if (!result) return null;
   if (result.status === 'insufficient') {
-    const scope = baselineTruncated(forecast) ? `最近 ${forecast.baselineDays} 个完整日里` : '已完成的日子里';
+    const scope = baselineTruncated(forecast) ? t('forecast.scope.recent', { n: forecast.baselineDays }) : t('forecast.scope.completed');
     return withoutNumber(
-      `${scope}有消耗的不足 ${FORECAST_MIN_ACTIVE_DAYS} 天，暂不预测`,
-      '只有一天或没有消耗时无法确立速率。',
+      t('forecast.fewActive', { scope, min: FORECAST_MIN_ACTIVE_DAYS }),
+      t('forecast.fewActive.detail'),
     );
   }
   if (result.status === 'unavailable') {
     const method = result.reason === 'cost-provenance-unavailable'
-      ? '费用预测不可得：数据源未提供可验证的逐日费用'
+      ? t('forecast.costProvenance')
       : metric === 'cost'
-        ? `费用预测不可得：${periodWord(kind)}有 ${result.unknownDays} 天的费用未知`
-        : `有效 Token 预测不可得：${periodWord(kind)}有 ${result.unknownDays} 天的数据未知`;
-    return withoutNumber(method, '未知不按 0 计算，因此不给出可能偏低的预测。');
+        ? t('forecast.costUnknownDays', { period: periodWord(kind), days: result.unknownDays })
+        : t('forecast.tokenUnknownDays', { period: periodWord(kind), days: result.unknownDays });
+    return withoutNumber(method, t('forecast.unknown.detail'));
   }
 
   const caveats: string[] = [];
-  if (result.status === 'partial') caveats.push('今天有费用未知的记录，今天按日均计入预测');
-  if (kind === 'week' || result.weekdayMixRisk) caveats.push('未区分工作日与周末');
+  if (result.status === 'partial') caveats.push(t('forecast.caveat.partialToday'));
+  if (kind === 'week' || result.weekdayMixRisk) caveats.push(t('forecast.caveat.weekdayMix'));
   const shift = result.recentShift;
   if (shift?.direction === 'rising') {
     caveats.push(shift.ratio === null
-      ? '前 7 天没有消耗，最近 7 天有消耗；若持续，结果会高于预测'
-      : `最近 7 天日均比前 7 天高 ${percent(shift.ratio - 1)}%；若持续，结果会高于预测`);
+      ? t('forecast.caveat.risingFromZero')
+      : t('forecast.caveat.rising', { pct: percent(shift.ratio - 1) }));
   } else if (shift?.direction === 'falling' && shift.ratio !== null) {
-    caveats.push(`最近 7 天日均比前 7 天低 ${percent(1 - shift.ratio)}%；若持续，结果会低于预测`);
+    caveats.push(t('forecast.caveat.falling', { pct: percent(1 - shift.ratio) }));
   }
   if (result.peakInfluence !== null && result.peakShare !== null && result.peakInfluence >= FORECAST_PEAK_INFLUENCE) {
-    const basis = baselineTruncated(forecast) ? `最近 ${forecast.baselineDays} 个完整日合计` : '已完成合计';
-    caveats.push(`单日最高占${basis}的 ${percent(result.peakShare)}%，去掉这一天日均会低 ${percent(result.peakInfluence)}%`);
+    const basis = baselineTruncated(forecast) ? t('forecast.peakBasis.recent', { n: forecast.baselineDays }) : t('forecast.peakBasis.completed');
+    caveats.push(t('forecast.caveat.peak', { basis, share: percent(result.peakShare), influence: percent(result.peakInfluence) }));
   }
 
   const formatted = metric === 'tokens'
@@ -972,29 +975,30 @@ export function describePeriodForecast(
     : formatUsdTriple(result.projected as number, result.low as number, result.high as number);
   // 点值写成 <$0.01 时不再加 ≈（T10.197 评审 P3-1）：已经是「小于」的写法，≈ 会变成双重模糊。
   const value = metric === 'tokens'
-    ? `${formatted.point} 有效 Token`
+    ? t('forecast.tokenValue', { value: formatted.point })
     : (formatted.point.startsWith('<') ? formatted.point : `≈${formatted.point}`);
-  const interval = `粗略范围 ${formatted.low}–${formatted.high}`;
-  const method = `按${baselinePhrase(forecast)}的日均外推；范围假设之后的用量与这些天相近`;
+  const interval = t('forecast.interval', { low: formatted.low, high: formatted.high });
+  const method = t('forecast.method', { baseline: baselinePhrase(forecast) });
   const lines = [
-    `典型日取${periodWord(kind)}${baselinePhrase(forecast)}的算术平均，乘以剩余 ${forecast.remainingDays} 天（含今天）。`,
-    `范围是粗略范围，不是概率保证：按日波动与样本量计算，日波动不低于日均的一半（经验值），并按相邻两天的相关程度放宽${result.recentDaily === null ? '' : `，同时覆盖按最近 ${FORECAST_RECENT_DAYS} 天日均外推的结果`}。`,
+    t('forecast.detail.typical', { period: periodWord(kind), baseline: baselinePhrase(forecast), days: forecast.remainingDays }),
+    t('forecast.detail.range', { recent: result.recentDaily === null ? '' : t('forecast.detail.recent', { days: FORECAST_RECENT_DAYS }) }),
     ...(result.unseenDayType === null
       ? []
-      : [`已完成的日子里还没有${result.unseenDayType === 'weekend' ? '周末' : '工作日'}，范围下限按这些天不用计算。`]),
-    '它假设之后的用量与已完成的日子相近；用量持续上升或下降时，实际可能超出范围。',
-    '进行中的今天不参与日均计算，只保证预测不低于已记录的量。',
+      : [t(result.unseenDayType === 'weekend' ? 'forecast.detail.unseenWeekend' : 'forecast.detail.unseenWeekday')]),
+    t('forecast.detail.assumes'),
+    t('forecast.detail.today'),
   ];
-  if (metric === 'cost') lines.push('按价格表估算，非账单。');
-  lines.push('预测不进入同步、分享海报与导出。');
+  if (metric === 'cost') lines.push(t('forecast.detail.costEstimate'));
+  lines.push(t('forecast.detail.notShared'));
   return {
-    tag: '预测',
+    tag: t('forecast.tag'),
     title,
     metricLabel,
     value,
     interval,
     method,
-    detail: lines.join(''),
+    // 中文句子自带句号直接相连，英文句子之间留一个空格。
+    detail: lines.join(getLang() === 'en' ? ' ' : ''),
     caveats,
     ariaLabel: ariaLabelOf(title, value, interval, method, caveats),
   };
