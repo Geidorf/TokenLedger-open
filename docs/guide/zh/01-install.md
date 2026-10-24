@@ -60,6 +60,7 @@ Linux 提供三种未签名安装包，任选其一：
 - AppImage 自带依赖，不写系统目录。运行时提示缺 FUSE（`dlopen(): error loading libfuse.so.2`）时，装 `libfuse2`（Ubuntu 24.04 上叫 `libfuse2t64`），或用 `./TokenLedger…AppImage --appimage-extract-and-run` 启动。
 - **托盘**：TokenLedger 用 StatusNotifier（AppIndicator）托盘。KDE、Xfce、Cinnamon 等桌面自带；GNOME 需要装「AppIndicator and KStatusNotifierItem Support」扩展（Ubuntu 已默认开启）。Linux 上单击托盘图标不会弹出挂件，请右键（部分桌面左键也是）打开菜单，从菜单里选「显示窗口」或「显示 / 隐藏托盘挂件」。没有托盘时不要打开「启动时最小化到托盘」；万一主窗口藏起来了，再启动一次 `tokenledger` 就会把它叫出来。
 - **开机自动启动**：在「设置 › 扫描与启动」打开即可，TokenLedger 会写入 `~/.config/autostart/com.jeidorf.tokenledger.desktop`。用 AppImage 时，记录的是 AppImage 文件本身的位置，挪动文件后打开一次应用就会自动更新。
+- **密钥存储**：云端登录态与供应商 API key 存在系统的 Secret Service 里（GNOME 钥匙串、KWallet 等），注销、重启后仍在。没有 Secret Service 的桌面上保存密钥会直接报错，请先装好并解锁一个钥匙串服务（例如 `gnome-keyring`）。
 - **扫描路径**：遵守 `XDG_CONFIG_HOME`、`XDG_DATA_HOME`，未设置时用 `~/.config`、`~/.local/share`；各 Agent 自己的目录（如 `~/.claude`、`~/.codex`）与其他平台相同。
 
 ## 升级与卸载

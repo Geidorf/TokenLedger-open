@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Linux secrets (cloud sign-in, provider API keys) are now kept in the Secret Service instead of only the kernel session keyring, so they survive logout and reboot.
 - Linux scan paths honour `XDG_DATA_HOME` and `XDG_CONFIG_HOME` (OpenCode, Kilo, Hermes, Kimi Desktop, Trae, DeepSeek GUI, WorkBuddy), and the Marvis path on Linux no longer points at a macOS-style folder.
 
 - The source and cross-platform build version moved from 1.2.77 to 2.0.0; the Android `versionCode` moved from 1002077 to 2000000.
