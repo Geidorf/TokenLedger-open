@@ -61,6 +61,11 @@ pub(crate) fn install_notifier(notifier: Box<dyn AlertNotifier>) {
     let _ = NOTIFIER.set(notifier);
 }
 
+/// The installed notifier, shared with budget alerts (`crate::budget`).
+pub(crate) fn notifier() -> Option<&'static dyn AlertNotifier> {
+    NOTIFIER.get().map(|notifier| notifier.as_ref())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuotaAlertSettings {

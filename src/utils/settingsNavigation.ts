@@ -13,7 +13,7 @@ export interface SettingsNavigationStatus {
 }
 
 export type SettingsDestinationIcon =
-  "Cloud" | "CircleGauge" | "Sliders" | "ImageIcon" | "DollarSign" | "Database" | "AppWindow" | "Route";
+  "Cloud" | "CircleGauge" | "Sliders" | "ImageIcon" | "DollarSign" | "Database" | "AppWindow" | "Route" | "Wallet";
 export interface SettingsDestination {
   id: string;
   label: string;
@@ -85,6 +85,16 @@ export const SETTINGS_DESTINATIONS: SettingsDestination[] = [
     description: "本地授权与额度同步",
     keywords: ["账户", "codex", "claude", "antigravity"],
     icon: "CircleGauge",
+  },
+  {
+    id: "settings-budget",
+    items: [
+    "接近或超出预算时提醒", "新增预算", "预算周期", "预算范围", "预算上限", "接近提醒比例",
+    ],
+    label: "预算提醒",
+    description: "费用与 Token 预算、超支提醒",
+    keywords: ["预算", "超支", "告警", "通知", "费用", "token"],
+    icon: "Wallet",
   },
   {
     id: "settings-model-access",
