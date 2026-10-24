@@ -216,27 +216,29 @@ impl Ledger {
     }
 
     /// Every diagnostic record still on disk, oldest first: the rotated file
-    /// then the current one. Unreadable lines are skipped.
+    /// then the current one. Unreadable lines are skipped. Only the byte reads
+    /// hold the ledger lock (so rotation stays consistent); parsing runs after
+    /// it is released, so appends never wait on a full parse.
     pub fn all_records(&self) -> Result<Vec<LedgerRecord>, String> {
-        let _guard = self
-            .lock
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let mut records = Vec::new();
-        for path in [self.path.with_extension("jsonl.1"), self.path.clone()] {
-            let file = match fs::File::open(&path) {
-                Ok(file) => file,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(error.to_string()),
-            };
-            records.extend(
-                BufReader::new(file)
-                    .lines()
-                    .map_while(Result::ok)
-                    .filter_map(|line| serde_json::from_str::<LedgerRecord>(&line).ok()),
-            );
+        let mut texts = Vec::new();
+        {
+            let _guard = self
+                .lock
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for path in [self.path.with_extension("jsonl.1"), self.path.clone()] {
+                match fs::read(&path) {
+                    Ok(bytes) => texts.push(bytes),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
         }
-        Ok(records)
+        Ok(texts
+            .iter()
+            .flat_map(|bytes| bytes.split(|byte| *byte == b'\n'))
+            .filter_map(|line| serde_json::from_slice::<LedgerRecord>(line).ok())
+            .collect())
     }
 
     pub fn dir(&self) -> Option<&Path> {

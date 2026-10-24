@@ -1,6 +1,6 @@
 # 网关请求内容采样（方案，待评审，未实现）
 
-状态：方案，2026-10-24 提出，待 B 级评审。评审通过前不写任何代码。关联：[gateway-request-log-v1](gateway-request-log-v1.md)。
+状态：方案，2026-10-24 提出；方向已经 B 级评审认可（PR #82），实现另开 B 级 PR。下文已按评审意见修订（改用 ring、密钥丢失即删样本、明文不进日志与错误、样本排除在同步与备份之外）。关联：[gateway-request-log-v1](gateway-request-log-v1.md)。
 
 ## 要解决的问题
 
@@ -25,13 +25,14 @@
 
 - 文件：网关目录下 `samples-v1/<逻辑请求ID>.bin`，每条一个文件，便于逐条删除。
 - 密钥：首次开启时生成随机 256 位密钥，存进系统钥匙串（与供应商 key 同一个 `SecretStore`，账户名 `content-sampling-key`），不写文件、不进同步。
-- 算法：XChaCha20-Poly1305（新增依赖 `chacha20poly1305`，属 B 级新依赖），每条随机 nonce，附加数据为逻辑请求 ID 与采样时间，防止文件互换。
+- 算法：用依赖链里已有的 `ring::aead`（`CHACHA20_POLY1305`），不新增依赖；每条 96 位随机 nonce（每个密钥最多约 200 条，足够），附加数据为逻辑请求 ID 与采样时间，防止文件互换。
 - 上限：单条明文最多 256 KB（超出截断并标注），总量最多 200 条或 50 MB，保留 7 天；按最早到期先删。关闭采样时询问「同时删除已采样内容？」默认勾选。
-- 钥匙串不可用（例如 Linux 没有 Secret Service）时不允许开启，不退回明文。
+- 钥匙串不可用（例如 Linux 没有 Secret Service）时不允许开启，不退回明文。钥匙串里的密钥丢失或不可读时，直接删除全部样本并提示，不尝试恢复。
+- 样本目录明确排除在 WebDAV、云同步、备份导出与诊断包之外，并在 ACL / 契约测试里断言。
 
 ### 读取与展示
 
-- 新增仅主窗口命令（B 级）：`gateway_content_sampling_status`、`gateway_set_content_sampling`、`gateway_read_content_sample(id)`、`gateway_delete_content_samples(ids | all)`。读取在后端解密，返回给前端展示，前端不缓存、不写日志；关闭详情即丢弃。
+- 新增仅主窗口命令（B 级）：`gateway_content_sampling_status`、`gateway_set_content_sampling`、`gateway_read_content_sample(id)`、`gateway_delete_content_samples(ids | all)`。读取在后端解密，只返回给主窗口展示，前端不缓存；解密后的明文不进 `log::`、panic 信息、错误字符串与 IPC 错误。关闭详情即丢弃。
 - 请求日志详情多一个「内容」分区，只有该条有采样时出现；默认折叠，点开才读取。
 - 显示前对常见密钥格式（`sk-…`、`Bearer …`、`AKIA…` 等）打码，可点「显示原文」。
 
@@ -41,7 +42,6 @@
 
 ## 风险与待评审问题
 
-- 是否接受新依赖 `chacha20poly1305`（或改用已有依赖链里的 AES-GCM 实现）。
 - 钥匙串在部分 Linux 桌面不可用时，功能直接不可用是否可以接受。
 - 「只采失败请求」需要在回复结束后才决定是否保留：请求体要先在内存里暂存到请求结束，单条上限 256 KB 能否接受。
 - 托盘提示与设置位置需要设计确认。

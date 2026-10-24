@@ -4,7 +4,7 @@
 
 ## 不做的事
 
-- **不存内容**：只读写元数据。请求与回复正文、提示词、工具参数、附件一律不落盘、不进日志、不进导出。Context 构成只有各部分序列化后的字节数与条数（见 [request-context-composition-v1](request-context-composition-v1.md)）。可选的内容采样另见 [gateway-content-sampling-proposal-v1](gateway-content-sampling-proposal-v1.md)，**未实现**，评审前不做。
+- **不存内容**：只读写元数据。请求与回复正文、提示词、工具参数、附件一律不落盘、不进日志、不进导出。Context 构成只有各部分序列化后的字节数与条数（见 [request-context-composition-v1](request-context-composition-v1.md)）。可选的内容采样另见 [gateway-content-sampling-proposal-v1](gateway-content-sampling-proposal-v1.md)，**未实现**，方向已评审认可，实现另开 B 级 PR。
 - **不进挂件**：两个新命令只允许主窗口调用；挂件继续只读脱敏的 `gateway_routing_feed`。
 - **不改记账**：费用与 Token 合计仍以 `usage-accounting-v1.sqlite3` 和用量页为准；请求日志读的是会轮转的诊断日志，最多约 32 MB（当前与上一份 `usage-v1.jsonl`），更早的请求只留在用量统计里，页面写明「本机保留 N 条（最早 …）」。
 
@@ -52,4 +52,4 @@
 ## 后续
 
 - 供应商健康度（provider-health-v1）合入后，在详情的尝试行旁显示该供应商当前健康状态。
-- 诊断日志很大时可按文件大小与修改时间缓存解析结果；v1 每次全读两份文件（最多约 32 MB，后台线程）。
+- 诊断日志很大时可按文件大小与修改时间缓存解析结果；v1 每次全读两份文件（最多约 32 MB，后台线程）；持账本锁时只读字节，解析在锁外，记账追加不会等解析。
