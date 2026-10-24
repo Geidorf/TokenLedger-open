@@ -268,7 +268,8 @@ test('窄屏额度连续列表把指标移到来源身份下方，并在最窄�
 
 test('本地扫描失败写入看板恢复状态而不是只显示一次性 Toast', () => {
   const stats = readSource(path.join(process.cwd(), 'src', 'hooks', 'useStats.ts'));
-  assert.match(stats, /const errorMessage = `扫描失败: \$\{err\}`;/);
+  assert.match(stats, /const errorMessage = t\('statsMsg\.scanFailed', \{ error: String\(err\) \}\);/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'statsMsg\.scanFailed': '扫描失败: \{error\}'/);
   assert.match(stats, /setStatsErrorAction\('scan'\);/);
   assert.match(stats, /setStatsError\(errorMessage\);[\s\S]*showMessage\('error', errorMessage\);/);
   const dashboard = readSource(path.join(process.cwd(), 'src', 'components', 'DashboardTab.tsx'));
@@ -4038,7 +4039,8 @@ test('cloud status and remote quota reads require an explicit user check', () =>
   assert.match(sidebar, /if \(!cloudStatusKnown && onCheckCloudStatus\)/);
   assert.match(cloudSection, /t\('cloud\.status\.note'\)/);
   assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /'cloud\.status\.note': '查看登录状态会读取本机钥匙串，仅在你主动点击后执行。'/);
-  assert.match(cloud, /当前授权周期内不会重复读取本机钥匙串；请确认登录钥匙串已解锁后，主动重试/);
+  assert.match(cloud, /t\('cloudMsg\.keychain'\)/);
+  assert.match(readSource(path.join(process.cwd(), 'src', 'i18n', 'zh.ts')), /当前授权周期内不会重复读取本机钥匙串；请确认登录钥匙串已解锁后，主动重试/);
   assert.match(cloudSection, /id=\{statusErrorId\}[\s\S]*statusErrorId/);
   assert.match(cloudSection, /aria-describedby=\{statusErrorId\}/);
   assert.match(cloudSection, /statusError \? t\('cloud\.status\.retry'\) : t\('cloud\.status\.check'\)/);
