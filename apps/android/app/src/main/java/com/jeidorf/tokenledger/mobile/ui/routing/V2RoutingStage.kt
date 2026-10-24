@@ -58,6 +58,7 @@ import com.jeidorf.tokenledger.mobile.routing.RoutingFlowPhase
 import com.jeidorf.tokenledger.mobile.routing.RoutingHopOutcome
 import com.jeidorf.tokenledger.mobile.routing.RoutingNode
 import com.jeidorf.tokenledger.mobile.routing.RoutingNodeState
+import com.jeidorf.tokenledger.mobile.routing.RoutingPlaybackQueue
 import com.jeidorf.tokenledger.mobile.routing.RoutingPlaybackTracker
 import com.jeidorf.tokenledger.mobile.routing.RoutingScene
 import com.jeidorf.tokenledger.mobile.routing.RoutingSnapshots
@@ -196,19 +197,20 @@ internal fun V2RoutingStage(
     // 新出现的流排队依次播放；只在动画开启时跑光点。
     val tracker = remember { RoutingPlaybackTracker() }
     var playing by remember { mutableStateOf<Pair<RoutingFlow, Float>?>(null) }
-    val queue = remember { ArrayDeque<RoutingFlow>() }
+    val queue = remember { RoutingPlaybackQueue() }
     val currentNow by rememberUpdatedState(nowServerMs)
+    val currentPlayable by rememberUpdatedState(scene.playable)
     // 键里带上阶段：同一个在途请求变成已结束时也要重新判断要不要播放。
     val flowIds = scene.flows.joinToString(",") { "${it.id}:${it.phase}" }
     LaunchedEffect(flowIds, scene.playable) {
         val fresh = tracker.takeNew(scene, currentNow)
-        if (motion) queue.addAll(fresh)
+        if (motion) queue.offer(fresh)
     }
     LaunchedEffect(motion) {
         if (!motion) return@LaunchedEffect
         val progress = Animatable(0f)
         while (true) {
-            val next = queue.removeFirstOrNull()
+            val next = queue.next(currentPlayable, currentNow)
             if (next == null) {
                 delay(250L)
                 continue

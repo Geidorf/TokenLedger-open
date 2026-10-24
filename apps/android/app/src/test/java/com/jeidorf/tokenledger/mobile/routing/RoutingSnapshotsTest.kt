@@ -179,4 +179,29 @@ class RoutingSnapshotsTest {
         val done = RoutingSnapshots.sceneFromFlows(listOf(flow(RoutingFlowPhase.Done))).copy(liveness = live)
         assertEquals(listOf("same"), tracker.takeNew(done, 2_000L).map { it.id })
     }
+
+    @Test
+    fun `playback queue keeps only the newest and drops stale or offline flows`() {
+        fun flow(id: String, at: Long) = RoutingFlow(
+            id = id,
+            source = RoutingSourceId.TokenLedger,
+            agent = "a",
+            via = "m",
+            phase = RoutingFlowPhase.Done,
+            atServerMs = at,
+            hops = listOf(RoutingHop("p/m", RoutingHopOutcome.Ok))
+        )
+        val queue = RoutingPlaybackQueue(capacity = 3)
+        queue.offer((1..5).map { flow("f$it", it * 1_000L) })
+        assertEquals(3, queue.size)
+        assertEquals("f3", queue.next(playable = true, nowServerMs = 6_000L)?.id)
+
+        val later = 4_000L + RoutingSnapshots.PLAYABLE_WITHIN_MS
+        assertEquals("f5", queue.next(playable = true, nowServerMs = later)?.id)
+        assertNull(queue.next(playable = true, nowServerMs = later))
+
+        queue.offer(listOf(flow("g", 10_000L)))
+        assertNull(queue.next(playable = false, nowServerMs = 10_000L))
+        assertEquals(0, queue.size)
+    }
 }

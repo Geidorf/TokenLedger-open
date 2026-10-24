@@ -364,6 +364,32 @@ class RoutingPlaybackTracker(private val maxRemembered: Int = 512) {
     }
 }
 
+/**
+ * 待播放的流。轮询比播放快时只留最新的几条；取出时再查一遍：桌面端离线或已超出可播放窗口的直接丢掉，
+ * 不在页面开久了之后补播很早以前的请求。
+ */
+class RoutingPlaybackQueue(private val capacity: Int = 3) {
+    private val pending = ArrayDeque<RoutingFlow>()
+
+    val size: Int get() = pending.size
+
+    fun offer(flows: List<RoutingFlow>) {
+        pending.addAll(flows)
+        while (pending.size > capacity) pending.removeFirst()
+    }
+
+    fun next(playable: Boolean, nowServerMs: Long): RoutingFlow? {
+        if (!playable) {
+            pending.clear()
+            return null
+        }
+        while (true) {
+            val flow = pending.removeFirstOrNull() ?: return null
+            if (nowServerMs - flow.atServerMs in -5_000L until RoutingSnapshots.PLAYABLE_WITHIN_MS) return flow
+        }
+    }
+}
+
 private fun JSONArray?.objects(): List<JSONObject> =
     if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
 
