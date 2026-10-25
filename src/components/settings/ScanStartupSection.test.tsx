@@ -111,6 +111,56 @@ describe("ScanStartupSection", () => {
     unmount();
   });
 
+  it("位置失效时仅在显式重新启用后登记，并等待回读确认", async () => {
+    const stale = autostartStatus({
+      enabled: null,
+      error: "登录启动项指向其他程序位置，请按当前位置重新启用。",
+    });
+    invokeMock.mockResolvedValue(stale);
+    let finishSave: ((value: boolean) => void) | undefined;
+    const onSettingChange = vi.fn(() => new Promise<boolean>((resolve) => {
+      finishSave = resolve;
+    }));
+    render(<ScanStartupSection {...props} onSettingChange={onSettingChange} />);
+
+    const repair = await screen.findByRole("button", { name: "按当前位置重新启用" });
+    expect(onSettingChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("switch", { name: "开机自动启动" })).not.toBeInTheDocument();
+    fireEvent.click(repair);
+    fireEvent.click(repair);
+    expect(onSettingChange).toHaveBeenCalledExactlyOnceWith("autostart_enabled", true);
+    expect(repair).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重试读取系统登录自启状态" })).toBeDisabled();
+
+    fireEvent.focus(window);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    invokeMock.mockResolvedValue(autostartStatus({ enabled: true }));
+    finishSave?.(true);
+    const toggle = await screen.findByRole("switch", { name: "开机自动启动" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(toggle).toBeEnabled();
+  });
+
+  it("重新启用失败后保留未知状态并允许再次操作", async () => {
+    invokeMock.mockResolvedValue(autostartStatus({
+      enabled: null,
+      error: "登录启动项指向其他程序位置，请按当前位置重新启用。",
+    }));
+    const onSettingChange = vi.fn(async () => {
+      throw new Error("registration failed");
+    });
+    render(<ScanStartupSection {...props} onSettingChange={onSettingChange} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "按当前位置重新启用" }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole("button", { name: "按当前位置重新启用" })).toBeEnabled();
+    });
+    expect(onSettingChange).toHaveBeenCalledExactlyOnceWith("autostart_enabled", true);
+    expect(screen.getByRole("alert")).toHaveTextContent("登录启动项指向其他程序位置");
+    expect(screen.queryByRole("switch", { name: "开机自动启动" })).not.toBeInTheDocument();
+  });
+
   it("系统操作忙碌期间禁用开关，结束后重新读取实际状态", async () => {
     let enabled = false;
     invokeMock.mockImplementation(async () => autostartStatus({ enabled }));

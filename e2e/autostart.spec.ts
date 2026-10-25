@@ -50,6 +50,36 @@ for (const viewport of [{ width: 1200, height: 800 }, { width: 1280, height: 860
         .toEqual([{ enabled: true }, { enabled: false }]);
     });
 
+    test('程序位置失效时等待显式重新启用，再回读系统状态', async ({ page, ipc }, testInfo) => {
+      await ipc.override('get_autostart_status', {
+        value: {
+          supported: true,
+          enabled: null,
+          error: '登录启动项指向其他程序位置，请按当前位置重新启用。',
+        },
+      });
+      await openPage(page, 'settings-scan');
+      const repair = page.getByRole('button', { name: '按当前位置重新启用', exact: true });
+      await expect(repair).toBeVisible();
+      await expect(page.getByRole('switch', { name: '开机自动启动', exact: true })).toHaveCount(0);
+      expect(await ipc.calls('set_autostart_enabled')).toEqual([]);
+      expect(await page.getByRole('alert').evaluate(element =>
+        element.scrollHeight <= element.clientHeight + 1,
+      )).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath('startup-stale-registration.png'), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+      await ipc.override('get_autostart_status', {
+        value: { supported: true, enabled: true, error: null },
+      });
+      await repair.click();
+      await expect(page.getByRole('switch', { name: '开机自动启动', exact: true }))
+        .toHaveAttribute('aria-checked', 'true');
+      expect((await ipc.calls('set_autostart_enabled')).map(call => call.args))
+        .toEqual([{ enabled: true }]);
+      expect(await ipc.calls('save_settings')).toEqual([]);
+    });
+
     test('读取可重试，保存失败保持系统状态且不提示成功', async ({ page, ipc }, testInfo) => {
       await ipc.override('get_autostart_status', { error: '系统状态暂不可读取' });
       await openPage(page, 'settings-scan');

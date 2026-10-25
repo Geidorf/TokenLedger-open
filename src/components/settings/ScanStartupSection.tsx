@@ -227,21 +227,36 @@ export function ScanStartupSection(props: ScanStartupSectionProps) {
     autostartControl = (
       <SettingsRow
         label="开机自动启动"
-        hint="无法确认系统登录自启状态；为避免误报，当前不显示为已关闭。"
+        hint="无法确认系统登录自启状态；重新启用会以当前程序位置登记启动项。"
         icon={Power}
+        wideControl
       >
-        <span className="settings-value" role="alert">
-          {autostart.state.message}
-        </span>
-        <button
-          className="secondary-inline"
-          type="button"
-          aria-label="重试读取系统登录自启状态"
-          disabled={busy.settings}
-          onClick={() => void autostart.reload()}
-        >
-          重试
-        </button>
+        <div className="settings-inline-actions">
+          <span className="settings-row-hint w-full" role="alert">
+            {autostart.state.message}
+          </span>
+          <button
+            className="secondary-inline"
+            type="button"
+            aria-label="重试读取系统登录自启状态"
+            disabled={busy.settings || autostart.busy}
+            onClick={() => void autostart.reload()}
+          >
+            重试
+          </button>
+          <button
+            className="secondary-inline"
+            type="button"
+            disabled={busy.settings || autostart.busy}
+            onClick={() =>
+              autostart.requestChange(true, (enabled) =>
+                props.onSettingChange("autostart_enabled", enabled),
+              )
+            }
+          >
+            按当前位置重新启用
+          </button>
+        </div>
       </SettingsRow>
     );
   } else {

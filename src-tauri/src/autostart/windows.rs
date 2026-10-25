@@ -60,7 +60,13 @@ pub(super) fn restore(snapshot: &Snapshot) -> Result<(), String> {
 }
 
 pub(super) fn enabled() -> Result<bool, String> {
-    enabled_with(&RegistryStore::user())
+    let store = RegistryStore::user();
+    let Some(run) = store.read(Slot::Run)? else {
+        return Ok(false);
+    };
+    let executable = std::env::current_exe()
+        .map_err(|_| "无法确定程序位置，无法判断登录启动状态。".to_string())?;
+    enabled_from_run(&store, &run, &executable)
 }
 
 pub(super) fn set_enabled(enabled: bool) -> Result<(), String> {
@@ -90,38 +96,57 @@ fn restore_with<B: Backend>(store: &B, snapshot: &Snapshot) -> Result<(), String
     }
 }
 
-fn enabled_with<B: Backend>(store: &B) -> Result<bool, String> {
+#[cfg(test)]
+fn enabled_with<B: Backend>(store: &B, current_executable: &Path) -> Result<bool, String> {
     let Some(run) = store.read(Slot::Run)? else {
         return Ok(false);
     };
+    enabled_from_run(store, &run, current_executable)
+}
+
+fn enabled_from_run<B: Backend>(
+    store: &B,
+    run: &Value,
+    current_executable: &Path,
+) -> Result<bool, String> {
     if run.vtype == vtype::EXPAND_SZ {
         return Err("启动项使用环境变量路径，无法确认是否启用。".to_string());
     }
-    if run.vtype != vtype::SZ || !valid_run_command(&run.bytes) {
+    if run.vtype != vtype::SZ {
         return Err("启动项格式未知，无法判断是否启用。".to_string());
     }
-    match store.read(Slot::Approved)? {
-        None => Ok(true),
-        Some(value) => approval_state(&value),
+    let registered = run_executable(&run.bytes)?;
+    let enabled = match store.read(Slot::Approved)? {
+        None => true,
+        Some(value) => approval_state(&value)?,
+    };
+    if !enabled {
+        return Ok(false);
     }
+    if !same_executable_path(&registered, current_executable)? {
+        return Err("登录启动项指向其他程序位置，请按当前位置重新启用。".to_string());
+    }
+    Ok(true)
 }
 
-fn valid_run_command(bytes: &[u8]) -> bool {
+const UNKNOWN_LOCATION: &str = "登录启动项指向无法确认的程序位置，请按当前位置重新启用。";
+
+fn run_executable(bytes: &[u8]) -> Result<String, String> {
     if bytes.len() < 4 || !bytes.len().is_multiple_of(2) {
-        return false;
+        return Err("启动项格式未知，无法判断是否启用。".to_string());
     }
     let words = bytes
         .chunks_exact(2)
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect::<Vec<_>>();
     let Some((&0, text)) = words.split_last() else {
-        return false;
+        return Err("启动项格式未知，无法判断是否启用。".to_string());
     };
     if text.contains(&0) {
-        return false;
+        return Err("启动项格式未知，无法判断是否启用。".to_string());
     }
     let Ok(command) = String::from_utf16(text) else {
-        return false;
+        return Err("启动项格式未知，无法判断是否启用。".to_string());
     };
     let command = command.trim_matches(|ch: char| ch == ' ' || ch == '\t');
     if command.is_empty()
@@ -129,22 +154,101 @@ fn valid_run_command(bytes: &[u8]) -> bool {
             .chars()
             .any(|ch| ch == '\n' || ch == '\r' || ch == '\0')
     {
-        return false;
+        return Err("启动项格式未知，无法判断是否启用。".to_string());
     }
-    if let Some(rest) = command.strip_prefix('"') {
+    let executable = if let Some(rest) = command.strip_prefix('"') {
         let Some(end) = rest.find('"') else {
-            return false;
+            return Err("启动项格式未知，无法判断是否启用。".to_string());
         };
         let executable = &rest[..end];
-        return Path::new(executable).is_absolute()
-            && !executable
-                .trim_matches(|ch: char| ch == ' ' || ch == '\t')
-                .is_empty()
-            && !executable.chars().any(char::is_control);
+        let suffix = &rest[end + 1..];
+        // 引号后的首个字符必须是空白或参数分隔，不能把紧接的垃圾字符当作命令。
+        if suffix
+            .chars()
+            .next()
+            .is_some_and(|ch| ch != ' ' && ch != '\t')
+        {
+            return Err("启动项格式未知，无法判断是否启用。".to_string());
+        }
+        executable
+    } else {
+        command.split_whitespace().next().unwrap_or_default()
+    };
+    if executable.is_empty()
+        || executable.chars().any(|ch| ch.is_control() || ch == '"')
+        || !Path::new(executable).is_absolute()
+    {
+        return Err("启动项格式未知，无法判断是否启用。".to_string());
     }
-    command.split_whitespace().next().is_some_and(|executable| {
-        Path::new(executable).is_absolute() && !executable.chars().any(char::is_control)
-    })
+    Ok(executable.to_string())
+}
+
+fn same_executable_path(registered: &str, current: &Path) -> Result<bool, String> {
+    let current = current
+        .to_str()
+        .ok_or_else(|| UNKNOWN_LOCATION.to_string())?;
+    let registered = normalize_windows_path(registered)?;
+    let current = normalize_windows_path(current)?;
+    Ok(registered.eq_ignore_ascii_case(&current))
+}
+
+fn normalize_windows_path(path: &str) -> Result<String, String> {
+    let path = path.replace('/', "\\");
+    let path = if let Some(rest) = path.strip_prefix("\\\\?\\") {
+        resolve_extended_path(rest)?
+    } else if let Some(rest) = path.strip_prefix("\\??\\") {
+        resolve_extended_path(rest)?
+    } else if path.starts_with("\\\\.\\") {
+        return Err(UNKNOWN_LOCATION.to_string());
+    } else {
+        path
+    };
+
+    if path.is_empty() || path.ends_with('\\') || path.chars().any(|ch| ch.is_control()) {
+        return Err(UNKNOWN_LOCATION.to_string());
+    }
+    if path
+        .split('\\')
+        .any(|component| component == "." || component == "..")
+    {
+        return Err(UNKNOWN_LOCATION.to_string());
+    }
+    let mut normalized = String::with_capacity(path.len());
+    for ch in path.chars() {
+        // UNC 路径保留开头的两个分隔符，其余连续分隔符合并。
+        if ch == '\\' && normalized.ends_with('\\') && normalized.len() != 1 {
+            continue;
+        }
+        normalized.push(ch);
+    }
+    if !is_absolute_windows_path(&normalized) {
+        return Err(UNKNOWN_LOCATION.to_string());
+    }
+    Ok(normalized)
+}
+
+fn resolve_extended_path(rest: &str) -> Result<String, String> {
+    if is_windows_drive_path(rest) {
+        return Ok(rest.to_string());
+    }
+    if let Some(unc) = rest.strip_prefix("UNC\\") {
+        if !unc.is_empty() {
+            return Ok(format!("\\\\{unc}"));
+        }
+    }
+    Err(UNKNOWN_LOCATION.to_string())
+}
+
+fn is_windows_drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'\\'
+}
+
+fn is_absolute_windows_path(path: &str) -> bool {
+    is_windows_drive_path(path)
+        || path
+            .strip_prefix("\\\\")
+            .is_some_and(|rest| !rest.is_empty() && rest.contains('\\'))
 }
 
 fn set_enabled_with<B: Backend>(
@@ -461,6 +565,10 @@ mod tests {
         }
     }
 
+    fn current(path: &str) -> PathBuf {
+        PathBuf::from(path)
+    }
+
     #[test]
     fn command_line_quotes_spaces_and_unicode_without_arguments() {
         let path = PathBuf::from(r"C:\Users\测试 用户\Token Ledger\tokenledger.exe");
@@ -483,36 +591,58 @@ mod tests {
 
     #[test]
     fn missing_run_is_disabled_and_missing_approval_is_enabled() {
-        assert!(!enabled_with(&FakeStore::default()).unwrap());
+        let executable = current(r"C:\TokenLedger.exe");
+        assert!(!enabled_with(&FakeStore::default(), &executable).unwrap());
         let store = FakeStore::with_values(Some(text(r#""C:\TokenLedger.exe""#)), None);
-        assert!(enabled_with(&store).unwrap());
+        assert!(enabled_with(&store, &executable).unwrap());
+    }
+
+    #[test]
+    fn moved_executable_is_not_reported_as_enabled() {
+        let store = FakeStore::with_values(
+            Some(text(r#""C:\Old Place\TokenLedger.exe""#)),
+            Some(approval(2)),
+        );
+        let before = snapshot_with(&store).unwrap();
+        let error = enabled_with(&store, &current(r"C:\New Place\TokenLedger.exe")).unwrap_err();
+        assert!(error.contains("其他程序位置"));
+        assert_eq!(snapshot_with(&store).unwrap(), before);
     }
 
     #[test]
     fn known_approval_states_are_decoded() {
         let run = Some(text(r#""C:\TokenLedger.exe""#));
+        let executable = current(r"C:\TokenLedger.exe");
         for (status, expected) in [(2, true), (6, true), (3, false), (7, false)] {
             let store = FakeStore::with_values(run.clone(), Some(approval(status)));
-            assert_eq!(enabled_with(&store).unwrap(), expected, "status {status}");
+            assert_eq!(
+                enabled_with(&store, &executable).unwrap(),
+                expected,
+                "status {status}"
+            );
         }
     }
 
     #[test]
     fn unknown_or_badly_sized_approval_is_an_error_not_enabled() {
         let run = Some(text(r#""C:\TokenLedger.exe""#));
+        let executable = current(r"C:\TokenLedger.exe");
         for status in [0, 1, 4, 5, 8, 99] {
             let store = FakeStore::with_values(run.clone(), Some(approval(status)));
-            assert!(enabled_with(&store).is_err(), "status {status}");
+            assert!(
+                enabled_with(&store, &executable).is_err(),
+                "status {status}"
+            );
         }
         let mut short = approval(2);
         short.bytes.pop();
         let store = FakeStore::with_values(run.clone(), Some(short));
-        assert!(enabled_with(&store).is_err());
+        assert!(enabled_with(&store, &executable).is_err());
 
         let mut wrong_type = approval(2);
         wrong_type.vtype = vtype::SZ;
         let store = FakeStore::with_values(run, Some(wrong_type));
-        assert!(enabled_with(&store).is_err());
+        assert!(enabled_with(&store, &executable).is_err());
     }
 
     #[test]
@@ -522,10 +652,10 @@ mod tests {
             bytes: vec![1],
         };
         let store = FakeStore::with_values(Some(wrong_run), None);
-        assert!(enabled_with(&store).is_err());
+        assert!(enabled_with(&store, &current(r"C:\TokenLedger.exe")).is_err());
 
         let store = FakeStore::failing_read();
-        assert!(enabled_with(&store).is_err());
+        assert!(enabled_with(&store, &current(r"C:\TokenLedger.exe")).is_err());
         assert!(snapshot_with(&store).is_err());
     }
 
@@ -576,21 +706,97 @@ mod tests {
                 vtype: vtype::SZ,
                 bytes: utf16_bytes(r#""   ""#),
             },
+            Value {
+                vtype: vtype::SZ,
+                bytes: utf16_bytes(r#""C:\TokenLedger.exe"garbage"#),
+            },
         ];
         for value in invalid {
             let store = FakeStore::with_values(Some(value), None);
-            assert!(enabled_with(&store).is_err());
+            assert!(enabled_with(&store, &current(r"C:\TokenLedger.exe")).is_err());
         }
 
         let valid = [
-            raw_text(r#"C:\TokenLedger.exe"#),
-            raw_text(r#""C:\Program Files\TokenLedger.exe""#),
-            raw_text(r#""C:\Token Ledger\tokenledger.exe" --minimized"#),
+            (raw_text(r#"C:\TokenLedger.exe"#), r"C:\TokenLedger.exe"),
+            (
+                raw_text(r#""C:\Program Files\TokenLedger.exe""#),
+                r"C:\Program Files\TokenLedger.exe",
+            ),
+            (
+                raw_text(r#""C:\Token Ledger\tokenledger.exe" --minimized"#),
+                r"C:\Token Ledger\tokenledger.exe",
+            ),
         ];
-        for value in valid {
+        for (value, executable) in valid {
             let store = FakeStore::with_values(Some(value), None);
-            assert!(enabled_with(&store).unwrap());
+            assert!(enabled_with(&store, Path::new(executable)).unwrap());
         }
+    }
+
+    #[test]
+    fn equivalent_windows_paths_are_enabled() {
+        let cases = [
+            (
+                r#""C:\Program Files\测试 应用\TokenLedger.exe""#,
+                r"c:/program files/测试 应用/tokenledger.exe",
+            ),
+            (
+                r#""\\?\C:\Program Files\测试 应用\TokenLedger.exe""#,
+                r#"C:\\Program Files\\测试 应用\\TokenLedger.exe"#,
+            ),
+            (
+                r#""\\?\UNC\server\share\TokenLedger.exe""#,
+                r"\\server\share\TokenLedger.exe",
+            ),
+        ];
+        for (registered, executable) in cases {
+            let store = FakeStore::with_values(Some(text(registered)), Some(approval(2)));
+            assert!(
+                enabled_with(&store, Path::new(executable)).unwrap(),
+                "{registered}"
+            );
+        }
+    }
+
+    #[test]
+    fn device_aliases_and_parent_components_are_not_assumed_equivalent() {
+        let registered = text(r#""\\.\C:\TokenLedger.exe""#);
+        let store = FakeStore::with_values(Some(registered), Some(approval(2)));
+        assert!(enabled_with(&store, Path::new(r"C:\TokenLedger.exe")).is_err());
+
+        let registered = text(r#""C:\Other\..\TokenLedger.exe""#);
+        let store = FakeStore::with_values(Some(registered), Some(approval(2)));
+        assert!(enabled_with(&store, Path::new(r"C:\TokenLedger.exe")).is_err());
+
+        let registered = text(r#""C:\TokenLedger.exe\""#);
+        let store = FakeStore::with_values(Some(registered), Some(approval(2)));
+        assert!(enabled_with(&store, Path::new(r"C:\TokenLedger.exe")).is_err());
+    }
+
+    #[test]
+    fn explicit_reenable_replaces_a_stale_location() {
+        let store = FakeStore::with_values(
+            Some(text(r#""C:\Old Place\TokenLedger.exe""#)),
+            Some(approval(2)),
+        );
+        let executable = current(r"C:\New Place\TokenLedger.exe");
+        assert!(enabled_with(&store, &executable).is_err());
+
+        set_enabled_with(&store, true, Some(&executable)).unwrap();
+        assert!(enabled_with(&store, &executable).unwrap());
+        assert_eq!(
+            store.values().0,
+            Some(text(r#""C:\New Place\TokenLedger.exe""#))
+        );
+    }
+
+    #[test]
+    fn disabled_approval_remains_disabled_even_at_a_stale_location() {
+        let store = FakeStore::with_values(
+            Some(text(r#""C:\Old Place\TokenLedger.exe""#)),
+            Some(approval(3)),
+        );
+        assert!(!enabled_with(&store, &current(r"C:\New Place\TokenLedger.exe")).unwrap());
     }
 
     #[test]
@@ -598,7 +804,7 @@ mod tests {
         let mut value = text(r#""%LOCALAPPDATA%\Token Ledger\tokenledger.exe""#);
         value.vtype = vtype::EXPAND_SZ;
         let store = FakeStore::with_values(Some(value), None);
-        assert!(enabled_with(&store).is_err());
+        assert!(enabled_with(&store, &current(r"C:\TokenLedger.exe")).is_err());
     }
 
     #[test]
@@ -612,12 +818,12 @@ mod tests {
             Some(text(r#""C:\Program Files\Token Ledger\tokenledger.exe""#))
         );
         assert_eq!(approved, Some(enabled_approval()));
-        assert!(enabled_with(&store).unwrap());
+        assert!(enabled_with(&store, &executable).unwrap());
 
         set_enabled_with(&store, false, None).unwrap();
         set_enabled_with(&store, false, None).unwrap();
         assert_eq!(store.values(), (None, None));
-        assert!(!enabled_with(&store).unwrap());
+        assert!(!enabled_with(&store, &executable).unwrap());
     }
 
     #[test]

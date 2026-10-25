@@ -64,3 +64,5 @@ In **Settings › Scan & startup**:
 To force the main window to show for one launch, start with `--show` (macOS: `open -n /Applications/tokenledger.app --args --show`).
 
 Login startup and minimizing are independent choices. Opening the app again does not restore an item disabled or removed in system settings. Saving other settings or restoring a backup does not enable login startup. A failed change reports the error and attempts to restore the original registration; if recovery also fails, check the app's entry in system startup settings.
+
+On Windows, moving the app can leave a startup entry pointing to its old location. The app reports the mismatch. To keep starting at login, choose **Enable again at the current location (按当前位置重新启用)**. The entry changes only after this explicit action, and the switch shows enabled only after the system confirms the update.
