@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -96,6 +97,8 @@ import com.jeidorf.tokenledger.mobile.ui.adaptive.V2PaneEyebrow
 import com.jeidorf.tokenledger.mobile.ui.adaptive.v2CompanionPane
 import com.jeidorf.tokenledger.mobile.ui.adaptive.v2PaneArrangement
 import com.jeidorf.tokenledger.mobile.ui.adaptive.v2UsesTwoPane
+import com.jeidorf.tokenledger.mobile.ui.adaptive.v2WidePageArrangement
+import com.jeidorf.tokenledger.mobile.ui.adaptive.v2UsesWideContentFrame
 import com.jeidorf.tokenledger.mobile.ui.routing.rememberRoutingFeed
 import com.jeidorf.tokenledger.mobile.ui.routing.v2RoutingItems
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2DayReviewSummary
@@ -208,8 +211,16 @@ internal fun LedgerDashboardV2Screen(
     var filterSheet by remember { mutableStateOf<V2FilterSheet?>(null) }
     var showCustomRangeDialog by rememberSaveable { mutableStateOf(false) }
     var destinationScrolledUnder by remember { mutableStateOf(false) }
+    var entityScrolledUnder by remember { mutableStateOf(false) }
+    val pageStateHolder = rememberSaveableStateHolder()
     val dataRetentionKey = (state.entity?.let { "${it.kind}:${it.id}" } ?: "dashboard-root") +
         if (state.dayReviewReturn != null) ":day:${state.query.start}" else ":global"
+    val contentStateKey = when {
+        showSettings -> "settings"
+        entityMode -> "entity:$dataRetentionKey"
+        else -> "destinations"
+    }
+    LaunchedEffect(dataRetentionKey) { entityScrolledUnder = false }
     val retainedHolder = remember(dataRetentionKey) { V2RetainedDataHolder() }
     if (state.visibleData != null) {
         retainedHolder.value = state.visibleData
@@ -336,11 +347,14 @@ internal fun LedgerDashboardV2Screen(
                 .background(palette.background)
         ) {
             val fontScale = LocalDensity.current.fontScale
-            val layoutMode = dashboardLayoutMode(maxWidth.value.toInt(), fontScale)
+            val windowWidthDp = maxWidth.value.toInt()
+            val layoutMode = dashboardLayoutMode(windowWidthDp, fontScale)
             val wide = maxWidth >= 600.dp && layoutMode == DashboardLayoutMode.Standard
             // 平板横屏、手机横屏、折叠屏展开横放：Expanded 宽度再拆成双栏。
-            val twoPane = wide && v2UsesTwoPane(maxWidth.value.toInt(), fontScale)
-            val contentBottomPadding = dashboardContentBottomPaddingDp(maxWidth.value.toInt(), fontScale).dp
+            val twoPane = wide && v2UsesTwoPane(windowWidthDp, fontScale)
+            // 独立页面用实际窗口宽度决定限宽与分栏；导航侧轨仍只看上面的 wide。
+            val widePageArrangement = v2WidePageArrangement(windowWidthDp, fontScale)
+            val contentBottomPadding = dashboardContentBottomPaddingDp(windowWidthDp, fontScale).dp
             val navWidth = if (wide && !showSettings && !entityMode) 76.dp else 0.dp
             Scaffold(
                 modifier = Modifier
@@ -357,11 +371,9 @@ internal fun LedgerDashboardV2Screen(
                     }
                 }
             ) { padding ->
-                // §4.1 顶栏 scroll-under：今日/复盘/额度/展示由 V2DestinationContent 按当前页的 LazyListState
-                // 报告；专属看板与设置页的列表在各自文件里，用 nestedScroll 累计实际滚动量（进出这两页时清零）。
+                // §4.1 顶栏 scroll-under：目的地与专属看板按当前主列表报告；设置页在外层累计滚动量。
                 val pageScrollKey = when {
                     showSettings -> "settings"
-                    entityMode -> "entity:$dataRetentionKey"
                     else -> "destinations"
                 }
                 val pageScrollOffset = rememberSaveable(pageScrollKey) { mutableFloatStateOf(0f) }
@@ -371,7 +383,7 @@ internal fun LedgerDashboardV2Screen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
-                        .nestedScroll(pageScroll)
+                        .then(if (showSettings) Modifier.nestedScroll(pageScroll) else Modifier)
                 ) {
                     // 专属看板标题/面包屑：优先用看板自带的 EntityDescriptor（有 label），
                     // 数据还没到时退回查询里的 DashboardEntity（只有 kind/id，没有 label）。
@@ -410,73 +422,82 @@ internal fun LedgerDashboardV2Screen(
                         } else {
                             null
                         },
-                        scrolledUnder = if (showSettings || entityMode) pageScrolledUnder else destinationScrolledUnder
+                        scrolledUnder = when {
+                            showSettings -> pageScrolledUnder
+                            entityMode -> entityScrolledUnder
+                            else -> destinationScrolledUnder
+                        }
                     )
-                    when {
-                        showSettings -> V2SettingsPage(
-                            palette = palette,
-                            state = state,
-                            appearance = appearance,
-                            forceLandscape = forceLandscape,
-                            wide = wide,
-                            onAppearanceChange = onAppearanceChange,
-                            onForceLandscapeChange = onForceLandscapeChange,
-                            onOpenLowPowerDisplay = onOpenLowPowerDisplay,
-                            onSignOut = onSignOut
-                        )
-                        entityMode -> V2EntityContent(
-                            palette = palette,
-                            state = state,
-                            displayedStats = displayedData,
-                            wide = wide,
-                            tokenDisplayMode = tokenDisplayMode,
-                            onTokenDisplayModeChange = onTokenDisplayModeChange,
-                            onFilter = { filterSheet = V2FilterSheet.All },
-                            onOpenModel = onOpenModel,
-                            onLoadMore = onLoadMore,
-                            onRefresh = onRefresh,
-                            onSearchChange = onSearchChange
-                        )
-                        else -> V2DestinationContent(
-                            palette = palette,
-                            destination = destination,
-                            insightPane = insightPane,
-                            appearance = appearance,
-                            ambientMode = ambientMode,
-                            tokenDisplayMode = tokenDisplayMode,
-                            state = state,
-                            displayedStats = displayedData,
-                            wide = wide,
-                            twoPane = twoPane,
-                            contentBottomPadding = contentBottomPadding,
-                            onRangeChange = onRangeChange,
-                            onFilter = { filterSheet = V2FilterSheet.All },
-                            onOpenInsights = ::selectInsight,
-                            onInsightPaneChange = ::selectInsight,
-                            onOpenQuota = { selectDestination(MobileDestination.Quota) },
-                            onAmbientModeChange = onAmbientModeChange,
-                            onTokenDisplayModeChange = onTokenDisplayModeChange,
-                            onOpenLowPowerDisplay = onOpenLowPowerDisplay,
-                            onOpenTool = onOpenTool,
-                            onToolFilterChange = onToolChange,
-                            onOpenModel = onOpenModel,
-                            onSearchChange = onSearchChange,
-                            onLoadMore = onLoadMore,
-                            onRefresh = onRefresh,
-                            onClearFilters = onClearFilters,
-                            onRequestCustomRange = { showCustomRangeDialog = true },
-                            onOpenDay = openDayReview,
-                            onReturnFromDay = returnFromDayReview,
-                            onOpenTrendDay = openTrendDay,
-                            onScrolledUnderChange = { destinationScrolledUnder = it },
-                            initialMePage = initialMePage,
-                            meActions = V2MeActions(
+                    // 页面退出组合时保存列表状态，按实体隔离下钻前后的阅读位置。
+                    pageStateHolder.SaveableStateProvider(contentStateKey) {
+                        when {
+                            showSettings -> V2SettingsPage(
+                                palette = palette,
+                                state = state,
+                                appearance = appearance,
                                 forceLandscape = forceLandscape,
+                                arrangement = widePageArrangement,
                                 onAppearanceChange = onAppearanceChange,
                                 onForceLandscapeChange = onForceLandscapeChange,
+                                onOpenLowPowerDisplay = onOpenLowPowerDisplay,
                                 onSignOut = onSignOut
                             )
-                        )
+                            entityMode -> V2EntityContent(
+                                palette = palette,
+                                state = state,
+                                displayedStats = displayedData,
+                                arrangement = widePageArrangement,
+                                tokenDisplayMode = tokenDisplayMode,
+                                onTokenDisplayModeChange = onTokenDisplayModeChange,
+                                onFilter = { filterSheet = V2FilterSheet.All },
+                                onOpenModel = onOpenModel,
+                                onLoadMore = onLoadMore,
+                                onRefresh = onRefresh,
+                                onSearchChange = onSearchChange,
+                                onScrolledUnderChange = { entityScrolledUnder = it }
+                            )
+                            else -> V2DestinationContent(
+                                palette = palette,
+                                destination = destination,
+                                insightPane = insightPane,
+                                appearance = appearance,
+                                ambientMode = ambientMode,
+                                tokenDisplayMode = tokenDisplayMode,
+                                state = state,
+                                displayedStats = displayedData,
+                                wide = wide,
+                                windowWidthDp = windowWidthDp,
+                                twoPane = twoPane,
+                                contentBottomPadding = contentBottomPadding,
+                                onRangeChange = onRangeChange,
+                                onFilter = { filterSheet = V2FilterSheet.All },
+                                onOpenInsights = ::selectInsight,
+                                onInsightPaneChange = ::selectInsight,
+                                onOpenQuota = { selectDestination(MobileDestination.Quota) },
+                                onAmbientModeChange = onAmbientModeChange,
+                                onTokenDisplayModeChange = onTokenDisplayModeChange,
+                                onOpenLowPowerDisplay = onOpenLowPowerDisplay,
+                                onOpenTool = onOpenTool,
+                                onToolFilterChange = onToolChange,
+                                onOpenModel = onOpenModel,
+                                onSearchChange = onSearchChange,
+                                onLoadMore = onLoadMore,
+                                onRefresh = onRefresh,
+                                onClearFilters = onClearFilters,
+                                onRequestCustomRange = { showCustomRangeDialog = true },
+                                onOpenDay = openDayReview,
+                                onReturnFromDay = returnFromDayReview,
+                                onOpenTrendDay = openTrendDay,
+                                onScrolledUnderChange = { destinationScrolledUnder = it },
+                                initialMePage = initialMePage,
+                                meActions = V2MeActions(
+                                    forceLandscape = forceLandscape,
+                                    onAppearanceChange = onAppearanceChange,
+                                    onForceLandscapeChange = onForceLandscapeChange,
+                                    onSignOut = onSignOut
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -553,6 +574,7 @@ internal fun V2DestinationContent(
     state: DashboardUiState,
     displayedStats: StatsData?,
     wide: Boolean,
+    windowWidthDp: Int,
     twoPane: Boolean = false,
     contentBottomPadding: Dp,
     onRangeChange: (RangeKey) -> Unit,
@@ -688,7 +710,12 @@ internal fun V2DestinationContent(
             },
             label = "destinationReveal"
         ) { (targetDestination, targetPane) ->
-            val arrangement = v2PaneArrangement(wide, twoPane, targetDestination, targetPane)
+            val arrangement = v2PaneArrangement(
+                wide = v2UsesWideContentFrame(windowWidthDp, wide),
+                twoPane = twoPane,
+                destination = targetDestination,
+                insightPane = targetPane
+            )
             val split = arrangement == V2PaneArrangement.Split
             val spread = arrangement == V2PaneArrangement.Spread
             val companionPane = if (split && targetDestination == MobileDestination.Usage) targetPane.v2CompanionPane() else null
