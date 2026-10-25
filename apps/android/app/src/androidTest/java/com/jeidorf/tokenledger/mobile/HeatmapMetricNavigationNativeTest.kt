@@ -4,11 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -66,7 +68,50 @@ class HeatmapMetricNavigationNativeTest {
             .assertCountEquals(0)
     }
 
-    private fun mount(stats: StatsData, onOpenDay: (String) -> Unit) {
+    @Test
+    fun missingCostRestoresDateEntryFocusOnlyOnce() {
+        assertMissingMetricRestoresFocus(
+            requireNotNull(heatmapMetricPreviewStats(withCost = false)),
+            HeatmapMetric.Cost
+        )
+    }
+
+    @Test
+    fun missingRequestsRestoresDateEntryFocusOnlyOnce() {
+        assertMissingMetricRestoresFocus(
+            requireNotNull(heatmapMetricPreviewStats()).copy(heatmapRequests = null),
+            HeatmapMetric.Requests
+        )
+    }
+
+    private fun assertMissingMetricRestoresFocus(stats: StatsData, metric: HeatmapMetric) {
+        val pendingDate = mutableStateOf<String?>(INITIAL_DATE)
+        var restored = 0
+        mount(
+            stats,
+            initialMetric = metric,
+            restoreFocusDate = { pendingDate.value },
+            onFocusRestored = {
+                restored++
+                pendingDate.value = null
+            }
+        ) {}
+
+        compose.onNode(hasContentDescription(DAY_PICKER) and hasClickAction())
+            .assertIsDisplayed()
+            .assertIsFocused()
+        assertEquals(1, restored)
+        selectMetric("按有效 Token着色")
+        assertEquals("切换指标不能重放已消费的返回焦点", 1, restored)
+    }
+
+    private fun mount(
+        stats: StatsData,
+        initialMetric: HeatmapMetric = HeatmapMetric.Tokens,
+        restoreFocusDate: () -> String? = { null },
+        onFocusRestored: () -> Unit = {},
+        onOpenDay: (String) -> Unit
+    ) {
         compose.setContent {
             val appearance = LedgerAppearance.Light
             val palette = remember(appearance) { v2Palette(appearance) }
@@ -82,7 +127,10 @@ class HeatmapMetricNavigationNativeTest {
                                 start = stats.meta?.query?.start,
                                 end = stats.meta?.query?.end
                             ),
-                            initialSelectedDate = INITIAL_DATE
+                            initialSelectedDate = INITIAL_DATE,
+                            initialMetric = initialMetric,
+                            restoreFocusDate = restoreFocusDate(),
+                            onFocusRestored = onFocusRestored
                         )
                     }
                 }

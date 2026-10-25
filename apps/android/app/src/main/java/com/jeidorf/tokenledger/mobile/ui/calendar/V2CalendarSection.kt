@@ -21,6 +21,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -113,6 +117,15 @@ internal fun V2InsightCalendarCard(
             else -> buildInsightCalendarAxis(stats, query, format)
         }
     }
+    val hasMetricCalendar = axis.isTrusted && axis.cells.any(InsightCalendarCell::selectable)
+    val dateEntryFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(restoreFocusDate, canPickDay, hasMetricCalendar) {
+        // 指标缺失时没有月份按钮，返回焦点交给仍可用的原生日期入口。
+        if (restoreFocusDate != null && canPickDay && !hasMetricCalendar) {
+            dateEntryFocusRequester.requestFocus()
+            onFocusRestored()
+        }
+    }
     var showDayPicker by rememberSaveable { mutableStateOf(false) }
     var pickerDate by rememberSaveable(initialSelectedDate) { mutableStateOf(initialSelectedDate) }
     // 月面板：点年度小格里的月份打开，月内可信日期点入单日复盘（T10.173 §7.4）；
@@ -123,7 +136,7 @@ internal fun V2InsightCalendarCard(
             Text("全局用量日历", color = palette.text, fontSize = LedgerFont.body, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
         }
         V2SegmentedToggle(palette, metricOptions, activeMetric, { metric = it }, Modifier.padding(bottom = 8.dp))
-        if (!axis.isTrusted || axis.cells.none(InsightCalendarCell::selectable)) {
+        if (!hasMetricCalendar) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     axis.unavailableReason ?: "当前范围没有可信的日期覆盖",
@@ -131,7 +144,9 @@ internal fun V2InsightCalendarCard(
                     modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
                 )
                 if (canPickDay) {
-                    V2IconAction(palette, Icons.Default.CalendarMonth, "选择日期查看当天复盘", { showDayPicker = true })
+                    Box(Modifier.focusProperties { canFocus = true }.focusRequester(dateEntryFocusRequester)) {
+                        V2IconAction(palette, Icons.Default.CalendarMonth, "选择日期查看当天复盘", { showDayPicker = true })
+                    }
                 }
             }
             return@V2Card
