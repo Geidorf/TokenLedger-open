@@ -8,6 +8,10 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // 提前转换启动 mock 与设置页，避免首次访问时动态 import 串行等待。
+    warmup: {
+      clientFiles: ['./src/devMockTauri.ts', './src/components/SettingsTab.tsx'],
+    },
     // cargo build/test 往 src-tauri/target 写入的 codegen 资产会被默认监听捕获，
     // 触发整页 reload；Rust 侧编译时 `tauri dev` / `vite` 页面会反复闪白。
     watch: {
