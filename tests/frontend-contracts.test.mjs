@@ -1266,7 +1266,8 @@ test('Android heatmap cards do not expose dead click actions', () => {
   // 是名副其实的死点击），改成打开真的月面板，点面板里的可信日期才到 onOpenDay。
   assert.match(calendar, /V2CalendarMonthGrid\(palette, axis, focusMonth, onFocusRestored\) \{ month -> openMonth = month\.toString\(\) \}/);
   assert.match(calendar, /V2CalendarMonthPanel\(palette, yearMonth, axis, onDismiss = \{ openMonth = null \}\)[\s\S]*?onOpenDay\(date\)/);
-  assert.match(calendar, /V2SingleDayDialog\(palette, axis, pickerDate,[\s\S]*?onOpenDay\(date\)/);
+  assert.match(calendar, /val canPickDay = dateAxis\.isTrusted && dateAxis\.cells\.any\(InsightCalendarCell::selectable\)/);
+  assert.match(calendar, /if \(showDayPicker && canPickDay\) \{\s*V2SingleDayDialog\(palette, dateAxis, pickerDate,[\s\S]*?onOpenDay\(date\)/);
   assert.doesNotMatch(calendar, /Modifier\.clickable[\s\S]{0,100}onOpenDay\(cell\.date/);
   const chart = block('V2HeatmapChart');
   assert.match(chart, /axisCell\?\.selectable == true/);
