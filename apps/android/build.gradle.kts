@@ -19,7 +19,12 @@ buildscript {
             add("classpath", "org.jdom:jdom2:${catalogVersion("jdom2")}")
             add("classpath", "org.bitbucket.b_c:jose4j:${catalogVersion("jose4j")}")
             add("classpath", "org.apache.commons:commons-compress:${catalogVersion("commonsCompress")}")
+            add("classpath", "org.bouncycastle:bcprov-jdk18on:${catalogVersion("bouncyCastle")}")
+            add("classpath", "org.bouncycastle:bcpkix-jdk18on:${catalogVersion("bouncyCastle")}")
+            add("classpath", "org.bouncycastle:bcutil-jdk18on:${catalogVersion("bouncyCastle")}")
         }
+        // BOM 对齐 Netty 家族各模块版本，避免传递依赖混用新旧版本。
+        add("classpath", platform("io.netty:netty-bom:${catalogVersion("netty")}"))
     }
 }
 
