@@ -116,7 +116,7 @@ describe('BudgetSection', () => {
   it('shows each budget with its usage meter and level', async () => {
     render(<BudgetSection />);
     const meter = await screen.findByRole('meter', { name: '本月 · Agent · Codex · 预估费用已用比例' });
-    expect(meter).toHaveAttribute('aria-valuenow', '85');
+    await waitFor(() => expect(meter).toHaveAttribute('aria-valuenow', '85'));
     const row = meter.closest('.budget-rule') as HTMLElement;
     expect(row).toHaveAttribute('data-level', 'warn');
     expect(within(row).getByText('接近上限')).toBeInTheDocument();

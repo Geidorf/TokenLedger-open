@@ -90,7 +90,7 @@ function formatAmount(metric: BudgetMetric, value: number | null): string {
 }
 
 /** 读数文案：已用 / 上限 · 百分比；读不到时说明原因，不当成 0。 */
-export function budgetReading(rule: BudgetRule, status: BudgetStatus | undefined): string {
+export function budgetReading(rule: BudgetRule, status: BudgetStatus | undefined, uncappedPercent = false): string {
   if (!rule.enabled) return t('budget.reading.disabled', { limit: formatAmount(rule.metric, rule.limit) });
   if (!status) return t('budget.reading.loading', { limit: formatAmount(rule.metric, rule.limit) });
   if (status.level === 'unavailable' || status.used === null) {
@@ -100,7 +100,7 @@ export function budgetReading(rule: BudgetRule, status: BudgetStatus | undefined
     return t('budget.reading.unavailable', { limit: formatAmount(rule.metric, rule.limit), reason });
   }
   const percent = Math.floor(status.percent ?? 0);
-  const shown = percent > 999 ? '>999%' : `${percent}%`;
+  const shown = percent > 999 && !uncappedPercent ? '>999%' : `${percent}%`;
   return t('budget.reading.used', { used: formatAmount(rule.metric, status.used), limit: formatAmount(rule.metric, rule.limit), percent: shown });
 }
 
