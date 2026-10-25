@@ -2600,7 +2600,6 @@ impl QuotaRpcContext {
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Content-Type", "application/json")
             .json(payload);
-        let dispatch = request.send();
         self.ensure_session_current()?;
         #[cfg(test)]
         if function_name == "clear_quota_snapshots_v2" {
@@ -2614,7 +2613,7 @@ impl QuotaRpcContext {
             // did not commit. Destructive callers must preserve that uncertainty.
             debug_assert!(sent.load(Ordering::SeqCst));
         }
-        let response = dispatch.await.map_err(|_| QuotaRpcError::Transport)?;
+        let response = request.send().await.map_err(|_| QuotaRpcError::Transport)?;
         self.ensure_session_current()?;
         let status = response.status();
         if matches!(status.as_u16(), 401 | 403) {
@@ -4794,7 +4793,11 @@ mod tests {
                     }
                 },
             );
-            let context = server.context();
+            let mut context = server.context();
+            // Slow durable preparation must not spend the network timeout before dispatch.
+            context.before_clear_authorization = Some(Arc::new(|| {
+                std::thread::sleep(Duration::from_millis(2_100));
+            }));
             let settings = recovery_state(&app, &context.identity);
 
             let coordinator = QuotaSyncCoordinator::default();
