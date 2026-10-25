@@ -114,17 +114,33 @@ describe('buildPeriodReport', () => {
     const behavior = {
       meta: { sessionsTruncated: false, sessionLimit: 100 },
       sessions: [
-        { id: 'a', tool: 'codex', tokens: 900, requests: 3, cost: null },
+        { id: 'a', tool: 'claude-code', tokens: 900, requests: 3, cost: null },
         { id: 'b', tool: 'claude', tokens: 10, requests: 1, cost: 4 },
         { id: 'c', tool: 'codex', tokens: 50, requests: 2, cost: 7 },
       ],
     } as unknown as BehaviorAnalysisResponse;
     const report = buildPeriodReport({ period, scope: 'local', current: stats(10, 10), previous: null, behavior });
     expect(report.sessions?.map((session) => session.id)).toEqual(['c', 'b', 'a']);
+    expect(report.sessions?.find((session) => session.id === 'a')).toMatchObject({ toolId: 'claude-code', tool: 'Claude-code' });
     expect(report.deltas.tokens).toEqual({ kind: 'unavailable' });
     const cloud = buildPeriodReport({ period, scope: 'cloud', current: stats(10, 10), previous: null, behavior });
     expect(cloud.sessions).toBeNull();
     expect(cloud.sessionsNote).toContain('本机账本');
+  });
+
+  it('keeps tool IDs distinct when the same session ID appears under different tools', () => {
+    const behavior = {
+      meta: { sessionsTruncated: false, sessionLimit: 100 },
+      sessions: [
+        { id: 'same-id', tool: 'codex', tokens: 10, requests: 1, cost: 1 },
+        { id: 'same-id', tool: 'claude', tokens: 10, requests: 1, cost: 1 },
+      ],
+    } as unknown as BehaviorAnalysisResponse;
+    const report = buildPeriodReport({ period, scope: 'local', current: stats(10, 10), previous: null, behavior });
+    expect(report.sessions?.map(({ id, toolId }) => ({ id, toolId }))).toEqual([
+      { id: 'same-id', toolId: 'claude' },
+      { id: 'same-id', toolId: 'codex' },
+    ]);
   });
 
   it('rechecks only budgets of the same period, like the backend', () => {
@@ -171,6 +187,9 @@ describe('generatePeriodReportHtml', () => {
     });
     const shown = generatePeriodReportHtml(report);
     expect(shown).not.toContain('acct-secret');
+    expect(shown).not.toContain('session-abcdef123456');
+    expect(shown).not.toContain('#session/');
+    expect(shown).not.toContain('toolId');
     expect(shown).toContain('账号预算');
     expect(shown).toContain('最贵的会话');
     const hidden = generatePeriodReportHtml(report, { hideCosts: true });

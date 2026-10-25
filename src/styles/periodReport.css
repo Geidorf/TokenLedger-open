@@ -64,6 +64,8 @@
 .report-session-main { display: grid; min-width: 0; }
 .report-session-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-primary); font-size: 13px; font-weight: 550; }
 .report-session-main span { color: var(--color-text-faint); font-size: var(--font-size-xs); }
+.report-session-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; }
+.report-session-hint { margin: 0; color: var(--color-text-faint); font-size: var(--font-size-xs); line-height: 1.45; }
 .report-session-cost { color: var(--color-text-primary); font-weight: 650; font-variant-numeric: tabular-nums; }
 
 .report-reminder { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }

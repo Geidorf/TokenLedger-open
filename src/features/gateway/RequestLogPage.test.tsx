@@ -58,7 +58,10 @@ describe('RequestLogPage', () => {
     vi.mocked(api.providerHealth).mockResolvedValue({ generatedAt: '2026-10-24T02:00:00Z', windowHours: 24, providers: [health('openai', 'degraded')] });
     vi.mocked(api.exportRequestLog).mockResolvedValue({ message: '已导出 2 条请求', path: '/data/tokenledger_gateway_requests.csv' });
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    window.history.replaceState(null, '', '/');
+  });
 
   it('切换过的请求标出切换，展开后列出尝试顺序、解释链、Token 与 Context', async () => {
     render(<RequestLogPage />);
@@ -154,5 +157,16 @@ describe('RequestLogPage', () => {
     const query = vi.mocked(api.exportRequestLog).mock.calls[0][0];
     expect(query).not.toHaveProperty('offset');
     expect(query).not.toHaveProperty('limit');
+  });
+
+  it('展开请求信息后可用该会话的工具键打开详情', async () => {
+    render(<RequestLogPage />);
+    const table = await screen.findByRole('table', { name: '网关请求日志' });
+    const rows = within(table).getAllByRole('row');
+    fireEvent.click(within(rows[1]).getByRole('button', { name: /展开/ }));
+    const button = screen.getByRole('button', { name: '打开会话 s1 的详情' });
+    fireEvent.click(button);
+    expect(window.location.hash).toBe('#session/codex/s1');
+    expect(screen.getByText('打开后查看本机完整会话，范围可能超出当前报告或请求。')).toBeInTheDocument();
   });
 });

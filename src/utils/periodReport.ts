@@ -184,6 +184,9 @@ export interface ReportBreakdownRow {
 
 export interface ReportSession {
   id: string;
+  /** 前端内部工具键，用于打开会话详情；不写入导出。 */
+  toolId: string;
+  /** 展示名，不用于反查会话。 */
   tool: string;
   model: string | null;
   tokens: number;
@@ -336,6 +339,7 @@ function topSessions(behavior: BehaviorAnalysisResponse | null | undefined, limi
   const sessions = [...behavior.sessions]
     .map((session) => ({
       id: session.id,
+      toolId: session.tool,
       tool: toolDisplayName(session.tool),
       model: session.topModel ?? null,
       tokens: session.tokens,
@@ -348,7 +352,7 @@ function topSessions(behavior: BehaviorAnalysisResponse | null | undefined, limi
     .sort((left, right) => {
       if (left.cost !== null && right.cost !== null && left.cost !== right.cost) return right.cost - left.cost;
       if ((left.cost === null) !== (right.cost === null)) return left.cost === null ? 1 : -1;
-      return right.tokens - left.tokens || left.id.localeCompare(right.id);
+      return right.tokens - left.tokens || left.id.localeCompare(right.id) || left.toolId.localeCompare(right.toolId);
     })
     .slice(0, limit);
   const note = behavior.meta.sessionsTruncated
