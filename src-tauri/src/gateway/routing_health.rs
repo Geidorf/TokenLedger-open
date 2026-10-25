@@ -5,7 +5,7 @@
 //! so replaying old rows could reintroduce a failure from a replaced key or
 //! endpoint. Probes are read-only inputs to [`RoutingHealth::snapshot`].
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use chrono::{DateTime, Duration, Utc};
@@ -62,6 +62,7 @@ impl HealthSnapshot {
 #[derive(Clone, Debug)]
 struct MemberHealth {
     failures: u32,
+    failure_times: VecDeque<DateTime<Utc>>,
     block_level: u8,
     blocked_until: Option<DateTime<Utc>>,
     last_seen: DateTime<Utc>,
@@ -73,6 +74,7 @@ impl MemberHealth {
     fn new(at: DateTime<Utc>, sequence: u64) -> Self {
         Self {
             failures: 0,
+            failure_times: VecDeque::with_capacity(DOWN_STREAK as usize),
             block_level: 0,
             blocked_until: None,
             last_seen: at,
@@ -86,13 +88,22 @@ impl MemberHealth {
         self.last_sequence = sequence;
         if code == "answered" {
             self.failures = 0;
+            self.failure_times.clear();
             self.block_level = 0;
             self.blocked_until = None;
             self.last_success = Some(self.last_success.map_or(at, |previous| previous.max(at)));
             return;
         }
         self.failures = self.failures.saturating_add(1);
-        if self.failures >= DOWN_STREAK {
+        let window_start = now - Duration::minutes(OBSERVATION_TTL_MINUTES);
+        self.failure_times
+            .retain(|failed_at| *failed_at >= window_start);
+        self.failure_times.push_back(at);
+        while self.failure_times.len() > DOWN_STREAK as usize {
+            self.failure_times.pop_front();
+        }
+        let initial_window = self.failure_times.len() == DOWN_STREAK as usize;
+        if self.block_level > 0 || initial_window {
             let secs = BLOCK_BASE_SECS
                 .saturating_mul(1_u64 << self.block_level.min(3))
                 .min(BLOCK_MAX_SECS);
@@ -357,6 +368,55 @@ mod tests {
         assert!(snapshot.is_unhealthy("a/m1"));
         assert!(!snapshot.is_unhealthy("a/m2"));
         assert!(!snapshot.is_unhealthy("b/m1"));
+    }
+
+    #[test]
+    fn sparse_failures_do_not_trigger_initial_block() {
+        let health = RoutingHealth::default();
+        let base = now();
+        fail(&health, "a", "m1", base);
+        fail(&health, "a", "m1", base + Duration::minutes(4));
+        fail(&health, "a", "m1", base + Duration::minutes(8));
+        assert!(!health
+            .snapshot(&HashMap::new(), base + Duration::minutes(8))
+            .is_unhealthy("a/m1"));
+        fail(
+            &health,
+            "a",
+            "m1",
+            base + Duration::minutes(8) + Duration::seconds(1),
+        );
+        assert!(health
+            .snapshot(
+                &HashMap::new(),
+                base + Duration::minutes(8) + Duration::seconds(1)
+            )
+            .is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn initial_block_accepts_three_failures_at_exact_five_minute_boundary() {
+        let health = RoutingHealth::default();
+        let first = now();
+        fail(&health, "a", "m1", first);
+
+        let expired = first + Duration::minutes(5) + Duration::seconds(1);
+        assert!(!health
+            .snapshot(&HashMap::new(), expired)
+            .is_unhealthy("a/m1"));
+
+        let window_start = expired + Duration::seconds(1);
+        fail(&health, "a", "m1", window_start);
+        fail(&health, "a", "m1", window_start + Duration::minutes(2));
+        assert!(!health
+            .snapshot(&HashMap::new(), window_start + Duration::minutes(2))
+            .is_unhealthy("a/m1"));
+
+        let boundary = window_start + Duration::minutes(5);
+        fail(&health, "a", "m1", boundary);
+        assert!(health
+            .snapshot(&HashMap::new(), boundary)
+            .is_unhealthy("a/m1"));
     }
 
     #[test]
