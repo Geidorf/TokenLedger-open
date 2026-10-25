@@ -43,7 +43,7 @@ anthropic ark deepseek gemini glm groq kimi lmstudio mistral ollama openai openr
 
 ### 3.1 `public.sync_usage_dimensions_v1(p_payload jsonb) → jsonb`
 
-`security definer`、空 `search_path`，只认 `auth.uid()`；匿名调用报 `usage_dimensions_identity_required`（42501）。
+`security definer`、空 `search_path`，只认 `auth.uid()`；仅向 `authenticated` 授予执行权限，匿名角色在函数权限层被拒绝。已获执行权限但 `auth.uid()` 为空的调用报 `usage_dimensions_identity_required`（42501）。
 
 ```json
 {

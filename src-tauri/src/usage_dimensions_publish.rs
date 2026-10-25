@@ -703,7 +703,7 @@ async fn call_rpc(
     function: &str,
     body: Value,
     still_wanted: &(dyn Fn() -> bool + Send + Sync),
-) -> Result<Value, RpcError> {
+) -> Result<RpcReply<crate::commands::CloudSessionUseLease>, RpcError> {
     let (config, lease) = crate::commands::acquire_current_cloud_session(app)
         .await
         .map_err(|_| RpcError::Failed("读取云端会话失败".to_string()))?;
@@ -745,7 +745,15 @@ async fn call_rpc(
     if !(200..300).contains(&status) {
         return Err(classify_failure(status, &bytes));
     }
-    Ok(serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    Ok(RpcReply {
+        value: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        fence: lease,
+    })
+}
+
+struct RpcReply<Fence> {
+    value: Value,
+    fence: Fence,
 }
 
 // ---------------------------------------------------------------------------
@@ -760,6 +768,8 @@ pub(crate) struct DayData {
 
 /// Everything the loop touches outside itself, so it can be driven by a fake in tests.
 trait PublishIo: Sync {
+    type Fence;
+
     fn mask(&self) -> Mask;
     /// The account in the local cloud config; `None` only when it cannot be read,
     /// signed out reads as an empty user.
@@ -773,6 +783,12 @@ trait PublishIo: Sync {
     fn take_nudge(&self) -> bool;
     fn nudge_pending(&self) -> bool;
     fn today(&self) -> (NaiveDate, NaiveDate);
+    fn commit(
+        &self,
+        fence: &Self::Fence,
+        wanted: Option<Mask>,
+        mutation: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), RpcError>;
     async fn fingerprints(
         &self,
         oldest: &str,
@@ -785,7 +801,7 @@ trait PublishIo: Sync {
         function: &str,
         body: Value,
         still_wanted: &(dyn Fn() -> bool + Send + Sync),
-    ) -> Result<Value, RpcError>;
+    ) -> Result<RpcReply<Self::Fence>, RpcError>;
     async fn sleep(&self, duration: Duration);
 }
 
@@ -830,6 +846,30 @@ fn parse_marker_owners(text: &str) -> Result<BTreeSet<String>, String> {
 }
 
 impl PublishIo for AppIo {
+    type Fence = crate::commands::CloudSessionUseLease;
+
+    fn commit(
+        &self,
+        fence: &Self::Fence,
+        wanted: Option<Mask>,
+        mutation: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), RpcError> {
+        fence
+            .commit_if_current(&self.app, || {
+                let Ok(settings) = self.settings.lock() else {
+                    return Ok(Err(RpcError::Failed("读取用量维度设置失败".to_string())));
+                };
+                if wanted.is_some_and(|mask| !mask.still_covered_by(Mask::from_settings(&settings)))
+                {
+                    return Ok(Err(RpcError::Cancelled));
+                }
+                // Keep consent and the original account generation stable through
+                // the durable receipt and its visible success state.
+                Ok(mutation().map_err(RpcError::Failed))
+            })
+            .map_err(|_| RpcError::AccountChanged)?
+    }
+
     fn mask(&self) -> Mask {
         self.settings
             .lock()
@@ -982,7 +1022,7 @@ impl PublishIo for AppIo {
         function: &str,
         body: Value,
         still_wanted: &(dyn Fn() -> bool + Send + Sync),
-    ) -> Result<Value, RpcError> {
+    ) -> Result<RpcReply<Self::Fence>, RpcError> {
         call_rpc(&self.app, user, function, body, still_wanted).await
     }
 
@@ -1199,12 +1239,15 @@ impl Publisher {
                 .await
             {
                 Ok(_) if io.stored_user().as_deref() != Some(user.as_str()) => {}
-                Ok(reply) if reply["deleted"].as_u64().is_some() => {
-                    self.state.forget(dimension);
-                    let saved = io
-                        .save_state(&self.state)
-                        .and_then(|()| self.set_marker(io, dimension, &user, false));
+                Ok(reply) if reply.value["deleted"].as_u64().is_some() => {
+                    let mut next_state = self.state.clone();
+                    next_state.forget(dimension);
+                    let saved = io.commit(&reply.fence, None, || {
+                        io.save_state(&next_state)?;
+                        self.set_marker(io, dimension, &user, false)
+                    });
                     if saved.is_ok() {
+                        self.state = next_state;
                         self.backoff = TICK;
                     } else {
                         wait = Some(self.back_off());
@@ -1293,14 +1336,6 @@ impl Publisher {
             Ok(()) => {
                 self.failing = false;
                 self.backoff = TICK;
-                let at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-                set_status_for(mask, |status| {
-                    *status = DimensionStatus {
-                        state: "ok",
-                        last_uploaded_at: Some(at.clone()),
-                        error: None,
-                    }
-                });
                 TICK
             }
             Err(RpcError::Cancelled) => {
@@ -1308,6 +1343,17 @@ impl Publisher {
                 Duration::ZERO
             }
             Err(RpcError::AccountChanged) => {
+                let state = match io.stored_user() {
+                    Some(user) if user.is_empty() => "signed-out",
+                    Some(_) => "starting",
+                    None => "error",
+                };
+                set_status_for(mask, |status| {
+                    *status = DimensionStatus {
+                        state,
+                        ..Default::default()
+                    }
+                });
                 self.cycle_at = Some(Instant::now() + TICK);
                 TICK
             }
@@ -1381,7 +1427,9 @@ impl Publisher {
             days.push(day_parts(date, *wanted, &data, secret.as_ref()));
         }
 
-        for chunk in build_chunks(&self.machine, &days) {
+        let chunks = build_chunks(&self.machine, &days);
+        let chunk_count = chunks.len();
+        for (index, chunk) in chunks.into_iter().enumerate() {
             let dims = Mask(Dimension::ALL.map(|d| chunk.covers.iter().any(|(c, _)| *c == d)));
             let still_on = || dims.still_covered_by(io.mask());
             let expected_counts = stored_counts(&chunk.payload);
@@ -1399,16 +1447,31 @@ impl Publisher {
             if !still_on() {
                 return Err(RpcError::Cancelled);
             }
-            if reply["stored"] != expected_counts
-                || reply["purged"].as_u64().is_none()
-                || reply["retentionDays"].as_u64() != Some(WINDOW_DAYS as u64)
+            if reply.value["stored"] != expected_counts
+                || reply.value["purged"].as_u64().is_none()
+                || reply.value["retentionDays"].as_u64() != Some(WINDOW_DAYS as u64)
             {
                 return Err(RpcError::Failed("云端回应格式不符".to_string()));
             }
+            let mut next_state = self.state.clone();
             for (dimension, date) in &chunk.covers {
-                self.state.record(*dimension, date, current.get(date));
+                next_state.record(*dimension, date, current.get(date));
             }
-            io.save_state(&self.state).map_err(RpcError::Failed)?;
+            io.commit(&reply.fence, Some(mask), || {
+                io.save_state(&next_state)?;
+                if index + 1 == chunk_count {
+                    let at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+                    set_status_for(mask, |status| {
+                        *status = DimensionStatus {
+                            state: "ok",
+                            last_uploaded_at: Some(at.clone()),
+                            error: None,
+                        }
+                    });
+                }
+                Ok(())
+            })?;
+            self.state = next_state;
         }
         Ok(())
     }
@@ -1821,9 +1884,17 @@ mod tests {
         invalid_upload_reply: AtomicBool,
         fail_marker_write: AtomicBool,
         fail_state_write: AtomicBool,
+        commit_race: Mutex<Option<CommitRace>>,
         day_reads: AtomicUsize,
         secret_reads: AtomicUsize,
         sent: Mutex<Vec<(String, Value)>>,
+    }
+
+    #[derive(Clone, Copy)]
+    enum CommitRace {
+        SwitchAccount,
+        SignOut,
+        Disable,
     }
 
     impl FakeIo {
@@ -1849,9 +1920,49 @@ mod tests {
         fn sent(&self) -> Vec<(String, Value)> {
             std::mem::take(&mut self.sent.lock().unwrap())
         }
+
+        fn apply_race_before_state_save(&self) {
+            if matches!(
+                *self.commit_race.lock().unwrap(),
+                Some(CommitRace::SwitchAccount)
+            ) {
+                *self.user.lock().unwrap() = Some("user-2".to_string());
+            }
+        }
+
+        fn apply_race_after_state_save(&self) {
+            match self.commit_race.lock().unwrap().take() {
+                Some(CommitRace::SignOut) => {
+                    *self.user.lock().unwrap() = None;
+                }
+                Some(CommitRace::Disable) => self.set_mask([false; 3]),
+                _ => {}
+            }
+        }
     }
 
     impl PublishIo for FakeIo {
+        type Fence = String;
+
+        fn commit(
+            &self,
+            fence: &Self::Fence,
+            wanted: Option<Mask>,
+            mutation: impl FnOnce() -> Result<(), String>,
+        ) -> Result<(), RpcError> {
+            self.apply_race_before_state_save();
+            self.apply_race_after_state_save();
+            let user = self.user.lock().unwrap();
+            let mask = self.mask.lock().unwrap();
+            if user.as_deref() != Some(fence.as_str()) {
+                return Err(RpcError::AccountChanged);
+            }
+            if wanted.is_some_and(|wanted| !wanted.still_covered_by(*mask)) {
+                return Err(RpcError::Cancelled);
+            }
+            mutation().map_err(RpcError::Failed)
+        }
+
         fn mask(&self) -> Mask {
             *self.mask.lock().unwrap()
         }
@@ -1879,7 +1990,9 @@ mod tests {
             if self.fail_state_write.load(Ordering::SeqCst) {
                 return Err("state write failed".to_string());
             }
+            self.apply_race_before_state_save();
             *self.state.lock().unwrap() = state.clone();
+            self.apply_race_after_state_save();
             Ok(())
         }
         fn session_secret(&self) -> Result<[u8; 32], String> {
@@ -1922,11 +2035,11 @@ mod tests {
         }
         async fn rpc(
             &self,
-            _user: &str,
+            user: &str,
             function: &str,
             body: Value,
             still_wanted: &(dyn Fn() -> bool + Send + Sync),
-        ) -> Result<Value, RpcError> {
+        ) -> Result<RpcReply<Self::Fence>, RpcError> {
             if self.off_before_send.load(Ordering::SeqCst) {
                 self.set_mask([false, false, false]);
             }
@@ -1943,7 +2056,7 @@ mod tests {
             if self.not_deployed.load(Ordering::SeqCst) {
                 return Err(RpcError::NotDeployed);
             }
-            Ok(if function == "clear_usage_dimension_v1" {
+            let value = if function == "clear_usage_dimension_v1" {
                 if self.invalid_clear_reply.load(Ordering::SeqCst) {
                     json!({})
                 } else {
@@ -1959,12 +2072,20 @@ mod tests {
                     "purged": 0,
                     "retentionDays": 90
                 })
+            };
+            Ok(RpcReply {
+                value,
+                fence: user.to_string(),
             })
         }
         async fn sleep(&self, _duration: Duration) {}
     }
 
     fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        static PUBLISHER_TEST_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = PUBLISHER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap()
@@ -2166,6 +2287,72 @@ mod tests {
         block_on(publisher.tick(&io));
         assert!(publisher.state.uploaded.is_empty());
         assert!(io.load_state().unwrap().uploaded.is_empty());
+    }
+
+    #[test]
+    fn an_account_change_after_rpc_cannot_commit_the_old_receipt() {
+        block_on(async {
+            set_status_for(Mask([true; 3]), |status| *status = off_status());
+            let io = FakeIo::on([false, true, false]);
+            *io.commit_race.lock().unwrap() = Some(CommitRace::SwitchAccount);
+            let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+            publisher.tick(&io).await;
+            assert!(publisher.state.uploaded.is_empty());
+            assert!(io.load_state().unwrap().uploaded.is_empty());
+            let state = status_cell().lock().unwrap().providers.state;
+            assert_ne!(state, "ok");
+        });
+    }
+
+    #[test]
+    fn sign_out_after_rpc_cannot_publish_an_ok_status() {
+        block_on(async {
+            set_status_for(Mask([true; 3]), |status| *status = off_status());
+            let io = FakeIo::on([false, true, false]);
+            *io.commit_race.lock().unwrap() = Some(CommitRace::SignOut);
+            let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+            publisher.tick(&io).await;
+            let state = status_cell().lock().unwrap().providers.state;
+            assert_ne!(state, "ok");
+        });
+    }
+
+    #[test]
+    fn disabling_after_rpc_cannot_publish_an_ok_status() {
+        block_on(async {
+            set_status_for(Mask([true; 3]), |status| *status = off_status());
+            let io = FakeIo::on([false, true, false]);
+            *io.commit_race.lock().unwrap() = Some(CommitRace::Disable);
+            let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+            publisher.tick(&io).await;
+            let state = status_cell().lock().unwrap().providers.state;
+            assert_ne!(state, "ok");
+        });
+    }
+
+    #[test]
+    fn a_failed_upload_state_write_keeps_the_receipt_retryable() {
+        block_on(async {
+            set_status_for(Mask([true; 3]), |status| *status = off_status());
+            let io = FakeIo::on([false, true, false]);
+            io.fail_state_write.store(true, Ordering::SeqCst);
+            let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+            publisher.tick(&io).await;
+            assert!(publisher.state.uploaded.is_empty());
+            assert!(io.load_state().unwrap().uploaded.is_empty());
+            let status = status_cell().lock().unwrap().providers.clone();
+            assert_eq!(status.state, "error");
+            assert_eq!(status.error.as_deref(), Some("state write failed"));
+            assert!(status.last_uploaded_at.is_none());
+
+            io.fail_state_write.store(false, Ordering::SeqCst);
+            publisher.cycle_at = Some(Instant::now());
+            publisher.tick(&io).await;
+            assert!(!publisher.state.uploaded.is_empty());
+            assert_eq!(io.load_state().unwrap(), publisher.state);
+            let state = status_cell().lock().unwrap().providers.state;
+            assert_eq!(state, "ok");
+        });
     }
 
     #[test]
