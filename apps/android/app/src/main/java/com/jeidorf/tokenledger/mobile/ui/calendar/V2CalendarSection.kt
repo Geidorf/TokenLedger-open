@@ -101,9 +101,14 @@ internal fun V2InsightCalendarCard(
     }
     val activeMetric = metric.takeIf { option -> metricOptions.any { it.value == option } } ?: HeatmapMetric.Tokens
     val format = HeatmapValueFormat(activeMetric, currency)
-    val axis = remember(stats, query, globalAxis, calendarState, format) {
+    // 日期选择只依赖可信覆盖，不随可选着色指标的缺失而关闭。
+    val dateAxis = remember(stats, query, globalAxis, calendarState) {
+        globalAxis ?: calendarState?.let { buildInsightCalendarAxis(it) } ?: buildInsightCalendarAxis(stats, query)
+    }
+    val canPickDay = dateAxis.isTrusted && dateAxis.cells.any(InsightCalendarCell::selectable)
+    val axis = remember(stats, query, dateAxis, calendarState, format) {
         when {
-            activeMetric == HeatmapMetric.Tokens && globalAxis != null -> globalAxis
+            activeMetric == HeatmapMetric.Tokens -> dateAxis
             calendarState != null -> buildInsightCalendarAxis(calendarState, format)
             else -> buildInsightCalendarAxis(stats, query, format)
         }
@@ -119,11 +124,16 @@ internal fun V2InsightCalendarCard(
         }
         V2SegmentedToggle(palette, metricOptions, activeMetric, { metric = it }, Modifier.padding(bottom = 8.dp))
         if (!axis.isTrusted || axis.cells.none(InsightCalendarCell::selectable)) {
-            Text(
-                axis.unavailableReason ?: "当前范围没有可信的日期覆盖",
-                color = palette.muted, fontSize = LedgerFont.label,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    axis.unavailableReason ?: "当前范围没有可信的日期覆盖",
+                    color = palette.muted, fontSize = LedgerFont.label,
+                    modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
+                )
+                if (canPickDay) {
+                    V2IconAction(palette, Icons.Default.CalendarMonth, "选择日期查看当天复盘", { showDayPicker = true })
+                }
+            }
             return@V2Card
         }
         val covered = axis.cells.filter(InsightCalendarCell::selectable)
@@ -142,7 +152,9 @@ internal fun V2InsightCalendarCard(
                 fontSize = LedgerFont.caption,
                 modifier = Modifier.weight(1f)
             )
-            V2IconAction(palette, Icons.Default.CalendarMonth, "选择日期查看当天复盘", { showDayPicker = true })
+            if (canPickDay) {
+                V2IconAction(palette, Icons.Default.CalendarMonth, "选择日期查看当天复盘", { showDayPicker = true })
+            }
         }
         HorizontalDivider(color = palette.divider, modifier = Modifier.padding(vertical = 10.dp))
         V2HeatmapScaleLegend(palette)
@@ -167,8 +179,8 @@ internal fun V2InsightCalendarCard(
             )
         }
     }
-    if (showDayPicker && axis.isTrusted) {
-        V2SingleDayDialog(palette, axis, pickerDate, onDismiss = { showDayPicker = false }) { date ->
+    if (showDayPicker && canPickDay) {
+        V2SingleDayDialog(palette, dateAxis, pickerDate, onDismiss = { showDayPicker = false }) { date ->
             showDayPicker = false
             onOpenDay(date)
         }
