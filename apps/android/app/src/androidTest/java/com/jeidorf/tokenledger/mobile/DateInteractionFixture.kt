@@ -10,9 +10,9 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -416,16 +416,29 @@ internal class DateInteractionDiagnostics(
     // Only the test thread calls this, once before a click and best-effort after a failed action/wait.
     fun captureFrame(stage: String) {
         record("$stage-enter")
+        var targetRoot: SemanticsNode? = null
         try {
             val node = requireNotNull(target)
-            val matches = rule.onAllNodes(hasContentDescription(requireNotNull(targetDate), substring = true))
-                .fetchSemanticsNodes()
-            val root = rule.onRoot().fetchSemanticsNode()
+            val requestedDate = requireNotNull(targetDate)
+            val date = LocalDate.parse(requestedDate)
+            // 起始位置与逗号一起限定日期，避免跨月或相邻日误匹配。
+            val dayPrefix = "${date.monthValue}月${date.dayOfMonth}日，"
+            val dayCellMatcher = SemanticsMatcher("月面板日格描述以“$dayPrefix”开头") { candidate ->
+                candidate.config
+                    .getOrNull(SemanticsProperties.ContentDescription)
+                    ?.any { it.startsWith(dayPrefix) } == true
+            }
+            val matches = rule.onAllNodes(dayCellMatcher).fetchSemanticsNodes()
+            // 月面板有独立根节点；只在日期唯一时定位，重复匹配仍保留为诊断异常。
+            targetRoot = matches.singleOrNull()?.let { match -> generateSequence(match) { it.parent }.last() }
+            val root = diagnosticRoot(targetRoot).fetchSemanticsNode()
             val full = if (matches.size == 1) node.getUnclippedBoundsInRoot() else null
             val density = rule.density.density
-            val geometry = JSONObject().put("requestedDate", targetDate).put("matchCount", matches.size)
+            val geometry = JSONObject().put("requestedDate", targetDate).put("dayPrefix", dayPrefix)
+                .put("matchCount", matches.size)
                 .put("density", density).put("fontScale", rule.density.fontScale)
-                .put("viewport", nodeJson(root)).put("matches", JSONArray(matches.map(::nodeJson)))
+                .put("viewport", nodeJson(root))
+                .put("matches", JSONArray(matches.map(::nodeJson)))
                 .put("targetUnclippedDp", full?.let {
                     JSONArray(listOf(it.left.value, it.top.value, it.right.value, it.bottom.value))
                 } ?: JSONObject.NULL)
@@ -446,14 +459,23 @@ internal class DateInteractionDiagnostics(
             }
         }
         saveArtifact(stage, "tree.txt") { file ->
-            file.writeText(rule.onRoot(useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE))
+            file.writeText(diagnosticRoot(targetRoot, useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE))
         }
         saveArtifact(stage, "frame.png") { file ->
             file.outputStream().use { stream ->
-                check(rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, stream))
+                check(
+                    diagnosticRoot(targetRoot).captureToImage().asAndroidBitmap()
+                        .compress(Bitmap.CompressFormat.PNG, 100, stream)
+                )
             }
         }
     }
+
+    private fun diagnosticRoot(root: SemanticsNode?, useUnmergedTree: Boolean = false): SemanticsNodeInteraction =
+        if (root == null) rule.onRoot(useUnmergedTree = useUnmergedTree) else rule.onNode(
+            SemanticsMatcher("目标日期所在根节点") { it.id == root.id },
+            useUnmergedTree = useUnmergedTree
+        )
 
     private fun saveArtifact(stage: String, suffix: String, write: (File) -> Unit) {
         val name = "$prefix-$attempt-${++artifactSequence}-$stage-$suffix"

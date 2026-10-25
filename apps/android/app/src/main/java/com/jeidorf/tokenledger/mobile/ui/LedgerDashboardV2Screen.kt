@@ -606,6 +606,13 @@ internal fun V2DestinationContent(
     val calendarAxis = remember(state.calendarHeatmap) { buildInsightCalendarAxis(state.calendarHeatmap) }
     val calendarGlobalQuery = state.dayReviewReturn?.query ?: state.query
     var calendarOpenedDate by rememberSaveable(calendarGlobalQuery) { mutableStateOf<String?>(null) }
+    var calendarFocusPending by rememberSaveable(calendarGlobalQuery) { mutableStateOf(false) }
+    val calendarFocusDate = calendarOpenedDate.takeIf { calendarFocusPending && state.dayReviewReturn == null }
+    val openCalendarDay: (String) -> Unit = { date ->
+        calendarOpenedDate = date
+        calendarFocusPending = true
+        onOpenDay(date)
+    }
     val overviewListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_overview") { LazyListState() }
     val quotaListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_quota") { LazyListState() }
     val widgetListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_widget") { LazyListState() }
@@ -760,13 +767,15 @@ internal fun V2DestinationContent(
                             onToolFilterChange,
                             onSearchChange,
                             onLoadMore,
-                            { date -> calendarOpenedDate = date; onOpenDay(date) },
+                            openCalendarDay,
                             onReturnFromDay,
                             calendarOpenedDate,
                             trendMetric, trendCurrency,
                             { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
                             onRefresh,
-                            showTabs = false
+                            showTabs = false,
+                            calendarFocusDate = calendarFocusDate,
+                            onCalendarFocusRestored = { calendarFocusPending = false }
                         )
                     }
                 }
@@ -828,13 +837,15 @@ internal fun V2DestinationContent(
                                 onToolFilterChange,
                                 onSearchChange,
                                 onLoadMore,
-                                { date -> calendarOpenedDate = date; onOpenDay(date) },
+                                openCalendarDay,
                                 onReturnFromDay,
                                 calendarOpenedDate,
                                 trendMetric, trendCurrency,
                                 { trendMetric = it }, setTrendCurrency, onOpenTrendDay, calendarAxis,
                                 onRefresh,
-                                rhythmFeed = rhythmFeed
+                                rhythmFeed = rhythmFeed,
+                                calendarFocusDate = calendarFocusDate,
+                                onCalendarFocusRestored = { calendarFocusPending = false }
                             )
                             MobileDestination.Routing -> v2RoutingItems(palette, routingFeed, spread)
                             MobileDestination.Quota -> v2QuotaItems(
@@ -962,7 +973,9 @@ internal fun LazyListScope.v2InsightsItems(
     calendarAxis: InsightCalendarAxis,
     onRefresh: () -> Unit = {},
     rhythmFeed: RhythmFeed = RhythmFeed(signedIn = false),
-    showTabs: Boolean = true
+    showTabs: Boolean = true,
+    calendarFocusDate: String? = null,
+    onCalendarFocusRestored: () -> Unit = {}
 ) {
     if (showTabs) item(key = "insights-tabs", contentType = "controls") { V2InsightStrip(palette, pane, onPaneChange) }
     if (pane != InsightPane.Overview && v2HasDesktopData(stats, state.hasActiveFilters) == false) {
@@ -1004,7 +1017,9 @@ internal fun LazyListScope.v2InsightsItems(
                     globalAxis = calendarAxis,
                     calendarNotice = (state.calendarHeatmap as? CalendarHeatmapUiState.Available)?.let {
                         it.warning ?: if (it.showingCachedData) "当前显示缓存日历" else null
-                    }
+                    },
+                    restoreFocusDate = calendarFocusDate,
+                    onFocusRestored = onCalendarFocusRestored
                 )
             }
         }

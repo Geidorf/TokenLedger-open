@@ -80,7 +80,9 @@ internal fun V2InsightCalendarCard(
     query: DashboardQuery,
     initialSelectedDate: String? = null,
     globalAxis: InsightCalendarAxis? = null,
-    calendarNotice: String? = null
+    calendarNotice: String? = null,
+    restoreFocusDate: String? = null,
+    onFocusRestored: () -> Unit = {}
 ) {
     val axis = globalAxis ?: remember(stats, query) { buildInsightCalendarAxis(stats, query) }
     var showDayPicker by rememberSaveable { mutableStateOf(false) }
@@ -121,7 +123,11 @@ internal fun V2InsightCalendarCard(
         HorizontalDivider(color = palette.divider, modifier = Modifier.padding(vertical = 10.dp))
         V2HeatmapScaleLegend(palette)
         Spacer(Modifier.height(8.dp))
-        V2CalendarMonthGrid(palette, axis) { month -> openMonth = month.toString() }
+        // 只消费本次单日返回的焦点请求，普通切页不重放旧日期，保留后续手动阅读位置。
+        val focusMonth = remember(restoreFocusDate) {
+            restoreFocusDate?.let { runCatching { YearMonth.from(LocalDate.parse(it)) }.getOrNull() }
+        }
+        V2CalendarMonthGrid(palette, axis, focusMonth, onFocusRestored) { month -> openMonth = month.toString() }
         Text(
             "峰值 ${v2FormatTokens(covered.maxOfOrNull { it.tokens } ?: 0L)}",
             color = palette.muted,

@@ -1263,7 +1263,7 @@ test('Android heatmap cards do not expose dead click actions', () => {
   assert.match(calendar, /buildInsightCalendarAxis\(stats, query\)/);
   // T10.209：点整月不再是"抓月内第一个非空格子直接开单日"的临时接线（那样点哪个格子都一样，
   // 是名副其实的死点击），改成打开真的月面板，点面板里的可信日期才到 onOpenDay。
-  assert.match(calendar, /V2CalendarMonthGrid\(palette, axis\) \{ month -> openMonth = month\.toString\(\) \}/);
+  assert.match(calendar, /V2CalendarMonthGrid\(palette, axis, focusMonth, onFocusRestored\) \{ month -> openMonth = month\.toString\(\) \}/);
   assert.match(calendar, /V2CalendarMonthPanel\(palette, yearMonth, axis, onDismiss = \{ openMonth = null \}\)[\s\S]*?onOpenDay\(date\)/);
   assert.match(calendar, /V2SingleDayDialog\(palette, axis, pickerDate,[\s\S]*?onOpenDay\(date\)/);
   assert.doesNotMatch(calendar, /Modifier\.clickable[\s\S]{0,100}onOpenDay\(cell\.date/);
