@@ -36,6 +36,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+mod database_source;
+mod file_sources;
+
 // ---------------------------------------------------------------------------
 // Per-thread allocation accounting, so memory bounds hold under parallel tests.
 
@@ -436,7 +439,7 @@ fn reasonix_seed() -> Vec<Value> {
 }
 
 fn targets() -> Vec<Target> {
-    vec![
+    let mut targets = vec![
         Target {
             name: "claude",
             shape: Shape::Lines,
@@ -671,7 +674,10 @@ fn targets() -> Vec<Target> {
             stable_ids: true,
             order_free: true,
         },
-    ]
+    ];
+    targets.push(database_source::target());
+    targets.extend(file_sources::targets());
+    targets
 }
 
 // ---------------------------------------------------------------------------
@@ -779,7 +785,10 @@ fn number_spans(line: &[u8]) -> Vec<(usize, usize)> {
     let mut index = 0;
     while index < line.len() {
         if line[index] == b':' {
-            let start = index + 1;
+            let mut start = index + 1;
+            while start < line.len() && line[start].is_ascii_whitespace() {
+                start += 1;
+            }
             let mut end = start;
             while end < line.len() && matches!(line[end], b'-' | b'0'..=b'9' | b'.' | b'e' | b'E') {
                 end += 1;
@@ -793,6 +802,22 @@ fn number_spans(line: &[u8]) -> Vec<(usize, usize)> {
         }
     }
     spans
+}
+
+#[test]
+fn numeric_mutations_reach_compact_and_pretty_documents() {
+    let value = json!({"input":12,"cached":3,"negative":-1,"fraction":1.5});
+    for bytes in [
+        serde_json::to_vec(&value).unwrap(),
+        serde_json::to_vec_pretty(&value).unwrap(),
+    ] {
+        let mut numbers: Vec<_> = number_spans(&bytes)
+            .into_iter()
+            .map(|(start, end)| std::str::from_utf8(&bytes[start..end]).unwrap())
+            .collect();
+        numbers.sort_unstable();
+        assert_eq!(numbers, ["-1", "1.5", "12", "3"]);
+    }
 }
 
 /// Byte ranges of values for timestamp-like keys.

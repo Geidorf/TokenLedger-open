@@ -166,7 +166,9 @@ pub(crate) fn scan_goose_db(
             continue;
         }
         let [input, output, cache_read, cache_write] = counters;
-        let cached = cache_read + cache_write;
+        let Some(cached) = cache_read.checked_add(cache_write) else {
+            continue;
+        };
         let net_input = if input >= cached {
             input - cached
         } else {
@@ -263,6 +265,65 @@ mod scanner_goose_tests {
         assert_eq!(logs[1].input_tokens, 4_000);
         assert_eq!(logs[2].model, "goose-unknown");
         assert_ne!(first.unique_key, logs[1].unique_key);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn overflowing_cache_totals_do_not_hide_later_usage() {
+        let (root, db) = fixture_db();
+        {
+            let conn = Connection::open(&db).expect("open fixture db");
+            for (read, write) in [(i64::MAX, 1), (1, i64::MAX), (i64::MAX, i64::MAX)] {
+                conn.execute(
+                    "INSERT INTO usage_ledger (session_id, created_timestamp, model,
+                         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+                     VALUES ('20261021_1', 1761030000, 'usage-fixture', 900, 100, ?1, ?2)",
+                    [read, write],
+                )
+                .expect("insert extreme counters");
+            }
+            conn.execute(
+                "INSERT INTO usage_ledger (session_id, created_timestamp, model,
+                     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+                 VALUES ('20261021_1', 1761030060, 'usage-fixture', 900, 100, 0, 0)",
+                [],
+            )
+            .expect("insert later usage");
+        }
+
+        let mut logs = Vec::new();
+        let mut pending = Vec::new();
+        assert_eq!(
+            scan_goose_db(&db, &mut logs, &SourceCursorMap::new(), &mut pending),
+            4
+        );
+        assert_eq!(logs.last().unwrap().input_tokens, 900);
+        assert_eq!(logs.last().unwrap().output_tokens, 100);
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].cursor_primary, "9");
+
+        let ledger = root.join("ledger.db");
+        crate::db::init_test_db(&ledger).unwrap();
+        crate::scanner::runner::persist_scan_batch(&ledger, logs, Vec::new(), Vec::new(), None)
+            .unwrap();
+        let totals = crate::db::get_connection(&ledger)
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*), SUM(input_tokens), SUM(output_tokens),
+                        SUM(cached_tokens), SUM(cache_write_tokens) FROM token_logs",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(totals, (4, 9_000, 860, 26_000, 1_000));
         let _ = fs::remove_dir_all(root);
     }
 
