@@ -12,10 +12,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -61,7 +65,13 @@ internal fun calendarMonthsPerRow(screenWidthDp: Int, fontScale: Float): Int = w
 }
 
 @Composable
-internal fun V2CalendarMonthGrid(palette: MobileV2Palette, axis: InsightCalendarAxis, onOpenMonth: (YearMonth) -> Unit) {
+internal fun V2CalendarMonthGrid(
+    palette: MobileV2Palette,
+    axis: InsightCalendarAxis,
+    focusMonth: YearMonth? = null,
+    onFocusRestored: () -> Unit = {},
+    onOpenMonth: (YearMonth) -> Unit
+) {
     val months = remember(axis) { insightCalendarMonths(axis) }
     val thresholds = remember(axis) { heatLevelThresholds(knownNonZeroTokens(axis.cells)) }
     val fontScale = LocalDensity.current.fontScale
@@ -80,8 +90,17 @@ internal fun V2CalendarMonthGrid(palette: MobileV2Palette, axis: InsightCalendar
             ) {
                 row.forEach { month ->
                     val summary = remember(month) { monthAccessibilitySummary(month.yearMonth, month.cells) }
+                    val focusRequester = remember(month.yearMonth) { FocusRequester() }
+                    LaunchedEffect(focusMonth) {
+                        if (month.yearMonth == focusMonth) {
+                            focusRequester.requestFocus()
+                            onFocusRestored()
+                        }
+                    }
                     Column(
                         Modifier
+                            .focusProperties { canFocus = true }
+                            .focusRequester(focusRequester)
                             .clickable(role = Role.Button) { onOpenMonth(month.yearMonth) }
                             .semantics(mergeDescendants = true) { contentDescription = summary }
                     ) {

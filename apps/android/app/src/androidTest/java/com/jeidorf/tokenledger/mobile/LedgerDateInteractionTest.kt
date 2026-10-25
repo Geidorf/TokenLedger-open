@@ -2,13 +2,16 @@ package com.jeidorf.tokenledger.mobile
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -17,6 +20,7 @@ import android.view.KeyEvent
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.semantics.getOrNull
 import java.time.LocalDate
+import java.time.YearMonth
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -39,46 +43,18 @@ class LedgerDateInteractionTest {
 
     @Test
     fun a04_validCellOpensDayButFalseCallbackKeepsCalendarPaneAndGlobalQuery() {
-        val harness = harness("a04")
+        val harness = harness("a04", fontScale = 1f)
         harness.awaitReady()
         harness.selectYearAndAwait()
         val globalQuery = harness.viewModel.uiState.value.query
 
-        compose.onNodeWithText("按日复盘").performScrollTo()
-        val cells = compose.onAllNodes(calendarCellMatcher, useUnmergedTree = true)
-            .fetchSemanticsNodes()
-        assertEquals(196, cells.size)
-        assertEquals(
-            cells.size,
-            cells.map { requireNotNull(it.config.getOrNull(SemanticsProperties.ContentDescription)).single() }
-                .toSet().size
-        )
-        cells.forEach { assertTrue(it.config.contains(SemanticsActions.OnClick)) }
-        val minimumCellPx = 48f * compose.density.density
-        var representative = LocalDate.parse("2026-01-01")
-        while (!representative.isAfter(LocalDate.parse(DateInteractionFixture.CUTOFF_DATE))) {
-            val target = dayNode(representative.toString()).performScrollTo().fetchSemanticsNode()
-            assertTrue("visible date width must be at least 48dp", target.boundsInRoot.width >= minimumCellPx - 0.5f)
-            assertTrue("visible date height must be at least 48dp", target.boundsInRoot.height >= minimumCellPx - 0.5f)
-            val visible = compose.onAllNodes(calendarCellMatcher, useUnmergedTree = true)
-                .fetchSemanticsNodes()
-                .filter { it.boundsInRoot.width >= minimumCellPx - 0.5f && it.boundsInRoot.height >= minimumCellPx - 0.5f }
-            visible.forEachIndexed { index, cell ->
-                visible.drop(index + 1).forEach { other ->
-                    assertFalse("visible calendar click targets must not overlap", overlaps(cell.boundsInRoot, other.boundsInRoot))
-                }
-            }
-            representative = representative.plusWeeks(1)
-        }
-        assertTrue(compose.onAllNodes(hasContentDescription("2025-12-31", substring = true)).fetchSemanticsNodes().isEmpty())
-        assertTrue(compose.onAllNodes(hasContentDescription(DateInteractionFixture.FUTURE_DATE, substring = true)).fetchSemanticsNodes().isEmpty())
+        assertYearCoverageAndTargets()
 
-        // A real ViewModel rejection is returned to the production screen's Boolean navigation gate.
-        // The tapped node itself remains a valid calendar cell; the substituted future date is how the
-        // fixture deterministically exercises the false branch without copying production eligibility.
+        // 用真实 ViewModel 拒绝未来日期，覆盖有效点击后的 Boolean 导航闸门。
         harness.openDayOverride = {
             harness.openDayDetailsObserved(DateInteractionFixture.FUTURE_DATE, "forced-future")
         }
+        openMonth(DateInteractionFixture.RECENT_DATE)
         harness.observedClick(
             dayNode(DateInteractionFixture.RECENT_DATE), DateInteractionFixture.RECENT_DATE,
             "forced-future", scrollFirst = true
@@ -88,12 +64,13 @@ class LedgerDateInteractionTest {
         assertEquals(globalQuery, harness.viewModel.uiState.value.query)
         assertEquals(DashboardSection.Trends, harness.viewModel.uiState.value.section)
         assertNull(harness.viewModel.uiState.value.dayReviewReturn)
-        compose.onNodeWithText("按日复盘").assertIsDisplayed()
+        monthNode(DateInteractionFixture.RECENT_DATE).assertIsDisplayed()
 
         harness.openDayOverride = null
+        openMonth(DateInteractionFixture.RECENT_DATE)
         harness.observedClick(
             dayNode(DateInteractionFixture.RECENT_DATE), DateInteractionFixture.RECENT_DATE,
-            "normal-recent", scrollFirst = false
+            "normal-recent", scrollFirst = true
         )
         harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.RECENT_DATE)
         compose.onNodeWithText("${DateInteractionFixture.RECENT_DATE} 当天复盘").assertIsDisplayed()
@@ -104,106 +81,168 @@ class LedgerDateInteractionTest {
     }
 
     @Test
-    fun a05_returnPreservesManuallyScrolledCalendarWeek() {
-        val harness = harness()
+    fun a04_nativePickerReopensLastChosenDay() {
+        val harness = harness(fontScale = 1f)
+        harness.awaitReady()
+        harness.selectYearAndAwait()
+        openMonth(DateInteractionFixture.RECENT_DATE)
+        dayNode(DateInteractionFixture.RECENT_DATE).performScrollTo().performClick()
+        harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.RECENT_DATE)
+        compose.onNodeWithText("返回原视图").performScrollTo().performClick()
+        harness.awaitQuery(RangeKey.Year)
+        harness.awaitReady()
+
+        val picker = compose.onNode(hasContentDescription("选择日期查看当天复盘") and hasClickAction())
+            .performScrollTo().assertIsDisplayed()
+        val bounds = picker.fetchSemanticsNode().boundsInRoot
+        val minimum = 48f * compose.density.density
+        assertTrue(bounds.width >= minimum - 0.5f && bounds.height >= minimum - 0.5f)
+        picker.performClick()
+        compose.onNodeWithText("查看当天").assertIsDisplayed().performClick()
+        harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.RECENT_DATE)
+        assertEquals(DateInteractionFixture.RECENT_DAY_TOKENS, harness.viewModel.uiState.value.visibleData?.summary?.effectiveTokens)
+        compose.onNodeWithText("返回原视图").performScrollTo().performClick()
+        harness.awaitQuery(RangeKey.Year)
+        harness.awaitReady()
+        monthNode(DateInteractionFixture.RECENT_DATE).assertIsFocused()
+    }
+
+    @Test
+    fun a05_returnPreservesManuallyScrolledCalendarMonth() {
+        val harness = harness(fontScale = 2f)
         harness.awaitReady()
         harness.selectYearAndAwait()
         val globalQuery = harness.viewModel.uiState.value.query
 
-        val openedCell = scrollCalendarToRecentWeeks()
-        val cellBefore = openedCell.fetchSemanticsNode().boundsInRoot
+        val openedMonth = monthNode(DateInteractionFixture.RECENT_DATE).performScrollTo().assertIsDisplayed()
+        val monthBefore = openedMonth.fetchSemanticsNode().boundsInRoot
 
-        openedCell.performClick()
+        openedMonth.performClick()
+        dayNode(DateInteractionFixture.RECENT_DATE).performScrollTo().performClick()
         harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.RECENT_DATE)
-        compose.onNodeWithText("返回日历").performScrollTo().performClick()
+        compose.onNodeWithText("返回原视图").performScrollTo().performClick()
         harness.awaitQuery(RangeKey.Year)
         harness.awaitReady()
 
         assertEquals(globalQuery, harness.viewModel.uiState.value.query)
         assertEquals(DashboardSection.Trends, harness.viewModel.uiState.value.section)
         assertNull(harness.viewModel.uiState.value.dayReviewReturn)
-        val restoredCell = dayNode(DateInteractionFixture.RECENT_DATE).assertIsDisplayed().assertIsFocused()
-        assertRectStable(cellBefore, restoredCell.fetchSemanticsNode().boundsInRoot, "restored date cell")
+        val restoredMonth = monthNode(DateInteractionFixture.RECENT_DATE).assertIsDisplayed().assertIsFocused()
+        assertRectStable(monthBefore, restoredMonth.fetchSemanticsNode().boundsInRoot, "restored month")
     }
 
     @Test
-    fun a05_paneSwitchPreservesManuallyScrolledCalendarWeek() {
-        val harness = harness()
+    fun a05_paneSwitchPreservesManuallyScrolledCalendarMonth() {
+        val harness = harness(fontScale = 1f)
         harness.awaitReady()
         harness.selectYearAndAwait()
 
-        val scrolledCell = scrollCalendarToRecentWeeks()
-        val cellBefore = scrolledCell.fetchSemanticsNode().boundsInRoot
+        val january = monthNode(DateInteractionFixture.EARLY_DATE).assertIsDisplayed()
+        val initialTop = january.fetchSemanticsNode().boundsInRoot.top
+        // 子页签属于同一滚动列表：保留可见点击区，同时制造非零阅读偏移。
+        compose.onNode(hasScrollToIndexAction()).performSemanticsAction(SemanticsActions.ScrollBy) {
+            it(0f, 24f * compose.density.density)
+        }
+        compose.waitForIdle()
+        val monthBefore = january.assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("calendar must have been manually scrolled", monthBefore.top < initialTop)
 
-        // Leaving Calendar and entering it again must not replay the default-position effect.
+        // 切换子页后保留手动阅读位置，不重新定位到年历顶部。
         compose.onNode(hasText("趋势") and hasClickAction()).performClick()
         compose.onNode(hasText("日历") and hasClickAction()).performClick()
-        val cellAfter = dayNode(DateInteractionFixture.RECENT_DATE).fetchSemanticsNode().boundsInRoot
-        assertRectStable(cellBefore, cellAfter, "pane-switch date cell")
+        val monthAfter = monthNode(DateInteractionFixture.EARLY_DATE).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertRectStable(monthBefore, monthAfter, "pane-switch month")
     }
 
     @Test
-    fun a05_newGlobalRangeStillAutoPositionsCalendarAtItsHighlightedWeek() {
+    fun a05_newGlobalRangeHighlightsMonthWithoutCroppingTrustedYear() {
         val harness = harness()
         harness.awaitReady()
         harness.selectYearAndAwait()
-        scrollCalendarToRecentWeeks()
+        monthNode(DateInteractionFixture.RECENT_DATE).performScrollTo()
 
         compose.runOnIdle { harness.viewModel.selectRange(RangeKey.Month) }
         harness.awaitQuery(RangeKey.Month)
         harness.awaitReady()
 
-        // The July range is positioned with its preceding week (6/22) at the left edge, rather
-        // than inheriting the manually scrolled Year position.
-        val monthAnchor = compose.onNodeWithText("6/22").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue("new global range must use its default calendar anchor", monthAnchor.left >= 20f)
+        val julyDescription = monthNode(DateInteractionFixture.RECENT_DATE)
+            .fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single()
+        assertTrue(julyDescription.contains("当前查询 1 日至 15 日"))
+        val januaryDescription = monthNode(DateInteractionFixture.EARLY_DATE)
+            .fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single()
+        assertFalse(januaryDescription.contains("当前查询"))
+        openMonth(DateInteractionFixture.EARLY_DATE)
+        dayNode(DateInteractionFixture.EARLY_DATE).performScrollTo().performClick()
+        harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.EARLY_DATE)
+        assertEquals(RangeKey.Month, harness.viewModel.uiState.value.dayReviewReturn?.query?.range)
     }
 
     @Test
-    fun a06_systemBackIsSingleLevelExitAndRestoresGlobalCellFocus() {
+    fun a06_systemBackIsSingleLevelExitAndRestoresMonthFocus() {
         val harness = harness("a06-system-back")
         harness.awaitReady()
         harness.selectYearAndAwait()
         val globalQuery = harness.viewModel.uiState.value.query
 
+        openMonth(DateInteractionFixture.RECENT_DATE)
         harness.observedClick(
             dayNode(DateInteractionFixture.RECENT_DATE), DateInteractionFixture.RECENT_DATE,
             "normal-recent", scrollFirst = true
         )
         harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.RECENT_DATE)
-        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithText("${DateInteractionFixture.RECENT_DATE} 当天复盘").assertIsDisplayed()
+        pressBack()
         harness.awaitQuery(RangeKey.Year)
         harness.awaitReady()
 
         assertEquals(globalQuery, harness.viewModel.uiState.value.query)
         assertEquals(DashboardSection.Trends, harness.viewModel.uiState.value.section)
         assertNull(harness.viewModel.uiState.value.dayReviewReturn)
-        dayNode(DateInteractionFixture.RECENT_DATE).assertIsDisplayed().assertIsFocused()
+        monthNode(DateInteractionFixture.RECENT_DATE).assertIsDisplayed().assertIsFocused()
     }
 
     @Test
     fun a06_primaryNavigationExitRestoresCalendarPaneQueryScrollAndFocus() {
-        val harness = harness()
+        val harness = harness(fontScale = 2f)
         harness.awaitReady()
         harness.selectYearAndAwait()
         val globalQuery = harness.viewModel.uiState.value.query
-        val openedCell = dayNode(DateInteractionFixture.EARLY_DATE).performScrollTo()
-        val cellBefore = openedCell.fetchSemanticsNode().boundsInRoot
-        val weekBefore = compose.onNodeWithText("1/12").fetchSemanticsNode().boundsInRoot
-        openedCell.performClick()
-        harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.EARLY_DATE)
+        val openedMonth = monthNode(DateInteractionFixture.RECENT_DATE).performScrollTo()
+        val monthBefore = openedMonth.fetchSemanticsNode().boundsInRoot
+        openedMonth.performClick()
+        dayNode(DateInteractionFixture.RECENT_DATE).performScrollTo().performClick()
+        harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.RECENT_DATE)
 
-        compose.onNode(hasText("概览") and hasClickAction()).performClick()
+        compose.onNode(hasText("额度") and hasClickAction()).performClick()
         harness.awaitQuery(RangeKey.Year)
-        compose.onNode(hasText("洞察") and hasClickAction()).performClick()
+        compose.onNode(hasText("用量") and hasClickAction()).performClick()
         harness.awaitReady()
 
         assertEquals(globalQuery, harness.viewModel.uiState.value.query)
         assertEquals(DashboardSection.Trends, harness.viewModel.uiState.value.section)
         assertNull(harness.viewModel.uiState.value.dayReviewReturn)
-        val restoredCell = dayNode(DateInteractionFixture.EARLY_DATE).assertIsDisplayed().assertIsFocused()
-        assertRectStable(cellBefore, restoredCell.fetchSemanticsNode().boundsInRoot, "navigation date cell")
-        assertRectStable(weekBefore, compose.onNodeWithText("1/12").fetchSemanticsNode().boundsInRoot, "navigation week anchor")
+        val restoredMonth = monthNode(DateInteractionFixture.RECENT_DATE).assertIsDisplayed().assertIsFocused()
+        assertRectStable(monthBefore, restoredMonth.fetchSemanticsNode().boundsInRoot, "navigation month")
+    }
+
+    @Test
+    fun a06_manualReadingAfterDayReturnDoesNotReplayPreviousMonthFocus() {
+        val harness = harness(fontScale = 2f)
+        harness.awaitReady()
+        harness.selectYearAndAwait()
+        openMonth(DateInteractionFixture.RECENT_DATE)
+        dayNode(DateInteractionFixture.RECENT_DATE).performScrollTo().performClick()
+        harness.awaitQuery(RangeKey.Custom, DateInteractionFixture.RECENT_DATE)
+        compose.onNodeWithText("返回原视图").performScrollTo().performClick()
+        harness.awaitQuery(RangeKey.Year)
+        harness.awaitReady()
+
+        val january = monthNode(DateInteractionFixture.EARLY_DATE).performScrollTo().assertIsDisplayed()
+        val monthBefore = january.fetchSemanticsNode().boundsInRoot
+        compose.onNode(hasText("额度") and hasClickAction()).performClick()
+        compose.onNode(hasText("用量") and hasClickAction()).performClick()
+        val restored = monthNode(DateInteractionFixture.EARLY_DATE).assertIsDisplayed()
+        assertRectStable(monthBefore, restored.fetchSemanticsNode().boundsInRoot, "new reading position")
     }
 
     @Test
@@ -213,6 +252,7 @@ class LedgerDateInteractionTest {
         harness.selectYearAndAwait()
         val global = harness.viewModel.uiState.value
 
+        openMonth(DateInteractionFixture.RECENT_DATE)
         harness.observedClick(
             dayNode(DateInteractionFixture.RECENT_DATE), DateInteractionFixture.RECENT_DATE,
             "normal-recent", scrollFirst = true
@@ -222,7 +262,7 @@ class LedgerDateInteractionTest {
         val delayedReturn = harness.source.holdNext(
             matches = { it.range == RangeKey.Year }
         )
-        compose.onNodeWithText("返回日历").performScrollTo().performClick()
+        compose.onNodeWithText("返回原视图").performScrollTo().performClick()
         compose.waitUntil(5_000) { delayedReturn.request != null }
 
         val whileWaiting = harness.viewModel.uiState.value
@@ -244,6 +284,7 @@ class LedgerDateInteractionTest {
             matches = { it.start == DateInteractionFixture.EARLY_DATE },
             ignoreCancellation = true
         )
+        openMonth(DateInteractionFixture.EARLY_DATE)
         dayNode(DateInteractionFixture.EARLY_DATE).performScrollTo().performClick()
         compose.waitUntil(5_000) { oldDay.request != null }
         compose.runOnIdle {
@@ -264,17 +305,74 @@ class LedgerDateInteractionTest {
         assertNull(latest.error)
     }
 
-    private fun dayNode(date: String) = compose.onNode(
-        hasContentDescription(date, substring = true)
+    private fun dayNode(date: String) = LocalDate.parse(date).let {
+        compose.onNode(descriptionStartsWith("${it.monthValue}月${it.dayOfMonth}日，"))
+    }
+
+    private fun monthNode(date: String) = compose.onNode(
+        descriptionStartsWith("${LocalDate.parse(date).monthValue}月：") and hasClickAction()
     )
 
-    private fun scrollCalendarToRecentWeeks() =
-        // This performs the calendar's real horizontal ScrollTo semantics action, which is also
-        // available to accessibility services. It leaves the latest selectable week in view.
-        dayNode(DateInteractionFixture.RECENT_DATE).performScrollTo().assertIsDisplayed()
+    private fun descriptionStartsWith(prefix: String) = SemanticsMatcher("description starts with $prefix") { node ->
+        node.config.getOrNull(SemanticsProperties.ContentDescription)?.singleOrNull()?.startsWith(prefix) == true
+    }
 
-    private fun harness(diagnosticTestId: String? = null): Harness = DateInteractionFixture.createHarness(
-        compose, diagnosticTestId = diagnosticTestId
+    private fun openMonth(date: String) {
+        monthNode(date).performScrollTo().performClick()
+        compose.onNodeWithText(YearMonth.from(LocalDate.parse(date)).toString()).assertIsDisplayed()
+    }
+
+    private fun pressBack() {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+    }
+
+    private fun assertYearCoverageAndTargets() {
+        val cutoff = LocalDate.parse(DateInteractionFixture.CUTOFF_DATE)
+        val selectableDates = mutableSetOf<String>()
+        val minimumCellPx = 48f * compose.density.density
+        for (month in 1..cutoff.monthValue) {
+            val yearMonth = YearMonth.of(cutoff.year, month)
+            openMonth(yearMonth.atDay(1).toString())
+            val cells = compose.onAllNodes(calendarCellMatcher, useUnmergedTree = true).fetchSemanticsNodes()
+            assertEquals(yearMonth.lengthOfMonth(), cells.size)
+            for (day in 1..yearMonth.lengthOfMonth()) {
+                val date = yearMonth.atDay(day)
+                val node = dayNode(date.toString()).fetchSemanticsNode()
+                if (date <= cutoff) {
+                    assertTrue("$date must be selectable", node.config.contains(SemanticsActions.OnClick))
+                    assertTrue("date must appear once", selectableDates.add(date.toString()))
+                } else {
+                    dayNode(date.toString()).assertIsNotEnabled()
+                    assertFalse("$date must not have a click action", node.config.contains(SemanticsActions.OnClick))
+                }
+            }
+            // 每周取一个可见日格核对几何；390dp 常规字号下不接受缩小或重叠触点。
+            for (day in 1..yearMonth.lengthOfMonth() step 7) {
+                val date = yearMonth.atDay(day)
+                if (date > cutoff) break
+                val target = dayNode(date.toString()).performScrollTo().fetchSemanticsNode()
+                assertTrue("visible date width must be at least 48dp", target.boundsInRoot.width >= minimumCellPx - 0.5f)
+                assertTrue("visible date height must be at least 48dp", target.boundsInRoot.height >= minimumCellPx - 0.5f)
+                val visible = compose.onAllNodes(calendarCellMatcher and hasClickAction(), useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .filter { it.boundsInRoot.width >= minimumCellPx - 0.5f && it.boundsInRoot.height >= minimumCellPx - 0.5f }
+                visible.forEachIndexed { index, cell ->
+                    visible.drop(index + 1).forEach { other ->
+                        assertFalse("visible calendar click targets must not overlap", overlaps(cell.boundsInRoot, other.boundsInRoot))
+                    }
+                }
+            }
+            pressBack()
+        }
+        assertEquals(196, selectableDates.size)
+        assertTrue("coverage starts at the year boundary", selectableDates.contains("2026-01-01"))
+        assertTrue("coverage includes the cutoff", selectableDates.contains(DateInteractionFixture.CUTOFF_DATE))
+        assertFalse(selectableDates.contains(DateInteractionFixture.FUTURE_DATE))
+    }
+
+    private fun harness(diagnosticTestId: String? = null, fontScale: Float? = null): Harness = DateInteractionFixture.createHarness(
+        compose, diagnosticTestId = diagnosticTestId, fontScale = fontScale
     ).also {
         activeHarness = it
     }
@@ -295,11 +393,11 @@ class LedgerDateInteractionTest {
     }
 
     private companion object {
-        val calendarCellMatcher = SemanticsMatcher("selectable YYYY-MM-DD calendar cell") { node ->
+        val calendarCellMatcher = SemanticsMatcher("month-panel date cell") { node ->
             val description = node.config.getOrNull(SemanticsProperties.ContentDescription)
                 ?.singleOrNull()
                 .orEmpty()
-            description.matches(Regex("^\\d{4}-\\d{2}-\\d{2}，有效 Token .+，查看当天复盘$"))
+            description.matches(Regex("^\\d{1,2}月\\d{1,2}日，.+$"))
         }
     }
 }
