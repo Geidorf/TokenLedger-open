@@ -49,6 +49,7 @@ internal fun InsightPane.v2CompanionPane(): InsightPane? = when (this) {
     InsightPane.Trend -> InsightPane.Calendar
     InsightPane.Calendar -> InsightPane.Trend
     InsightPane.Details -> InsightPane.Trend
+    InsightPane.Sessions -> InsightPane.Trend
     else -> null
 }
 
@@ -77,6 +78,20 @@ internal fun v2PaneArrangement(
     destination == MobileDestination.Me -> V2PaneArrangement.Split
     else -> V2PaneArrangement.Spread
 }
+
+/**
+ * 独立页面按实际窗口宽度取布局：窄窗口铺满，宽窗口单栏限宽居中，
+ * Expanded 且正文字号未放大时才拆双栏。调用方不应拿导航侧轨的 wide 代替窗口宽度。
+ */
+internal fun v2WidePageArrangement(widthDp: Int, fontScale: Float): V2PaneArrangement = when {
+    v2WindowWidthClass(widthDp) == V2WindowWidthClass.Compact -> V2PaneArrangement.Full
+    v2UsesTwoPane(widthDp, fontScale) -> V2PaneArrangement.Split
+    else -> V2PaneArrangement.Centered
+}
+
+/** 目的地内容用实际窗口宽度限宽；大字号只会关掉双栏，不该让宽窗口退回铺满。 */
+internal fun v2UsesWideContentFrame(widthDp: Int, navigationWide: Boolean): Boolean =
+    navigationWide || v2WindowWidthClass(widthDp) != V2WindowWidthClass.Compact
 
 /**
  * 按 [arrangement] 摆一栏或两栏。两栏各占一半；每栏的列表自带左右 14dp 内边距，

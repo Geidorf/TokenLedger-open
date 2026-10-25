@@ -2,6 +2,7 @@ package com.jeidorf.tokenledger.mobile.ui.sources
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,11 +29,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -64,6 +72,8 @@ import com.jeidorf.tokenledger.mobile.entityKindLabel
 import com.jeidorf.tokenledger.mobile.formatInteger
 import com.jeidorf.tokenledger.mobile.formatSharePercent
 import com.jeidorf.tokenledger.mobile.isLandscapeOrCompactHeight
+import com.jeidorf.tokenledger.mobile.ui.adaptive.V2AdaptivePanes
+import com.jeidorf.tokenledger.mobile.ui.adaptive.V2PaneArrangement
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2HeatmapCard
 import com.jeidorf.tokenledger.mobile.ui.charts.V2LineLegend
 import com.jeidorf.tokenledger.mobile.ui.charts.V2TrendChart
@@ -82,6 +92,7 @@ import com.jeidorf.tokenledger.mobile.ui.foundation.v2ShortDateTime
 import com.jeidorf.tokenledger.mobile.ui.hero.V2KpiGrid
 import com.jeidorf.tokenledger.mobile.ui.hero.V2MetricDivider
 import com.jeidorf.tokenledger.mobile.ui.hero.V2MiniMetric
+import com.jeidorf.tokenledger.mobile.ui.navigation.v2ScrolledUnder
 import com.jeidorf.tokenledger.mobile.ui.quota.V2QuotaStateCard
 import com.jeidorf.tokenledger.mobile.ui.trend.normalizedDataBarFraction
 import com.jeidorf.tokenledger.mobile.v2FormatNumber
@@ -99,17 +110,31 @@ internal fun V2EntityContent(
     palette: MobileV2Palette,
     state: DashboardUiState,
     displayedStats: StatsData?,
-    wide: Boolean,
+    arrangement: V2PaneArrangement,
     tokenDisplayMode: TokenDisplayMode,
     onTokenDisplayModeChange: (TokenDisplayMode) -> Unit,
     onFilter: () -> Unit,
     onOpenModel: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRefresh: () -> Unit,
-    onSearchChange: ((String?) -> Unit)? = null
+    onSearchChange: ((String?) -> Unit)? = null,
+    onScrolledUnderChange: (Boolean) -> Unit = {}
 ) {
     val stats = displayedStats
     val entity = stats?.entityDashboard
+    val split = arrangement == V2PaneArrangement.Split
+    // 两个列表的状态放在布局分支外：切到单栏再切回双栏时，主栏仍从原位置继续。
+    val primaryListState = rememberLazyListState()
+    val secondaryListState = rememberLazyListState()
+    val reportScrolledUnder by rememberUpdatedState(onScrolledUnderChange)
+    LaunchedEffect(primaryListState, stats, entity) {
+        if (stats == null || entity == null || !stats.capabilities.entityDashboard) {
+            reportScrolledUnder(false)
+            return@LaunchedEffect
+        }
+        // 顶栏只跟随主栏；副栏滚动不参与同一状态，避免两列表累计成一次位移。
+        snapshotFlow { primaryListState.v2ScrolledUnder() }.collect { reportScrolledUnder(it) }
+    }
     when {
         stats == null && state.dashboardLoading -> V2LoadingState(
             palette = palette,
@@ -129,88 +154,122 @@ internal fun V2EntityContent(
             action = "重试",
             onAction = onRefresh
         )
-        else -> LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item(key = "entity-hero", contentType = "hero") {
-                V2EntityHeroCard(
-                    palette = palette,
-                    entity = entity,
-                    stats = stats,
-                    tokenDisplayMode = tokenDisplayMode,
-                    onTokenDisplayModeChange = onTokenDisplayModeChange
-                )
-            }
-            item(key = "entity-kpis", contentType = "metrics") {
-                V2KpiGrid(palette, stats, tokenDisplayMode, wide)
-            }
-            item(key = "entity-context", contentType = "context") {
-                V2EntityContextCard(palette, entity, tokenDisplayMode)
-            }
-            if (entity.entity.kind == DashboardEntity.TOOL && entity.composition.models.isNotEmpty()) {
-                item(key = "entity-models-heading", contentType = "heading") {
-                    V2PlainSectionHeader(palette, "模型组成", "点击模型继续下钻")
+        else -> {
+            fun LazyListScope.primaryItems() {
+                item(key = "entity-hero", contentType = "hero") {
+                    V2EntityHeroCard(
+                        palette = palette,
+                        entity = entity,
+                        stats = stats,
+                        tokenDisplayMode = tokenDisplayMode,
+                        onTokenDisplayModeChange = onTokenDisplayModeChange
+                    )
                 }
-                item(key = "entity-models", contentType = "sources") {
-                    V2EntityModelsCard(palette, entity, tokenDisplayMode, onOpenModel)
+                item(key = "entity-kpis", contentType = "metrics") {
+                    // KPI 看左栏实际可用宽度，不拿整窗宽度强行排成四列。
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        V2KpiGrid(palette, stats, tokenDisplayMode, wide = maxWidth >= 560.dp)
+                    }
                 }
-            }
-            item(key = "entity-calendar-heading", contentType = "heading") {
-                V2PlainSectionHeader(palette, "活跃日历", "近12周历史参照 · 保留来源筛选")
-            }
-            item(key = "entity-calendar", contentType = "chart") {
-                V2HeatmapCard(palette, buildInsightCalendarAxis(stats.copy(heatmap = entity.heatmap), state.query), compact = true, onClick = null)
-            }
-            item(key = "entity-details-heading", contentType = "heading") {
-                V2PlainSectionHeader(
-                    palette,
-                    "最近明细",
-                    "${detailGranularityLabel(entity.historyPage.granularity, entity.historyPage.items)} · 显示实际桶时间"
-                )
-            }
-            items(
-                items = entity.historyPage.items,
-                key = { "entity-detail-${it.timestamp}|${it.id}" },
-                contentType = { "detail" }
-            ) { detail ->
-                V2DetailRow(
-                    palette,
-                    detail,
-                    tokenDisplayMode,
-                    granularity = entity.historyPage.granularity,
-                    onFilterSession = onSearchChange?.let { fn -> { fn(it) } }
-                )
-            }
-            when {
-                state.showingCachedData && entity.historyPage.hasMore -> item(
-                    key = "entity-pagination-offline",
-                    contentType = "status"
-                ) {
-                    V2QuotaStateCard(palette, "离线快照", "恢复联网并刷新后可继续加载来源明细。")
+                item(key = "entity-context", contentType = "context") {
+                    V2EntityContextCard(palette, entity, tokenDisplayMode)
                 }
-                entity.historyPage.hasMore && state.paginationError == null -> item(key = "entity-pagination", contentType = "action") {
-                    OutlinedButton(
-                        onClick = onLoadMore,
-                        enabled = !state.loadingMore && !state.dashboardLoading,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        border = BorderStroke(1.dp, palette.divider)
-                    ) {
-                        Text(if (state.loadingMore) "载入中…" else "加载更多", color = palette.text)
+                if (entity.entity.kind == DashboardEntity.TOOL && entity.composition.models.isNotEmpty()) {
+                    item(key = "entity-models-heading", contentType = "heading") {
+                        V2PlainSectionHeader(palette, "模型组成", "点击模型继续下钻")
+                    }
+                    item(key = "entity-models", contentType = "sources") {
+                        V2EntityModelsCard(palette, entity, tokenDisplayMode, onOpenModel)
                     }
                 }
             }
-            state.paginationError?.let { error ->
-                item(key = "entity-pagination-error", contentType = "status") {
-                    V2PaginationErrorCard(
-                        palette = palette,
-                        error = error,
-                        loading = state.loadingMore,
-                        onRetry = onLoadMore
+
+            fun LazyListScope.secondaryItems() {
+                item(key = "entity-calendar-heading", contentType = "heading") {
+                    V2PlainSectionHeader(palette, "活跃日历", "近12周历史参照 · 保留来源筛选")
+                }
+                item(key = "entity-calendar", contentType = "chart") {
+                    V2HeatmapCard(palette, buildInsightCalendarAxis(stats.copy(heatmap = entity.heatmap), state.query), compact = true, onClick = null)
+                }
+                item(key = "entity-details-heading", contentType = "heading") {
+                    V2PlainSectionHeader(
+                        palette,
+                        "最近明细",
+                        "${detailGranularityLabel(entity.historyPage.granularity, entity.historyPage.items)} · 显示实际桶时间"
                     )
                 }
+                items(
+                    items = entity.historyPage.items,
+                    key = { "entity-detail-${it.timestamp}|${it.id}" },
+                    contentType = { "detail" }
+                ) { detail ->
+                    V2DetailRow(
+                        palette,
+                        detail,
+                        tokenDisplayMode,
+                        granularity = entity.historyPage.granularity,
+                        onFilterSession = onSearchChange?.let { fn -> { fn(it) } }
+                    )
+                }
+                when {
+                    state.showingCachedData && entity.historyPage.hasMore -> item(
+                        key = "entity-pagination-offline",
+                        contentType = "status"
+                    ) {
+                        V2QuotaStateCard(palette, "离线快照", "恢复联网并刷新后可继续加载来源明细。")
+                    }
+                    entity.historyPage.hasMore && state.paginationError == null -> item(key = "entity-pagination", contentType = "action") {
+                        OutlinedButton(
+                            onClick = onLoadMore,
+                            enabled = !state.loadingMore && !state.dashboardLoading,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            border = BorderStroke(1.dp, palette.divider)
+                        ) {
+                            Text(if (state.loadingMore) "载入中…" else "加载更多", color = palette.text)
+                        }
+                    }
+                }
+                state.paginationError?.let { error ->
+                    item(key = "entity-pagination-error", contentType = "status") {
+                        V2PaginationErrorCard(
+                            palette = palette,
+                            error = error,
+                            loading = state.loadingMore,
+                            onRetry = onLoadMore
+                        )
+                    }
+                }
             }
+
+            V2AdaptivePanes(
+                arrangement = arrangement,
+                primary = { paneModifier ->
+                    LazyColumn(
+                        modifier = if (split) paneModifier.testTag("wide-entity-primary") else paneModifier,
+                        state = primaryListState,
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        primaryItems()
+                        // 单栏保持原有纵向顺序；双栏时日历和明细归右栏。
+                        if (!split) secondaryItems()
+                    }
+                },
+                secondary = if (split) {
+                    @Composable { paneModifier: Modifier ->
+                        LazyColumn(
+                            modifier = paneModifier.testTag("wide-entity-secondary"),
+                            state = secondaryListState,
+                            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            secondaryItems()
+                        }
+                    }
+                } else {
+                    null
+                }
+            )
         }
     }
 }
