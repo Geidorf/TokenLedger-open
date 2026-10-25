@@ -31,6 +31,26 @@ for (const layout of layouts) {
     const card = page.getByRole('region', { name: '最贵的会话' });
     const entry = card.getByRole('button', { name: openLabel, exact: true });
     await expect(entry).toBeVisible();
+    await entry.scrollIntoViewIfNeeded();
+    // GLB-03：报告里的会话入口必须保留 44px 触控目标，
+    // 断言真实浏览器渲染出的点击目标高度，而不是源码里的样式字符串。
+    const entryBox = await entry.boundingBox();
+    expect(entryBox).not.toBeNull();
+    expect(entryBox!.height).toBeGreaterThanOrEqual(44);
+    const viewport = page.viewportSize()!;
+    const probeX = Math.min(
+      Math.max(entryBox!.x + entryBox!.width / 2, 0),
+      viewport.width - 1,
+    );
+    const probeY = Math.min(
+      Math.max(entryBox!.y + entryBox!.height / 2, 0),
+      viewport.height - 1,
+    );
+    const hitTarget = await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      return el?.closest('button')?.getAttribute('aria-label') ?? null;
+    }, [probeX, probeY]);
+    expect(hitTarget).toBe(openLabel);
     await expect(card).toContainText(layout.lang === 'en' ? 'full local session' : '完整会话');
     await card.scrollIntoViewIfNeeded();
     await expectNoHorizontalOverflow(page);
