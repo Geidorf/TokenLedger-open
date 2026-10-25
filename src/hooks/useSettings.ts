@@ -27,6 +27,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function mergePendingSettings(
+  loaded: AppSettings,
+  pending: AppSettings | null,
+  base: AppSettings | null,
+) {
+  if (!pending) return loaded;
+  const merged = { ...loaded };
+  for (const key of Object.keys(pending) as (keyof AppSettings)[]) {
+    if (pending[key] !== base?.[key]) {
+      Object.assign(merged, { [key]: pending[key] });
+    }
+  }
+  return merged;
+}
+
 function validatePricesConfig(value: unknown): string | null {
   if (!isRecord(value)) return '价格表必须是 JSON 对象';
 
@@ -98,6 +113,7 @@ export function useSettings({
 
   const settingsDebounceTimer = useRef<number | null>(null);
   const pendingSettingsRef = useRef<AppSettings | null>(null);
+  const pendingSettingsBaseRef = useRef<AppSettings | null>(null);
   /** 编辑器载入价格表时默认价格表的修订号；保存时交给后端核对，防止把旧默认价当成自定义价格。 */
   const pricesRevisionRef = useRef<number | null>(null);
   const pricesRequestId = useRef(0);
@@ -110,9 +126,14 @@ export function useSettings({
     });
   }, []);
 
-  const loadSettings = useCallback(async (silent = false): Promise<boolean> => {
+  const loadSettings = useCallback(async (silent = false, preservePending = false): Promise<boolean> => {
     try {
-      setAppSettings(await invoke<AppSettings>('get_settings'));
+      const loaded = await invoke<AppSettings>('get_settings');
+      setAppSettings(
+        preservePending
+          ? mergePendingSettings(loaded, pendingSettingsRef.current, pendingSettingsBaseRef.current)
+          : loaded,
+      );
       return true;
     } catch (err) {
       if (!silent) showMessage('error', `读取设置失败: ${err}`);
@@ -205,11 +226,10 @@ export function useSettings({
   const saveAppSettings = useCallback(async (next: AppSettings): Promise<boolean> => {
     setBusy((p: any) => ({ ...p, settings: true }));
     try {
-      const res = await invoke<{ message: string; settings: AppSettings; quotaCleanupPending?: boolean; wallpaperWarning?: string; autostartWarning?: string }>('save_settings', { settings: next });
+      const res = await invoke<{ message: string; settings: AppSettings; quotaCleanupPending?: boolean; wallpaperWarning?: string }>('save_settings', { settings: next });
       setAppSettings(res.settings);
       setWallpaperError(res.wallpaperWarning || '');
-      const warning = res.wallpaperWarning || res.autostartWarning;
-      showMessage(warning ? 'warning' : res.quotaCleanupPending ? 'info' : 'success', warning || res.message);
+      showMessage(res.wallpaperWarning ? 'warning' : res.quotaCleanupPending ? 'info' : 'success', res.wallpaperWarning || res.message);
       if (
         next.quota_codex_local_enabled !== appSettings.quota_codex_local_enabled
         || next.quota_claude_enabled !== appSettings.quota_claude_enabled
@@ -237,26 +257,55 @@ export function useSettings({
       settingsDebounceTimer.current = null;
     }
     pendingSettingsRef.current = null;
+    pendingSettingsBaseRef.current = null;
   }, []);
 
+  const autostartMutationRef = useRef(false);
+  const setAutostartEnabled = useCallback(async (enabled: boolean): Promise<boolean> => {
+    if (autostartMutationRef.current) return false;
+    autostartMutationRef.current = true;
+    setBusy((p: any) => ({ ...p, settings: true }));
+    try {
+      const saved = await invoke<AppSettings>('set_autostart_enabled', { enabled });
+      setAppSettings(
+        mergePendingSettings(saved, pendingSettingsRef.current, pendingSettingsBaseRef.current),
+      );
+      showMessage('success', enabled ? '已开启系统登录自启' : '已关闭系统登录自启');
+      return true;
+    } catch (err) {
+      showMessage('error', `保存系统登录自启失败: ${err}`);
+      await loadSettings(true, true);
+      return false;
+    } finally {
+      autostartMutationRef.current = false;
+      setBusy((p: any) => ({ ...p, settings: false }));
+    }
+  }, [loadSettings, setBusy, showMessage]);
+
   const updateSetting = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    if (key === 'autostart_enabled') {
+      return setAutostartEnabled(value as boolean);
+    }
     if (
       key === 'wallpaper_use_cloud'
       && value === true
       && !(cloudStatus.authenticated && cloudSetup.capabilityVerified && cloudSetup.firstSyncCompleted)
     ) {
       showMessage('warning', '请先完成登录、Stats v2 验证和首次同步');
-      return;
+      return false;
     }
     clearPendingSettings();
     const next = { ...appSettings, [key]: value };
     setAppSettings(next);
-    void saveAppSettings(next);
-  }, [appSettings, clearPendingSettings, cloudSetup.capabilityVerified, cloudSetup.firstSyncCompleted, cloudStatus.authenticated, saveAppSettings, showMessage]);
+    return saveAppSettings(next);
+  }, [appSettings, clearPendingSettings, cloudSetup.capabilityVerified, cloudSetup.firstSyncCompleted, cloudStatus.authenticated, saveAppSettings, setAutostartEnabled, showMessage]);
 
   const updateSettingDebounced = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     const next = { ...appSettings, [key]: value };
     setAppSettings(next);
+    if (pendingSettingsRef.current === null) {
+      pendingSettingsBaseRef.current = appSettings;
+    }
     pendingSettingsRef.current = next;
     if (settingsDebounceTimer.current !== null) window.clearTimeout(settingsDebounceTimer.current);
     settingsDebounceTimer.current = window.setTimeout(() => {
@@ -592,6 +641,7 @@ export function useSettings({
     loadDbInfo,
     saveAppSettings,
     clearPendingSettings,
+    setAutostartEnabled,
     updateSetting,
     updateSettingDebounced,
     flushSettingsDebounced,

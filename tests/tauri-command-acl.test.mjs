@@ -128,9 +128,9 @@ function validatePolicy(policy) {
   }
 }
 
-test('all 149 registered commands have generated permissions and exact per-window grants', () => {
+test('all 151 registered commands have generated permissions and exact per-window grants', () => {
   const policy = productionPolicy();
-  assert.equal(policy.registered.length, 149, 'review the surface matrix when adding or removing an application command');
+  assert.equal(policy.registered.length, 151, 'review the surface matrix when adding or removing an application command');
   validatePolicy(policy);
 });
 
@@ -145,6 +145,9 @@ test('settings and data writes remain main-only across every capability', () => 
   const policy = productionPolicy();
   for (const label of ['widget', 'desktop-widget', 'wallpaper']) {
     const actual = grants(policy, label);
+    for (const command of ['get_autostart_status', 'set_autostart_enabled']) {
+      assert.ok(!actual.has(allow(command)), `${label} must not manage login startup`);
+    }
     for (const command of ['save_settings', 'save_cloud_config', 'sync_to_supabase', 'cleanup_db', 'clear_quota_snapshots', 'update_wallpaper', 'preview_wallpaper', 'preview_claude_statusline_setup', 'apply_claude_statusline_setup', 'restore_claude_statusline_setup', 'detect_quota_sources', 'get_quota_alert_settings', 'set_quota_alert_settings', 'list_quota_balance_sources', 'set_quota_balance_source', 'list_quota_experimental_plans', 'set_quota_experimental_plan', 'local_backup_export', 'local_backup_preview', 'local_backup_apply', 'local_backup_save_auto', 'local_backup_run_auto_now', 'local_backup_db_repair', 'local_backup_quit']) {
       assert.ok(!actual.has(allow(command)), `${label} must not call ${command}`);
     }

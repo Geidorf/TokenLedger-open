@@ -2170,10 +2170,19 @@ export function installDevMockTauri() {
         };
       case 'get_settings':
         return mockSettings;
+      case 'autostart_supported':
+        return false;
+      case 'get_autostart_status':
+        return { supported: false, enabled: null, error: null };
+      case 'set_autostart_enabled':
+        if (typeof payload.enabled !== 'boolean') throw new Error('登录启动设置无效');
+        mockSettings = { ...mockSettings, autostart_enabled: payload.enabled };
+        return mockSettings;
       case 'save_settings':
         mockSettings = normalizeMockClaudeToggles({
           ...mockSettings,
           ...((payload.settings || {}) as Partial<AppSettings>),
+          autostart_enabled: mockSettings.autostart_enabled,
           quota_custom_endpoints: mockSettings.quota_custom_endpoints,
           quota_snapshot_sync_enabled: mockSettings.quota_snapshot_sync_enabled,
           model_access_enabled: mockSettings.model_access_enabled,

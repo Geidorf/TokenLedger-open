@@ -57,7 +57,10 @@ Starting the gateway requires at least one usable provider. If a prerequisite su
 
 In **Settings › Scan & startup**:
 
+- **Start at login**: off by default. On Windows, macOS and Linux, this registers a login item for the current user. The switch shows the state read from the operating system. Use Retry if reading fails; if the system blocks startup or requires background approval, follow the message and check the system settings before retrying.
 - **Start minimized to tray**: the main window stays hidden at startup and TokenLedger waits in the tray.
 - **Scan interval**: about 15 minutes by default, 1 minute minimum.
 
 To force the main window to show for one launch, start with `--show` (macOS: `open -n /Applications/tokenledger.app --args --show`).
+
+Login startup and minimizing are independent choices. Opening the app again does not restore an item disabled or removed in system settings. Saving other settings or restoring a backup does not enable login startup. A failed change reports the error and attempts to restore the original registration; if recovery also fails, check the app's entry in system startup settings.

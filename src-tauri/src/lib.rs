@@ -1048,6 +1048,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::autostart_supported,
+            commands::get_autostart_status,
+            commands::set_autostart_enabled,
             commands::magpie_import::magpie_import_status,
             commands::magpie_import::magpie_import_run,
             commands::magpie_import::magpie_import_clear,

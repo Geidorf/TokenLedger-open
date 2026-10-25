@@ -1,8 +1,8 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
-import type { ModelsDevCandidate } from '../types';
+import { DEFAULT_SETTINGS, type ModelsDevCandidate } from '../types';
 import { useSettings } from './useSettings';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -99,6 +99,89 @@ describe('useSettings 设置回读结果（T10.311c）', () => {
     await act(async () => { expect(await result.current.loadSettings(true)).toBe(false); });
 
     expect(props.showMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSettings 系统登录自启', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  it('专用 setter 成功时更新 busy、应用完整设置，并阻止快速重复操作', async () => {
+    const saved = { ...DEFAULT_SETTINGS, autostart_enabled: true, start_minimized: true };
+    invokeMock.mockResolvedValue(saved);
+    const { result, props, unmount } = renderSettings();
+
+    await act(async () => {
+      const first = result.current.updateSetting('autostart_enabled', true);
+      const second = result.current.updateSetting('autostart_enabled', true);
+      await Promise.all([first, second]);
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('set_autostart_enabled', { enabled: true });
+      expect(result.current.appSettings.start_minimized).toBe(true);
+      expect(props.showMessage).toHaveBeenCalledWith('success', '已开启系统登录自启');
+    });
+    expect(invokeMock.mock.calls.filter(([command]) => command === 'set_autostart_enabled')).toHaveLength(1);
+    expect(invokeMock.mock.calls.some(([command]) => command === 'save_settings')).toBe(false);
+
+    const busyValues = props.setBusy.mock.calls.map(([update]) => update({ settings: false }).settings);
+    expect(busyValues).toEqual([true, false]);
+    unmount();
+  });
+
+  it('专用 setter 失败时显示明确错误、重读设置，并保留未落盘的扫描间隔草稿', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'set_autostart_enabled') throw new Error('access denied');
+      if (command === 'get_settings') {
+        return { ...DEFAULT_SETTINGS, scan_interval_secs: 900, start_minimized: true };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const { result, props, unmount } = renderSettings();
+
+    await act(async () => {
+      result.current.updateSettingDebounced('scan_interval_secs', 60);
+      await result.current.updateSetting('autostart_enabled', true);
+    });
+
+    await waitFor(() => {
+      expect(props.showMessage).toHaveBeenCalledWith(
+        'error',
+        '保存系统登录自启失败: Error: access denied',
+      );
+      expect(invokeMock).toHaveBeenCalledWith('get_settings');
+    });
+    expect(result.current.appSettings.scan_interval_secs).toBe(60);
+    expect(result.current.appSettings.start_minimized).toBe(true);
+    expect(invokeMock.mock.calls.some(([command]) => command === 'save_settings')).toBe(false);
+    act(() => result.current.clearPendingSettings());
+    unmount();
+  });
+
+  it('普通设置继续走 save_settings，不调用自启专用命令', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'get_settings') return DEFAULT_SETTINGS;
+      return {
+        message: '设置已保存',
+        settings: { ...DEFAULT_SETTINGS, start_minimized: true },
+      };
+    });
+    const { result, unmount } = renderSettings();
+
+    await act(async () => {
+      await result.current.updateSetting('start_minimized', true);
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('save_settings', {
+        settings: { ...DEFAULT_SETTINGS, start_minimized: true },
+      });
+    });
+    expect(invokeMock.mock.calls.some(([command]) => command === 'set_autostart_enabled')).toBe(false);
+    act(() => result.current.clearPendingSettings());
+    unmount();
   });
 });
 

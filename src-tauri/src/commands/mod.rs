@@ -510,6 +510,36 @@ pub fn autostart_supported() -> bool {
 }
 
 #[tauri::command]
+pub async fn get_autostart_status() -> Result<crate::autostart::Status, String> {
+    tauri::async_runtime::spawn_blocking(crate::autostart::status)
+        .await
+        .map_err(|_| "读取登录启动状态的任务失败，请重试。".to_string())
+}
+
+#[tauri::command]
+pub async fn set_autostart_enabled(
+    state: tauri::State<'_, Arc<AppContext>>,
+    settings_state: tauri::State<'_, Arc<Mutex<crate::settings::AppSettings>>>,
+    enabled: bool,
+) -> Result<crate::settings::AppSettings, String> {
+    let app = state.inner().clone();
+    let runtime_settings = settings_state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = runtime_settings
+            .lock()
+            .map_err(|_| "设置状态暂不可用，请重试。".to_string())?;
+        // 锁顺序与普通设置保存一致；系统登记成功后才持久化这一字段。
+        let next = crate::autostart::change_with_persistence(enabled, || {
+            settings::update_autostart_enabled(&app, enabled)
+        })?;
+        *guard = next.clone();
+        Ok(next)
+    })
+    .await
+    .map_err(|_| "更新登录启动状态的任务失败，请重试。".to_string())?
+}
+
+#[tauri::command]
 pub async fn save_settings(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppContext>>,
@@ -536,13 +566,6 @@ pub async fn save_settings(
         )
         .await;
     let settings = settings::load_settings(state.inner());
-    let autostart_warning = if previous.autostart_enabled != settings.autostart_enabled {
-        crate::autostart::apply(settings.autostart_enabled)
-            .err()
-            .map(|error| format!("设置已保存，但开机自动启动没有生效：{error}"))
-    } else {
-        None
-    };
     // 桌面小组件随设置页开关即时创建/移除（T10.110）。
     crate::widget_window::sync_desktop_widget_from_settings(&app_handle, &settings);
     // 切换 macOS 菜单栏标题开关要立即生效，不等下一次后台扫描周期（R-52）。
@@ -593,8 +616,7 @@ pub async fn save_settings(
         "message": quota_sync_warning.unwrap_or_else(|| "保存设置成功".to_string()),
         "settings": settings,
         "quotaCleanupPending": quota_cleanup_pending,
-        "wallpaperWarning": wallpaper_warning,
-        "autostartWarning": autostart_warning
+        "wallpaperWarning": wallpaper_warning
     }))
 }
 

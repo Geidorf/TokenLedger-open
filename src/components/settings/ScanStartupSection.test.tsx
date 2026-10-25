@@ -1,10 +1,25 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ScanStartupSection, parseExtraDirs, scanFrequencyHint } from "./ScanStartupSection";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
+
+function autostartStatus(
+  overrides: Partial<{
+    supported: boolean;
+    enabled: boolean | null;
+    error: string | null;
+  }> = {},
+) {
+  return {
+    supported: true,
+    enabled: false,
+    error: null,
+    ...overrides,
+  };
+}
 
 const props = {
   appSettings: { scan_interval_secs: 900 },
@@ -17,39 +32,201 @@ const props = {
 describe("ScanStartupSection", () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    invokeMock.mockRejectedValue(new Error("unknown command"));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_autostart_status") {
+        return autostartStatus({ supported: false, enabled: null });
+      }
+      throw new Error("unknown command");
+    });
   });
 
-  it("后端说本平台支持（Linux）时显示开机自动启动开关并保存", async () => {
-    invokeMock.mockResolvedValue(true);
+  it("开关以系统真实登记状态为准，不采用旧偏好", async () => {
+    invokeMock.mockResolvedValue(autostartStatus({ enabled: false }));
+    const onSettingChange = vi.fn();
+    render(<ScanStartupSection {...props}
+      appSettings={{ ...props.appSettings, autostart_enabled: true }}
+      onSettingChange={onSettingChange}
+    />);
+    const toggle = await screen.findByRole("switch", { name: "开机自动启动" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(invokeMock).toHaveBeenCalledWith("get_autostart_status");
+    expect(invokeMock).not.toHaveBeenCalledWith("autostart_supported");
+
+    fireEvent.click(toggle);
+    expect(onSettingChange).toHaveBeenCalledExactlyOnceWith("autostart_enabled", true);
+  });
+
+  it("旧偏好相同时仍允许用户显式提交启用", async () => {
+    invokeMock.mockResolvedValue(autostartStatus({ enabled: false }));
     const onSettingChange = vi.fn();
     render(<ScanStartupSection {...props}
       appSettings={{ ...props.appSettings, autostart_enabled: false }}
       onSettingChange={onSettingChange}
     />);
     fireEvent.click(await screen.findByRole("switch", { name: "开机自动启动" }));
-    expect(invokeMock).toHaveBeenCalledWith("autostart_supported");
     expect(onSettingChange).toHaveBeenCalledExactlyOnceWith("autostart_enabled", true);
-    expect(screen.queryByText("应用内暂不支持")).not.toBeInTheDocument();
   });
 
-  it("后端返回非 true 时仍显示不支持", async () => {
-    invokeMock.mockResolvedValue(false);
+  it("不支持时显示只读说明，不把未知状态当作关闭开关", async () => {
+    invokeMock.mockResolvedValue(autostartStatus({ supported: false, enabled: null }));
     render(<ScanStartupSection {...props} />);
-    await Promise.resolve();
-    expect(screen.getByText("应用内暂不支持")).toBeVisible();
+    expect(await screen.findByText("应用内暂不支持")).toBeVisible();
+    expect(screen.queryByRole("switch", { name: "开机自动启动" })).not.toBeInTheDocument();
   });
 
-  it.each([false, true])("旧自动启动配置为 %s 时也明确说明不可用，不提交无效操作", (enabled) => {
-    const onSettingChange = vi.fn();
-    render(<ScanStartupSection {...props}
-      appSettings={{ ...props.appSettings, autostart_enabled: enabled }}
-      onSettingChange={onSettingChange}
-    />);
+  it("读取失败时显示不可用与错误，可重试恢复真实状态", async () => {
+    invokeMock
+      .mockRejectedValueOnce(new Error("registry unavailable"))
+      .mockResolvedValueOnce(autostartStatus({ enabled: true }));
+    render(<ScanStartupSection {...props} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "读取系统登录自启状态失败：Error: registry unavailable",
+    );
     expect(screen.queryByRole("switch", { name: "开机自动启动" })).not.toBeInTheDocument();
-    expect(screen.getByText("应用内暂不支持")).toBeVisible();
-    fireEvent.click(screen.getByText("开机自动启动"));
-    expect(onSettingChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试读取系统登录自启状态" }));
+    const toggle = await screen.findByRole("switch", { name: "开机自动启动" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(2);
+  });
+
+  it("响应无效或带错误时均显示不可用，并把错误呈现为警报", async () => {
+    invokeMock
+      .mockResolvedValueOnce({ supported: true, enabled: "yes", error: null })
+      .mockResolvedValueOnce(autostartStatus({
+        supported: true,
+        enabled: null,
+        error: "启动项状态无法读取",
+      }));
+    const { unmount } = render(<ScanStartupSection {...props} />);
+    const firstAlert = await screen.findByRole("alert");
+    expect(firstAlert).toHaveTextContent("系统返回了无法识别的登录自启状态。");
+    expect(firstAlert).not.toHaveTextContent("关闭");
+
+    fireEvent.click(screen.getByRole("button", { name: "重试读取系统登录自启状态" }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("启动项状态无法读取");
+    });
+    unmount();
+  });
+
+  it("系统操作忙碌期间禁用开关，结束后重新读取实际状态", async () => {
+    let enabled = false;
+    invokeMock.mockImplementation(async () => autostartStatus({ enabled }));
+    let finishSave: ((value: boolean) => void) | undefined;
+    const onSettingChange = vi.fn(() => new Promise<boolean>((resolve) => {
+      enabled = true;
+      finishSave = resolve;
+    }));
+    const { rerender } = render(
+      <ScanStartupSection {...props} onSettingChange={onSettingChange} />,
+    );
+    fireEvent.click(await screen.findByRole("switch", { name: "开机自动启动" }));
+    expect(onSettingChange).toHaveBeenCalledWith("autostart_enabled", true);
+    expect(screen.getByRole("switch", { name: /开机自动启动.*保存中/ })).toBeDisabled();
+    expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(1);
+
+    finishSave?.(true);
+    await waitFor(() => {
+      expect(screen.getByRole("switch", { name: "开机自动启动" })).toHaveAttribute("aria-checked", "true");
+    });
+    expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(2);
+    rerender(
+      <ScanStartupSection
+        {...props}
+        busy={{ ...props.busy, settings: true }}
+        onSettingChange={onSettingChange}
+      />,
+    );
+    expect(screen.getByRole("switch", { name: /开机自动启动.*保存中/ })).toBeDisabled();
+  });
+
+  it("void 回调依赖 busy 结束兜底重读，不在保存前读取旧状态", async () => {
+    let enabled = false;
+    invokeMock.mockImplementation(async () => autostartStatus({ enabled }));
+    const onSettingChange = vi.fn(() => {
+      enabled = true;
+    });
+    const { rerender } = render(
+      <ScanStartupSection {...props} onSettingChange={onSettingChange} />,
+    );
+    fireEvent.click(await screen.findByRole("switch", { name: "开机自动启动" }));
+    expect(onSettingChange).toHaveBeenCalledWith("autostart_enabled", true);
+    expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: /开机自动启动.*保存中/ })).toBeDisabled();
+
+    rerender(
+      <ScanStartupSection
+        {...props}
+        busy={{ ...props.busy, settings: true }}
+        onSettingChange={onSettingChange}
+      />,
+    );
+    expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(1);
+
+    rerender(
+      <ScanStartupSection {...props} onSettingChange={onSettingChange} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("switch", { name: "开机自动启动" })).toHaveAttribute("aria-checked", "true");
+    });
+    expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(2);
+  });
+
+  it("回调同步抛错或 Promise 拒绝时释放保存态并回读，不产生未处理拒绝", async () => {
+    invokeMock.mockImplementation(async () => autostartStatus({ enabled: false }));
+    const syncFailure = vi.fn(() => {
+      throw new Error("sync failure");
+    });
+    const { rerender } = render(
+      <ScanStartupSection {...props} onSettingChange={syncFailure} />,
+    );
+    fireEvent.click(await screen.findByRole("switch", { name: "开机自动启动" }));
+    expect(syncFailure).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("switch", { name: "开机自动启动" })).toBeEnabled();
+    expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(2);
+
+    const asyncFailure = vi.fn(async () => {
+      throw new Error("async failure");
+    });
+    rerender(<ScanStartupSection {...props} onSettingChange={asyncFailure} />);
+    fireEvent.click(screen.getByRole("switch", { name: "开机自动启动" }));
+    expect(asyncFailure).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("switch", { name: "开机自动启动" })).toBeEnabled();
+  });
+
+  it("窗口重新聚焦时重读系统状态，旧请求不会覆盖新结果", async () => {
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    let request = 0;
+    invokeMock.mockImplementation(async () => {
+      request += 1;
+      if (request <= 2) {
+        if (request === 1) return autostartStatus({ enabled: false });
+        return new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return autostartStatus({ enabled: true });
+    });
+    render(<ScanStartupSection {...props} />);
+    expect(await screen.findByRole("switch", { name: "开机自动启动" })).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.focus(window);
+    await waitFor(() => {
+      expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(2);
+    });
+    fireEvent.focus(window);
+    await waitFor(() => {
+      expect(invokeMock.mock.calls.filter(([command]) => command === "get_autostart_status")).toHaveLength(3);
+    });
+    const toggle = await screen.findByRole("switch", { name: "开机自动启动" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    resolveFirst?.(autostartStatus({ enabled: false }));
+    await waitFor(() => {
+      expect(screen.getByRole("switch", { name: "开机自动启动" })).toHaveAttribute("aria-checked", "true");
+    });
   });
 
   it("保留启动时最小化的可操作状态", () => {
