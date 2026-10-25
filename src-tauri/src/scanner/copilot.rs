@@ -1,12 +1,13 @@
 use super::checkpoints::*;
 use super::gemini::gemini_timestamp;
 use super::helpers::*;
+use super::jsonl::bounded_lines;
 use super::types::LogRecord;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 pub(crate) const COPILOT_CLI_CHECKPOINT_SOURCE_KIND: &str = "copilot-cli-events-jsonl-v1";
@@ -141,7 +142,7 @@ fn copilot_parse_events_file(filepath: &Path, logs: &mut Vec<LogRecord>) -> bool
         .to_string();
     let mut session_id = fallback_session;
     let mut previous: BTreeMap<String, CopilotUsage> = BTreeMap::new();
-    let mut lines = BufReader::new(file).lines().enumerate().peekable();
+    let mut lines = bounded_lines(BufReader::new(file)).enumerate().peekable();
     while let Some((line_index, line)) = lines.next() {
         let Ok(line) = line else {
             return false;
@@ -345,6 +346,37 @@ mod scanner_copilot_tests {
         assert_eq!(resumed.cached_tokens, 15_000);
         assert_eq!(resumed.output_tokens, 500);
         assert_ne!(resumed.unique_key, first.unique_key);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn bom_and_invalid_utf8_do_not_drop_later_usage() {
+        let root = temp_root();
+        let path = root.join("directory-fallback").join("events.jsonl");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut bytes = b"\xEF\xBB\xBF".to_vec();
+        bytes.extend_from_slice(FIXTURE.as_bytes());
+        let after_header = bytes.iter().position(|byte| *byte == b'\n').unwrap() + 1;
+        bytes.splice(
+            after_header..after_header,
+            b"{\"type\":\"noise\",\"text\":\"\xFF\"}\n".iter().copied(),
+        );
+        fs::write(path, bytes).unwrap();
+
+        let logs = scan(&root);
+        assert_eq!(logs.len(), 3);
+        assert!(logs
+            .iter()
+            .all(|row| row.session_id == "3b6c1f0e-0000-4000-8000-00000000c0de"));
+        assert_eq!(
+            logs.iter().fold((0, 0, 0, 0), |total, row| (
+                total.0 + row.input_tokens,
+                total.1 + row.output_tokens,
+                total.2 + row.cached_tokens,
+                total.3 + row.cache_write_tokens,
+            )),
+            (13_800, 2_100, 57_000, 2_000)
+        );
         let _ = fs::remove_dir_all(root);
     }
 
