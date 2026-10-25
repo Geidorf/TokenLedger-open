@@ -167,26 +167,40 @@ export function newBudgetRuleId(now: number = Date.now(), random: number = Math.
 export function useBudgetSettings() {
   const [settings, setSettings] = useState<BudgetSettings>(DEFAULT_BUDGET_SETTINGS);
   const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const saveId = useRef(0);
+  const loadId = useRef(0);
+  const mounted = useRef(true);
 
-  useEffect(() => {
-    let active = true;
+  const reload = useCallback(() => {
+    if (!mounted.current) return;
+    const requestId = beginRequest(loadId);
+    setLoading(true);
+    setError('');
     invoke<unknown>('get_budget_settings')
       .then((value) => {
-        if (active) setSettings(parseBudgetSettings(value));
+        if (isCurrentRequest(loadId, requestId)) setSettings(parseBudgetSettings(value));
       })
       .catch(() => {
-        if (active) setError(t('budget.error.load'));
+        if (isCurrentRequest(loadId, requestId)) setError(t('budget.error.load'));
       })
       .finally(() => {
-        if (active) setLoaded(true);
+        if (!mounted.current || !isCurrentRequest(loadId, requestId)) return;
+        setLoaded(true);
+        setLoading(false);
       });
-    return () => {
-      active = false;
-    };
   }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    reload();
+    return () => {
+      mounted.current = false;
+      loadId.current += 1;
+    };
+  }, [reload]);
 
   const save = useCallback(async (next: BudgetSettings): Promise<boolean> => {
     const requestId = beginRequest(saveId);
@@ -208,37 +222,54 @@ export function useBudgetSettings() {
     }
   }, [settings]);
 
-  return { settings, loaded, saving, error, save };
+  return { settings, loaded, loading, saving, error, save, reload };
 }
 
 /** 读取当前各预算的用量；本机统计更新（`stats-updated`）或 `revision` 变化时重读。 */
 export function useBudgetStatus(revision: unknown) {
-  const [report, setReport] = useState<BudgetStatusReport | null>(null);
-  const [error, setError] = useState('');
+  const [state, setState] = useState<{
+    revision: unknown;
+    report: BudgetStatusReport | null;
+    pending: boolean;
+    error: string;
+  }>({ revision, report: null, pending: true, error: '' });
   const loadId = useRef(0);
+  const mounted = useRef(false);
 
   const reload = useCallback(() => {
+    if (!mounted.current) return;
     const requestId = beginRequest(loadId);
+    setState(previous => ({
+      revision,
+      report: previous.revision === revision ? previous.report : null,
+      pending: true,
+      error: '',
+    }));
     invoke<unknown>('get_budget_status')
       .then((value) => {
-        if (!isCurrentRequest(loadId, requestId)) return;
+        if (!mounted.current || !isCurrentRequest(loadId, requestId)) return;
         const parsed = parseBudgetStatusReport(value);
-        setReport(parsed);
-        setError(parsed ? '' : t('budget.error.status'));
+        setState({ revision, report: parsed, pending: false, error: parsed ? '' : t('budget.error.status') });
       })
       .catch(() => {
-        if (isCurrentRequest(loadId, requestId)) setError(t('budget.error.status'));
+        if (!mounted.current || !isCurrentRequest(loadId, requestId)) return;
+        setState({ revision, report: null, pending: false, error: t('budget.error.status') });
       });
-  }, []);
+  }, [revision]);
 
   useEffect(() => {
+    mounted.current = true;
     reload();
-  }, [reload, revision]);
+    return () => {
+      mounted.current = false;
+      loadId.current += 1;
+    };
+  }, [reload]);
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    listen('stats-updated', () => reload())
+    listen('stats-updated', () => { if (!disposed) reload(); })
       .then((stop) => {
         if (disposed) stop();
         else unlisten = stop;
@@ -274,7 +305,17 @@ export function useBudgetStatus(revision: unknown) {
     };
   }, [reload]);
 
-  return { report, error, reload };
+  // 将读数与规则版本一起保存，首帧也不会把新规则与旧读数拼接。
+  const current = state.revision === revision;
+  const report = current ? state.report : null;
+  const pending = !current || state.pending;
+  return {
+    report,
+    loading: pending && report === null,
+    refreshing: pending && report !== null,
+    error: current ? state.error : '',
+    reload,
+  };
 }
 
 export const BUDGET_STATUS_REFRESH_MS = 5 * 60_000;

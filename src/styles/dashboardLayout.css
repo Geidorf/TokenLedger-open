@@ -99,20 +99,28 @@
 .dashboard-layout-note { margin: 0; padding: var(--space-3) var(--space-3) var(--space-2); color: var(--color-text-tertiary); font-size: 13px; }
 
 /* 预算卡片 */
-.budget-overview-card .panel-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.budget-overview-card .panel-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.budget-overview-card .panel-title { min-width: 0; }
+.budget-overview-card .panel-title h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 .budget-overview-scope { margin-left: 4px; padding: 1px 6px; border-radius: 999px; background: var(--color-bg-subtle); color: var(--color-text-tertiary); font-size: 11px; font-weight: 500; }
+.budget-overview-source { margin: var(--space-1) 0 0; color: var(--color-text-tertiary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .budget-overview-empty, .budget-overview-error { margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: 13px; }
 .budget-overview-error { color: var(--color-danger-text); }
+.budget-overview-failure { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); color: var(--color-danger-text); font-size: 13px; }
+.budget-overview-status { margin: var(--space-2) 0 0; color: var(--color-text-tertiary); font-size: 12px; }
+.budget-overview-action { min-height: 44px; flex: none; }
+.budget-overview-action > svg { flex: none; }
 .budget-overview-list { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
-.budget-overview-rule { display: grid; gap: 4px; }
-.budget-overview-rule-head { display: flex; justify-content: space-between; gap: var(--space-2); font-size: 13px; }
+.budget-overview-rule { display: grid; gap: 4px; min-width: 0; }
+.budget-overview-rule-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); font-size: 13px; }
 .budget-overview-rule-title { min-width: 0; overflow-wrap: anywhere; }
 .budget-overview-level { flex: none; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
 .budget-overview-rule[data-level='warn'] .budget-overview-level { color: var(--color-warning); }
 .budget-overview-rule[data-level='over'] .budget-overview-level { color: var(--color-danger-text); }
-.budget-overview-reading { color: var(--color-text-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; }
-.budget-overview-meter { height: 4px; border-radius: 999px; background: var(--color-bg-hover-strong); overflow: hidden; }
+.budget-overview-reading { color: var(--color-text-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.budget-overview-meter { position: relative; height: 4px; border-radius: 999px; background: var(--color-bg-hover-strong); overflow: hidden; }
 .budget-overview-meter > span { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); transition: width var(--motion-gentle) var(--ease-out-expo); }
+.budget-overview-unknown { height: 4px; border-radius: 999px; background: repeating-linear-gradient(90deg, var(--color-border-strong, var(--color-border)) 0 8px, transparent 8px 12px); }
 .budget-overview-rule[data-level='warn'] .budget-overview-meter > span { background: var(--color-warning); }
 .budget-overview-rule[data-level='over'] .budget-overview-meter > span { background: var(--color-danger); }
 .budget-overview-rule[data-level='unavailable'] .budget-overview-meter > span { background: var(--color-text-tertiary); }

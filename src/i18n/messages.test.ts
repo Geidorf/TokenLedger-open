@@ -74,6 +74,7 @@ const FULLY_LOCALIZED = [
   'src/features/sessionDetail/sessionDetailRoute.ts',
   'src/features/sessionDetail/useSessionDetail.ts',
   'src/components/settings/BudgetSection.tsx',
+  'src/components/dashboard/BudgetOverviewCard.tsx',
   'src/hooks/useBudget.ts',
   'src/components/settings/SettingsPrimitives.tsx',
   'src/components/settings/PeerSyncCard.tsx',
