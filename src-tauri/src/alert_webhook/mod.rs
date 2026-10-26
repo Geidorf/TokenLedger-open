@@ -439,11 +439,12 @@ fn record_result(app_data_dir: &Path, id: &str, result: DeliveryResult) {
 }
 
 fn source_switches(app_data_dir: &Path) -> SourceSwitches {
+    let period_report = crate::period_report::load_settings(app_data_dir);
     SourceSwitches {
         budget: crate::budget::load_settings(app_data_dir).notify,
         quota: crate::quota::alerts::load_settings(app_data_dir).enabled,
         anomaly: crate::usage_anomaly::load_settings(app_data_dir).notify,
-        period_report: None,
+        period_report: Some(period_report.weekly || period_report.monthly),
     }
 }
 

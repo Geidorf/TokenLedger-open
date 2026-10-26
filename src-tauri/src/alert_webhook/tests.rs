@@ -345,6 +345,60 @@ fn deliveries_follow_switches_kinds_and_cost_choice() {
 }
 
 #[test]
+fn period_report_source_switch_and_endpoint_filter() {
+    let dir = temp_dir("period_report_source");
+    crate::quota::write_private_app_data_file(
+        &dir,
+        "period_report_settings.json",
+        br#"{"weekly":false,"monthly":false}"#,
+    )
+    .unwrap();
+    assert_eq!(source_switches(&dir).period_report, Some(false));
+    crate::quota::write_private_app_data_file(
+        &dir,
+        "period_report_settings.json",
+        br#"{"weekly":true,"monthly":false}"#,
+    )
+    .unwrap();
+    assert_eq!(source_switches(&dir).period_report, Some(true));
+    crate::quota::write_private_app_data_file(
+        &dir,
+        "period_report_settings.json",
+        br#"{"weekly":false,"monthly":true}"#,
+    )
+    .unwrap();
+    assert_eq!(source_switches(&dir).period_report, Some(true));
+
+    let mut settings = AlertWebhookSettings {
+        enabled: true,
+        endpoints: vec![
+            endpoint("report", &[AlertKind::PeriodReport], true),
+            endpoint("budget", &[AlertKind::Budget], true),
+            endpoint("disabled", &[AlertKind::PeriodReport], true),
+        ],
+    };
+    settings.endpoints[2].enabled = false;
+    let mut sent = HashMap::new();
+    let planned = plan_deliveries(
+        &settings,
+        &mut sent,
+        AlertKind::PeriodReport,
+        "上周用量周报已生成",
+        "10月12日—10月18日。",
+        None,
+        Utc::now(),
+    );
+    let ids: Vec<_> = planned
+        .iter()
+        .map(|delivery| delivery.endpoint.id.as_str())
+        .collect();
+    assert_eq!(ids, ["report"]);
+    assert_eq!(planned[0].message.kind_key, "periodReport");
+    assert_eq!(planned[0].message.cost, None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn each_endpoint_has_an_hourly_safety_cap() {
     let start = Utc::now();
     let settings = AlertWebhookSettings {

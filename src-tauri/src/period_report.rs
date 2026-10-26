@@ -256,11 +256,13 @@ fn write_json<T: Serialize>(app_data_dir: &Path, file: &str, value: &T) -> Resul
 
 /// Announces every due period once. `tokens` reads a period's effective
 /// tokens; `notify` is skipped (state still advances) when no notifier exists.
+/// `forward` runs after the state write, independently of notification success.
 pub(crate) fn run_due(
     app_data_dir: &Path,
     now: NaiveDateTime,
     notifier: Option<&dyn AlertNotifier>,
     mut tokens: impl FnMut(NaiveDate, NaiveDate) -> Option<f64>,
+    mut forward: impl FnMut(&str, &str),
 ) -> Vec<DuePeriod> {
     let _guard = CHECK_LOCK
         .lock()
@@ -290,6 +292,7 @@ pub(crate) fn run_due(
                 log::warn!("period report notification failed: {error}");
             }
         }
+        forward(&title, &body);
     }
     due
 }
@@ -301,11 +304,21 @@ pub(crate) fn check_due(app: &AppContext, app_handle: &tauri::AppHandle) {
     if !settings.weekly && !settings.monthly {
         return;
     }
+    let app_data_dir = app.app_data_dir();
     let due = run_due(
-        app.app_data_dir(),
+        app_data_dir,
         Local::now().naive_local(),
         crate::quota::alerts::notifier(),
         |start, end| local_tokens(app, start, end),
+        |title, body| {
+            crate::alert_webhook::forward(
+                app_data_dir,
+                crate::alert_webhook::AlertKind::PeriodReport,
+                title,
+                body,
+                None,
+            );
+        },
     );
     for period in due {
         let _ = app_handle.emit(READY_EVENT, &period);
@@ -415,9 +428,16 @@ mod tests {
                 },
             )
         };
-        let first = run_due(&dir, now, Some(&recorder), tokens);
+        let forwarded = StdMutex::new(Vec::new());
+        let mut forward = |title: &str, body: &str| {
+            forwarded
+                .lock()
+                .unwrap()
+                .push((title.to_string(), body.to_string()));
+        };
+        let first = run_due(&dir, now, Some(&recorder), tokens, &mut forward);
         assert_eq!(first.len(), 2);
-        assert!(run_due(&dir, now, Some(&recorder), tokens).is_empty());
+        assert!(run_due(&dir, now, Some(&recorder), tokens, &mut forward).is_empty());
         let sent = recorder.0.lock().unwrap().clone();
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[0].0, "上周用量周报已生成");
@@ -425,11 +445,97 @@ mod tests {
             .1
             .starts_with("10月26日—11月1日，有效 Token 比前一周多 50%"));
         assert_eq!(sent[1].0, "上月用量月报已生成");
+        {
+            let forwarded = forwarded.lock().unwrap();
+            assert_eq!(forwarded.len(), 2);
+            assert_eq!(
+                (forwarded[0].0.as_str(), forwarded[0].1.as_str()),
+                (sent[0].0.as_str(), sent[0].1.as_str())
+            );
+            assert_eq!(
+                (forwarded[1].0.as_str(), forwarded[1].1.as_str()),
+                (sent[1].0.as_str(), sent[1].1.as_str())
+            );
+        }
         // The next week is announced the Monday after.
         assert_eq!(
-            run_due(&dir, at("2026-11-09 09:00"), Some(&recorder), tokens).len(),
+            run_due(
+                &dir,
+                at("2026-11-09 09:00"),
+                Some(&recorder),
+                tokens,
+                &mut forward,
+            )
+            .len(),
             1
         );
+        assert_eq!(forwarded.lock().unwrap().len(), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn forwarding_survives_missing_or_failed_notification() {
+        let now = at("2026-10-19 09:00");
+        let settings = PeriodReportSettings {
+            weekly: true,
+            monthly: false,
+        };
+
+        let failing = FailingNotifier;
+        let cases: [(&str, Option<&dyn AlertNotifier>); 2] =
+            [("missing", None), ("failed", Some(&failing))];
+        for (name, notifier) in cases {
+            let dir = std::env::temp_dir().join(format!(
+                "tokenledger_period_report_{name}_{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            write_json(&dir, SETTINGS_FILE, &settings).unwrap();
+            let forwarded = StdMutex::new(Vec::new());
+            let due = run_due(
+                &dir,
+                now,
+                notifier,
+                |_, _| Some(10.0),
+                |title, body| {
+                    forwarded
+                        .lock()
+                        .unwrap()
+                        .push((title.to_string(), body.to_string()));
+                },
+            );
+            assert_eq!(due.len(), 1, "{name}");
+            assert_eq!(forwarded.lock().unwrap().len(), 1, "{name}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn state_write_failure_forwards_nothing() {
+        let dir = std::env::temp_dir().join(format!(
+            "tokenledger_period_report_write_failure_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        write_json(&dir, SETTINGS_FILE, &BOTH).unwrap();
+        std::fs::create_dir(dir.join(STATE_FILE)).unwrap();
+        let forwarded = StdMutex::new(Vec::new());
+        let due = run_due(
+            &dir,
+            at("2026-10-19 09:00"),
+            None,
+            |_, _| Some(10.0),
+            |title, body| {
+                forwarded
+                    .lock()
+                    .unwrap()
+                    .push((title.to_string(), body.to_string()));
+            },
+        );
+        assert!(due.is_empty());
+        assert!(forwarded.lock().unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -498,6 +604,14 @@ mod tests {
                 .unwrap()
                 .push((title.to_string(), body.to_string()));
             Ok(())
+        }
+    }
+
+    struct FailingNotifier;
+
+    impl AlertNotifier for FailingNotifier {
+        fn notify(&self, _title: &str, _body: &str) -> Result<(), String> {
+            Err("notification failed".to_string())
         }
     }
 }
