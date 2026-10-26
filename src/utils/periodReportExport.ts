@@ -2,8 +2,8 @@ import { escapeHtml } from './frontendContracts';
 import { formatEstimatedUsd, formatNum, formatTokens } from './format';
 import { estimatedCostNote } from './costCopy';
 import { DIGEST_STYLES } from './reportTheme';
-import { budgetScopeName } from '../components/settings/BudgetSection';
-import { BUDGET_METRIC_LABELS } from '../hooks/useBudget';
+import { t } from '../i18n';
+import { toolDisplayName } from './toolDisplayName';
 import { ensureShareCardAssetsReady, SHARE_FONT_FAMILIES } from './shareCardRenderer';
 import {
   budgetSummary,
@@ -94,9 +94,13 @@ const REPORT_EXTRA_STYLES = `
 .note { color: var(--text-muted); font-size: 12px; margin: -16px 0 24px; }
 `;
 
-/** 导出文件里不写账号名：按账号拆分整段不导出，账号预算只写「账号预算」。 */
+/** 导出固定中文；按账号拆分整段不导出，账号预算只写「账号预算」。 */
 function exportBudgetScopeName(budget: ReportBudget): string {
-  return budget.rule.scopeKind === 'provider' ? '账号预算' : budgetScopeName(budget.rule);
+  const { scopeKind, scopeId } = budget.rule;
+  if (scopeKind === 'provider') return '账号预算';
+  const label = t(`budget.scope.${scopeKind}`, undefined, 'zh');
+  if (scopeKind === 'all') return label;
+  return `${label} · ${scopeKind === 'tool' ? toolDisplayName(scopeId) : scopeId}`;
 }
 
 export function generatePeriodReportHtml(report: PeriodReport, options: PeriodReportExportOptions = {}): string {
@@ -124,7 +128,7 @@ export function generatePeriodReportHtml(report: PeriodReport, options: PeriodRe
         </tr>`).join('');
   const budgetRows = report.budgets.map((budget) => `
         <tr>
-          <td class="name-cell">${escapeHtml(exportBudgetScopeName(budget))} · ${escapeHtml(BUDGET_METRIC_LABELS[budget.rule.metric])}</td>
+          <td class="name-cell">${escapeHtml(exportBudgetScopeName(budget))} · ${escapeHtml(t(budget.rule.metric === 'cost' ? 'budget.metric.cost' : 'budget.metric.tokens', undefined, 'zh'))}</td>
           <td class="num">${budgetAmount(budget, budget.used, hideCosts)}</td>
           <td class="num">${budgetAmount(budget, budget.rule.limit, hideCosts)}</td>
           <td class="num">${budgetPercentText(budget, hideCosts)}</td>
