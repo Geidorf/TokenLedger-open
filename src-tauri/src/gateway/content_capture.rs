@@ -1174,6 +1174,16 @@ fn attachment_marker(value: &Value) -> Option<(String, Option<u64>)> {
     let object = value.as_object()?;
     let kind = object.get("type").and_then(Value::as_str).unwrap_or("");
 
+    if kind == "file" {
+        if let Some(file) = object.get("file") {
+            return Some((
+                inline_media_type(file, &kind_media_type(kind, object)),
+                file.as_object()
+                    .and_then(object_payload_size)
+                    .or_else(|| explicit_size(value)),
+            ));
+        }
+    }
     if let Some(inline) = object
         .get("inlineData")
         .or_else(|| object.get("inline_data"))
@@ -1498,6 +1508,105 @@ mod tests {
         let output = json_output(&captured);
         assert_eq!(output["messages"][1]["content"][0]["type"], "attachment");
         assert_eq!(output["messages"][1]["content"][0]["size_bytes"], 3);
+    }
+
+    #[test]
+    fn nested_file_metadata_is_removed_from_requests_and_tool_results() {
+        let file = json!({
+            "type": "file",
+            "file": {
+                "file_id": "fixture-private-file-id",
+                "filename": "fixture-private-file.pdf"
+            }
+        });
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": [file.clone()]},
+                {"role": "tool", "content": [file]}
+            ],
+            "text": "keep ordinary text"
+        });
+        let captured = sanitize_body(&body, 4096);
+        assert!(!captured.truncated);
+        assert!(!captured.text.contains("fixture-private-file-id"));
+        assert!(!captured.text.contains("fixture-private-file.pdf"));
+        let output = json_output(&captured);
+        let marker = json!({
+            "type": "attachment",
+            "media_type": "application/octet-stream",
+            "size_bytes": null
+        });
+        assert_eq!(output["messages"][0]["content"][0], marker);
+        assert_eq!(output["messages"][1]["content"][0], marker);
+        assert_eq!(output["text"], "keep ordinary text");
+    }
+
+    #[test]
+    fn nested_file_metadata_is_removed_from_tool_arguments() {
+        let arguments = json!({
+            "result": [{
+                "type": "file",
+                "file": {
+                    "file_id": "fixture-private-tool-file-id",
+                    "filename": "fixture-private-tool-file.pdf"
+                }
+            }],
+            "query": "keep ordinary arguments"
+        });
+        let (sanitized, truncated) = sanitize_argument(&arguments.to_string(), 4096).unwrap();
+        assert!(!truncated);
+        assert!(!sanitized.contains("fixture-private-tool-file-id"));
+        assert!(!sanitized.contains("fixture-private-tool-file.pdf"));
+        let output: Value = serde_json::from_str(&sanitized).unwrap();
+        assert_eq!(output["result"][0]["type"], "attachment");
+        assert_eq!(output["result"][0]["size_bytes"], Value::Null);
+        assert_eq!(output["query"], "keep ordinary arguments");
+    }
+
+    #[test]
+    fn nested_file_marker_keeps_only_safe_type_and_size() {
+        let body = json!([
+            {"type": "file", "file": {
+                "filename": "fixture-private.pdf", "media_type": "application/pdf", "size_bytes": 42
+            }},
+            {"type": "file", "file": {
+                "file_data": "data:application/pdf;base64,YWJj", "mimeType": "application/pdf"
+            }},
+            {"type": "file", "mime_type": "text/plain", "size": 7, "file": {
+                "file_id": "fixture-private-id"
+            }}
+        ]);
+        let captured = sanitize_body(&body, 4096);
+        assert!(!captured.truncated);
+        assert_eq!(
+            json_output(&captured),
+            json!([
+                {"type": "attachment", "media_type": "application/pdf", "size_bytes": 42},
+                {"type": "attachment", "media_type": "application/pdf", "size_bytes": 3},
+                {"type": "attachment", "media_type": "text/plain", "size_bytes": 7}
+            ])
+        );
+    }
+
+    #[test]
+    fn nested_file_marker_handles_malformed_payload_without_swallowing_ordinary_fields() {
+        for file in [
+            Value::Null,
+            json!("fixture-private-file"),
+            json!([{"filename": "fixture-private-file"}]),
+        ] {
+            let captured = sanitize_body(&json!({"type": "file", "file": file}), 4096);
+            assert_eq!(
+                json_output(&captured),
+                json!({
+                    "type": "attachment",
+                    "media_type": "application/octet-stream",
+                    "size_bytes": null
+                })
+            );
+        }
+        let ordinary = json!({"type": "record", "file": {"status": "ready"}, "count": 3});
+        assert_eq!(json_output(&sanitize_body(&ordinary, 4096)), ordinary);
     }
 
     #[test]
