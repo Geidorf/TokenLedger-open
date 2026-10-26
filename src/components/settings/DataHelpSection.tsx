@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Cloud, Database, Download, HardDrive, RefreshCw, RotateCcw, Share2, Sparkles, Timer, Trash2 } from 'lucide-react';
 import { requestOpenOnboarding } from '../../features/onboarding/onboardingState';
-import type { BusyState, DbInfo } from '../../types';
+import type { AppSettings, BusyState, DbInfo } from '../../types';
 import { formatNum } from '../../utils/format';
 import {
   DangerZone,
@@ -19,6 +19,7 @@ import { DatabaseHealthCard } from './DatabaseHealthCard';
 import { PeerSharedUsageCard } from './PeerSharedUsageCard';
 import { PeerSyncCard } from './PeerSyncCard';
 import { LanguageCard } from './LanguageCard';
+import { UsageDimensionsCard } from './UsageDimensionsCard';
 import { useT } from '../../i18n';
 
 export interface DataHelpSectionProps {
@@ -40,6 +41,8 @@ export interface DataHelpSectionProps {
   onReclaimSpace?: () => void | Promise<void>;
   onResetSync: () => void | Promise<void>;
   onOpenCloudSection: () => void;
+  appSettings?: AppSettings;
+  onSettingChange?: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
 }
 
 export interface DataSyncGuidance {
@@ -196,6 +199,10 @@ export function DataHelpSection(props: DataHelpSectionProps) {
       <PeerSyncCard />
 
       <PeerSharedUsageCard />
+
+      {props.appSettings && props.onSettingChange && (
+        <UsageDimensionsCard appSettings={props.appSettings} busy={busy} onSettingChange={props.onSettingChange} />
+      )}
 
       <SettingsCard title="导出与分享">
         <SettingsGroup>

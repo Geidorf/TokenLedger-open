@@ -2595,6 +2595,17 @@ export function installDevMockTauri() {
       case 'magpie_import_clear':
         mockMagpieImport = null;
         return null;
+      case 'usage_dimensions_publish_status': {
+        const at = new Date(Date.now() - 90_000).toISOString();
+        const status = (on: boolean | undefined) => (on
+          ? { state: 'ok', lastUploadedAt: at, error: null }
+          : { state: 'off', lastUploadedAt: null, error: null });
+        return {
+          sessions: status(mockSettings.usage_dimension_sessions_enabled),
+          providers: status(mockSettings.usage_dimension_providers_enabled),
+          context: status(mockSettings.usage_dimension_context_enabled),
+        };
+      }
       case 'routing_publish_status':
         return { state: 'ok', lastPublishedAt: new Date(Date.now() - 4000).toISOString(), flows: 3, error: null };
       case 'peer_live_snapshot':

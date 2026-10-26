@@ -101,7 +101,10 @@ begin
     'public.publish_budget_snapshot_v1(text,jsonb)',
     'public.get_budget_snapshots_v1()',
     'public.clear_budget_snapshot_v1(text)',
-    'public.get_activity_rhythm_v1(jsonb)'
+    'public.get_activity_rhythm_v1(jsonb)',
+    'public.sync_usage_dimensions_v1(jsonb)',
+    'public.clear_usage_dimension_v1(text)',
+    'public.get_usage_dimensions_v1(jsonb)'
   ]
   loop
     if pg_catalog.to_regprocedure(v_signature) is null then

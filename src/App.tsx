@@ -1104,6 +1104,8 @@ function MainApp() {
                   onCleanupDateChange: settings.setCleanupDate,
                   onCleanup: settings.runCleanup,
                   onResetSync: settings.resetSyncStatus,
+                  appSettings: settings.appSettings,
+                  onSettingChange: settings.updateSetting,
                 }}
               />
             </Suspense>

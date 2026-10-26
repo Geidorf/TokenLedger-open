@@ -723,6 +723,10 @@ export interface AppSettings {
   desktop_widget_enabled: boolean;
   /** 把实时路由同步到手机动态壁纸（routing-snapshot-v1）；会上传数据，默认关闭。旧设置文件没有这一项。 */
   routing_publish_enabled?: boolean;
+  /** 云端用量维度（usage-dimensions-cloud-v1）；三项独立且默认关闭。旧设置文件没有这些项。 */
+  usage_dimension_sessions_enabled?: boolean;
+  usage_dimension_providers_enabled?: boolean;
+  usage_dimension_context_enabled?: boolean;
   /** 桌面小组件上次被拖到的位置（物理像素），null = 工作区右下角。 */
   desktop_widget_position: [number, number] | null;
   /**
@@ -1098,6 +1102,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tray_hover_delay_ms: 450,
   desktop_widget_enabled: false,
   routing_publish_enabled: false,
+  usage_dimension_sessions_enabled: false,
+  usage_dimension_providers_enabled: false,
+  usage_dimension_context_enabled: false,
   widget_popover_layout: 'panel',
   widget_popover_theme: 'system',
   widget_popover_range: 'today',

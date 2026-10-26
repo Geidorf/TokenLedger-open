@@ -57,6 +57,7 @@ mod stats_query;
 mod tray_badge;
 mod tray_panel;
 mod usage_anomaly;
+mod usage_dimensions_publish;
 mod wallpaper;
 mod widget_window;
 
@@ -1026,6 +1027,10 @@ pub fn run() {
                 gateway_for_setup.clone(),
             );
             budget_publish::start(app_ctx_for_setup.clone());
+            usage_dimensions_publish::start(
+                app_ctx_for_setup.clone(),
+                settings_state_for_setup.clone(),
+            );
 
             #[cfg(target_os = "macos")]
             {
@@ -1073,6 +1078,7 @@ pub fn run() {
             local_backup::local_backup_quit,
             peer_live::peer_live_snapshot,
             routing_publish::routing_publish_status,
+            usage_dimensions_publish::usage_dimensions_publish_status,
             gateway::gateway_legacy_inspect,
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,

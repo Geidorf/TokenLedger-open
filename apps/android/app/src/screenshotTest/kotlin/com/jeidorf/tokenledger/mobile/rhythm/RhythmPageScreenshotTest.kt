@@ -6,6 +6,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.jeidorf.tokenledger.mobile.LedgerAppearance
 import com.jeidorf.tokenledger.mobile.LedgerDashboardPreviewHost
+import com.jeidorf.tokenledger.mobile.ui.dimensions.DimensionsPreviewKind
+import com.jeidorf.tokenledger.mobile.ui.dimensions.dimensionsPreviewFeed
 import com.jeidorf.tokenledger.mobile.ui.navigation.InsightPane
 import com.jeidorf.tokenledger.mobile.ui.rhythm.LocalRhythmFeedOverride
 import com.jeidorf.tokenledger.mobile.ui.rhythm.RhythmPreviewKind
@@ -16,7 +18,14 @@ import com.jeidorf.tokenledger.mobile.ui.rhythm.rhythmPreviewFeed
 @Composable
 private fun RhythmPage(appearance: LedgerAppearance, kind: RhythmPreviewKind = RhythmPreviewKind.Live) {
     CompositionLocalProvider(LocalRhythmFeedOverride provides rhythmPreviewFeed(kind)) {
-        LedgerDashboardPreviewHost(appearance, insightPane = InsightPane.Sessions)
+        LedgerDashboardPreviewHost(
+            appearance,
+            insightPane = InsightPane.Sessions,
+            dimensionsFeed = dimensionsPreviewFeed(
+                if (kind == RhythmPreviewKind.NotDeployed) DimensionsPreviewKind.NotDeployed
+                else DimensionsPreviewKind.Live
+            )
+        )
     }
 }
 

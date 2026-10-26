@@ -170,6 +170,7 @@ fn main() {
         "local_backup_quit",
         "peer_live_snapshot",
         "routing_publish_status",
+        "usage_dimensions_publish_status",
         "get_local_session_analysis",
         "cancel_local_session_analysis",
         "get_entity_dashboard",
