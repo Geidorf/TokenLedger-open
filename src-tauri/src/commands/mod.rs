@@ -11323,10 +11323,13 @@ pub fn get_db_info_impl(app: &AppContext) -> Result<Value, String> {
         .query_row("SELECT COUNT(*) FROM token_logs", [], |row| row.get(0))
         .unwrap_or(0);
 
+    let machine_id = fallback_machine_id(&db_path);
     let unsynced_records: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM token_logs WHERE sync_status = 0 OR cloud_user_id IS NULL",
-            [],
+            "SELECT COUNT(*) FROM token_logs
+             WHERE (sync_status = 0 OR cloud_user_id IS NULL)
+               AND coalesce(nullif(machine_id, ''), ?1) = ?1",
+            params![machine_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
@@ -15391,6 +15394,7 @@ fn backfill_null_costs(db_path: &std::path::Path, prices: &Value) -> Result<(), 
 const PENDING_SYNC_WORK_SQL: &str = "SELECT EXISTS(
          SELECT 1 FROM token_logs
          WHERE (sync_status = 0 OR cloud_user_id IS NULL OR cloud_user_id != ?1)
+           AND coalesce(nullif(machine_id, ''), ?2) = ?2
            AND NOT (
                tool = 'codex'
                AND (machine_id = ?2 OR machine_id = '')
@@ -15403,9 +15407,15 @@ const PENDING_SYNC_WORK_SQL: &str = "SELECT EXISTS(
            )
          LIMIT 1
      ) OR EXISTS(
-         SELECT 1 FROM pending_cloud_purges WHERE ready = 1 LIMIT 1
+         SELECT 1 FROM pending_cloud_purges
+         WHERE ready = 1
+           AND coalesce(nullif(machine_id, ''), ?2) = ?2
+         LIMIT 1
      ) OR EXISTS(
-         SELECT 1 FROM scan_cloud_dirty_buckets WHERE user_id = ?1 LIMIT 1
+         SELECT 1 FROM scan_cloud_dirty_buckets
+         WHERE user_id = ?1
+           AND coalesce(nullif(machine_id, ''), ?2) = ?2
+         LIMIT 1
      )";
 
 // Unknown writes poison the complete hourly bucket, including zero-read rows.
@@ -15422,10 +15432,12 @@ fn scan_cache_write_projection(rows: impl IntoIterator<Item = (i64, Option<bool>
 const RAW_SYNC_LOGS_SQL: &str =
     "SELECT id, tool, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, timestamp, cost_usd, machine_id, sync_status, cloud_user_id, sync_revision, cache_write_known
      FROM token_logs
-     WHERE (substr(timestamp, 1, 13) || ':00:00', tool, model, coalesce(nullif(machine_id, ''), ?2)) IN (
+     WHERE coalesce(nullif(machine_id, ''), ?2) = ?2
+       AND (substr(timestamp, 1, 13) || ':00:00', tool, model, coalesce(nullif(machine_id, ''), ?2)) IN (
          SELECT DISTINCT substr(timestamp, 1, 13) || ':00:00', tool, model, coalesce(nullif(machine_id, ''), ?2)
          FROM token_logs
          WHERE (sync_status = 0 OR cloud_user_id IS NULL OR cloud_user_id != ?1)
+           AND coalesce(nullif(machine_id, ''), ?2) = ?2
            AND NOT (
                tool = 'codex'
                AND (machine_id = ?2 OR machine_id = '')
@@ -15438,13 +15450,34 @@ const RAW_SYNC_LOGS_SQL: &str =
            )
          UNION
          SELECT hour_bucket, tool, model, coalesce(nullif(machine_id, ''), ?2)
-         FROM scan_cloud_dirty_buckets WHERE user_id = ?1
+         FROM scan_cloud_dirty_buckets
+         WHERE user_id = ?1
+           AND coalesce(nullif(machine_id, ''), ?2) = ?2
            AND NOT (tool = 'codex' AND coalesce(nullif(machine_id, ''), ?2) = ?2
              AND EXISTS(SELECT 1 FROM pending_cloud_purges p
                WHERE p.tool = 'codex' AND p.machine_id = ?2 AND p.ready = 0))
      )";
 
 const GATEWAY_DELETE_BATCH_SIZE: usize = 50;
+
+fn cloud_aggregate_delete_request(
+    client: &reqwest::Client,
+    config: &CloudConfig,
+    session: &CloudSession,
+    machine_id: &str,
+    keys: &[String],
+) -> reqwest::RequestBuilder {
+    client
+        .delete(format!("{}/rest/v1/token_logs", config.supabase_url))
+        .query(&[
+            ("user_id", format!("eq.{}", session.user_id)),
+            ("machine_id", format!("eq.{}", machine_id)),
+            ("unique_key", gateway_cloud::postgrest_in_filter(keys)),
+        ])
+        .header("apikey", &config.supabase_key)
+        .header("Authorization", format!("Bearer {}", session.access_token))
+        .header("Prefer", "return=minimal")
+}
 
 fn codex_rebuild_pending(db_path: &std::path::Path, machine_id: &str) -> Result<bool, String> {
     let conn = db::get_connection(db_path).map_err(|e| e.to_string())?;
@@ -15506,6 +15539,10 @@ fn mark_uploaded_revisions(
 #[cfg(test)]
 #[path = "sync_revision_tests.rs"]
 mod sync_revision_tests;
+
+#[cfg(test)]
+#[path = "cloud_local_rows_http_tests.rs"]
+mod cloud_local_rows_http_tests;
 
 pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
     let sync_flight = acquire_cloud_sync_singleflight().await;
@@ -15591,7 +15628,15 @@ async fn sync_to_supabase_locked(
         // Keep its intent queued; complete newer hours can still be upserted below.
         0
     } else {
-        process_pending_cloud_purges(app, &db_path, &config, &session, &session_lease).await?
+        process_pending_cloud_purges(
+            app,
+            &db_path,
+            &fallback_machine,
+            &config,
+            &session,
+            &session_lease,
+        )
+        .await?
     };
     if purged_count > 0 {
         // A purge removed rows the state says were uploaded.
@@ -15631,7 +15676,7 @@ async fn sync_to_supabase_locked(
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(|e| e.to_string())?;
-        if !scanner_sync::gateway_snapshot_matches(&tx, &gateway_hours)
+        if !scanner_sync::gateway_snapshot_matches(&tx, &gateway_hours, &fallback_machine)
             .map_err(|e| e.to_string())?
         {
             return Err("扫描数据在同步准备期间发生变化，请重试同步。".to_string());
@@ -15929,18 +15974,11 @@ async fn sync_to_supabase_locked(
     // failure here leaves extra rows for the retry, never a missing hour.
     for chunk in gateway_deletes.chunks(GATEWAY_DELETE_BATCH_SIZE) {
         session_lease.ensure_current(app)?;
-        let res = client
-            .delete(format!("{}/rest/v1/token_logs", config.supabase_url))
-            .query(&[
-                ("user_id", format!("eq.{}", session.user_id)),
-                ("unique_key", gateway_cloud::postgrest_in_filter(chunk)),
-            ])
-            .header("apikey", &config.supabase_key)
-            .header("Authorization", format!("Bearer {}", session.access_token))
-            .header("Prefer", "return=minimal")
-            .send()
-            .await
-            .map_err(|e| format!("Cloud sync failed: {}", e))?;
+        let res =
+            cloud_aggregate_delete_request(&client, &config, &session, &fallback_machine, chunk)
+                .send()
+                .await
+                .map_err(|e| format!("Cloud sync failed: {}", e))?;
         session_lease.ensure_current(app)?;
         if !res.status().is_success() {
             let status = res.status();
@@ -16019,17 +16057,22 @@ async fn sync_to_supabase_locked(
 /// pending_cloud_purges table. Each entry deletes this user's rows for one
 /// (tool, machine_id) pair via PostgREST; RLS scopes the delete to the
 /// authenticated user, and other machines' data is untouched.
-fn load_ready_cloud_purges(db_path: &Path) -> Result<Vec<(i64, String, String)>, String> {
+fn load_ready_cloud_purges(
+    db_path: &Path,
+    machine_id: &str,
+) -> Result<Vec<(i64, String, String)>, String> {
     let conn = db::get_connection(db_path).map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, tool, machine_id
+            "SELECT id, tool, coalesce(nullif(machine_id, ''), ?1)
              FROM pending_cloud_purges
-             WHERE ready = 1",
+             WHERE ready = 1 AND coalesce(nullif(machine_id, ''), ?1) = ?1",
         )
         .map_err(|e| e.to_string())?;
     let purges = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .query_map(params![machine_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
         .map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|e| e.to_string())?;
@@ -16060,11 +16103,12 @@ fn complete_local_cloud_purge(db_path: &std::path::Path, purge_id: i64) -> Resul
 async fn process_pending_cloud_purges(
     app: &AppContext,
     db_path: &Path,
+    machine_id: &str,
     config: &CloudConfig,
     session: &CloudSession,
     session_lease: &CloudSessionUseLease,
 ) -> Result<usize, String> {
-    let purges = load_ready_cloud_purges(db_path)?;
+    let purges = load_ready_cloud_purges(db_path, machine_id)?;
 
     if purges.is_empty() {
         return Ok(0);
@@ -16238,7 +16282,7 @@ mod codex_rebuild_sync_gate_tests {
     }
 
     #[test]
-    fn staged_codex_gate_does_not_block_other_tools_or_machines() {
+    fn staged_codex_gate_preserves_local_tools_and_other_device_uploads() {
         let path = test_db("codex_sync_gate_scope");
         let conn = Connection::open(&path).expect("open test database");
         conn.execute_batch(
@@ -16269,7 +16313,14 @@ mod codex_rebuild_sync_gate_tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("collect scoped raw logs");
         keys.sort_unstable();
-        assert_eq!(keys.len(), 2);
+        let other_tool_id: i64 = conn
+            .query_row(
+                "SELECT id FROM token_logs WHERE unique_key = 'allowed-other-tool'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read allowed local tool row id");
+        assert_eq!(keys, vec![other_tool_id]);
         let blocked_id: i64 = conn
             .query_row(
                 "SELECT id FROM token_logs WHERE unique_key = 'blocked-current'",
@@ -16278,6 +16329,40 @@ mod codex_rebuild_sync_gate_tests {
             )
             .expect("read blocked row id");
         assert!(!keys.contains(&blocked_id));
+
+        let other_machine_id: i64 = conn
+            .query_row(
+                "SELECT id FROM token_logs WHERE unique_key = 'allowed-other-machine'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read other device row id");
+        let other_machine_keys = conn
+            .prepare(RAW_SYNC_LOGS_SQL)
+            .expect("prepare other device raw-log query")
+            .query_map(params!["cloud-user", "machine-b"], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("query other device raw logs")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect other device raw logs");
+        assert_eq!(other_machine_keys, vec![other_machine_id]);
+
+        conn.execute(
+            "UPDATE token_logs SET sync_status = 1 WHERE id = ?1",
+            [other_tool_id],
+        )
+        .expect("finish allowed local work");
+        for (machine, expected) in [("machine-a", false), ("machine-b", true)] {
+            let pending: bool = conn
+                .query_row(
+                    PENDING_SYNC_WORK_SQL,
+                    params!["cloud-user", machine],
+                    |row| row.get(0),
+                )
+                .expect("read device-scoped pending work");
+            assert_eq!(pending, expected);
+        }
 
         drop(conn);
         let _ = fs::remove_file(path);
@@ -16317,7 +16402,7 @@ mod codex_rebuild_sync_gate_tests {
             .expect("read ready purge id");
         drop(conn);
 
-        let ready = load_ready_cloud_purges(&path).expect("load actionable purges");
+        let ready = load_ready_cloud_purges(&path, "machine-a").expect("load actionable purges");
         assert_eq!(
             ready,
             vec![(ready_id, "claude".to_string(), "machine-a".to_string())]

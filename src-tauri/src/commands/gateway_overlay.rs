@@ -477,6 +477,15 @@ pub(super) fn scan_candidates(
     conn: &Connection,
     gateway: &[GatewayRow],
 ) -> rusqlite::Result<Vec<ScanCandidate>> {
+    scan_candidates_for_machine(conn, gateway, None)
+}
+
+/// 上传去重只使用当前设备的扫描行；统计入口不传机器，保留本机全量行为。
+pub(super) fn scan_candidates_for_machine(
+    conn: &Connection,
+    gateway: &[GatewayRow],
+    machine_id: Option<&str>,
+) -> rusqlite::Result<Vec<ScanCandidate>> {
     let local = || {
         gateway
             .iter()
@@ -497,11 +506,18 @@ pub(super) fn scan_candidates(
         .to_string();
     sql.push_str(&vec!["?"; tools.len()].join(", "));
     sql.push(')');
+    if machine_id.is_some() {
+        sql.push_str(" AND coalesce(nullif(machine_id, ''), ?) = ?");
+    }
     let mut values = vec![
         SqlValue::Text(super::storage_timestamp(first - window)),
         SqlValue::Text(super::storage_timestamp(last + window)),
     ];
     values.extend(tools.iter().map(|tool| SqlValue::Text((*tool).to_string())));
+    if let Some(machine_id) = machine_id {
+        values.push(SqlValue::Text(machine_id.to_string()));
+        values.push(SqlValue::Text(machine_id.to_string()));
+    }
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_from_iter(values.iter()), |row| {
         Ok(ScanCandidate {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::commands::{mark_uploaded_revisions, RAW_SYNC_LOGS_SQL};
+use crate::commands::{mark_uploaded_revisions, PENDING_SYNC_WORK_SQL, RAW_SYNC_LOGS_SQL};
 use crate::db;
 use std::path::PathBuf;
 struct TestDir(PathBuf);
@@ -42,6 +42,243 @@ fn bucket(model: &str, hour: &str) -> Bucket {
         hour_bucket: hour.into(),
         machine_id: "machine".into(),
     }
+}
+
+fn insert_log(
+    conn: &Connection,
+    key: &str,
+    machine_id: &str,
+    timestamp: &str,
+    sync_status: i64,
+    cloud_user_id: Option<&str>,
+) -> i64 {
+    conn.execute(
+        "INSERT INTO token_logs(tool,model,input_tokens,output_tokens,timestamp,session_id,unique_key,machine_id,sync_status,cloud_user_id)
+         VALUES('claude','A',10,1,?1,?2,?3,?4,?5,?6)",
+        params![timestamp, key, key, machine_id, sync_status, cloud_user_id],
+    )
+    .unwrap();
+    conn.last_insert_rowid()
+}
+
+fn raw_ids(conn: &Connection, user: &str, fallback: &str) -> Vec<i64> {
+    let mut statement = conn.prepare(RAW_SYNC_LOGS_SQL).unwrap();
+    statement
+        .query_map(params![user, fallback], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_>>()
+        .unwrap()
+}
+
+fn pending_work(conn: &Connection, user: &str, fallback: &str) -> bool {
+    conn.query_row(PENDING_SYNC_WORK_SQL, params![user, fallback], |row| {
+        row.get(0)
+    })
+    .unwrap()
+}
+
+#[test]
+fn local_and_empty_machine_rows_are_upload_work() {
+    let (_dir, _path, conn, local_id) = ledger();
+    let empty_id = insert_log(&conn, "empty-machine", "", "2026-10-05 10:00:00", 0, None);
+
+    let ids = raw_ids(&conn, "user-a", "machine");
+    assert!(ids.contains(&local_id));
+    assert!(ids.contains(&empty_id));
+    assert!(pending_work(&conn, "user-a", "machine"));
+}
+
+#[test]
+fn external_pending_row_is_not_upload_work() {
+    let (_dir, _path, conn, local_id) = ledger();
+    conn.execute(
+        "UPDATE token_logs SET sync_status=1,cloud_user_id='user-a' WHERE id=?1",
+        [local_id],
+    )
+    .unwrap();
+    insert_log(
+        &conn,
+        "external-pending",
+        "other-machine",
+        "2026-10-05 10:30:00",
+        0,
+        None,
+    );
+
+    assert!(!pending_work(&conn, "user-a", "machine"));
+    assert!(raw_ids(&conn, "user-a", "machine").is_empty());
+}
+
+#[test]
+fn external_row_synced_for_another_account_is_not_upload_work() {
+    let (_dir, _path, conn, local_id) = ledger();
+    conn.execute(
+        "UPDATE token_logs SET sync_status=1,cloud_user_id='user-a' WHERE id=?1",
+        [local_id],
+    )
+    .unwrap();
+    insert_log(
+        &conn,
+        "external-other-user",
+        "other-machine",
+        "2026-10-05 10:30:00",
+        1,
+        Some("user-b"),
+    );
+
+    assert!(!pending_work(&conn, "user-a", "machine"));
+    assert!(raw_ids(&conn, "user-a", "machine").is_empty());
+}
+
+#[test]
+fn external_repriced_row_is_not_upload_work() {
+    let (_dir, path, conn, local_id) = ledger();
+    conn.execute(
+        "UPDATE token_logs SET sync_status=1,cloud_user_id='user-a' WHERE id=?1",
+        [local_id],
+    )
+    .unwrap();
+    let external_id = insert_log(
+        &conn,
+        "external-repriced",
+        "other-machine",
+        "2026-10-05 10:30:00",
+        1,
+        Some("user-a"),
+    );
+    crate::commands::backfill_null_costs(&path, &serde_json::json!({})).unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT sync_status FROM token_logs WHERE id=?1",
+            [external_id],
+            |row| row.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0,
+        "真实费用回填把外机行重新标记为待同步"
+    );
+
+    assert!(!pending_work(&conn, "user-a", "machine"));
+    assert!(raw_ids(&conn, "user-a", "machine").is_empty());
+}
+
+#[test]
+fn account_reset_uploads_only_local_machine_rows() {
+    let (_dir, _path, conn, local_id) = ledger();
+    let empty_id = insert_log(&conn, "empty-machine", "", "2026-10-05 10:00:00", 0, None);
+    let external_id = insert_log(
+        &conn,
+        "external-reset",
+        "other-machine",
+        "2026-10-05 10:30:00",
+        1,
+        Some("user-b"),
+    );
+    conn.execute(
+        "UPDATE token_logs SET sync_status=0,cloud_user_id=NULL,synced_at=NULL",
+        [],
+    )
+    .unwrap();
+
+    let mut ids = raw_ids(&conn, "user-a", "machine");
+    ids.sort_unstable();
+    let mut expected = vec![local_id, empty_id];
+    expected.sort_unstable();
+    assert_eq!(ids, expected);
+    assert!(!ids.contains(&external_id));
+    assert!(pending_work(&conn, "user-a", "machine"));
+}
+
+#[test]
+fn account_reset_with_only_external_rows_has_no_upload_work() {
+    let (_dir, _path, conn, _id) = ledger();
+    conn.execute(
+        "UPDATE token_logs SET machine_id='other-machine',sync_status=1,cloud_user_id='user-b'",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE token_logs SET sync_status=0,cloud_user_id=NULL,synced_at=NULL",
+        [],
+    )
+    .unwrap();
+
+    assert!(!pending_work(&conn, "user-a", "machine"));
+    assert!(raw_ids(&conn, "user-a", "machine").is_empty());
+}
+
+#[test]
+fn dirty_snapshot_ignores_external_machine_buckets() {
+    let (_dir, _path, conn, _id) = ledger();
+    conn.execute_batch(
+        "INSERT INTO scan_cloud_dirty_buckets(user_id,tool,model,hour_bucket,machine_id)
+         VALUES
+             ('user-a','claude','A','2026-10-05 10:00:00','machine'),
+             ('user-a','claude','A','2026-10-05 10:00:00','other-machine')",
+    )
+    .unwrap();
+
+    let event = dirty(&conn);
+    assert_eq!(
+        event.buckets,
+        HashSet::from([bucket("A", "2026-10-05 10:00:00")])
+    );
+    assert_eq!(event.ids.len(), 1);
+}
+
+#[test]
+fn remember_sending_does_not_emit_external_machine_events() {
+    let (_dir, _path, conn, local_id) = ledger();
+    let external_id = insert_log(
+        &conn,
+        "external-sent",
+        "other-machine",
+        "2026-10-05 10:00:00",
+        0,
+        None,
+    );
+    remember_sending(&conn, "user-a", "machine", [local_id, external_id]).unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT COUNT(*) FROM scan_cloud_sent_identities WHERE source_key='external-sent'",
+            [],
+            |row| row.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    conn.execute(
+        "UPDATE token_logs SET model='B' WHERE id=?1 OR id=?2",
+        params![local_id, external_id],
+    )
+    .unwrap();
+
+    let event = dirty(&conn);
+    assert_eq!(
+        event.buckets,
+        HashSet::from([bucket("A", "2026-10-05 10:00:00")])
+    );
+}
+
+#[test]
+fn external_dirty_buckets_do_not_reupload_synced_local_rows() {
+    let (_dir, _path, conn, local_id) = ledger();
+    mark_uploaded_revisions(
+        &conn,
+        "user-a",
+        "done",
+        &[(local_id, revision(&conn, local_id))],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO scan_cloud_dirty_buckets(user_id,tool,model,hour_bucket,machine_id)
+         VALUES ('user-a','claude','A','2026-10-05 10:00:00','other-machine')",
+        [],
+    )
+    .unwrap();
+    assert!(!pending_work(&conn, "user-a", "machine"));
+    assert!(raw_ids(&conn, "user-a", "machine").is_empty());
+    assert!(dirty(&conn).ids.is_empty());
 }
 
 #[test]
@@ -181,7 +418,7 @@ fn gateway_members_are_preserved_and_mixed_snapshot_is_rejected() {
     gateway.input_tokens = 50;
     gateway.cost_usd = Some(2.0);
     let hours = BTreeMap::from([("2026-10-05 10:00:00".into(), vec![row.clone(), gateway])]);
-    assert!(gateway_snapshot_matches(&conn, &hours).unwrap());
+    assert!(gateway_snapshot_matches(&conn, &hours, "machine").unwrap());
     let event = DirtySnapshot {
         ids: vec![],
         buckets: HashSet::from([bucket("A", "2026-10-05 10:00:00")]),
@@ -203,13 +440,13 @@ fn gateway_members_are_preserved_and_mixed_snapshot_is_rejected() {
     assert_eq!(logs[0]["cost_usd"], 3.0);
     conn.execute("UPDATE token_logs SET output_tokens=20", [])
         .unwrap();
-    assert!(!gateway_snapshot_matches(&conn, &hours).unwrap());
+    assert!(!gateway_snapshot_matches(&conn, &hours, "machine").unwrap());
     row.sync_revision = revision(&conn, id);
     let fresh = BTreeMap::from([("2026-10-05 10:00:00".into(), vec![row])]);
-    assert!(gateway_snapshot_matches(&conn, &fresh).unwrap());
+    assert!(gateway_snapshot_matches(&conn, &fresh, "machine").unwrap());
     conn.execute("INSERT INTO token_logs(tool,model,input_tokens,output_tokens,timestamp,session_id,unique_key,machine_id)
         VALUES('claude','A',7,1,'2026-10-05 10:00:00','s2','new','machine')",[]).unwrap();
-    assert!(!gateway_snapshot_matches(&conn, &fresh).unwrap());
+    assert!(!gateway_snapshot_matches(&conn, &fresh, "machine").unwrap());
 }
 
 #[test]

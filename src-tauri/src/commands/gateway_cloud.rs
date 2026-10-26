@@ -327,8 +327,8 @@ fn collect_hours_with_scan_hook(
     // Dedupe and receipts must describe the same WAL snapshot. Otherwise a
     // stale superseded ID can accidentally acknowledge a newer scan revision.
     let tx = conn.transaction().map_err(|error| error.to_string())?;
-    let scans =
-        gateway_overlay::scan_candidates(&tx, &gateway).map_err(|error| error.to_string())?;
+    let scans = gateway_overlay::scan_candidates_for_machine(&tx, &gateway, Some(fallback_machine))
+        .map_err(|error| error.to_string())?;
     after_candidates();
     let gateway_overlay::OverlayResolution { superseded, held } =
         gateway_overlay::resolve_overlay(&gateway, &scans, gateway_overlay::DEDUPE_WINDOW_SECS);
@@ -356,10 +356,13 @@ fn collect_hours_with_scan_hook(
                     COALESCE(cache_write_tokens, 0), timestamp, cost_usd,
                     COALESCE(machine_id, ''), sync_status, cloud_user_id, sync_revision, cache_write_known
                FROM main.token_logs
-              WHERE substr(timestamp, 1, 13) || ':00:00' IN ({})",
+               WHERE substr(timestamp, 1, 13) || ':00:00' IN ({})
+                 AND coalesce(nullif(machine_id, ''), ?) = ?",
             vec!["?"; chunk.len()].join(", ")
         );
-        let values: Vec<SqlValue> = chunk.iter().cloned().map(SqlValue::Text).collect();
+        let mut values: Vec<SqlValue> = chunk.iter().cloned().map(SqlValue::Text).collect();
+        values.push(SqlValue::Text(fallback_machine.to_string()));
+        values.push(SqlValue::Text(fallback_machine.to_string()));
         let mut stmt = tx.prepare(&sql).map_err(|error| error.to_string())?;
         let rows = stmt
             .query_map(params_from_iter(values.iter()), |row| {

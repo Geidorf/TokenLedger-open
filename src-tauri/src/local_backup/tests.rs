@@ -1170,3 +1170,269 @@ fn another_computers_rows_are_restored_and_its_unuploaded_ones_counted() {
     assert_eq!(machine_of("pending").as_deref(), Some("pc-a"));
     assert_eq!(machine_of("never-signed-in").as_deref(), Some("pc-a"));
 }
+
+#[test]
+fn legacy_backup_machine_fills_missing_cloud_local_rows() {
+    let insert = |pc: &Computer, key: &str, machine: Option<&str>| {
+        pc.conn()
+            .execute(
+                "INSERT INTO token_logs (tool, model, input_tokens, output_tokens, cached_tokens,
+                     cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id)
+                 VALUES ('claude', 'claude-sonnet-5', 10, 1, 0, 0,
+                     '2026-10-20 10:00:00', 's1', ?1, 0.1, ?2)",
+                params![key, machine.unwrap_or("")],
+            )
+            .unwrap();
+    };
+    let machine_of = |pc: &Computer, key: &str| -> Option<String> {
+        pc.conn()
+            .query_row(
+                "SELECT machine_id FROM token_logs WHERE unique_key = ?1",
+                [key],
+                |row| row.get(0),
+            )
+            .ok()
+    };
+    let new = Computer::new("current");
+
+    // 旧备份没有 machine_id 列：插入时不能落库默认空串，否则会被当本机上传。
+    let missing = Computer::new("legacy-missing-column");
+    insert(&missing, "missing-column", None);
+    let mut missing_bundle = sealed_roundtrip(&missing.export());
+    missing_bundle.machine = "pc-foreign-a".to_string();
+    let at = missing_bundle
+        .ledger
+        .columns
+        .iter()
+        .position(|column| column == "machine_id")
+        .unwrap();
+    missing_bundle.ledger.columns.remove(at);
+    for row in &mut missing_bundle.ledger.rows {
+        row.remove(at);
+    }
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &missing_bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(result.ledger_added, 1);
+    assert_eq!(
+        machine_of(&new, "missing-column").as_deref(),
+        Some("pc-foreign-a")
+    );
+
+    // 有列但值为 null 或空串时，同样补成备份所属的外机。
+    let values = Computer::new("legacy-machine-values");
+    insert(&values, "null-machine", None);
+    insert(&values, "empty-machine", Some(""));
+    let mut values_bundle = sealed_roundtrip(&values.export());
+    values_bundle.machine = "pc-foreign-b".to_string();
+    let machine_at = values_bundle
+        .ledger
+        .columns
+        .iter()
+        .position(|column| column == "machine_id")
+        .unwrap();
+    let key_at = values_bundle
+        .ledger
+        .columns
+        .iter()
+        .position(|column| column == "unique_key")
+        .unwrap();
+    for row in &mut values_bundle.ledger.rows {
+        if row[key_at] == "null-machine" {
+            row[machine_at] = Value::Null;
+        }
+    }
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &values_bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(result.ledger_added, 2);
+    assert_eq!(
+        machine_of(&new, "null-machine").as_deref(),
+        Some("pc-foreign-b")
+    );
+    assert_eq!(
+        machine_of(&new, "empty-machine").as_deref(),
+        Some("pc-foreign-b")
+    );
+}
+
+#[test]
+fn legacy_local_alias_rows_are_restored_under_the_current_device_id() {
+    let alias = "old-alias-0001";
+    let row = |pc: &Computer,
+               key: &str,
+               machine: &str,
+               input: i64,
+               status: i64,
+               user: Option<&str>,
+               synced_at: Option<&str>,
+               revision: i64| {
+        pc.conn()
+            .execute(
+                "INSERT INTO token_logs (tool, model, input_tokens, output_tokens, cached_tokens,
+                     cache_write_tokens, timestamp, session_id, unique_key, cost_usd, machine_id,
+                     sync_status, cloud_user_id, synced_at, sync_revision)
+                 VALUES ('claude', 'claude-sonnet-5', ?7, 10, 0, 0,
+                     '2026-10-20 10:00:00', 's1', ?1, 0.1, ?2, ?3, ?4, ?5, ?6)",
+                params![key, machine, status, user, synced_at, revision, input],
+            )
+            .unwrap();
+    };
+    let put_state = |pc: &Computer, key: &str, input: i64, generation: i64| {
+        pc.conn()
+            .execute(
+                "INSERT OR REPLACE INTO scan_cumulative_state
+                     (unique_key, input_tokens, output_tokens, cached_tokens,
+                      cache_write_tokens, cost_usd, generation)
+                 VALUES (?1, ?2, 0, 0, 0, NULL, ?3)",
+                params![key, input, generation],
+            )
+            .unwrap();
+    };
+    let receipt = |pc: &Computer, key: &str| -> (i64, Option<String>, Option<String>, i64) {
+        pc.conn()
+            .query_row(
+                "SELECT sync_status, cloud_user_id, synced_at, sync_revision
+                       FROM token_logs WHERE unique_key = ?1",
+                [key],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap()
+    };
+    let machine_of = |pc: &Computer, key: &str| -> Option<String> {
+        pc.conn()
+            .query_row(
+                "SELECT machine_id FROM token_logs WHERE unique_key = ?1",
+                [key],
+                |row| row.get(0),
+            )
+            .ok()
+    };
+    let state = |pc: &Computer, key: &str| -> Option<(i64, i64)> {
+        pc.conn()
+            .query_row(
+                "SELECT input_tokens, generation FROM scan_cumulative_state WHERE unique_key = ?1",
+                [key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok()
+    };
+
+    // 旧版本同机备份：账本行和 bundle 机器都是迁移前的本机别名。
+    let old = Computer::new("legacy");
+    row(
+        &old,
+        "legacy-row",
+        alias,
+        100,
+        1,
+        Some("user-old"),
+        Some("2026-10-20 11:00:00"),
+        7,
+    );
+    row(&old, "shared-source", alias, 100, 0, None, None, 0);
+    row(&old, "foreign-explicit", "pc-b", 120, 0, None, None, 0);
+    put_state(&old, "shared-source", 100, 0);
+    let mut bundle = sealed_roundtrip(&old.export());
+    bundle.machine = alias.to_string();
+
+    let new = Computer::new("current");
+    let current = crate::commands::local_machine_id(&new.app);
+    crate::device_identity::migrate_local(&new.conn(), alias, &current).unwrap();
+    // 本机已有行及累计来源不应被备份中的旧别名行覆盖。
+    row(
+        &new,
+        "shared-source",
+        &current,
+        999,
+        1,
+        Some("user-local"),
+        Some("2026-10-24 09:00:00"),
+        11,
+    );
+    put_state(&new, "shared-source", 300, 0);
+
+    let result = apply(
+        &new.app,
+        &new.gateway,
+        &bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(result.ledger_added, 2);
+    // 旧别名属于本机，恢复后的新行必须归一到当前随机设备 ID。
+    assert_eq!(
+        machine_of(&new, "legacy-row").as_deref(),
+        Some(current.as_str())
+    );
+    assert_eq!(
+        receipt(&new, "legacy-row"),
+        (
+            1,
+            Some("user-old".to_string()),
+            Some("2026-10-20 11:00:00".to_string()),
+            7
+        )
+    );
+    // 外机显式 ID 原样保留。
+    assert_eq!(
+        machine_of(&new, "foreign-explicit").as_deref(),
+        Some("pc-b")
+    );
+    // 本机已有行、累计来源和同步回执都保持原值。
+    assert_eq!(
+        machine_of(&new, "shared-source").as_deref(),
+        Some(current.as_str())
+    );
+    assert_eq!(
+        receipt(&new, "shared-source"),
+        (
+            1,
+            Some("user-local".to_string()),
+            Some("2026-10-24 09:00:00".to_string()),
+            11
+        )
+    );
+    assert_eq!(new.input_of("shared-source"), 999);
+    assert_eq!(state(&new, "shared-source"), Some((300, 0)));
+
+    // 外机备份中的空 ID 行仍按 bundle 机器补齐。
+    let foreign = Computer::new("foreign");
+    row(
+        &foreign,
+        "foreign-explicit-2",
+        "pc-b",
+        130,
+        0,
+        None,
+        None,
+        0,
+    );
+    row(&foreign, "foreign-empty", "", 140, 0, None, None, 0);
+    let mut foreign_bundle = sealed_roundtrip(&foreign.export());
+    foreign_bundle.machine = "pc-a".to_string();
+    apply(
+        &new.app,
+        &new.gateway,
+        &foreign_bundle,
+        &everything(),
+        Conflict::KeepLocal,
+    )
+    .unwrap();
+    assert_eq!(
+        machine_of(&new, "foreign-explicit-2").as_deref(),
+        Some("pc-b")
+    );
+    assert_eq!(machine_of(&new, "foreign-empty").as_deref(), Some("pc-a"));
+}
