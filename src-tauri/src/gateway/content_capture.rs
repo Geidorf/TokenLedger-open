@@ -1190,9 +1190,15 @@ fn attachment_marker(value: &Value) -> Option<(String, Option<u64>)> {
         ));
     }
     if let Some(source) = object.get("source").and_then(Value::as_object) {
-        if is_attachment_source(source) {
+        // Documents can carry text/content sources; the body itself must
+        // never reach the sample, so every document source counts as an
+        // attachment.
+        if kind == "document" || is_attachment_source(source) {
             return Some((source_media_type(source, kind), source_size(source)));
         }
+    }
+    if kind == "document" && object.contains_key("source") {
+        return Some((kind_media_type(kind, object), object_payload_size(object)));
     }
     if let Some(image) = object.get("image_url") {
         return Some((image_media_type(image, "image"), inline_size(image)));
@@ -1357,8 +1363,16 @@ fn inline_size(value: &Value) -> Option<u64> {
 }
 
 fn source_size(source: &Map<String, Value>) -> Option<u64> {
-    explicit_object_size(source)
-        .or_else(|| source.get("data").and_then(Value::as_str).map(payload_size))
+    explicit_object_size(source).or_else(|| {
+        source.get("data").and_then(Value::as_str).map(|data| {
+            let is_text_source = source.get("type").and_then(Value::as_str) == Some("text");
+            if is_text_source {
+                data.len() as u64
+            } else {
+                payload_size(data)
+            }
+        })
+    })
 }
 
 fn object_payload_size(object: &Map<String, Value>) -> Option<u64> {
@@ -1484,6 +1498,70 @@ mod tests {
         let output = json_output(&captured);
         assert_eq!(output["messages"][1]["content"][0]["type"], "attachment");
         assert_eq!(output["messages"][1]["content"][0]["size_bytes"], 3);
+    }
+
+    #[test]
+    fn document_text_source_is_reduced_to_attachment_marker() {
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "document", "source": {
+                        "type": "text", "media_type": "text/plain", "data": "文档SECRET"
+                    }, "title": "secret.txt"},
+                    {"type": "document", "source": {
+                        "type": "text", "media_type": "text/plain", "data": "文档SECRET2",
+                        "size": 42
+                    }, "title": "secret2.txt"},
+                    {"type": "document", "source": "SOURCE-SECRET"},
+                    {"type": "text", "text": "keep plain text"}
+                ]}
+            ],
+            "content": [
+                {"type": "document", "source": {
+                    "type": "content", "content": [
+                        {"type": "text", "text": "CONTENT-SECRET"}
+                    ]
+                }, "title": "secret.md", "citations": {"cited_text": "CITED-SECRET"}}
+            ]
+        });
+        let captured = sanitize_body(&body, 32 * 1024);
+        assert!(!captured.truncated);
+        let text = &captured.text;
+        for secret in [
+            "文档SECRET",
+            "文档SECRET2",
+            "CONTENT-SECRET",
+            "CITED-SECRET",
+            "SOURCE-SECRET",
+            "secret.txt",
+            "secret.md",
+            "secret2.txt",
+        ] {
+            assert!(
+                !text.contains(secret),
+                "attachment content leaked into sample"
+            );
+        }
+        let output = json_output(&captured);
+        let marker = &output["messages"][0]["content"][0];
+        assert_eq!(marker["type"], "attachment");
+        assert_eq!(marker["media_type"], "text/plain");
+        assert_eq!(marker["size_bytes"], 12);
+        let sized_marker = &output["messages"][0]["content"][1];
+        assert_eq!(sized_marker["type"], "attachment");
+        assert_eq!(sized_marker["size_bytes"], 42);
+        let non_object_marker = &output["messages"][0]["content"][2];
+        assert_eq!(non_object_marker["type"], "attachment");
+        assert_eq!(non_object_marker["size_bytes"], Value::Null);
+        assert_eq!(output["messages"][0]["content"][3]["type"], "text");
+        assert_eq!(
+            output["messages"][0]["content"][3]["text"],
+            "keep plain text"
+        );
+        let content_marker = &output["content"][0];
+        assert_eq!(content_marker["type"], "attachment");
+        assert_eq!(content_marker["media_type"], "application/octet-stream");
+        assert_eq!(content_marker["size_bytes"], Value::Null);
     }
 
     #[test]
