@@ -441,6 +441,10 @@ internal object DashboardSnapshotJson {
             stats.machineDistribution?.let(StatsJson::compositionToJson) ?: JSONObject.NULL
         )
         .put("dailyCosts", stats.dailyCosts?.let(StatsJson::dailyCostsToJson) ?: JSONObject.NULL)
+        .apply {
+            stats.heatmapRequests?.let { put("heatmapRequests", longMapToJson(it)) }
+            stats.heatmapCost?.let { costs -> put("heatmapCost", JSONObject().apply { costs.forEach { (key, value) -> put(key, value) } }) }
+        }
         .put("meta", stats.meta?.let(::metaToJson) ?: JSONObject.NULL)
         .put("legacyRpc", stats.legacyRpc)
         .put("comparison", stats.comparison?.let(StatsJson::comparisonToJson) ?: JSONObject.NULL)

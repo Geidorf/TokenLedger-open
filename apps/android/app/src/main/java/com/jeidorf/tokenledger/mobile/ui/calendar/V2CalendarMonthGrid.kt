@@ -89,7 +89,7 @@ internal fun V2CalendarMonthGrid(
                 )
             ) {
                 row.forEach { month ->
-                    val summary = remember(month) { monthAccessibilitySummary(month.yearMonth, month.cells) }
+                    val summary = remember(month, axis.valueFormat) { monthAccessibilitySummary(month.yearMonth, month.cells, axis.valueFormat) }
                     val focusRequester = remember(month.yearMonth) { FocusRequester() }
                     LaunchedEffect(focusMonth) {
                         if (month.yearMonth == focusMonth) {

@@ -41,7 +41,9 @@ internal data class InsightCalendarAxis(
     val cutoffDate: LocalDate?,
     val selectableStart: LocalDate? = null,
     val selectableEnd: LocalDate? = null,
-    val unavailableReason: String? = null
+    val unavailableReason: String? = null,
+    /** 格内数值是哪个指标、怎么写成文字（§2.6）；默认有效 Token。 */
+    val valueFormat: HeatmapValueFormat = HeatmapValueFormat()
 ) {
     val isTrusted: Boolean get() = unavailableReason == null
 
@@ -50,9 +52,18 @@ internal data class InsightCalendarAxis(
 }
 
 /** 按可信热力图覆盖呈现全局日期；查询范围不裁剪底图。 */
-internal fun buildInsightCalendarAxis(stats: StatsData, query: DashboardQuery): InsightCalendarAxis {
+internal fun buildInsightCalendarAxis(
+    stats: StatsData,
+    query: DashboardQuery,
+    valueFormat: HeatmapValueFormat = HeatmapValueFormat()
+): InsightCalendarAxis {
     val context = trustedCalendarContext(stats, query)
     if (context.unavailableReason != null) return context.toUnavailableAxis()
+    val values = heatmapMetricValues(valueFormat.metric, stats.heatmap, stats.heatmapRequests, stats.heatmapCost)
+        ?: return context.toUnavailableAxis().copy(
+            unavailableReason = heatmapMetricUnavailableReason(valueFormat.metric),
+            valueFormat = valueFormat
+        )
 
     val selectableStart = context.heatmapStart
     val selectableEnd = minOf(context.heatmapEnd, context.cutoffDate)
@@ -68,16 +79,20 @@ internal fun buildInsightCalendarAxis(stats: StatsData, query: DashboardQuery): 
     val gridStart = selectableStart.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
     val gridEnd = selectableEnd.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
     return InsightCalendarAxis(
-        cells = generateCalendarCells(gridStart, gridEnd, stats.validHeatmapValues(), context),
+        cells = generateCalendarCells(gridStart, gridEnd, values.mapKeys { LocalDate.parse(it.key) }, context),
         timezone = context.timezone,
         cutoffDate = context.cutoffDate,
         selectableStart = selectableStart,
-        selectableEnd = selectableEnd
+        selectableEnd = selectableEnd,
+        valueFormat = valueFormat
     )
 }
 
 /** 辅助年度响应只贡献热力图；高亮始终来自主查询。 */
-internal fun buildInsightCalendarAxis(state: CalendarHeatmapUiState): InsightCalendarAxis {
+internal fun buildInsightCalendarAxis(
+    state: CalendarHeatmapUiState,
+    valueFormat: HeatmapValueFormat = HeatmapValueFormat()
+): InsightCalendarAxis {
     if (state !is CalendarHeatmapUiState.Available) {
         val reason = when (state) {
             is CalendarHeatmapUiState.Loading -> "正在加载全局日历"
@@ -106,12 +121,18 @@ internal fun buildInsightCalendarAxis(state: CalendarHeatmapUiState): InsightCal
     }
     val coveredEnd = minOf(end, cutoff)
     if (start > coveredEnd) return InsightCalendarAxis(emptyList(), state.timezone, cutoff, unavailableReason = "全局日历尚无可信日期")
+    val values = heatmapMetricValues(valueFormat.metric, state.heatmap, state.heatmapRequests, state.heatmapCost)
+        ?: return InsightCalendarAxis(
+            emptyList(), state.timezone, cutoff,
+            unavailableReason = heatmapMetricUnavailableReason(valueFormat.metric), valueFormat = valueFormat
+        )
     val context = TrustedCalendarContext(state.timezone, cutoff, bounds.first, bounds.second, start, coveredEnd)
     return InsightCalendarAxis(
         cells = generateCalendarCells(start.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
             coveredEnd.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY)),
-            state.heatmap.mapKeys { LocalDate.parse(it.key) }, context),
-        timezone = state.timezone, cutoffDate = cutoff, selectableStart = start, selectableEnd = coveredEnd
+            values.mapKeys { LocalDate.parse(it.key) }, context),
+        timezone = state.timezone, cutoffDate = cutoff, selectableStart = start, selectableEnd = coveredEnd,
+        valueFormat = valueFormat
     )
 }
 

@@ -1019,7 +1019,8 @@ internal fun LazyListScope.v2InsightsItems(
                         it.warning ?: if (it.showingCachedData) "当前显示缓存日历" else null
                     },
                     restoreFocusDate = calendarFocusDate,
-                    onFocusRestored = onCalendarFocusRestored
+                    onFocusRestored = onCalendarFocusRestored,
+                    calendarState = state.calendarHeatmap
                 )
             }
         }
