@@ -420,6 +420,7 @@ mod tests {
             apply_price_overrides, default_prices, estimate_cost, estimate_cost_at,
             price_memo::PriceMemo, price_rate_snapshot, price_values_equal, StatRow,
         };
+        use super::super::entry_for_record;
         use serde_json::{json, Value};
 
         fn row(tool: &str, model: &str, timestamp: &str, input: i64, cached: i64) -> StatRow {
@@ -452,6 +453,72 @@ mod tests {
                 row.cache_read_tokens(),
                 row.cache_write_tokens,
             )
+        }
+
+        fn assert_sol_rates(entry: &Value, expected: [f64; 4]) {
+            for (field, want) in ["input", "output", "cache_input", "cache_write"]
+                .into_iter()
+                .zip(expected)
+            {
+                assert_eq!(super::rate(entry, field), want, "{field}");
+            }
+        }
+
+        #[test]
+        fn historical_sol_aliases_keep_old_rates_until_the_utc_boundary() {
+            let prices = default_prices();
+            let mut memo = PriceMemo::new(&prices);
+            for alias in ["gpt-5.6-sol", "gpt-5.6"] {
+                let entry = &prices[alias];
+                let before = entry_for_record(entry, "codex", "2026-08-20T23:59:59Z", 1_000);
+                assert_sol_rates(&before, [5.0, 30.0, 0.5, 6.25]);
+
+                let boundary = entry_for_record(entry, "codex", "2026-08-21T00:00:00Z", 1_000);
+                assert_sol_rates(&boundary, [4.0, 20.0, 0.4, 5.0]);
+
+                let after = entry_for_record(entry, "codex", "2026-08-21T00:00:01Z", 1_000);
+                assert_sol_rates(&after, [4.0, 20.0, 0.4, 5.0]);
+
+                let before_row = row("codex", alias, "2026-08-20T23:59:59Z", 100_000, 0);
+                assert!((at(&prices, &before_row) - 30.5).abs() < 1e-9);
+                assert_eq!(memo.row_price(&before_row).cost, at(&prices, &before_row));
+
+                let utc_boundary = row("codex", alias, "2026-08-21T00:00:00Z", 100_000, 0);
+                let shanghai_boundary =
+                    row("codex", alias, "2026-08-21T08:00:00+08:00", 100_000, 0);
+                assert!((at(&prices, &utc_boundary) - 20.4).abs() < 1e-9);
+                assert_eq!(at(&prices, &shanghai_boundary), at(&prices, &utc_boundary));
+            }
+        }
+
+        #[test]
+        fn historical_sol_long_context_and_custom_prices_use_the_same_rules() {
+            let defaults = default_prices();
+            let entry = &defaults["gpt-5.6-sol"];
+            let before = entry_for_record(entry, "codex", "2026-08-20T23:59:59Z", 300_000);
+            assert_sol_rates(&before, [10.0, 45.0, 1.0, 12.5]);
+            let before_row = row(
+                "codex",
+                "gpt-5.6-sol",
+                "2026-08-20T23:59:59Z",
+                200_000,
+                100_000,
+            );
+            assert!((at(&defaults, &before_row) - 47.1).abs() < 1e-9);
+            let mut memo = PriceMemo::new(&defaults);
+            assert_eq!(memo.row_price(&before_row).cost, at(&defaults, &before_row));
+
+            let overrides = json!({
+                "gpt-5.6-sol": { "input": 1.0 },
+                "gpt-5.6": { "input": 1.0 }
+            });
+            let custom = apply_price_overrides(&defaults, overrides.as_object().unwrap());
+            for alias in ["gpt-5.6-sol", "gpt-5.6"] {
+                assert!(custom[alias].get("history").is_none());
+                let old_record =
+                    entry_for_record(&custom[alias], "codex", "2026-08-20T23:59:59Z", 1_000);
+                assert_sol_rates(&old_record, [1.0, 20.0, 0.4, 5.0]);
+            }
         }
 
         #[test]

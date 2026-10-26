@@ -1,22 +1,28 @@
 //! T10.167 等价性测试的“旧实现”基准（oracle），只在测试中编译。
 //!
 //! 下方分隔线之间是 `945cc718:src-tauri/src/commands/mod.rs` 中被 T10.167 改动或
-//! 依赖其改动的函数，逐字复制（同名、同实现，局部定义遮蔽 `super::super::*` 的同名
-//! 新实现；`SummaryAccumulator`、`LocalStatsSnapshot`、`LocalEntityMetrics` 也是旧
-//! 定义的本地副本）。未改动的辅助函数（SQL 读取、价格表、估价公式、区间计算等）
-//! 直接复用生产实现，因此这里比较的正是 T10.167 改动的部分。
+//! 依赖其改动的函数（同名、同实现，局部定义遮蔽 `super::super::*` 的同名新实现；
+//! `SummaryAccumulator`、`LocalStatsSnapshot`、`LocalEntityMetrics` 也是旧定义的本地
+//! 副本）。聚合结构保持旧实现，估价参考路径除外：价格表 schema 2 要求逐行按记录
+//! 时间与请求长度取价，详见下方说明。其余未改动辅助函数直接复用生产实现，因此这里
+//! 仍只比较 T10.167 有意锁定的聚合行为。
 //!
 //! 用途只有一个：`stats_perf_tests` 在合成账本上把旧、新两条路径的完整 JSON 输出
 //! 逐字段比较。若以后有意改变 Stats v2 / 明细 / 专属看板的输出，请同步改这里或
 //! 连同对应等价测试一起删除——它们只锁定 T10.167 这次“结果不变”的重构。
 //!
 //! T10.183 有意改变了输出：凡带 `cacheSavedUsd` 的 summary 多了 `cacheSavings` 对象，
-//! 本机响应的 `capabilities` 多了 `cacheSavings: true`。本文件保持逐字不动；
+//! 本机响应的 `capabilities` 多了 `cacheSavings: true`。这些新增字段不并入旧聚合结构；
 //! `stats_perf_tests::strip_t10_183_additions` 先逐处核对这两处的不变量（读取节省与
 //! `cacheSavedUsd` 逐位相同、净值逐位等于读取节省 − 写入溢价等）再把它们去掉，其余
 //! 字段（含 `cacheSavedUsd`）仍与本文件的旧输出逐位比较。
+//!
+//! 价格表 schema 2 之后，逐行成本必须先按记录时间选历史价，并按请求长度选长上下文
+//! 分档。本 oracle 的聚合结构仍是旧实现，但估价参考路径有意改用 `estimate_cost_at`
+//! 与按记录时间取价的独立缓存节省公式；这不属于 T10.167 的“结果不变”重构。
 
 use super::super::*;
+use super::estimate_cache_savings_parts_at;
 
 /// 旧实现的总览统计（Stats v2 快照里的 `stats`）。
 pub(super) fn overview(
@@ -120,10 +126,11 @@ fn aggregate_rows_for_window(
         // R-64（T10.205）：已存费用为负或非有限时不可得，见文件顶部注记。
         let row_cost = match row.cost_usd {
             Some(cost) => stored_cost_or_unavailable(cost),
-            None => estimate_cost(
+            None => estimate_cost_at(
                 prices,
                 &row.tool,
                 &row.model,
+                row.price_timestamp(),
                 row.input_tokens,
                 row.output_tokens,
                 row.cache_read_tokens(),
@@ -209,8 +216,16 @@ fn aggregate_rows_for_window(
         summary_cached += row.cached_tokens;
         summary_cache_read += row.cache_read_tokens();
         summary_cache_write += row.cache_write_tokens;
-        summary_cache_saved +=
-            estimate_cache_savings(prices, &row.tool, &row.model, row.cache_read_tokens());
+        summary_cache_saved += estimate_cache_savings_parts_at(
+            prices,
+            &row.tool,
+            &row.model,
+            row.price_timestamp(),
+            row.input_tokens,
+            row.cache_read_tokens(),
+            row.cache_write_tokens,
+        )
+        .read_saved;
         summary_cache_split_proven &= row_cache_split_proven;
         tool_cache_split_proven
             .entry(row.tool.clone())
@@ -460,16 +475,25 @@ impl SummaryAccumulator {
         self.cached += row.cached_tokens;
         self.cache_read += row.cache_read_tokens();
         self.cache_write += row.cache_write_tokens;
-        self.cache_saved +=
-            estimate_cache_savings(prices, &row.tool, &row.model, row.cache_read_tokens());
+        self.cache_saved += estimate_cache_savings_parts_at(
+            prices,
+            &row.tool,
+            &row.model,
+            row.price_timestamp(),
+            row.input_tokens,
+            row.cache_read_tokens(),
+            row.cache_write_tokens,
+        )
+        .read_saved;
         self.cache_split_proven &= row.cache_split_is_proven();
         // R-64（T10.205）：已存费用为负或非有限时不可得，见文件顶部注记。
         self.cost += match row.cost_usd {
             Some(cost) => stored_cost_or_unavailable(cost),
-            None => estimate_cost(
+            None => estimate_cost_at(
                 prices,
                 &row.tool,
                 &row.model,
+                row.price_timestamp(),
                 row.input_tokens,
                 row.output_tokens,
                 row.cache_read_tokens(),
@@ -866,10 +890,11 @@ fn get_usage_details_normalized_at(
             // R-64（T10.205）：已存费用为负或非有限时不可得，见文件顶部注记。
             let cost = match row.cost_usd {
                 Some(cost) => stored_cost_or_unavailable(cost),
-                None => estimate_cost(
+                None => estimate_cost_at(
                     &prices,
                     &row.tool,
                     &row.model,
+                    row.price_timestamp(),
                     row.input_tokens,
                     row.output_tokens,
                     row.cache_read_tokens(),

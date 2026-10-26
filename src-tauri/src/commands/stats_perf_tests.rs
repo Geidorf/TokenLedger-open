@@ -4,11 +4,12 @@
 //! `db::init_db`（含全部迁移与索引），发现模型按扫描器同一规则登记；不读取真实账本、
 //! 用户价格覆盖或云端。
 //!
-//! - 等价性测试（常规 `cargo test` 运行）：`PriceMemo` 与逐行 `estimate_cost` /
-//!   `estimate_cache_savings` / `estimate_cache_savings_parts`（T10.183）逐位相等；总览、
-//!   明细分页与专属看板的新实现与 `stats_perf_oracle`（T10.167 之前的逐字副本）在干净、
-//!   异常两本合成账本上逐字段相等（T10.183 新增的缓存净节省字段先核对不变量再去掉，见
-//!   `strip_t10_183_additions`）。
+//! - 等价性测试（常规 `cargo test` 运行）：`PriceMemo::row_price` 与逐行
+//!   `estimate_cost_at` / 按记录时间和长度取价的独立缓存节省公式逐位相等；同一测试
+//!   另行覆盖现价标准档 `rates` 与 `estimate_cost` / `estimate_cache_savings` /
+//!   `estimate_cache_savings_parts`。总览、明细分页与专属看板的新实现与
+//!   `stats_perf_oracle` 在干净、异常两本合成账本上逐字段相等（T10.183 新增的缓存净
+//!   节省字段先核对不变量再去掉，见 `strip_t10_183_additions`）。
 //! - 基准是 `#[ignore]`，常规 `cargo test` 不会运行，需要显式：
 //!
 //! ```text
@@ -1366,6 +1367,50 @@ fn sparse_price_tables() -> Vec<Value> {
     ]
 }
 
+/// 按记录时间与请求长度选价后的缓存节省参考公式。它独立于 `PriceMemo` /
+/// `PriceRates`，并保留列价来源计数与原有的乘法、加法和 `max` 顺序。
+#[allow(clippy::too_many_arguments)]
+fn estimate_cache_savings_parts_at(
+    prices: &Value,
+    tool: &str,
+    model: &str,
+    timestamp: &str,
+    input: i64,
+    cache_read: i64,
+    cache_write: i64,
+) -> CacheSavingsParts {
+    let (base, source) = lookup_model_price_with_source(prices, tool, model);
+    let p = price_schedule::entry_for_record(
+        base,
+        tool,
+        timestamp,
+        prompt_tokens(input, cache_read, cache_write),
+    );
+    let listed_input = p.get("input").and_then(Value::as_f64);
+    let p_input = listed_input.unwrap_or(1.0);
+    let read_price = p.get("cache_input").and_then(Value::as_f64);
+    let write_price = p.get("cache_write").and_then(Value::as_f64);
+    let listed_entry = source == PriceSource::Listed && listed_input.is_some();
+    let mut parts = CacheSavingsParts::default();
+    if cache_read > 0 {
+        let effective_read_price = read_price.unwrap_or(p_input * 0.1);
+        parts.read_saved =
+            ((cache_read as f64) / 1_000_000.0) * (p_input - effective_read_price).max(0.0);
+        if !(listed_entry && read_price.is_some()) {
+            parts.fallback_read_tokens = cache_read;
+        }
+    }
+    if cache_write > 0 {
+        let effective_write_price = write_price.unwrap_or(p_input * 1.25);
+        parts.write_premium =
+            ((cache_write as f64) / 1_000_000.0) * (effective_write_price - p_input).max(0.0);
+        if !(listed_entry && write_price.is_some()) {
+            parts.fallback_write_tokens = cache_write;
+        }
+    }
+    parts
+}
+
 #[test]
 fn price_memo_matches_per_row_estimates_bit_for_bit() {
     let ledger = build_synthetic_ledger("memo_units", 16, 0x7167_0001, false);
@@ -1385,22 +1430,23 @@ fn price_memo_matches_per_row_estimates_bit_for_bit() {
             // 同一判定函数 `price_memo::stored_cost_or_unavailable`，这里不重复实现。
             let expected_cost = match row.cost_usd {
                 Some(cost) => price_memo::stored_cost_or_unavailable(cost),
-                None => estimate_cost(
+                None => estimate_cost_at(
                     prices,
                     &row.tool,
                     &row.model,
+                    row.price_timestamp(),
                     row.input_tokens,
                     row.output_tokens,
                     row.cache_read_tokens(),
                     row.cache_write_tokens,
                 ),
             };
-            let expected_saved =
-                estimate_cache_savings(prices, &row.tool, &row.model, row.cache_read_tokens());
-            let expected_parts = estimate_cache_savings_parts(
+            let expected_parts = estimate_cache_savings_parts_at(
                 prices,
                 &row.tool,
                 &row.model,
+                row.price_timestamp(),
+                row.input_tokens,
                 row.cache_read_tokens(),
                 row.cache_write_tokens,
             );
@@ -1413,10 +1459,10 @@ fn price_memo_matches_per_row_estimates_bit_for_bit() {
                 row.model,
                 price.cost
             );
-            // T10.183：读取节省仍是 T10.183 之前的毛值公式原文，`cacheSavedUsd` 逐位不变。
+            // 读取节省保留原毛值公式，并按同一记录的历史价与分档逐位比较。
             assert_eq!(
                 price.cache.read_saved.to_bits(),
-                expected_saved.to_bits(),
+                expected_parts.read_saved.to_bits(),
                 "table {table_index}: cache savings of {}/{} differ",
                 row.tool,
                 row.model
@@ -1435,7 +1481,16 @@ fn price_memo_matches_per_row_estimates_bit_for_bit() {
                 );
             }
 
-            // 明细分页的 filteredSummary 按 (工具, 模型) 分组后走 `rates`，与逐行估价同式。
+            // 现价标准档仍独立对照旧公式，不能拿历史价 expected_parts 比较 `rates`。
+            let standard_saved =
+                estimate_cache_savings(prices, &row.tool, &row.model, row.cache_read_tokens());
+            let standard_parts = estimate_cache_savings_parts(
+                prices,
+                &row.tool,
+                &row.model,
+                row.cache_read_tokens(),
+                row.cache_write_tokens,
+            );
             let grouped = memo.rates(&row.tool, &row.model).cost(
                 row.input_tokens,
                 row.output_tokens,
@@ -1455,7 +1510,8 @@ fn price_memo_matches_per_row_estimates_bit_for_bit() {
             let grouped_parts = memo
                 .rates(&row.tool, &row.model)
                 .cache_parts(row.cache_read_tokens(), row.cache_write_tokens);
-            assert_same_parts(&format!("{label} grouped"), grouped_parts, expected_parts);
+            assert_eq!(grouped_parts.read_saved.to_bits(), standard_saved.to_bits());
+            assert_same_parts(&format!("{label} grouped"), grouped_parts, standard_parts);
         }
     }
 }
