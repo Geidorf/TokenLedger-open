@@ -161,6 +161,7 @@ revoke all on table private.usage_context_days
 create or replace function private.usage_dimensions_fail_v1(p_reason text)
 returns void
 language plpgsql
+stable
 set search_path = ''
 as $$
 begin
