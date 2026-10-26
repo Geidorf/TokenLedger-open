@@ -249,3 +249,36 @@ test.describe('英文界面', () => {
     await expect(page.getByRole('switch', { name: 'Count local usage by project' })).toBeVisible();
   });
 });
+
+for (const viewport of [{ width: 1200, height: 800 }, { width: 1280, height: 860 }]) {
+  test(`用量异常英文完整呈现与下钻 ${viewport.width}`, async ({ page, ipc }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await openEnglish(page, 'dashboard');
+    const panel = page.locator('.usage-anomaly-panel');
+    await panel.scrollIntoViewIfNeeded();
+    await expect(panel.getByText('Usage anomalies', { exact: true })).toBeVisible();
+    await expect(panel).not.toContainText(/[\u4e00-\u9fff]/);
+    await expect(panel.getByRole('button', { name: /^Token spike, Today/ })).toBeVisible();
+    await expect(panel.getByText(/Gateway error rate spike: No local data of this kind/)).toBeVisible();
+
+    const rules = panel.getByRole('button', { name: 'Anomaly detection rules', exact: true });
+    await rules.focus();
+    const tooltip = panel.getByRole('tooltip');
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText('14 days');
+    await expect(tooltip).toContainText('500K');
+    await page.keyboard.press('Escape');
+
+    const notify = panel.getByRole('switch', { name: 'System notification for anomalies' });
+    await notify.click();
+    await expect(notify).toHaveAttribute('aria-checked', 'true');
+    expect((await ipc.calls('set_usage_anomaly_settings')).at(-1)?.args).toEqual({ settings: { notify: true } });
+    await expectNoHorizontalOverflow(page);
+    await testInfo.attach('anomaly-english', { body: await page.screenshot(), contentType: 'image/png' });
+    await panel.getByRole('button', { name: /^Token spike, Today/ }).click();
+    await expect(page).toHaveURL(/#records$/);
+    await expect.poll(async () => (await ipc.calls('get_usage_details')).at(-1)?.args).toMatchObject({
+      query: { scope: 'local', range: 'custom', start: '2026-07-15', end: '2026-07-15', search: '' },
+    });
+  });
+}
