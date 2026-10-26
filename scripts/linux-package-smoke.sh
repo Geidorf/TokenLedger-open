@@ -3,8 +3,7 @@
 # 真的能用，而不只是能编译。逐项检查：
 #   1. 主窗口出现（X11 下按窗口标题找）；
 #   2. 托盘图标向 StatusNotifierWatcher 注册（由 linux-tray-watcher.py 扮演面板）；
-#   3. 开机自启：默认不写；把设置改成 autostart_enabled=true 再启动后
-#      $XDG_CONFIG_HOME/autostart/com.jeidorf.tokenledger.desktop 的 Exec 指向本程序；
+#   3. 开机自启：默认与旧偏好均不创建条目；已有有效条目在启动后刷新 Exec；
 #   4. 数据目录落在 $XDG_DATA_HOME/com.jeidorf.tokenledger，冷启动扫描把预置的
 #      ~/.claude/projects 会话记进 token_logs；
 #   5. 再启动一次会交给已在运行的实例并退出（单实例）；
@@ -125,8 +124,9 @@ window_visible() {
 tray_registered() {
   [ -s "$TRAY_LOG" ]
 }
-autostart_written() {
-  [ -f "$AUTOSTART_FILE" ]
+autostart_current() {
+  [ -f "$AUTOSTART_FILE" ] \
+    && grep -qxF "Exec=\"$EXPECTED_EXEC\"" "$AUTOSTART_FILE"
 }
 scan_recorded() {
   [ -f "$DATA_DIR/tokenboard.db" ] || return 1
@@ -148,8 +148,7 @@ wait_for "设置文件写入 XDG 数据目录" settings_written
 [ ! -e "$AUTOSTART_FILE" ] || fail "默认设置下不应写开机自启条目"
 stop
 
-# 第二次启动：像用户在设置页打开过「开机自动启动」那样改设置文件，
-# 确认启动时按设置写出自启条目。
+# 第二次启动：模拟保留了旧偏好但系统登记已删除，启动不能重新创建条目。
 "$PYTHON" - "$DATA_DIR/app_settings.json" <<'PY'
 import json, sys
 path = sys.argv[1]
@@ -163,7 +162,26 @@ PY
 launch
 wait_for "主窗口再次显示" window_visible
 wait_for "托盘图标再次注册" tray_registered
-wait_for "开机自启条目写入" autostart_written
+[ ! -e "$AUTOSTART_FILE" ] || fail "旧自启偏好不应在启动时重新创建条目"
+echo "ok: 旧自启偏好不会重新创建条目"
+stop
+
+# 第三次启动：预置已有的有效登记，确认仅刷新本应用的旧路径。
+mkdir -p "$(dirname "$AUTOSTART_FILE")"
+cat > "$AUTOSTART_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Name=TokenLedger
+Exec="$WORK/previous-app"
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+chmod 600 "$AUTOSTART_FILE"
+: > "$TRAY_LOG"
+launch
+wait_for "已有登记时主窗口显示" window_visible
+wait_for "已有登记时托盘图标注册" tray_registered
+wait_for "已有自启条目路径刷新" autostart_current
 
 grep -qxF "Exec=\"$EXPECTED_EXEC\"" "$AUTOSTART_FILE" \
   || fail "自启条目的 Exec 不是 \"$EXPECTED_EXEC\"：$(grep '^Exec=' "$AUTOSTART_FILE" || true)"
@@ -176,7 +194,7 @@ echo "ok: 自启条目 Exec 指向 $EXPECTED_EXEC"
   || fail "数据目录写到了 ~/.local/share，没有遵守 XDG_DATA_HOME"
 echo "ok: 数据目录在 XDG_DATA_HOME 下"
 
-# 单实例：第二次启动应把窗口交给已有实例并尽快退出。
+# 单实例：再次启动应把窗口交给已有实例并尽快退出。
 SECOND_LOG="$WORK/second.log"
 if ! timeout 30 "$APP" > "$SECOND_LOG" 2>&1; then
   cat "$SECOND_LOG" >&2 || true
