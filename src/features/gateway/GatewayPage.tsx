@@ -10,6 +10,7 @@ import { DecisionTrace } from './DecisionTrace';
 import { CopyButton, ProviderIcon, RevealCopyButton } from './ui';
 import { InfoTip } from '../../components/InfoTip';
 import { t, useLang } from '../../i18n';
+import { ContentSamplingPanel, useContentSamplingStatus } from './ContentSamplingPanel';
 
 interface GatewayData {
   status: GatewayStatus;
@@ -55,6 +56,7 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents, onOp
   const [query, setQuery] = useState('');
   const [model, setModel] = useState('');
   const [openTrace, setOpenTrace] = useState<string | null>(null);
+  const contentSampling = useContentSamplingStatus();
 
   const load = useCallback(async () => {
     try {
@@ -130,6 +132,8 @@ export function GatewayPage({ onOpenRouting, onOpenProviders, onOpenAgents, onOp
           </div>
         </div>
       </div>
+
+      <ContentSamplingPanel controller={contentSampling} />
 
       <div className="mw-card mw-panel">
         <div className="mw-panel-head">

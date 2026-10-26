@@ -12,6 +12,8 @@ import { HealthBadge, useProviderHealth } from './ProviderHealth';
 import { ATTEMPT_OUTCOME_LABEL, DECISION_REASON_LABEL, effectiveTokens, requestLogSessionRef, shortTime, traceHeadline } from './helpers';
 import { openSessionDetail } from '../sessionDetail/sessionDetailRoute';
 import type { ProviderHealth, RequestLogAttempt, RequestLogEntry, RequestLogPage as LogPage, RequestLogQuery } from './types';
+import { ContentSampleSection } from './ContentSampleSection';
+import { ContentSamplingPanel, useContentSamplingStatus, type SamplingController } from './ContentSamplingPanel';
 import './requestLog.css';
 
 const PAGE_SIZE = 50;
@@ -133,7 +135,8 @@ function ContextBars({ entry }: { entry: RequestLogEntry }) {
   );
 }
 
-function EntryDetail({ entry, health }: { entry: RequestLogEntry; health: Map<string, ProviderHealth> }) {
+function EntryDetail({ entry, health, sampling }: { entry: RequestLogEntry; health: Map<string, ProviderHealth>; sampling: SamplingController }) {
+  const hasSample = sampling.status?.sampleIds.includes(entry.id) ?? false;
   const sessionRef = requestLogSessionRef(entry);
   return (
     <div className="mw-log-detail">
@@ -208,6 +211,7 @@ function EntryDetail({ entry, health }: { entry: RequestLogEntry; health: Map<st
           <div><dt>{t('requestLog.fact.started')}</dt><dd>{new Date(entry.startedAt).toLocaleString()}</dd></div>
         </dl>
       </section>
+      {hasSample && <ContentSampleSection id={entry.id} />}
     </div>
   );
 }
@@ -217,6 +221,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
   useLang();
   // 尝试行旁显示该供应商当前（近 24 小时）的健康度，便于判断失败是偶发还是持续。
   const health = useProviderHealth();
+  const contentSampling = useContentSamplingStatus();
   const [filters, setFilters] = useState<LogFilters>(EMPTY_FILTERS);
   const [searchText, setSearchText] = useState('');
   const [offset, setOffset] = useState(0);
@@ -310,6 +315,12 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
   const total = page?.total ?? 0;
   const pageEnd = Math.min(offset + PAGE_SIZE, total);
 
+  const toggleEntry = (id: string) => {
+    const next = open === id ? null : id;
+    setOpen(next);
+    if (next) void contentSampling.refresh();
+  };
+
   return (
     <div className="mw-page-stack mw-log-page">
       <div className="mw-card mw-panel">
@@ -354,6 +365,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
           <InfoTip label={t('requestLog.info.label')}>{t('requestLog.info.body')}</InfoTip>
         </p>
         {error && <p className="mw-caption is-danger" role="alert">{error}</p>}
+        <ContentSamplingPanel compact controller={contentSampling} onNotify={onNotify} />
         {page && page.retained === 0 ? (
           <EmptyState variant="inset" icon={ScrollText} title={t('requestLog.empty.title')} description={t('requestLog.empty.body')} />
         ) : page && total === 0 ? (
@@ -377,7 +389,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
                     <Fragment key={entry.id}>
                       <tr className={`mw-log-row${fresh.has(entry.id) ? ' is-fresh' : ''}${expanded ? ' is-open' : ''}`}>
                         <td>
-                          <button type="button" className="mw-log-toggle" aria-expanded={expanded} aria-label={t(expanded ? 'requestLog.row.collapse' : 'requestLog.row.expand', { time: shortTime(entry.ts) })} onClick={() => setOpen(expanded ? null : entry.id)}>
+                          <button type="button" className="mw-log-toggle" aria-expanded={expanded} aria-label={t(expanded ? 'requestLog.row.collapse' : 'requestLog.row.expand', { time: shortTime(entry.ts) })} onClick={() => toggleEntry(entry.id)}>
                             {shortTime(entry.ts)}
                           </button>
                         </td>
@@ -397,7 +409,7 @@ export function RequestLogPage({ onNotify }: { onNotify?: (type: ToastType, text
                       </tr>
                       {expanded && (
                         <tr className="mw-log-detail-row">
-                          <td colSpan={10}><EntryDetail entry={entry} health={health} /></td>
+                          <td colSpan={10}><EntryDetail entry={entry} health={health} sampling={contentSampling} /></td>
                         </tr>
                       )}
                     </Fragment>

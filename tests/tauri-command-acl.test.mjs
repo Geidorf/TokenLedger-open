@@ -128,9 +128,9 @@ function validatePolicy(policy) {
   }
 }
 
-test('all 145 registered commands have generated permissions and exact per-window grants', () => {
+test('all 149 registered commands have generated permissions and exact per-window grants', () => {
   const policy = productionPolicy();
-  assert.equal(policy.registered.length, 145, 'review the surface matrix when adding or removing an application command');
+  assert.equal(policy.registered.length, 149, 'review the surface matrix when adding or removing an application command');
   validatePolicy(policy);
 });
 
@@ -193,6 +193,21 @@ test('gateway provider and key management stays main-only', () => {
   const gateway = policy.capabilities.find((capability) => capability.identifier === 'gateway-main-only');
   assert.deepEqual(gateway.windows, ['main']);
   assert.deepEqual(sorted(gateway.permissions), sorted(gatewayCommands.map(allow)));
+});
+
+test('content samples can only be configured, read or deleted by the main window', () => {
+  const policy = productionPolicy();
+  const commands = [
+    'gateway_content_sampling_status', 'gateway_set_content_sampling',
+    'gateway_read_content_sample', 'gateway_delete_content_samples',
+  ];
+  for (const command of commands) {
+    assert.ok(policy.registered.includes(command));
+    assert.ok(grants(policy, 'main').has(allow(command)));
+    for (const label of ['widget', 'desktop-widget', 'wallpaper']) {
+      assert.ok(!grants(policy, label).has(allow(command)), `${label} must not access content samples`);
+    }
+  }
 });
 
 function frontendInvocations(file) {

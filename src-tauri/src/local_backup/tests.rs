@@ -176,6 +176,29 @@ fn a_backup_carries_no_secret() {
 }
 
 #[test]
+fn content_samples_never_enter_an_export_or_restore_snapshot() {
+    let pc = Computer::new("content-samples");
+    let samples = pc.gateway.dir().join("samples-v1");
+    fs::create_dir_all(&samples).unwrap();
+    let sentinel = samples.join("0000000000000000.bin");
+    fs::write(&sentinel, b"sample-file-sentinel").unwrap();
+
+    let bundle = pc.export();
+    let json = serde_json::to_vec(&bundle).unwrap();
+    assert!(!json
+        .windows(b"sample-file-sentinel".len())
+        .any(|window| window == b"sample-file-sentinel"));
+    let sealed = seal_bundle(&bundle, PASSPHRASE, FAST).unwrap();
+    assert!(!sealed
+        .windows(b"sample-file-sentinel".len())
+        .any(|window| window == b"sample-file-sentinel"));
+
+    let snapshot = snapshot(&pc.app, pc.gateway.dir()).unwrap();
+    assert!(!snapshot.join("gateway").join("samples-v1").exists());
+    assert_eq!(fs::read(sentinel).unwrap(), b"sample-file-sentinel");
+}
+
+#[test]
 fn restore_merges_rows_by_unique_key_and_adds_setup() {
     let old = Computer::new("old");
     old.insert("k1", 100);

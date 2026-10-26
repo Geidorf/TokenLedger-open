@@ -826,9 +826,46 @@ pub fn run() {
             .checked(desktop_widget_enabled)
             .build(app)?;
             desktop_state_for_setup.set_menu_item(desktop_i.clone());
+            let sampling_i =
+                tauri::menu::MenuItemBuilder::with_id("content-sampling-status", "内容采样已关闭")
+                    .enabled(false)
+                    .build(app)?;
+            let stop_sampling_i = tauri::menu::MenuItemBuilder::with_id(
+                "content-sampling-stop",
+                "停止采样并删除样本",
+            )
+            .enabled(false)
+            .build(app)?;
+            let sampling_gateway = gateway_for_setup.clone();
+            let sampling_notice = sampling_i.clone();
+            let sampling_stop = stop_sampling_i.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut previous = None;
+                loop {
+                    let active = sampling_gateway.content_sampling_active();
+                    if previous != Some(active) {
+                        let _ = sampling_notice.set_text(if active {
+                            "正在采样请求内容"
+                        } else {
+                            "内容采样已关闭"
+                        });
+                        let _ = sampling_stop.set_enabled(active);
+                        previous = Some(active);
+                    }
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+            });
             let menu_separator = tauri::menu::PredefinedMenuItem::separator(app)?;
             let menu = tauri::menu::MenuBuilder::new(app)
-                .items(&[&show_i, &widget_i, &desktop_i, &menu_separator, &quit_i])
+                .items(&[
+                    &show_i,
+                    &widget_i,
+                    &desktop_i,
+                    &sampling_i,
+                    &stop_sampling_i,
+                    &menu_separator,
+                    &quit_i,
+                ])
                 .build()?;
 
             // 指向托盘 = 临时弹出挂件（不抢焦点，移开即收起）；单击托盘 = 钉住 / 收起
@@ -868,6 +905,12 @@ pub fn run() {
                             &popover_state_for_menu,
                             None,
                         );
+                    }
+                    "content-sampling-stop" => {
+                        let gateway = app.state::<Arc<gateway::Gateway>>().inner().clone();
+                        std::mem::drop(tauri::async_runtime::spawn_blocking(move || {
+                            let _ = gateway.set_content_sampling(gateway::SamplingInput::default());
+                        }));
                     }
                     "desktop-widget" => {
                         let enabled = settings_state_for_menu
@@ -1055,6 +1098,10 @@ pub fn run() {
             gateway::gateway_probe_providers,
             commands::gateway_request_log::gateway_request_log,
             commands::gateway_request_log::gateway_request_log_export,
+            gateway::content_sampling_commands::gateway_content_sampling_status,
+            gateway::content_sampling_commands::gateway_set_content_sampling,
+            gateway::content_sampling_commands::gateway_read_content_sample,
+            gateway::content_sampling_commands::gateway_delete_content_samples,
             gateway::gateway_routing_feed,
             gateway::gateway_external_feed,
             gateway::gateway_reveal_local_token,

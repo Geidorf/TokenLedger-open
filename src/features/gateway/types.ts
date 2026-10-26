@@ -330,3 +330,41 @@ export interface RequestLogPage {
   oldest?: string | null;
   facets: { agents: string[]; providers: string[]; models: string[] };
 }
+
+export type ContentSamplingMode = 'off' | 'next' | 'filter';
+
+/** 本机加密内容采样的当前状态；sampleIds 是逻辑请求 ID。 */
+export interface ContentSamplingStatus {
+  mode: ContentSamplingMode;
+  remaining: number | null;
+  expiresAt: string | null;
+  agent: string | null;
+  group: string | null;
+  failuresOnly: boolean;
+  sampleIds: string[];
+  storedCount: number;
+  storedBytes: number;
+  error: string | null;
+}
+
+export interface ContentSamplingInput {
+  mode: ContentSamplingMode;
+  count?: number;
+  agent?: string | null;
+  group?: string | null;
+  failuresOnly?: boolean;
+  durationHours?: number;
+  confirmed?: boolean;
+  deleteExisting?: boolean;
+}
+
+/** 后端解密后的单条样本；只允许停留在当前详情组件的内存里。 */
+export interface ContentSample {
+  id: string;
+  createdAt: string;
+  status: number;
+  stream: boolean;
+  truncated: boolean;
+  request: string;
+  response: string;
+}

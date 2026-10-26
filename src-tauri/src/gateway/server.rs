@@ -9,7 +9,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::{BodyExt, Full, Limited, StreamBody};
-use hyper::body::{Frame, Incoming};
+use hyper::body::{Body as _, Frame, Incoming};
 use hyper::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE, HOST, USER_AGENT};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -21,6 +21,8 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Semaphore, SemaphorePermit};
 
 use super::anthropic;
+use super::content_capture::{sanitize_body, ContentCapture};
+use super::content_sampling::{ContentSampling, SampleTicket, CONTENT_BUDGET};
 use super::context_size::{self, ContextApi, ContextSize};
 use super::convert::{chat_to_response, responses_to_chat, ChatStream, StreamConverter};
 use super::gemini::{self, GeminiPath, GeminiStream};
@@ -87,6 +89,69 @@ impl hyper::body::Body for GuardedBody {
     }
     fn size_hint(&self) -> hyper::body::SizeHint {
         self.body.size_hint()
+    }
+}
+
+struct SampledBody {
+    body: Body,
+    sampling: Arc<ContentSampling>,
+    ticket: Option<SampleTicket>,
+    capture: Option<ContentCapture>,
+    status: u16,
+}
+
+impl SampledBody {
+    fn finish(&mut self, incomplete: bool) {
+        let (Some(ticket), Some(capture)) = (self.ticket.take(), self.capture.take()) else {
+            return;
+        };
+        let sampling = Arc::clone(&self.sampling);
+        let status = self.status;
+        let response = capture.finish();
+        // 磁盘和钥匙串工作在阻塞池执行；票据限制含排队任务在内的内存用量。
+        std::mem::drop(tauri::async_runtime::spawn_blocking(move || {
+            let _ = sampling.finish(ticket, response, status, incomplete);
+        }));
+    }
+}
+
+impl hyper::body::Body for SampledBody {
+    type Data = Bytes;
+    type Error = std::io::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, Self::Error>>> {
+        let result = Pin::new(&mut self.body).poll_frame(cx);
+        match &result {
+            Poll::Ready(Some(Ok(frame))) => {
+                if let (Some(bytes), Some(capture)) = (frame.data_ref(), self.capture.as_mut()) {
+                    capture.push(bytes);
+                }
+                if self.body.is_end_stream() {
+                    self.finish(false);
+                }
+            }
+            Poll::Ready(Some(Err(_))) => self.finish(true),
+            Poll::Ready(None) => self.finish(false),
+            Poll::Pending => {}
+        }
+        result
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.body.is_end_stream()
+    }
+
+    fn size_hint(&self) -> hyper::body::SizeHint {
+        self.body.size_hint()
+    }
+}
+
+impl Drop for SampledBody {
+    fn drop(&mut self) {
+        self.finish(!self.body.is_end_stream());
     }
 }
 
@@ -448,7 +513,7 @@ async fn gemini_entry(
     let mut ctx = request_ctx(&headers, Endpoint::Gemini, model, stream);
     ctx.gate = gate;
     ctx.context = context_size::measure(ContextApi::Gemini, &body);
-    gemini_rewrap(route(ctx, &shared, &payload).await).await
+    route_with_sample_body(ctx, &shared, &payload, &body).await
 }
 
 /// Gateway and upstream errors in Gemini's `{error:{code,message,status}}`.
@@ -916,7 +981,87 @@ fn validate_structure(endpoint: Endpoint, payload: &Value) -> Result<(), String>
 }
 
 /// One model or each `group/<id>` member in plan order.
-async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Response<Body> {
+async fn route(ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Response<Body> {
+    route_with_sample_body(ctx, shared, payload, payload).await
+}
+
+async fn route_with_sample_body(
+    ctx: RequestCtx,
+    shared: &Arc<Shared>,
+    payload: &Value,
+    sample_body: &Value,
+) -> Response<Body> {
+    let group = ctx.requested_model.strip_prefix(GROUP_PREFIX);
+    let valid_target = group.map_or_else(
+        || find_provider(shared, &ctx.requested_model).is_ok(),
+        |group| shared.router.enabled_group(group).is_some(),
+    );
+    let ticket = if valid_target
+        && validate_structure(ctx.endpoint, payload).is_ok()
+        && shared.sampling.eligible(ctx.agent.as_deref(), group)
+    {
+        if let Some(slot) = shared.sampling.reserve() {
+            let request = sanitize_body(sample_body, CONTENT_BUDGET);
+            let sampling = Arc::clone(&shared.sampling);
+            let id = ctx.request_id.clone();
+            let agent = ctx.agent.clone();
+            let group = group.map(str::to_owned);
+            let stream = ctx.stream;
+            let mut task = tokio::task::spawn_blocking(move || {
+                sampling.begin_reserved(
+                    slot,
+                    &id,
+                    agent.as_deref(),
+                    group.as_deref(),
+                    stream,
+                    request,
+                )
+            });
+            match tokio::time::timeout(Duration::from_millis(100), &mut task).await {
+                Ok(Ok(ticket)) => ticket,
+                _ => {
+                    task.abort();
+                    shared.sampling.mark_skipped();
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let stream = ctx.stream;
+    let gemini = ctx.endpoint == Endpoint::Gemini;
+    let response = route_inner(ctx, shared, payload).await;
+    let response = if gemini {
+        gemini_rewrap(response).await
+    } else {
+        response
+    };
+    let Some(ticket) = ticket else {
+        return response;
+    };
+    let status = response.status().as_u16();
+    let stream = stream
+        && response.headers().get(CONTENT_TYPE).is_some_and(|value| {
+            value
+                .to_str()
+                .is_ok_and(|value| value.starts_with("text/event-stream"))
+        });
+    response.map(|body| {
+        SampledBody {
+            body,
+            sampling: Arc::clone(&shared.sampling),
+            ticket: Some(ticket),
+            capture: Some(ContentCapture::new(stream, CONTENT_BUDGET)),
+            status,
+        }
+        .boxed_unsync()
+    })
+}
+
+async fn route_inner(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Response<Body> {
     if let Err(message) = validate_structure(ctx.endpoint, payload) {
         return error_response(StatusCode::BAD_REQUEST, &message);
     }

@@ -4063,7 +4063,8 @@ test('native startup keeps the shell hidden until the resolved window mode is ap
   // T10.105a：托盘单击弹出挂件，菜单仍保留“显示窗口”作为主窗口恢复入口，并与退出隔开。
   assert.match(nativeSource, /TrayIconBuilder::with_id\(widget_window::TRAY_ID\)/);
   assert.match(nativeSource, /tooltip\("TokenLedger · 悬停或单击查看托盘挂件 · 菜单显示窗口或退出"\)/);
-  assert.match(nativeSource, /items\(&\[&show_i, &widget_i, &desktop_i, &menu_separator, &quit_i\]\)/, 'tray menu must separate recovery from exit');
+  assert.match(nativeSource, /items\(&\[\s*&show_i,\s*&widget_i,\s*&desktop_i,\s*&sampling_i,\s*&stop_sampling_i,\s*&menu_separator,\s*&quit_i,?\s*\]\)/, 'tray menu must keep recovery and sampling controls separate from exit');
+  assert.match(nativeSource, /"content-sampling-stop" => \{[\s\S]*?set_content_sampling\(gateway::SamplingInput::default\(\)\)/, 'tray sampling stop must use the default stop-and-delete action');
   assert.match(nativeSource, /TrayIconEvent::Click \{[\s\S]*?MouseButtonState::Up,[\s\S]*?widget_window::toggle_on_main_thread\(/);
   assert.match(nativeSource, /TrayIconEvent::DoubleClick \{[\s\S]*?widget_window::dismiss_on_main_thread\([\s\S]*?show_main_window_from_tray\(/);
   assert.match(nativeSource, /else if should_hide_widget_window_on_close\(window\.label\(\)\) \{[\s\S]*?api\.prevent_close\(\);[\s\S]*?widget_window::release_pin\([\s\S]*?window\.hide\(\)/);

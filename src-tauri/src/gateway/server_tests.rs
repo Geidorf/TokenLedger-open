@@ -130,6 +130,10 @@ fn make_shared(urls: &[(&str, String, WireApi)]) -> (Arc<Shared>, std::path::Pat
     (
         Arc::new(Shared {
             providers: std::sync::RwLock::new(providers),
+            sampling: Arc::new(super::super::content_sampling::ContentSampling::new(
+                &dir,
+                secrets.clone(),
+            )),
             secrets,
             ledger: super::super::ledger::Ledger::new(&dir),
             router,
@@ -1520,4 +1524,190 @@ fn upstream_error_text_masks_anything_shaped_like_a_credential() {
     ] {
         assert_eq!(redact_key(text, ""), text);
     }
+}
+
+async fn wait_for_content_sampling(shared: &Shared) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while shared.sampling.pending_count() != 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("bounded sample persistence");
+}
+
+#[test]
+fn content_sampling_captures_the_final_gemini_error_shape() {
+    run(async {
+        let upstream = Upstream::new(503, json!({"error":{"message":"fixture unavailable"}}));
+        let (shared, dir) = make_shared(&[("a", upstream.url.clone(), WireApi::Chat)]);
+        shared
+            .sampling
+            .configure(super::super::SamplingInput {
+                mode: super::super::SamplingMode::Next,
+                count: Some(1),
+                confirmed: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Gemini, "a/m".into(), false);
+        let id = ctx.request_id.clone();
+        let request = json!({"contents":[{"parts":[{"text":"sample prompt"}]}]});
+        let payload = gemini::gemini_to_chat(&request, "a/m", false).unwrap();
+        let response = route_with_sample_body(ctx, &shared, &payload, &request).await;
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let delivered: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(delivered["error"]["code"], 503);
+        wait_for_content_sampling(&shared).await;
+        let sample = shared.sampling.read(&id).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&sample.response).unwrap(),
+            delivered
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&sample.request).unwrap(),
+            request
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    });
+}
+
+#[test]
+fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request() {
+    run(async {
+        let first = Upstream::new(503, json!({"error":"temporary fixture failure"}));
+        let second = Upstream::new(
+            200,
+            json!({"choices":[{"message":{"content":"sample fixture reply"}}]}),
+        );
+        let (shared, dir) = make_shared(&[
+            ("a", first.url.clone(), WireApi::Chat),
+            ("b", second.url.clone(), WireApi::Chat),
+        ]);
+        let payload =
+            json!({"model":"b/m","messages":[{"role":"user","content":"sample fixture prompt"}]});
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "b/m".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        assert!(response.into_body().collect().await.is_ok());
+        assert_eq!(shared.sampling.status().stored_count, 0);
+        assert!(!dir
+            .join(super::super::content_sampling::SAMPLE_DIRECTORY)
+            .exists());
+        shared
+            .sampling
+            .configure(super::super::SamplingInput {
+                mode: super::super::SamplingMode::Next,
+                count: Some(1),
+                confirmed: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false);
+        let id = ctx.request_id.clone();
+        let payload = json!({"model":"group/g","messages":[{"role":"user","content":"sample fixture prompt"}]});
+        let response = route(ctx, &shared, &payload).await;
+        assert!(response.status().is_success());
+        assert!(response.into_body().collect().await.is_ok());
+        wait_for_content_sampling(&shared).await;
+        let status = shared.sampling.status();
+        assert!(status.mode == super::super::SamplingMode::Off);
+        assert_eq!(status.stored_count, 1);
+        let sample = shared.sampling.read(&id).unwrap();
+        assert!(sample.request.contains("sample fixture prompt"));
+        assert!(sample.response.contains("sample fixture reply"));
+        assert!(!sample.request.contains("fixture-key"));
+        assert_eq!(first.hits.load(Ordering::SeqCst), 1);
+        assert_eq!(second.hits.load(Ordering::SeqCst), 2);
+        assert_eq!(shared.ledger.recent(10).unwrap().len(), 3);
+        std::fs::remove_dir_all(dir).unwrap();
+    });
+}
+
+#[test]
+fn content_sampling_real_http_stream_merges_output_without_changing_the_stream() {
+    run(async {
+        let upstream = Upstream::raw(sse_packets(
+            vec![
+                (
+                    Duration::ZERO,
+                    b"data: {\"choices\":[{\"delta\":{\"content\":\"final-\"}}]}\n\n".to_vec(),
+                ),
+                (
+                    Duration::ZERO,
+                    b"data: {\"choices\":[{\"delta\":{\"content\":\"output\"}}]}\n\n".to_vec(),
+                ),
+                (Duration::ZERO, b"data: [DONE]\n\n".to_vec()),
+            ],
+            true,
+        ));
+        let (shared, dir) = make_shared(&[("a", upstream.url.clone(), WireApi::Chat)]);
+        shared
+            .sampling
+            .configure(super::super::SamplingInput {
+                mode: super::super::SamplingMode::Next,
+                count: Some(1),
+                confirmed: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Chat, "a/m".into(), true);
+        let id = ctx.request_id.clone();
+        let payload = json!({"model":"a/m","stream":true,"messages":[{"role":"user","content":[
+            {"type":"text","text":"describe fixture"},
+            {"type":"image_url","image_url":{"url":"data:image/png;base64,Zml4dHVyZS1pbWFnZQ=="}}
+        ]}]});
+        let response = route(ctx, &shared, &payload).await;
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(String::from_utf8_lossy(&bytes).contains("data: [DONE]"));
+        wait_for_content_sampling(&shared).await;
+        let sample = shared.sampling.read(&id).unwrap();
+        assert!(sample.stream);
+        assert!(sample.response.contains("final-output"));
+        assert!(!sample.response.contains("data:"));
+        assert!(!sample.request.contains("Zml4dHVyZS1pbWFnZQ=="));
+        let encrypted = std::fs::read(dir.join("samples-v1").join(format!("{id}.bin"))).unwrap();
+        assert!(!encrypted
+            .windows(b"final-output".len())
+            .any(|part| part == b"final-output"));
+        std::fs::remove_dir_all(dir).unwrap();
+    });
+}
+
+#[test]
+fn content_sampling_real_http_stop_before_body_consumption_discards_the_late_sample() {
+    run(async {
+        let upstream = Upstream::new(
+            200,
+            json!({"choices":[{"message":{"content":"late fixture"}}]}),
+        );
+        let (shared, dir) = make_shared(&[("a", upstream.url.clone(), WireApi::Chat)]);
+        shared
+            .sampling
+            .configure(super::super::SamplingInput {
+                mode: super::super::SamplingMode::Next,
+                count: Some(1),
+                confirmed: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let payload = json!({"model":"a/m","messages":[{"role":"user","content":"fixture"}]});
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "a/m".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        shared
+            .sampling
+            .configure(super::super::SamplingInput::default())
+            .unwrap();
+        assert!(response.into_body().collect().await.is_ok());
+        wait_for_content_sampling(&shared).await;
+        assert_eq!(shared.sampling.status().stored_count, 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    });
 }
