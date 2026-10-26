@@ -13,10 +13,24 @@ struct Upstream {
 }
 impl Upstream {
     fn new(status: u16, body: Value) -> Self {
-        let body = body.to_string();
-        Self::raw(vec![(Duration::ZERO, format!("HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).into_bytes())])
+        Self::responses(vec![(status, body)])
+    }
+    fn responses(responses: Vec<(u16, Value)>) -> Self {
+        Self::raw_sequence(
+            responses
+                .into_iter()
+                .map(|(status, body)| {
+                    let body = body.to_string();
+                    vec![(Duration::ZERO, format!("HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).into_bytes())]
+                })
+                .collect(),
+        )
     }
     fn raw(packets: Vec<(Duration, Vec<u8>)>) -> Self {
+        Self::raw_sequence(vec![packets])
+    }
+    fn raw_sequence(responses: Vec<Vec<(Duration, Vec<u8>)>>) -> Self {
+        assert!(!responses.is_empty());
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/v1", listener.local_addr().unwrap());
@@ -56,12 +70,12 @@ impl Upstream {
                     }
                     let mut bytes = vec![0; len];
                     let _ = reader.read_exact(&mut bytes);
-                    count.fetch_add(1, Ordering::SeqCst);
+                    let response_index = count.fetch_add(1, Ordering::SeqCst);
                     captured_auth.lock().unwrap().push(authorization);
                     if let Ok(value) = serde_json::from_slice(&bytes) {
                         captured.lock().unwrap().push(value);
                     }
-                    for (delay, packet) in &packets {
+                    for (delay, packet) in &responses[response_index.min(responses.len() - 1)] {
                         std::thread::sleep(*delay);
                         if socket.write_all(packet).is_err() {
                             break;
@@ -119,6 +133,8 @@ fn make_shared(urls: &[(&str, String, WireApi)]) -> (Arc<Shared>, std::path::Pat
             secrets,
             ledger: super::super::ledger::Ledger::new(&dir),
             router,
+            routing_health: super::super::routing_health::RoutingHealth::default(),
+            prober: Arc::new(super::super::probe::Prober::new(&dir)),
         }),
         dir,
     )
@@ -134,6 +150,167 @@ fn run(future: impl std::future::Future<Output = ()>) {
                 .await
                 .expect("bounded HTTP test");
         });
+}
+
+#[test]
+fn real_http_routing_skips_recent_failures_and_success_restores_the_member() {
+    run(async {
+        let success = json!({"choices":[{"message":{"content":"ok"}}]});
+        let first = Upstream::responses(vec![
+            (503, json!({"error":"unavailable"})),
+            (503, json!({"error":"unavailable"})),
+            (503, json!({"error":"unavailable"})),
+            (200, success.clone()),
+        ]);
+        let second = Upstream::new(200, success);
+        let (shared, dir) = make_shared(&[
+            ("a", first.url.clone(), WireApi::Chat),
+            ("b", second.url.clone(), WireApi::Chat),
+        ]);
+        let mut group = shared.router.enabled_group("g").unwrap();
+        group.session_ttl_secs = 0;
+        shared
+            .router
+            .upsert(group, &["a".into(), "b".into()])
+            .unwrap();
+        let payload = json!({"messages":[{"role":"user","content":"hi"}]});
+        for _ in 0..3 {
+            let response = route(
+                request_ctx(&HeaderMap::new(), Endpoint::Chat, "a/m".into(), false),
+                &shared,
+                &payload,
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            response.into_body().collect().await.unwrap();
+        }
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        response.into_body().collect().await.unwrap();
+        assert_eq!(first.hits.load(Ordering::SeqCst), 3);
+        assert_eq!(second.hits.load(Ordering::SeqCst), 1);
+        let decision = &shared.router.recent(1)[0];
+        assert_eq!(decision.attempts.len(), 1);
+        assert_eq!(decision.chosen.as_deref(), Some("b/m"));
+        let excluded = decision
+            .trace
+            .iter()
+            .find(|item| item.member == "a/m")
+            .unwrap();
+        assert_eq!(excluded.verdict, "excluded");
+        assert!(excluded.reasons.contains(&"unhealthy"));
+
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "a/m".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        response.into_body().collect().await.unwrap();
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        response.into_body().collect().await.unwrap();
+        assert_eq!(first.hits.load(Ordering::SeqCst), 5);
+        assert_eq!(second.hits.load(Ordering::SeqCst), 1);
+        assert_eq!(shared.router.recent(1)[0].chosen.as_deref(), Some("a/m"));
+        std::fs::remove_dir_all(dir).unwrap();
+    });
+}
+
+#[test]
+fn real_http_health_gate_respects_manual_selection_and_all_failed_fallback() {
+    run(async {
+        let success = json!({"choices":[{"message":{"content":"ok"}}]});
+        let first = Upstream::new(200, success.clone());
+        let second = Upstream::new(200, success);
+        let (shared, dir) = make_shared(&[
+            ("a", first.url.clone(), WireApi::Chat),
+            ("b", second.url.clone(), WireApi::Chat),
+        ]);
+        let failed_probe = || super::super::probe::ProbeResult {
+            ts: chrono::Utc::now().to_rfc3339(),
+            ok: false,
+            status: Some(503),
+            latency_ms: 1,
+            code: "upstream_failed",
+            error: None,
+        };
+        let generation = shared.prober.generation();
+        shared.prober.record(generation, "a", failed_probe());
+        let payload = json!({"messages":[{"role":"user","content":"hi"}]});
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        response.into_body().collect().await.unwrap();
+        assert_eq!(first.hits.load(Ordering::SeqCst), 0);
+        assert_eq!(second.hits.load(Ordering::SeqCst), 1);
+
+        shared
+            .router
+            .upsert(
+                serde_json::from_value(json!({
+                    "id":"g", "name":"g", "strategy":"manual", "members":["a/m","b/m"],
+                    "manualMember":"a/m", "sessionTtlSecs":0
+                }))
+                .unwrap(),
+                &["a".into(), "b".into()],
+            )
+            .unwrap();
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        response.into_body().collect().await.unwrap();
+        assert_eq!(first.hits.load(Ordering::SeqCst), 1);
+        assert_eq!(shared.router.recent(1)[0].chosen.as_deref(), Some("a/m"));
+
+        shared.prober.record(generation, "a", failed_probe());
+        shared.prober.record(generation, "b", failed_probe());
+        shared
+            .router
+            .upsert(
+                serde_json::from_value(json!({
+                    "id":"g", "name":"g", "strategy":"failover", "members":["a/m","b/m"],
+                    "sessionTtlSecs":0
+                }))
+                .unwrap(),
+                &["a".into(), "b".into()],
+            )
+            .unwrap();
+        let response = route(
+            request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false),
+            &shared,
+            &payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        response.into_body().collect().await.unwrap();
+        assert_eq!(first.hits.load(Ordering::SeqCst), 2);
+        assert_eq!(second.hits.load(Ordering::SeqCst), 1);
+        assert!(shared.router.recent(1)[0]
+            .trace
+            .iter()
+            .all(|item| item.verdict != "excluded"));
+        std::fs::remove_dir_all(dir).unwrap();
+    });
 }
 
 #[test]

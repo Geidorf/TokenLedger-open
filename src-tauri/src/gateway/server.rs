@@ -512,6 +512,7 @@ impl Endpoint {
 struct Call {
     shared: Arc<Shared>,
     started: Instant,
+    health_ticket: super::routing_health::ObservationTicket,
     request_id: String,
     logical_request_id: String,
     agent: Option<String>,
@@ -537,8 +538,9 @@ impl Call {
 
     fn record(&self, status: u16, usage: Option<Usage>, error: Option<String>) {
         let usage = usage.unwrap_or_default();
+        let now = chrono::Utc::now();
         let record = LedgerRecord {
-            ts: chrono::Utc::now().to_rfc3339(),
+            ts: now.to_rfc3339(),
             request_id: self.request_id.clone(),
             logical_request_id: Some(self.logical_request_id.clone()),
             agent: self.agent.clone(),
@@ -565,6 +567,9 @@ impl Call {
             context: self.context,
             first_token_ms: self.first_token_ms,
         };
+        self.shared
+            .routing_health
+            .observe(self.health_ticket, &record, now);
         if let Err(error) = self.shared.ledger.append(&record) {
             log::warn!("gateway ledger: {error}");
         }
@@ -931,9 +936,12 @@ async fn route(mut ctx: RequestCtx, shared: &Arc<Shared>, payload: &Value) -> Re
     let features = Features::extract(payload, ctx.agent.as_deref(), local_minutes());
     // Header sessions are recorded; a body-derived key only pins routing.
     let affinity_key = ctx.session.clone().or_else(|| body_session(payload));
+    let health = shared
+        .routing_health
+        .snapshot(&shared.prober.results(), chrono::Utc::now());
     let plan = shared
         .router
-        .plan(&group, &features, affinity_key.as_deref());
+        .plan_with_health(&group, &features, affinity_key.as_deref(), &health);
     let mut attempts = Vec::new();
     let mut chosen = None;
     let mut last = None;
@@ -1001,6 +1009,8 @@ async fn attempt(
     member: &str,
     original: &Value,
 ) -> Attempt {
+    // 在读取供应商前取票据，配置更新可使在途旧请求的观测失效。
+    let health_ticket = shared.routing_health.begin();
     let (provider, upstream_model) = match find_provider(shared, member) {
         Ok(found) => found,
         Err(message) => {
@@ -1015,6 +1025,7 @@ async fn attempt(
     let call = Call {
         shared: shared.clone(),
         started: Instant::now(),
+        health_ticket,
         request_id: random_id(),
         logical_request_id: ctx.request_id.clone(),
         agent: ctx.agent.clone(),

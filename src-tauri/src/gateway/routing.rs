@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::routing_health::HealthSnapshot;
 use super::store::{valid_id, write_json_atomic};
 
 pub const GROUP_PREFIX: &str = "group/";
@@ -821,6 +822,17 @@ impl Router {
     /// plans in place. The session pins a leaf: it beats the strategy at any
     /// level, but never a rule of the requested group.
     pub fn plan(&self, group: &RoutingGroup, features: &Features, session: Option<&str>) -> Plan {
+        let mut plan = self.plan_without_cooling(group, features, session);
+        self.demote_cooling(&mut plan);
+        plan
+    }
+
+    fn plan_without_cooling(
+        &self,
+        group: &RoutingGroup,
+        features: &Features,
+        session: Option<&str>,
+    ) -> Plan {
         let affinity = session
             .filter(|_| group.session_ttl_secs > 0)
             .and_then(|session| {
@@ -850,15 +862,13 @@ impl Router {
                 && (plan.reason == "affinity" || plan.candidates.iter().any(|m| m == leaf))
         });
         let Some(leaf) = pinned else {
-            let mut plan = self.plan_level(
+            return self.plan_level(
                 group,
                 features,
                 affinity.as_deref(),
                 &mut vec![group.id.clone()],
                 true,
             );
-            self.demote_cooling(&mut plan);
-            return plan;
         };
         if plan.reason != "affinity" {
             if let Some(index) = plan.candidates.iter().position(|m| *m == leaf) {
@@ -873,8 +883,94 @@ impl Router {
                 plan.reason = "affinity";
             }
         }
+        plan
+    }
+
+    /// Applies the current health view before cooling is applied. Manual groups
+    /// are explicit choices and stay untouched. If every leaf is unhealthy,
+    /// the original order is kept as a last-resort fallback.
+    pub(super) fn plan_with_health(
+        &self,
+        group: &RoutingGroup,
+        features: &Features,
+        session: Option<&str>,
+        health: &HealthSnapshot,
+    ) -> Plan {
+        if group.strategy == Strategy::Manual
+            || (health.members.is_empty() && health.providers.is_empty())
+        {
+            return self.plan(group, features, session);
+        }
+
+        let mut plan = self.plan_without_cooling(group, features, session);
+        let unhealthy: Vec<bool> = plan
+            .candidates
+            .iter()
+            .map(|member| health.is_unhealthy(member))
+            .collect();
+        if unhealthy.contains(&true) && unhealthy.contains(&false) && unhealthy[0] {
+            match plan.reason {
+                "affinity" => {
+                    plan.reason = match group.strategy {
+                        Strategy::Failover => "failover",
+                        Strategy::Rotate => "rotate",
+                        Strategy::Weighted => "weighted",
+                        Strategy::Manual => unreachable!(),
+                    };
+                    plan.detail = "会话保持成员健康检查未通过，改按当前策略选择".to_string();
+                }
+                "rule" => {
+                    plan.reason = match group.strategy {
+                        Strategy::Failover => "failover",
+                        Strategy::Rotate => "rotate",
+                        Strategy::Weighted => "weighted",
+                        Strategy::Manual => unreachable!(),
+                    };
+                    plan.detail = "规则首选健康检查未通过，改按当前策略选择".to_string();
+                }
+                _ => {}
+            }
+        }
+        self.filter_unhealthy(&mut plan, health);
         self.demote_cooling(&mut plan);
         plan
+    }
+
+    fn filter_unhealthy(&self, plan: &mut Plan, health: &HealthSnapshot) {
+        let unhealthy: Vec<bool> = plan
+            .candidates
+            .iter()
+            .map(|member| health.is_unhealthy(member))
+            .collect();
+        if !unhealthy.contains(&true) {
+            return;
+        }
+        if !unhealthy.contains(&false) {
+            plan.detail = format!("{}；全部成员健康检查未通过，按原顺序回退", plan.detail);
+            return;
+        }
+
+        let mut candidates = Vec::new();
+        let mut via = Vec::new();
+        for ((member, from), unhealthy) in plan
+            .candidates
+            .drain(..)
+            .zip(plan.via.drain(..))
+            .zip(unhealthy)
+        {
+            if unhealthy {
+                plan.excluded.push(Exclusion {
+                    member,
+                    reason: "unhealthy",
+                    detail: Some("健康检查未通过，暂不尝试".to_string()),
+                });
+            } else {
+                candidates.push(member);
+                via.push(from);
+            }
+        }
+        plan.candidates = candidates;
+        plan.via = via;
     }
 
     /// Moves cooling members behind the rest, keeping both orders; they stay
@@ -1714,6 +1810,139 @@ mod tests {
 
         router.delete("coding").unwrap();
         assert!(Router::new(&dir).groups().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn health_filters_leaves_and_keeps_via_aligned() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-health-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let providers = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let router = Router::new(&dir);
+        let pool = nested("pool", Strategy::Rotate, &["a/m1", "b/m2"]);
+        let top = nested("top", Strategy::Failover, &["group/pool", "c/m3"]);
+        router.upsert(pool, &providers).unwrap();
+        router.upsert(top.clone(), &providers).unwrap();
+
+        let health = HealthSnapshot::for_test(&["a/m1"], &[]);
+        let plan = router.plan_with_health(&top, &Features::default(), None, &health);
+        assert_eq!(plan.candidates, ["b/m2", "c/m3"]);
+        assert_eq!(plan.via, [Some("pool".to_string()), None]);
+        assert_eq!(plan.excluded.len(), 1);
+        assert_eq!(
+            (plan.excluded[0].member.as_str(), plan.excluded[0].reason),
+            ("a/m1", "unhealthy")
+        );
+        let trace = build_trace(&top, &plan, &[]);
+        assert_eq!(
+            row(&trace, "b/m2").2,
+            ["strategy_first", "nested", "not_reached"]
+        );
+        assert_eq!(row(&trace, "a/m1"), (None, "excluded", vec!["unhealthy"]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn health_never_filters_manual_and_falls_back_when_all_are_unhealthy() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-health-manual-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let router = Router::new(&dir);
+        let mut manual = group(Strategy::Manual, vec![]);
+        manual.manual_member = Some("a/m1".into());
+        let health = HealthSnapshot::for_test(&["a/m1"], &[]);
+        let plan = router.plan_with_health(&manual, &Features::default(), None, &health);
+        assert_eq!(plan.candidates, ["a/m1"]);
+        assert!(plan.excluded.is_empty());
+
+        let failover = group(Strategy::Failover, vec![]);
+        let all = HealthSnapshot::for_test(&["a/m1", "b/m2", "c/m3"], &[]);
+        let plan = router.plan_with_health(&failover, &Features::default(), None, &all);
+        assert_eq!(plan.candidates, ["a/m1", "b/m2", "c/m3"]);
+        assert!(plan.excluded.is_empty());
+        assert!(plan.detail.contains("全部成员健康检查未通过"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unhealthy_affinity_is_not_claimed_by_the_new_primary() {
+        let dir =
+            std::env::temp_dir().join(format!("tl-gw-health-affinity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let router = Router::new(&dir);
+        let g = group(Strategy::Failover, vec![]);
+        router.remember(&g, Some("s1"), "a/m1");
+        let health = HealthSnapshot::for_test(&["a/m1"], &[]);
+        let plan = router.plan_with_health(&g, &Features::default(), Some("s1"), &health);
+        assert_eq!(plan.candidates, ["b/m2", "c/m3"]);
+        assert_eq!(plan.reason, "failover");
+        assert!(plan.detail.contains("会话保持成员健康检查未通过"));
+        let trace = build_trace(&g, &plan, &[]);
+        assert_eq!(
+            row(&trace, "b/m2"),
+            (
+                Some(0),
+                "not_reached",
+                vec!["strategy_first", "not_reached"]
+            )
+        );
+        assert_eq!(row(&trace, "a/m1"), (None, "excluded", vec!["unhealthy"]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cooled_unhealthy_affinity_is_not_claimed_by_the_new_primary() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-health-cooled-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let router = Router::new(&dir);
+        let g = group(Strategy::Failover, vec![]);
+        router.remember(&g, Some("s1"), "a/m1");
+        router.cool("a/m1");
+        let health = HealthSnapshot::for_test(&["a/m1"], &[]);
+        let plan = router.plan_with_health(&g, &Features::default(), Some("s1"), &health);
+        assert_eq!(plan.candidates, ["b/m2", "c/m3"]);
+        assert_eq!(plan.reason, "failover");
+        assert!(plan.detail.contains("会话保持成员健康检查未通过"));
+        let trace = build_trace(&g, &plan, &[]);
+        assert_eq!(
+            row(&trace, "b/m2"),
+            (
+                Some(0),
+                "not_reached",
+                vec!["strategy_first", "not_reached"]
+            )
+        );
+        assert_eq!(row(&trace, "a/m1"), (None, "excluded", vec!["unhealthy"]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unhealthy_rule_primary_uses_the_strategy_reason() {
+        let dir = std::env::temp_dir().join(format!("tl-gw-health-rule-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let router = Router::new(&dir);
+        let g = group(
+            Strategy::Failover,
+            vec![rule(RuleCondition::HasImage, "a/m1")],
+        );
+        let features = Features {
+            has_image: true,
+            ..Features::default()
+        };
+        let health = HealthSnapshot::for_test(&["a/m1"], &[]);
+        let plan = router.plan_with_health(&g, &features, None, &health);
+        assert_eq!(plan.candidates, ["b/m2", "c/m3"]);
+        assert_eq!(plan.reason, "failover");
+        assert!(plan.detail.contains("规则首选健康检查未通过"));
+        let trace = build_trace(&g, &plan, &[]);
+        assert_eq!(
+            row(&trace, "b/m2"),
+            (
+                Some(0),
+                "not_reached",
+                vec!["strategy_first", "not_reached"]
+            )
+        );
+        assert_eq!(row(&trace, "a/m1"), (None, "excluded", vec!["unhealthy"]));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

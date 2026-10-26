@@ -22,7 +22,7 @@ const ERROR_CHARS: usize = 160;
 const MIN_SAMPLES: u64 = 5;
 const DEGRADED_BELOW: f64 = 0.9;
 /// Consecutive failed upstream calls, newest first, that mean `down`.
-const DOWN_STREAK: u32 = 3;
+pub(super) const DOWN_STREAK: u32 = 3;
 
 /// Error prefixes the gateway writes (`server.rs` builds its messages from
 /// these), which tell upstream replies from transport and local failures.
