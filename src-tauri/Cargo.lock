@@ -5174,6 +5174,7 @@ dependencies = [
  "keyring",
  "log",
  "objc",
+ "plist",
  "portable-pty",
  "regex",
  "reqwest 0.12.28",
@@ -5191,6 +5192,7 @@ dependencies = [
  "walkdir",
  "window-vibrancy",
  "windows 0.62.2",
+ "winreg 0.55.0",
  "winres",
  "zstd",
 ]

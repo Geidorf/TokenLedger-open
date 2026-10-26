@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Coins, FolderSearch, Gauge, Power, Rocket, Timer } from "lucide-react";
 import type { AppSettings, BusyState } from "../../types";
@@ -44,24 +44,130 @@ export function parseExtraDirs(text: string): string[] {
   return dirs;
 }
 
-/**
- * 本平台能否在应用内切换开机自动启动（目前只有 Linux）。以 Rust 端为准；
- * 浏览器预览、单元测试里命令不存在或返回别的值，一律当作不支持。
- */
-function useAutostartSupported(): boolean {
-  const [supported, setSupported] = useState(false);
-  useEffect(() => {
-    let active = true;
-    invoke<unknown>("autostart_supported")
-      .then((value) => {
-        if (active) setSupported(value === true);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
+interface AutostartStatus {
+  supported: boolean;
+  enabled: boolean | null;
+  error: string | null;
+}
+
+type AutostartState =
+  | { phase: "loading" }
+  | { phase: "unsupported" }
+  | { phase: "error"; message: string }
+  | { phase: "ready"; enabled: boolean };
+
+function parseAutostartStatus(value: unknown): AutostartStatus | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const status = value as Record<string, unknown>;
+  if (
+    typeof status.supported !== "boolean"
+    || (status.enabled !== null && typeof status.enabled !== "boolean")
+    || (status.error !== null && typeof status.error !== "string")
+  ) {
+    return null;
+  }
+  return {
+    supported: status.supported,
+    enabled: status.enabled,
+    error: status.error,
+  };
+}
+
+function useAutostartStatus(busy: boolean) {
+  const [state, setState] = useState<AutostartState>({ phase: "loading" });
+  const [pendingSnapshot, setPendingSnapshot] = useState(false);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(false);
+  const pendingSnapshotRef = useRef(false);
+  const mutationBusyRef = useRef(false);
+  const previousBusyRef = useRef(busy);
+  const finishPendingRef = useRef<() => void>(() => undefined);
+
+  const reload = useCallback(async (allowWhileBusy = false) => {
+    if (!allowWhileBusy && mutationBusyRef.current) return;
+    const requestId = ++requestIdRef.current;
+    setState({ phase: "loading" });
+    try {
+      const value = await invoke<unknown>("get_autostart_status");
+      if (requestId !== requestIdRef.current) return;
+      const status = parseAutostartStatus(value);
+      if (!status) {
+        setState({
+          phase: "error",
+          message: "系统返回了无法识别的登录自启状态。",
+        });
+        return;
+      }
+      if (status.error) {
+        setState({ phase: "error", message: status.error });
+      } else if (!status.supported) {
+        setState({ phase: "unsupported" });
+      } else if (typeof status.enabled === "boolean") {
+        setState({ phase: "ready", enabled: status.enabled });
+      } else {
+        setState({
+          phase: "error",
+          message: "系统没有返回登录自启的启用状态。",
+        });
+      }
+    } catch (error) {
+      if (requestId === requestIdRef.current) {
+        setState({
+          phase: "error",
+          message: `读取系统登录自启状态失败：${String(error)}`,
+        });
+      }
+    }
   }, []);
-  return supported;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void reload();
+    const refreshStatus = () => void reload();
+    window.addEventListener("focus", refreshStatus);
+    document.addEventListener("visibilitychange", refreshStatus);
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+      window.removeEventListener("focus", refreshStatus);
+      document.removeEventListener("visibilitychange", refreshStatus);
+    };
+  }, [reload]);
+
+  const finishPending = useCallback(() => {
+    if (!pendingSnapshotRef.current) return;
+    pendingSnapshotRef.current = false;
+    mutationBusyRef.current = false;
+    setPendingSnapshot(false);
+    if (mountedRef.current) void reload();
+  }, [reload]);
+  finishPendingRef.current = finishPending;
+
+  useEffect(() => {
+    if (previousBusyRef.current && !busy) finishPendingRef.current();
+    previousBusyRef.current = busy;
+  }, [busy]);
+
+  const requestChange = useCallback((
+    enabled: boolean,
+    onChange: (checked: boolean) => Promise<boolean> | void,
+  ) => {
+    if (pendingSnapshotRef.current) return;
+    pendingSnapshotRef.current = true;
+    mutationBusyRef.current = true;
+    setPendingSnapshot(true);
+    try {
+      const result = onChange(enabled);
+      if (result && typeof result.then === "function") {
+        void result.then(finishPending, finishPending);
+      }
+    } catch {
+      // 上层负责显示错误；这里统一释放并回读真实状态。
+      finishPending();
+    }
+  }, [finishPending]);
+
+  return { state, reload, requestChange, busy: pendingSnapshot };
 }
 
 function CodexExtraDirsRow(props: ScanStartupSectionProps) {
@@ -100,7 +206,77 @@ function CodexExtraDirsRow(props: ScanStartupSectionProps) {
 export function ScanStartupSection(props: ScanStartupSectionProps) {
   const { appSettings, busy } = props;
   const metric = parseTrayTextMetric(appSettings.tray_text_metric);
-  const autostartSupported = useAutostartSupported();
+  const autostart = useAutostartStatus(busy.settings);
+
+  let autostartControl: React.ReactNode;
+  if (autostart.state.phase === "loading") {
+    autostartControl = (
+      <SettingsRow label="开机自动启动" icon={Power} busy>
+        <span className="settings-value" role="status" aria-live="polite">
+          正在读取系统状态…
+        </span>
+      </SettingsRow>
+    );
+  } else if (autostart.state.phase === "unsupported") {
+    autostartControl = (
+      <SettingsRow label="开机自动启动" icon={Power}>
+        <span className="settings-value">应用内暂不支持</span>
+      </SettingsRow>
+    );
+  } else if (autostart.state.phase === "error") {
+    autostartControl = (
+      <SettingsRow
+        label="开机自动启动"
+        hint="无法确认系统登录自启状态；重新启用会以当前程序位置登记启动项。"
+        icon={Power}
+        wideControl
+      >
+        <div className="settings-inline-actions">
+          <span className="settings-row-hint w-full" role="alert">
+            {autostart.state.message}
+          </span>
+          <button
+            className="secondary-inline"
+            type="button"
+            aria-label="重试读取系统登录自启状态"
+            disabled={busy.settings || autostart.busy}
+            onClick={() => void autostart.reload()}
+          >
+            重试
+          </button>
+          <button
+            className="secondary-inline"
+            type="button"
+            disabled={busy.settings || autostart.busy}
+            onClick={() =>
+              autostart.requestChange(true, (enabled) =>
+                props.onSettingChange("autostart_enabled", enabled),
+              )
+            }
+          >
+            按当前位置重新启用
+          </button>
+        </div>
+      </SettingsRow>
+    );
+  } else {
+    autostartControl = (
+      <SettingsToggleRow
+        label="开机自动启动"
+        hint="登录桌面后自动打开 TokenLedger；想让它只留在托盘，再打开下面的「启动时最小化到托盘」。"
+        icon={Power}
+        checked={autostart.state.enabled}
+        disabled={busy.settings || autostart.busy}
+        busy={busy.settings || autostart.busy}
+        onChange={(checked) =>
+          autostart.requestChange(checked, (enabled) =>
+            props.onSettingChange("autostart_enabled", enabled),
+          )
+        }
+      />
+    );
+  }
+
   return (
     <SettingsSection id="scan" title="扫描与启动">
       <SettingsCard title="扫描">
@@ -131,23 +307,7 @@ export function ScanStartupSection(props: ScanStartupSectionProps) {
       </SettingsCard>
       <SettingsCard title="启动">
         <SettingsGroup>
-          {autostartSupported ? (
-            <SettingsToggleRow
-              label="开机自动启动"
-              hint="登录桌面后自动打开 TokenLedger；想让它只留在托盘，再打开下面的「启动时最小化到托盘」。"
-              icon={Power}
-              checked={appSettings.autostart_enabled}
-              disabled={busy.settings}
-              busy={busy.settings}
-              onChange={(checked) =>
-                props.onSettingChange("autostart_enabled", checked)
-              }
-            />
-          ) : (
-            <SettingsRow label="开机自动启动" icon={Power}>
-              <span className="settings-value">应用内暂不支持</span>
-            </SettingsRow>
-          )}
+          {autostartControl}
           <SettingsToggleRow
             label="启动时最小化到托盘"
             hint="开启后启动时不显示主窗口，可从菜单栏或托盘打开它。"

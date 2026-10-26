@@ -92,6 +92,8 @@ fn main() {
         "get_settings",
         "save_settings",
         "autostart_supported",
+        "get_autostart_status",
+        "set_autostart_enabled",
         "get_cost_profile",
         "validate_cost_profile",
         "save_cost_profile",

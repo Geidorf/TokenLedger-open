@@ -626,6 +626,41 @@ pub(crate) fn update_quota_snapshot_sync_enabled(
     })
 }
 
+/// 自启只接受专用操作；在文件锁内保留其他设置的最新值。
+pub(crate) fn update_autostart_enabled(
+    app: &AppContext,
+    enabled: bool,
+) -> Result<AppSettings, String> {
+    let mut previous = None;
+    let result = with_settings_write_lock(app, || {
+        let mut current = load_settings_result_unlocked(app)?;
+        previous = Some(current.autostart_enabled);
+        current.autostart_enabled = enabled;
+        save_settings_file_unlocked(app, &current)?;
+        Ok(current)
+    });
+    match result {
+        Ok(settings) => Ok(settings),
+        Err(_) => {
+            // 原子写后释放持久化锁也可能失败，重新读改写以恢复旧偏好。
+            if let Some(previous) = previous.filter(|previous| *previous != enabled) {
+                let restore = with_settings_write_lock(app, || {
+                    let mut current = load_settings_result_unlocked(app)?;
+                    if current.autostart_enabled != previous {
+                        current.autostart_enabled = previous;
+                        save_settings_file_unlocked(app, &current)?;
+                    }
+                    Ok(())
+                });
+                if restore.is_err() {
+                    return Err("保存登录启动偏好失败，恢复原偏好也失败，请重读设置后核对。".into());
+                }
+            }
+            Err("保存登录启动偏好失败。".into())
+        }
+    }
+}
+
 pub(crate) fn enable_quota_snapshot_sync(app: &AppContext) -> Result<AppSettings, String> {
     with_settings_write_lock(app, || {
         let mut current = load_settings_result_unlocked(app)?;
@@ -856,7 +891,6 @@ pub(crate) fn save_general_settings_preserving_quota_sync(
         merge_changed_field!(wallpaper_desktop_enabled);
         merge_changed_field!(wallpaper_lockscreen_enabled);
         merge_changed_field!(wallpaper_consent_version);
-        merge_changed_field!(autostart_enabled);
         merge_changed_field!(start_minimized);
         merge_changed_field!(widget_open_at_startup);
         merge_changed_field!(tray_text_enabled);
@@ -1039,6 +1073,57 @@ mod tests {
                 .as_nanos()
         ));
         AppContext::for_test(directory)
+    }
+
+    #[test]
+    fn dedicated_autostart_setting_survives_stale_general_settings_saves() {
+        let app = test_app_context("autostart-preservation");
+        let original = AppSettings::default();
+        save_settings_file(&app, &original).unwrap();
+        let enabled = update_autostart_enabled(&app, true).unwrap();
+        assert!(enabled.autostart_enabled);
+        let mut stale = original.clone();
+        stale.scan_interval_secs = 420;
+        let saved = save_general_settings_preserving_quota_sync(&app, &original, stale).unwrap();
+        assert!(saved.autostart_enabled);
+        assert_eq!(saved.scan_interval_secs, 420);
+        let disabled = update_autostart_enabled(&app, false).unwrap();
+        assert!(!disabled.autostart_enabled);
+        assert_eq!(disabled.scan_interval_secs, 420);
+        let mut stale_enabled = enabled.clone();
+        stale_enabled.start_minimized = true;
+        let saved =
+            save_general_settings_preserving_quota_sync(&app, &enabled, stale_enabled).unwrap();
+        assert!(!saved.autostart_enabled);
+        assert!(saved.start_minimized);
+        assert_eq!(saved.scan_interval_secs, 420);
+        fs::remove_dir_all(app.app_data_dir()).unwrap();
+    }
+
+    #[test]
+    fn general_settings_cannot_enable_autostart_from_an_old_client() {
+        let app = test_app_context("autostart-explicit-only");
+        let original = AppSettings::default();
+        save_settings_file(&app, &original).unwrap();
+        let mut incoming = original.clone();
+        incoming.autostart_enabled = true;
+        incoming.start_minimized = true;
+        let saved = save_general_settings_preserving_quota_sync(&app, &original, incoming).unwrap();
+        assert!(!saved.autostart_enabled);
+        assert!(saved.start_minimized);
+        assert!(!load_settings_result(&app).unwrap().autostart_enabled);
+        fs::remove_dir_all(app.app_data_dir()).unwrap();
+    }
+
+    #[test]
+    fn invalid_settings_are_not_overwritten_by_the_autostart_toggle() {
+        let app = test_app_context("autostart-read-failure");
+        fs::create_dir_all(app.app_data_dir()).unwrap();
+        let path = app.app_data_dir().join(SETTINGS_FILE);
+        fs::write(&path, b"{invalid").unwrap();
+        assert!(update_autostart_enabled(&app, true).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"{invalid");
+        fs::remove_dir_all(app.app_data_dir()).unwrap();
     }
 
     #[test]

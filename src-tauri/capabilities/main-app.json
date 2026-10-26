@@ -29,6 +29,8 @@
     "allow-get-settings",
     "allow-save-settings",
     "allow-autostart-supported",
+    "allow-get-autostart-status",
+    "allow-set-autostart-enabled",
     "allow-get-cost-profile",
     "allow-validate-cost-profile",
     "allow-save-cost-profile",
