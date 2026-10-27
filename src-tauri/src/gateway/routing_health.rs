@@ -117,10 +117,8 @@ impl MemberHealth {
         if code == "answered" {
             // A success that started before failures already counted only
             // supersedes the failures that started before it.
-            let before = self.counted.len();
             self.counted.retain(|(seen, _)| *seen > sequence);
-            let dropped = (before - self.counted.len()) as u32;
-            self.failures = self.failures.saturating_sub(dropped);
+            self.failures = self.counted.len() as u32;
             self.floor = sequence;
             return;
         }
@@ -623,6 +621,24 @@ mod tests {
         }
         health.observe(succeeded, &record(at, "a", "m1", true), at);
         assert!(health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn late_success_recounts_after_counted_overflow() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let failure = record(at, "a", "m1", false);
+        for _ in 0..MAX_COUNTED {
+            let ticket = health.begin();
+            health.observe(ticket, &failure, at);
+        }
+        let succeeded = health.begin();
+        let later = [health.begin(), health.begin()];
+        for ticket in later {
+            health.observe(ticket, &failure, at);
+        }
+        health.observe(succeeded, &record(at, "a", "m1", true), at);
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
     }
 
     #[test]
