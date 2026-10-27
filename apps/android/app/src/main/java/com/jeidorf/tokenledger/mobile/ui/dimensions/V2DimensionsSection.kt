@@ -246,7 +246,7 @@ private fun V2CloudProviderRow(
         "${v2FormatNumber(provider.requests)} 条记录",
         "输入 ${v2FormatTokens(provider.input)}",
         "输出 ${v2FormatTokens(provider.output)}",
-        "缓存读 ${v2FormatTokens(provider.cached)}",
+        "缓存读 ${v2FormatTokens(provider.cacheRead)}",
         "缓存写 ${v2FormatTokens(provider.cacheWrite)}"
     ).joinToString(" · ")
     Column(
