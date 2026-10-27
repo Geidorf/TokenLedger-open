@@ -208,3 +208,35 @@ describe('generatePeriodReportHtml', () => {
     expect(generatePeriodReportHtml(report, { hideCosts: true })).not.toContain('>50%<');
   });
 });
+
+describe('周期报告的英文文字', () => {
+  it('期次名、对比与亮点按传入语言生成，日期区间不变', () => {
+    const zh = reportPeriod('week', -1, '2026-10-21');
+    const en = reportPeriod('week', -1, '2026-10-21', 'en');
+    expect({ ...en, label: zh.label, previousLabel: zh.previousLabel, shortLabel: zh.shortLabel }).toEqual(zh);
+    expect(en).toMatchObject({ label: 'Oct 12—Oct 18', shortLabel: 'Last week', previousLabel: 'the previous week' });
+    expect(reportPeriod('week', 0, '2026-10-21', 'en').previousLabel).toBe('the same days last week');
+    expect(reportPeriod('week', -3, '2026-10-21', 'en').shortLabel).toBe('Week of Sep 28');
+    expect(reportPeriod('month', -1, '2026-10-21', 'en')).toMatchObject({ label: 'September 2026', shortLabel: 'Last month', previousLabel: 'August' });
+    expect(reportPeriod('month', 0, '2026-10-21', 'en').previousLabel).toBe('the same days of September');
+    expect(reportPeriod('month', -3, '2026-01-21', 'en')).toMatchObject({ label: 'October 2025', shortLabel: 'October 2025' });
+    expect(reportPeriod('week', 0, '2026-01-01', 'en').label).toBe('Dec 29, 2025—Jan 4, 2026');
+    expect(reportPeriodOptions('month', '2026-10-21', 2, 'en').map((option) => option.shortLabel)).toEqual(['This month', 'Last month']);
+    expect(describeDelta({ kind: 'new' }, 'en')).toBe('No records in the previous period');
+    expect(budgetSummary([], 'en')).toBe('All within limits');
+
+    const report = buildPeriodReport({
+      period: en,
+      scope: 'cloud',
+      current: stats(800, 200),
+      previous: stats(400, 100),
+      breakdownLimit: 1,
+      lang: 'en',
+      now: new Date('2026-10-21T08:00:00Z'),
+    });
+    expect(report.highlights[0]).toBe('Effective tokens 1.0K, 100% more than the previous week');
+    expect(report.agents[0].name).toBe('Other (2)');
+    expect(report.sessionsNote).toMatch(/^The cloud ledger has no session details/);
+    expect(report.highlights.join(' ')).not.toMatch(/[一-鿿]/);
+  });
+});

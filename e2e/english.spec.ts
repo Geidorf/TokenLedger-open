@@ -3,6 +3,15 @@ import { expect, expectNoHorizontalOverflow, test } from './fixtures';
 
 // 英文界面：已迁到文案表（src/i18n）的页面在 English 下整段换成英文，选择记在本机。
 // 地址里的 `?lang=en` 与设置里选 English 等价；`?fresh=1` 的含义见 onboarding.spec.ts。
+// 额度来源名是用户自己起的名字（预览数据里是中文），原样显示，不算漏翻。
+async function reportTextWithoutQuotaNames(page: Page): Promise<string> {
+  return page.locator('.period-report').evaluate((root) => {
+    const copy = root.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('.report-quotas .report-rank-name').forEach((node) => node.remove());
+    return copy.textContent ?? '';
+  });
+}
+
 async function openEnglish(page: Page, hash: string, fresh?: '1' | 'gateway') {
   const query = fresh ? `?fresh=${fresh}&lang=en` : '?lang=en';
   await page.goto(`/${query}#${hash}`);
@@ -249,3 +258,63 @@ test.describe('英文界面', () => {
     await expect(page.getByRole('switch', { name: 'Count local usage by project' })).toBeVisible();
   });
 });
+
+const WALKTHROUGH_VIEWPORTS = [{ width: 1200, height: 800 }, { width: 1280, height: 860 }];
+
+for (const viewport of WALKTHROUGH_VIEWPORTS) {
+  test(`用量异常英文完整呈现与下钻 ${viewport.width}`, async ({ page, ipc }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await openEnglish(page, 'dashboard');
+    const panel = page.locator('.usage-anomaly-panel');
+    await panel.scrollIntoViewIfNeeded();
+    await expect(panel.getByText('Usage anomalies', { exact: true })).toBeVisible();
+    await expect(panel).not.toContainText(/[\u4e00-\u9fff]/);
+    await expect(panel.getByRole('button', { name: /^Token spike, Today/ })).toBeVisible();
+    await expect(panel.getByText(/Gateway error rate spike: No local data of this kind/)).toBeVisible();
+
+    const rules = panel.getByRole('button', { name: 'Anomaly detection rules', exact: true });
+    await rules.focus();
+    const tooltip = panel.getByRole('tooltip');
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText('14 days');
+    await expect(tooltip).toContainText('500K');
+    await page.keyboard.press('Escape');
+
+    const notify = panel.getByRole('switch', { name: 'System notification for anomalies' });
+    await notify.click();
+    await expect(notify).toHaveAttribute('aria-checked', 'true');
+    expect((await ipc.calls('set_usage_anomaly_settings')).at(-1)?.args).toEqual({ settings: { notify: true } });
+    await expectNoHorizontalOverflow(page);
+    await testInfo.attach('anomaly-english', { body: await page.screenshot(), contentType: 'image/png' });
+    await panel.getByRole('button', { name: /^Token spike, Today/ }).click();
+    await expect(page.locator('#details-page-title')).toBeVisible();
+  });
+
+  test(`周报月报英文完整呈现，导出仍是中文 ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await openEnglish(page, 'reports');
+    const report = page.locator('.period-report');
+    await expect(page.getByRole('heading', { name: 'Weekly usage report · Jul 6—Jul 12' })).toBeVisible();
+    await expect(report.getByText('Compared with the previous week (06-29 to 07-05)')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'By agent' }).getByText('Codex')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Most expensive sessions' }).locator('li')).toHaveCount(5);
+    expect(await reportTextWithoutQuotaNames(page)).not.toMatch(/[\u4e00-\u9fff]/);
+    await expectNoHorizontalOverflow(page);
+    await testInfo.attach('report-english', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+
+    const [html] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'HTML', exact: true }).click()]);
+    const exported = await html.createReadStream().then(async (stream) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(chunk as Buffer);
+      return Buffer.concat(chunks).toString('utf8');
+    });
+    expect(exported).toContain('<html lang="zh-CN">');
+    expect(exported).toContain('用量周报 · 7月6日—7月12日');
+
+    await page.getByRole('button', { name: 'Monthly' }).click();
+    await expect(page.getByRole('heading', { name: 'Monthly usage report · June 2026' })).toBeVisible();
+    await expect(page.getByRole('switch', { name: '1st-of-month reminder' })).toBeVisible();
+    expect(await reportTextWithoutQuotaNames(page)).not.toMatch(/[\u4e00-\u9fff]/);
+    await expectNoHorizontalOverflow(page);
+  });
+}

@@ -13,6 +13,7 @@ for (const layout of layouts) {
     ? `Open details of session ${SESSION}`
     : `打开会话 ${SESSION} 的详情`;
   const backLabel = layout.lang === 'en' ? 'Back to sessions' : '返回会话列表';
+  const sessionsCard = layout.lang === 'en' ? 'Most expensive sessions' : '最贵的会话';
 
   test(`报告会话入口 ${layout.width} ${layout.lang}`, async ({ page, ipc }, testInfo) => {
     await page.setViewportSize(layout);
@@ -28,7 +29,7 @@ for (const layout of layouts) {
       },
     });
     await reloadSettled(page);
-    const card = page.getByRole('region', { name: '最贵的会话' });
+    const card = page.getByRole('region', { name: sessionsCard });
     const entry = card.getByRole('button', { name: openLabel, exact: true });
     await expect(entry).toBeVisible();
     await entry.scrollIntoViewIfNeeded();

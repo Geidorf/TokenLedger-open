@@ -6,6 +6,7 @@ import { beginRequest, isCurrentRequest, normalizeStatsQuery, parseStatsDataCont
 import { parseBehaviorProjectFields } from '../utils/contracts/behaviorProjects';
 import { parseBudgetSettings, type BudgetRule } from './useBudget';
 import type { ReportPeriod } from '../utils/periodReport';
+import { t } from '../i18n';
 
 export interface PeriodReportData {
   current: StatsData;
@@ -41,7 +42,7 @@ async function loadRange(scope: DataScope, start: string, end: string, timezone:
     tokenMode: query.tokenMode,
   }));
   if (response.meta?.query && !queryEchoMatches(response.meta.query, query)) {
-    throw new Error('统计响应与所选周期不一致，请重试。');
+    throw new Error(t('periodReport.error.queryMismatch'));
   }
   return response;
 }
@@ -183,7 +184,7 @@ export function usePeriodReportSettings() {
         setSettings(parsePeriodReportSettings(value));
         setLoaded(true);
       })
-      .catch(() => { if (active) setError('读取报告提醒设置失败'); });
+      .catch(() => { if (active) setError(t('periodReport.settings.loadFailed')); });
     return () => { active = false; };
   }, []);
 
@@ -200,7 +201,7 @@ export function usePeriodReportSettings() {
     } catch {
       if (!isCurrentRequest(saveId, id)) return;
       setSettings(previous);
-      setError('报告提醒设置未保存，请重试');
+      setError(t('periodReport.settings.saveFailed'));
     } finally {
       if (isCurrentRequest(saveId, id)) setSaving(false);
     }

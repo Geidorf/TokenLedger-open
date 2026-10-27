@@ -5,6 +5,7 @@ import { summaryCacheReuse } from '../components/usage/usageSummary';
 import { toolDisplayName } from './toolDisplayName';
 import { validateQuotaProviderEnvelopeStructure } from './contracts/quota';
 import { providerDisplayName, quotaLevel, readQuotaWindow, type QuotaLevel } from './quotaOverview';
+import { t, type Lang } from '../i18n';
 
 /**
  * 周报 / 月报：把一个已经结束（或进行中）的日历周、日历月和紧挨着的上一期并排汇总。
@@ -13,6 +14,9 @@ import { providerDisplayName, quotaLevel, readQuotaWindow, type QuotaLevel } fro
  * 最贵的会话读「会话」页同一份行为分析，额度读额度页同一份快照，预算按设置页的规则在
  * 本期统计上复算（与 `src-tauri/src/budget.rs` 的 `used_for` 同一套取数）。
  * 本文件零 React 依赖，应用内视图、HTML/PDF 与图片导出共用它的结果。
+ *
+ * 文字（期次名、亮点、「其他 N 项」等）按传入的 `lang` 生成，缺省中文：导出固定中文，
+ * 只有应用内视图按界面语言另建一份。
  */
 
 export type ReportKind = 'week' | 'month';
@@ -56,14 +60,24 @@ function minDay(left: string, right: string): string {
   return left < right ? left : right;
 }
 
-function zhDay(day: string, withYear = false): string {
+const EN_MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const EN_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function dayLabel(day: string, lang: Lang, withYear = false): string {
   const [year, month, date] = day.split('-').map(Number);
-  return withYear ? `${year}年${month}月${date}日` : `${month}月${date}日`;
+  const monthText = lang === 'zh' ? month : EN_MONTHS_SHORT[month - 1];
+  return t(withYear ? 'periodReport.date.dayYear' : 'periodReport.date.day', { year, month: monthText, day: date }, lang);
 }
 
-function spanLabel(start: string, end: string, today: string): string {
+function yearMonthLabel(year: number, month: number, lang: Lang): string {
+  return t('periodReport.month.yearMonth', { year, month: lang === 'zh' ? month : EN_MONTHS[month - 1] }, lang);
+}
+
+function spanLabel(start: string, end: string, today: string, lang: Lang): string {
   const withYear = start.slice(0, 4) !== today.slice(0, 4) || start.slice(0, 4) !== end.slice(0, 4);
-  return start === end ? zhDay(start, withYear) : `${zhDay(start, withYear)}—${zhDay(end, withYear)}`;
+  return start === end
+    ? dayLabel(start, lang, withYear)
+    : t('periodReport.date.span', { start: dayLabel(start, lang, withYear), end: dayLabel(end, lang, withYear) }, lang);
 }
 
 /** 周一开始，与看板「本周」、预算周期一致。 */
@@ -89,7 +103,7 @@ function monthEnd(firstDay: string): string {
  * offset = 0 是包含今天的这一期，-1 是上一期，以此类推。进行中的一期与上一期比较同样天数
  * （本周到周三就比上周一到周三），已结束的一期比较完整的上一期。
  */
-export function reportPeriod(kind: ReportKind, offset: number, today: string): ReportPeriod {
+export function reportPeriod(kind: ReportKind, offset: number, today: string, lang: Lang = 'zh'): ReportPeriod {
   const step = Math.min(0, Math.trunc(offset));
   let start: string;
   let fullEnd: string;
@@ -111,20 +125,25 @@ export function reportPeriod(kind: ReportKind, offset: number, today: string): R
   const previousEnd = complete ? previousFullEnd : minDay(addDays(previousStart, daysBetween(start, end)), previousFullEnd);
   const monthName = (day: string) => {
     const [year, month] = day.split('-').map(Number);
-    return year === Number(today.slice(0, 4)) ? `${month}月` : `${year}年${month}月`;
+    return year === Number(today.slice(0, 4))
+      ? t('periodReport.month.name', { month: lang === 'zh' ? month : EN_MONTHS[month - 1] }, lang)
+      : yearMonthLabel(year, month, lang);
   };
-  const label = kind === 'month' ? `${start.slice(0, 4)}年${Number(start.slice(5, 7))}月` : spanLabel(start, fullEnd, today);
+  const label = kind === 'month' ? yearMonthLabel(Number(start.slice(0, 4)), Number(start.slice(5, 7)), lang) : spanLabel(start, fullEnd, today, lang);
   const previousLabel = kind === 'month'
-    ? (complete ? monthName(previousStart) : `${monthName(previousStart)}同期`)
-    : (complete ? '前一周' : '上周同期');
-  const relative: Record<ReportKind, string[]> = { week: ['本周', '上周', '上上周'], month: ['本月', '上月'] };
-  const shortLabel = relative[kind][-step] ?? (kind === 'week' ? `${zhDay(start)}起的一周` : monthName(start));
+    ? (complete ? monthName(previousStart) : t('periodReport.month.sameDays', { month: monthName(previousStart) }, lang))
+    : t(complete ? 'periodReport.week.previous' : 'periodReport.week.previousSame', undefined, lang);
+  const relative: Record<ReportKind, string[]> = {
+    week: [t('periodReport.week.current', undefined, lang), t('periodReport.week.last', undefined, lang), t('periodReport.week.twoAgo', undefined, lang)],
+    month: [t('periodReport.month.current', undefined, lang), t('periodReport.month.last', undefined, lang)],
+  };
+  const shortLabel = relative[kind][-step] ?? (kind === 'week' ? t('periodReport.week.from', { date: dayLabel(start, lang) }, lang) : monthName(start));
   return { kind, start, end, complete, previousStart, previousEnd, label, previousLabel, shortLabel };
 }
 
 /** 报告页的期次选择：从进行中的一期往前数 `count` 期。 */
-export function reportPeriodOptions(kind: ReportKind, today: string, count = kind === 'week' ? 8 : 6): ReportPeriod[] {
-  return Array.from({ length: count }, (_, index) => reportPeriod(kind, -index, today));
+export function reportPeriodOptions(kind: ReportKind, today: string, count = kind === 'week' ? 8 : 6, lang: Lang = 'zh'): ReportPeriod[] {
+  return Array.from({ length: count }, (_, index) => reportPeriod(kind, -index, today, lang));
 }
 
 /** 默认打开上一期完整的周报 / 月报——每周一自动生成的也是这一期。 */
@@ -149,10 +168,10 @@ export function compareValues(current: number | null, previous: number | null): 
   return Math.abs(percent) < 0.05 ? { kind: 'flat' } : { kind: 'change', percent };
 }
 
-export function describeDelta(delta: ReportDelta): string | null {
-  if (delta.kind === 'new') return '上期无记录';
-  if (delta.kind === 'flat') return '持平';
-  if (delta.kind === 'missing') return '基线缺失';
+export function describeDelta(delta: ReportDelta, lang: Lang = 'zh'): string | null {
+  if (delta.kind === 'new') return t('periodReport.delta.none', undefined, lang);
+  if (delta.kind === 'flat') return t('periodReport.delta.flat', undefined, lang);
+  if (delta.kind === 'missing') return t('periodReport.delta.baselineMissing', undefined, lang);
   if (delta.kind === 'unavailable') return null;
   return `${delta.percent > 0 ? '+' : '−'}${Math.abs(delta.percent).toFixed(1)}%`;
 }
@@ -256,6 +275,8 @@ export interface BuildPeriodReportInput {
   quotaLabels?: ReportQuotaLabels;
   budgetRules?: readonly BudgetRule[];
   now?: Date;
+  /** 报告里文字的语言；缺省中文（导出固定中文）。 */
+  lang?: Lang;
   breakdownLimit?: number;
   sessionLimit?: number;
 }
@@ -296,6 +317,7 @@ function breakdown(
   effectiveTotal: number,
   displayName: (id: string) => string,
   limit: number,
+  lang: Lang,
 ): ReportBreakdownRow[] {
   const rows = Object.entries(current || {})
     .map(([id, row]) => {
@@ -325,7 +347,7 @@ function breakdown(
   const restCosts = rest.map((row) => row.cost);
   return [...head, {
     id: '__other__',
-    name: `其他 ${rest.length} 项`,
+    name: t('periodReport.other', { count: rest.length }, lang),
     tokens: restTokens,
     requests: rest.reduce((sum, row) => sum + row.requests, 0),
     cost: restCosts.every((cost) => cost !== null) ? restCosts.reduce<number>((sum, cost) => sum + (cost as number), 0) : null,
@@ -334,7 +356,7 @@ function breakdown(
   }];
 }
 
-function topSessions(behavior: BehaviorAnalysisResponse | null | undefined, limit: number): { sessions: ReportSession[] | null; note: string | null } {
+function topSessions(behavior: BehaviorAnalysisResponse | null | undefined, limit: number, lang: Lang): { sessions: ReportSession[] | null; note: string | null } {
   if (!behavior) return { sessions: null, note: null };
   const sessions = [...behavior.sessions]
     .map((session) => ({
@@ -356,7 +378,7 @@ function topSessions(behavior: BehaviorAnalysisResponse | null | undefined, limi
     })
     .slice(0, limit);
   const note = behavior.meta.sessionsTruncated
-    ? `会话较多，只在 Token 最多的 ${behavior.meta.sessionLimit} 个会话里排序`
+    ? t('periodReport.sessions.truncated', { limit: behavior.meta.sessionLimit }, lang)
     : null;
   return { sessions, note };
 }
@@ -393,12 +415,12 @@ function quotaRows(providers: readonly QuotaProviderEnvelope[] | undefined, now:
 
 /** 与 `budget.rs::used_for` 同一套取数：缺少该行是 0，缺少账号维度或费用不可得是不可得。 */
 /** 预算达成一句话：只有每条都可核对且未超出时才说「全部在上限内」。 */
-export function budgetSummary(budgets: readonly ReportBudget[]): string {
-  if (budgets.some((budget) => budget.level === 'over')) return '有预算超出';
+export function budgetSummary(budgets: readonly ReportBudget[], lang: Lang = 'zh'): string {
+  if (budgets.some((budget) => budget.level === 'over')) return t('periodReport.budgetSummary.over', undefined, lang);
   const unknown = budgets.filter((budget) => budget.level === 'unavailable').length;
-  if (unknown > 0) return `${unknown} 项无法核对`;
-  if (budgets.some((budget) => budget.level === 'warn')) return '有预算接近上限';
-  return '全部在上限内';
+  if (unknown > 0) return t('periodReport.budgetSummary.unavailable', { count: unknown }, lang);
+  if (budgets.some((budget) => budget.level === 'warn')) return t('periodReport.budgetSummary.warn', undefined, lang);
+  return t('periodReport.budgetSummary.all', undefined, lang);
 }
 
 export function budgetUsed(rule: BudgetRule, stats: StatsData): number | null {
@@ -437,37 +459,56 @@ function formatCompactTokens(value: number): string {
   return String(Math.round(value));
 }
 
-function buildHighlights(report: Omit<PeriodReport, 'highlights'>): string[] {
+function buildHighlights(report: Omit<PeriodReport, 'highlights'>, lang: Lang): string[] {
   const lines: string[] = [];
   const { totals, deltas, period } = report;
-  if (totals.effectiveTokens === 0 && totals.requests === 0) return [`${period.shortLabel}没有用量记录`];
-  const tokenDelta = describeDelta(deltas.tokens);
+  const say = (key: Parameters<typeof t>[0], vars?: Record<string, string | number>) => t(key, vars, lang);
+  if (totals.effectiveTokens === 0 && totals.requests === 0) return [say('periodReport.highlights.empty', { period: period.shortLabel })];
+  const tokenDelta = describeDelta(deltas.tokens, lang);
+  const tokens = formatCompactTokens(totals.effectiveTokens);
   if (deltas.tokens.kind === 'change' && Math.abs(deltas.tokens.percent) < 0.5) {
-    lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}，与${period.previousLabel}基本持平`);
+    lines.push(say('periodReport.highlights.tokensFlat', { tokens, period: period.previousLabel }));
   } else if (deltas.tokens.kind === 'change') {
-    lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}，比${period.previousLabel}${deltas.tokens.percent > 0 ? '多' : '少'} ${Math.abs(deltas.tokens.percent).toFixed(0)}%`);
+    lines.push(say('periodReport.highlights.tokensChange', {
+      tokens,
+      period: period.previousLabel,
+      direction: say(deltas.tokens.percent > 0 ? 'periodReport.highlights.tokensMore' : 'periodReport.highlights.tokensLess'),
+      percent: Math.abs(deltas.tokens.percent).toFixed(0),
+    }));
   } else if (deltas.tokens.kind === 'missing') {
-    lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}；云端${period.previousLabel}没有可信基线，不做对比`);
+    lines.push(say('periodReport.highlights.baselineMissing', { tokens, period: period.previousLabel }));
   } else if (tokenDelta) {
-    lines.push(`有效 Token ${formatCompactTokens(totals.effectiveTokens)}，${period.previousLabel}${deltas.tokens.kind === 'new' ? '没有记录' : '持平'}`);
+    lines.push(say(deltas.tokens.kind === 'new' ? 'periodReport.highlights.tokensNew' : 'periodReport.highlights.tokensFlatShort', { tokens, period: period.previousLabel }));
   }
   const [lead] = report.agents;
   // 有 Agent 的 Token 不可得时说不准谁最多，不写这句。
-  if (lead && lead.share !== null && lead.id !== '__other__' && report.agents.every((row) => row.tokens !== null)) lines.push(`${lead.name} 用量最多，占 ${(lead.share * 100).toFixed(0)}%`);
-  if (report.peakDay && report.days.length > 1) lines.push(`最忙的一天是 ${zhDay(report.peakDay.date)}，用了 ${formatCompactTokens(report.peakDay.tokens)}`);
+  if (lead && lead.share !== null && lead.id !== '__other__' && report.agents.every((row) => row.tokens !== null)) {
+    lines.push(say('periodReport.highlights.leadAgent', { agent: lead.name, percent: (lead.share * 100).toFixed(0) }));
+  }
+  if (report.peakDay && report.days.length > 1) {
+    lines.push(say('periodReport.highlights.peakDay', { date: dayLabel(report.peakDay.date, lang), tokens: formatCompactTokens(report.peakDay.tokens) }));
+  }
   if (totals.cacheReuse !== null) {
     const points = deltas.cacheReusePoints;
-    lines.push(`缓存复用率 ${(totals.cacheReuse * 100).toFixed(1)}%${points !== null && Math.abs(points) >= 0.1 ? `，${points > 0 ? '提高' : '降低'} ${Math.abs(points).toFixed(1)} 个百分点` : ''}`);
+    const base = say('periodReport.highlights.cacheReuse', { percent: (totals.cacheReuse * 100).toFixed(1) });
+    lines.push(points !== null && Math.abs(points) >= 0.1
+      ? say('periodReport.highlights.cacheChange', {
+        base,
+        direction: say(points > 0 ? 'periodReport.highlights.cacheUp' : 'periodReport.highlights.cacheDown'),
+        points: Math.abs(points).toFixed(1),
+      })
+      : base);
   }
   const over = report.budgets.filter((budget) => budget.level === 'over').length;
-  if (over > 0) lines.push(`${over} 项预算超出上限`);
-  else if (report.budgets.length > 0 && report.budgets.every((budget) => budget.level === 'ok')) lines.push('预算全部在上限以内');
+  if (over > 0) lines.push(say('periodReport.highlights.budgetsOver', { count: over }));
+  else if (report.budgets.length > 0 && report.budgets.every((budget) => budget.level === 'ok')) lines.push(say('periodReport.highlights.budgetsOk'));
   return lines;
 }
 
 export function buildPeriodReport(input: BuildPeriodReportInput): PeriodReport {
   const { period, scope, current, previous } = input;
   const now = input.now ?? new Date();
+  const lang = input.lang ?? 'zh';
   const limit = input.breakdownLimit ?? 6;
   const totals = totalsFor(current, period.start, period.end);
   // 与看板、简报同一条件：云端上一期零记录零 Token 不能证明「真的没有用量」。
@@ -484,7 +525,7 @@ export function buildPeriodReport(input: BuildPeriodReportInput): PeriodReport {
     days.push({ date: day, tokens: finite(tokens) && tokens > 0 ? tokens : 0 });
   }
   const peakDay = days.reduce<ReportDay | null>((best, day) => (day.tokens > 0 && (!best || day.tokens > best.tokens) ? day : best), null);
-  const { sessions, note } = topSessions(scope === 'local' ? input.behavior : null, input.sessionLimit ?? 5);
+  const { sessions, note } = topSessions(scope === 'local' ? input.behavior : null, input.sessionLimit ?? 5, lang);
   const withoutHighlights: Omit<PeriodReport, 'highlights'> = {
     period,
     scope,
@@ -501,17 +542,17 @@ export function buildPeriodReport(input: BuildPeriodReportInput): PeriodReport {
     },
     days,
     peakDay,
-    agents: breakdown(current.tools, baseline?.tools, totals.effectiveTokens, toolDisplayName, limit),
-    models: breakdown(current.models, baseline?.models, totals.effectiveTokens, (id) => id, limit),
+    agents: breakdown(current.tools, baseline?.tools, totals.effectiveTokens, toolDisplayName, limit, lang),
+    models: breakdown(current.models, baseline?.models, totals.effectiveTokens, (id) => id, limit, lang),
     accounts: current.providers && Object.keys(current.providers).length > 0
-      ? breakdown(current.providers, baseline?.providers ?? null, totals.effectiveTokens, (id) => id, limit)
+      ? breakdown(current.providers, baseline?.providers ?? null, totals.effectiveTokens, (id) => id, limit, lang)
       : null,
     sessions,
-    sessionsNote: scope === 'local' ? note : '云端账本不含会话明细，最贵的会话只在本机账本里统计',
+    sessionsNote: scope === 'local' ? note : t('periodReport.sessions.cloudNote', undefined, lang),
     quotas: quotaRows(input.quotaProviders, now.getTime(), input.quotaLabels ?? DEFAULT_QUOTA_LABELS),
     budgets: budgetRows(input.budgetRules, period.kind, current, scope),
   };
-  return { ...withoutHighlights, highlights: buildHighlights(withoutHighlights) };
+  return { ...withoutHighlights, highlights: buildHighlights(withoutHighlights, lang) };
 }
 
 /** 文件名片段，例如 `weekly-2026-10-13_2026-10-19`。 */
@@ -519,6 +560,6 @@ export function reportFileSlug(period: ReportPeriod): string {
   return `${period.kind === 'week' ? 'weekly' : 'monthly'}-${period.start}_${period.end}`;
 }
 
-export function reportTitle(period: ReportPeriod): string {
-  return `${period.kind === 'week' ? '用量周报' : '用量月报'} · ${period.label}`;
+export function reportTitle(period: ReportPeriod, lang: Lang = 'zh'): string {
+  return `${t(period.kind === 'week' ? 'periodReport.title.week' : 'periodReport.title.month', undefined, lang)} · ${period.label}`;
 }
