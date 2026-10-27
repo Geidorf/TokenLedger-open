@@ -162,7 +162,8 @@ pub fn row_code(record: &LedgerRecord) -> Option<&'static str> {
     })
 }
 
-fn is_local(code: &str) -> bool {
+/// Rejected by the gateway before any upstream call.
+pub(super) fn is_local(code: &str) -> bool {
     LOCAL_CODES.contains(&code)
 }
 

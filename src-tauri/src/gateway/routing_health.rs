@@ -10,7 +10,7 @@ use std::sync::Mutex;
 
 use chrono::{DateTime, Duration, Utc};
 
-use super::health::{row_code, DOWN_STREAK};
+use super::health::{is_local, row_code, DOWN_STREAK};
 use super::ledger::LedgerRecord;
 use super::probe::ProbeResult;
 
@@ -20,6 +20,8 @@ const OBSERVATION_TTL_MINUTES: i64 = 5;
 const BLOCK_BASE_SECS: u64 = 60;
 const BLOCK_MAX_SECS: u64 = 300;
 const PROBE_TTL_SECS: i64 = 60;
+/// Failure tickets remembered per member to count each call once.
+const MAX_COUNTED: usize = 32;
 
 /// Identifies one request observation. A configuration change bumps `epoch`;
 /// `sequence` keeps observations for the same member ordered.
@@ -62,48 +64,84 @@ impl HealthSnapshot {
 #[derive(Clone, Debug)]
 struct MemberHealth {
     failures: u32,
-    failure_times: VecDeque<DateTime<Utc>>,
     block_level: u8,
     blocked_until: Option<DateTime<Utc>>,
     last_seen: DateTime<Utc>,
+    /// Newest ticket observed, success or failure.
     last_sequence: u64,
+    /// Tickets at or below this are stale: the latest success, or a failure
+    /// that fell out of `counted`.
+    floor: u64,
+    /// Failures counted since `floor` as (ticket, time), so concurrent
+    /// failures finishing out of start order each count once.
+    counted: VecDeque<(u64, DateTime<Utc>)>,
     last_success: Option<DateTime<Utc>>,
 }
 
 impl MemberHealth {
-    fn new(at: DateTime<Utc>, sequence: u64) -> Self {
+    fn new(at: DateTime<Utc>) -> Self {
         Self {
             failures: 0,
-            failure_times: VecDeque::with_capacity(DOWN_STREAK as usize),
             block_level: 0,
             blocked_until: None,
             last_seen: at,
-            last_sequence: sequence,
+            last_sequence: 0,
+            floor: 0,
+            counted: VecDeque::new(),
             last_success: None,
         }
     }
 
+    /// Superseded by a newer success, or this ticket was already counted.
+    fn is_stale(&self, sequence: u64) -> bool {
+        sequence <= self.floor || self.counted.iter().any(|(seen, _)| *seen == sequence)
+    }
+
     fn record(&mut self, code: &str, at: DateTime<Utc>, sequence: u64, now: DateTime<Utc>) {
         self.last_seen = self.last_seen.max(at);
-        self.last_sequence = sequence;
-        if code == "answered" {
+        self.last_success = match (code == "answered", self.last_success) {
+            (true, Some(previous)) => Some(previous.max(at)),
+            (true, None) => Some(at),
+            (false, previous) => previous,
+        };
+        if code == "answered" && sequence > self.last_sequence {
             self.failures = 0;
-            self.failure_times.clear();
             self.block_level = 0;
             self.blocked_until = None;
-            self.last_success = Some(self.last_success.map_or(at, |previous| previous.max(at)));
+            self.floor = sequence;
+            self.counted.clear();
+            self.last_sequence = sequence;
             return;
+        }
+        self.last_sequence = self.last_sequence.max(sequence);
+        if code == "answered" {
+            // A success that started before failures already counted only
+            // supersedes the failures that started before it.
+            self.counted.retain(|(seen, _)| *seen > sequence);
+            self.failures = self.counted.len() as u32;
+            if self.failures < DOWN_STREAK {
+                // The streak that set the backoff is gone; the next block
+                // must meet the initial threshold again.
+                self.block_level = 0;
+                self.blocked_until = None;
+            }
+            self.floor = sequence;
+            return;
+        }
+        self.counted.push_back((sequence, at));
+        if self.counted.len() > MAX_COUNTED {
+            if let Some((dropped, _)) = self.counted.pop_front() {
+                self.floor = self.floor.max(dropped);
+            }
         }
         self.failures = self.failures.saturating_add(1);
         let window_start = now - Duration::minutes(OBSERVATION_TTL_MINUTES);
-        self.failure_times
-            .retain(|failed_at| *failed_at >= window_start);
-        self.failure_times.push_back(at);
-        while self.failure_times.len() > DOWN_STREAK as usize {
-            self.failure_times.pop_front();
-        }
-        let initial_window = self.failure_times.len() == DOWN_STREAK as usize;
-        if self.block_level > 0 || initial_window {
+        let recent = self
+            .counted
+            .iter()
+            .filter(|(_, failed_at)| *failed_at >= window_start)
+            .count();
+        if self.block_level > 0 || recent >= DOWN_STREAK as usize {
             let secs = BLOCK_BASE_SECS
                 .saturating_mul(1_u64 << self.block_level.min(3))
                 .min(BLOCK_MAX_SECS);
@@ -174,7 +212,9 @@ impl RoutingHealth {
         record: &LedgerRecord,
         now: DateTime<Utc>,
     ) {
-        let Some(code) = row_code(record) else {
+        // Local skips (no key, wrong protocol, keychain busy or failing) say
+        // nothing about the upstream and only apply to this one request.
+        let Some(code) = row_code(record).filter(|code| !is_local(code)) else {
             return;
         };
         let Some(id) = member_id(record) else {
@@ -196,11 +236,11 @@ impl RoutingHealth {
             .get(&id)
             .is_none_or(|member| expired(member.last_seen, now));
         if let Some(member) = state.members.get_mut(&id) {
-            if ticket.sequence <= member.last_sequence {
+            if member.is_stale(ticket.sequence) {
                 return;
             }
             if reset {
-                *member = MemberHealth::new(at, ticket.sequence);
+                *member = MemberHealth::new(at);
             }
             member.record(code, at, ticket.sequence, now);
             return;
@@ -221,7 +261,7 @@ impl RoutingHealth {
                 state.members.remove(&oldest);
             }
         }
-        let mut member = MemberHealth::new(at, ticket.sequence.saturating_sub(1));
+        let mut member = MemberHealth::new(at);
         member.record(code, at, ticket.sequence, now);
         state.members.insert(id, member);
     }
@@ -498,6 +538,134 @@ mod tests {
         health.observe(newer, &record(at, "a", "m1", true), at);
         health.observe(old, &record(at, "a", "m1", false), at);
         assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    fn local_skip(at: DateTime<Utc>, status: u16, error: &str) -> LedgerRecord {
+        let mut skipped = record(at, "a", "m1", false);
+        skipped.status = status;
+        skipped.error = Some(error.into());
+        skipped
+    }
+
+    #[test]
+    fn local_skips_do_not_count_as_member_failures() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let skips = [
+            local_skip(at, 400, "Responses 接口只能转发到 Responses 协议的供应商。"),
+            local_skip(at, 503, "凭据读取繁忙，请稍后重试。"),
+            local_skip(at, 500, "读取钥匙串超过 15 秒。"),
+            local_skip(at, 401, "供应商「a」还没有设置 API key。"),
+        ];
+        for skipped in &skips {
+            assert_eq!(
+                row_code(skipped).map(is_local),
+                Some(true),
+                "{:?}",
+                skipped.error
+            );
+            for _ in 0..3 {
+                observe(&health, skipped, at);
+            }
+        }
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+        assert!(lock(&health.state).members.is_empty());
+
+        // Skips between real failures neither count nor break the streak.
+        fail(&health, "a", "m1", at);
+        observe(&health, &skips[0], at);
+        fail(&health, "a", "m1", at);
+        observe(&health, &skips[1], at);
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+        fail(&health, "a", "m1", at);
+        assert!(health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn concurrent_failures_finishing_out_of_order_all_count() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let tickets = [health.begin(), health.begin(), health.begin()];
+        let failure = record(at, "a", "m1", false);
+        for ticket in tickets.into_iter().rev() {
+            health.observe(ticket, &failure, at);
+        }
+        assert!(health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn late_success_only_supersedes_failures_started_before_it() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let first = health.begin();
+        let succeeded = health.begin();
+        let later = [health.begin(), health.begin()];
+        let failure = record(at, "a", "m1", false);
+        health.observe(first, &failure, at);
+        for ticket in later {
+            health.observe(ticket, &failure, at);
+        }
+        assert!(health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+        health.observe(succeeded, &record(at, "a", "m1", true), at);
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+        // The early failure stays superseded; one more newer failure blocks.
+        health.observe(first, &failure, at);
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+        fail(&health, "a", "m1", at);
+        assert!(health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn late_success_keeps_newer_failures_blocking() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let succeeded = health.begin();
+        let failure = record(at, "a", "m1", false);
+        for _ in 0..3 {
+            let ticket = health.begin();
+            health.observe(ticket, &failure, at);
+        }
+        health.observe(succeeded, &record(at, "a", "m1", true), at);
+        assert!(health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn late_success_recounts_after_counted_overflow() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let failure = record(at, "a", "m1", false);
+        for _ in 0..MAX_COUNTED {
+            let ticket = health.begin();
+            health.observe(ticket, &failure, at);
+        }
+        let succeeded = health.begin();
+        let later = [health.begin(), health.begin()];
+        for ticket in later {
+            health.observe(ticket, &failure, at);
+        }
+        health.observe(succeeded, &record(at, "a", "m1", true), at);
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn late_success_breaking_the_streak_resets_backoff() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let tickets: Vec<_> = (0..5).map(|_| health.begin()).collect();
+        let failure = record(at, "a", "m1", false);
+        for index in [0, 1, 2, 4] {
+            health.observe(tickets[index], &failure, at);
+        }
+        health.observe(tickets[3], &record(at, "a", "m1", true), at);
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+
+        // Two more failures four minutes apart: only failure 5 and the second
+        // of these fall in one five-minute window, so no initial block.
+        let later = at + Duration::minutes(4);
+        observe(&health, &record(later, "a", "m1", false), later);
+        let last = at + Duration::minutes(8);
+        observe(&health, &record(last, "a", "m1", false), last);
+        assert!(!health.snapshot(&HashMap::new(), last).is_unhealthy("a/m1"));
     }
 
     #[test]
