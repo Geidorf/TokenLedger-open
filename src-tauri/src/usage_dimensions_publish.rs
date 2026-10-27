@@ -1205,7 +1205,9 @@ impl Publisher {
         }
         let nudge = io.take_nudge();
         let scheduled = self.cycle_at.is_some_and(|at| Instant::now() >= at);
-        let manual = nudge == Nudge::Manual && !self.failing;
+        // While backing off a manual sync still waits for the retry to fall due, so a
+        // pause cannot hold that retry past it.
+        let manual = nudge == Nudge::Manual && (!self.failing || scheduled);
         let due = scheduled || (nudge != Nudge::None && !self.failing);
         if !due {
             return idle(self);
@@ -2378,6 +2380,12 @@ mod tests {
 
             io.invalid_upload_reply.store(false, Ordering::SeqCst);
             io.paused.store(true, Ordering::SeqCst);
+            io.nudge(Nudge::Manual);
+            publisher.tick(&io).await;
+            assert!(
+                io.sent().is_empty(),
+                "a manual sync does not cut the retry delay"
+            );
             publisher.cycle_at = Some(Instant::now());
             publisher.tick(&io).await;
             assert!(
@@ -2386,9 +2394,13 @@ mod tests {
             );
             assert_eq!(status_state(Dimension::Providers), "paused");
 
-            io.paused.store(false, Ordering::SeqCst);
+            io.nudge(Nudge::Manual);
             publisher.tick(&io).await;
-            assert_eq!(synced(&io.sent()), 1);
+            assert_eq!(
+                synced(&io.sent()),
+                1,
+                "a manual sync runs the held retry while paused"
+            );
             assert!(!publisher.failing);
         });
     }
