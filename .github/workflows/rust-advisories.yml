@@ -1,0 +1,49 @@
+name: Rust Dependency Advisories
+
+# 用 RustSec 公告库检查 src-tauri/Cargo.lock。公告库每天都在更新，同一份锁文件
+# 今天绿、明天可能红，所以不放进 ci.yml 的必过检查：只在改依赖的 PR、main 合并和
+# 每周定时跑，红了由改依赖的工位或值守工位按 docs/rust-dependency-advisories.md 处置。
+# 只有漏洞（vulnerability）让 job 失败；unsound / 停止维护提示照常打印，已知项的
+# 处置结论记在同一份文档里，不在这里用 --ignore 隐藏。
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - '.github/workflows/rust-advisories.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+  schedule:
+    # 每周一 01:17 UTC（北京时间 09:17）
+    - cron: '17 1 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-advisories-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-audit:
+    name: Cargo Audit (RustSec)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      # 钉住版本并用 --locked，避免工具自身的依赖漂移。
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Audit Cargo.lock
+        working-directory: src-tauri
+        run: cargo audit
