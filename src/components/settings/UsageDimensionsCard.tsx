@@ -8,7 +8,7 @@ import { DisclosurePanel, SettingsCard, SettingsGroup, SettingsToggleRow } from 
 
 /** Mirrors `usage_dimensions_publish::DimensionStatus` (usage-dimensions-cloud-v1 §5). */
 export interface UsageDimensionStatus {
-  state: 'off' | 'signed-out' | 'not-deployed' | 'ok' | 'error' | 'starting' | 'clearing';
+  state: 'off' | 'signed-out' | 'not-deployed' | 'ok' | 'error' | 'starting' | 'clearing' | 'paused';
   lastUploadedAt: string | null;
   error: string | null;
 }
@@ -74,6 +74,8 @@ export function usageDimensionHint(
   switch (state) {
     case 'signed-out':
       return t('usageDimensions.signedOut');
+    case 'paused':
+      return t('usageDimensions.paused');
     case 'not-deployed':
       return t('usageDimensions.notDeployed');
     case 'error':

@@ -98,6 +98,13 @@ describe('UsageDimensionsCard', () => {
     expect(text).toContain('90 天');
   });
 
+  it('后台同步暂停时说明恢复或手动同步后再上传，关着的维度仍显示关闭说明', () => {
+    const spec = { fieldsKey: 'usageDimensions.sessions.fields' } as const;
+    const paused: UsageDimensionStatus = { ...off, state: 'paused' };
+    expect(usageDimensionHint(spec, paused, true)).toContain('后台同步已暂停');
+    expect(usageDimensionHint(spec, paused, false)).not.toContain('后台同步已暂停');
+  });
+
   it.each(['resolve', 'reject'] as const)('忽略晚到的旧轮询 %s，保留最新清理状态', async (outcome) => {
     vi.useFakeTimers();
     let resolveOld!: (value: unknown) => void;
