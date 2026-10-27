@@ -73,6 +73,9 @@ internal data class CloudProvider(
     val cost: Double?
 ) {
     val isOther: Boolean get() = provider == CLOUD_PROVIDER_OTHER
+
+    /** 契约里 cached 是读写合计（与桌面 token_logs.cached_tokens 同口径），缓存读要减掉写入。 */
+    val cacheRead: Long get() = cached - cacheWrite
 }
 
 internal const val CLOUD_PROVIDER_OTHER = "other"
@@ -172,7 +175,10 @@ internal object UsageDimensionsJson {
             if (runCatching { Math.addExact(input, output) }.getOrNull() != total) {
                 throw UsageDimensionsFormatException("provider total mismatch")
             }
-            CloudProvider(provider, input, output, count(row, "cached"), count(row, "cacheWrite"), total, positive(row, "requests"), cost(row))
+            val cached = count(row, "cached")
+            val cacheWrite = count(row, "cacheWrite")
+            if (cacheWrite > cached) throw UsageDimensionsFormatException("provider cache write exceeds cached")
+            CloudProvider(provider, input, output, cached, cacheWrite, total, positive(row, "requests"), cost(row))
         }
     }
 

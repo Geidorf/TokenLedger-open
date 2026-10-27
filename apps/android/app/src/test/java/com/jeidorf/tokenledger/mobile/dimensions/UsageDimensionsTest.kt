@@ -31,6 +31,11 @@ class UsageDimensionsTest {
         val providers = (parsed.providers as DimensionPart.Ok).value
         assertEquals(listOf("openai", "other"), providers.map { it.provider })
         assertNull(providers.last().cost)
+        // cached 是读写合计：500 = 读 480 + 写 20。
+        assertEquals(500L, providers.first().cached)
+        assertEquals(20L, providers.first().cacheWrite)
+        assertEquals(480L, providers.first().cacheRead)
+        assertEquals(0L, providers.last().cacheRead)
         assertTrue(providers.last().isOther)
         assertEquals(6L, (parsed.context as DimensionPart.Ok).value.requests)
         assertEquals(false, parsed.rangeBeforeRetention)
@@ -56,6 +61,7 @@ class UsageDimensionsTest {
             response(providers = PROVIDERS_OK.replace("\"openai\"", "\"my-relay\"")),
             response(providers = PROVIDERS_OK.replace("\"total\":450", "\"total\":451")),
             response(providers = PROVIDERS_OK.replace("\"cost\":0.12", "\"cost\":-1")),
+            response(providers = PROVIDERS_OK.replace("\"cacheWrite\":20", "\"cacheWrite\":501")),
             response(context = CONTEXT_OK.replace("\"requests\":6", "\"requests\":0")),
             response(sessions = """{"state":"maybe"}"""),
             response().replace("\"cloud\"", "\"local\"")
@@ -95,7 +101,7 @@ class UsageDimensionsTest {
             {"id":"0123456789abcdef0123456789abcdef","machine":"device-a","tool":"codex","tokens":550,"requests":3,"cost":0.27,
              "days":2,"firstDate":"2026-10-23","lastDate":"2026-10-24","firstAt":"08:05","lastAt":"11:15","topModel":null}]}"""
         const val PROVIDERS_OK = """{"state":"ok","rows":[
-            {"provider":"openai","input":400,"output":50,"cached":500,"cacheWrite":0,"total":450,"requests":6,"cost":0.12},
+            {"provider":"openai","input":400,"output":50,"cached":500,"cacheWrite":20,"total":450,"requests":6,"cost":0.12},
             {"provider":"other","input":10,"output":5,"cached":0,"cacheWrite":0,"total":15,"requests":1,"cost":null}]}"""
         const val CONTEXT_OK = """{"state":"ok","requests":6,"promptTokens":900,"systemBytes":10,"toolsBytes":0,"historyBytes":20,
             "toolResultsBytes":0,"attachmentsBytes":0,"messages":4,"toolResults":0,"attachments":0}"""
