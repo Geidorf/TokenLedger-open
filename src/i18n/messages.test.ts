@@ -79,6 +79,12 @@ const FULLY_LOCALIZED = [
   'src/components/settings/SettingsPrimitives.tsx',
   'src/components/settings/PeerSyncCard.tsx',
   'src/components/settings/ProjectDimensionCard.tsx',
+  'src/components/UsageAnomalyPanel.tsx',
+  'src/utils/usageAnomaly.ts',
+  'src/hooks/useUsageAnomalies.ts',
+  'src/components/report/PeriodReportView.tsx',
+  'src/utils/periodReport.ts',
+  'src/hooks/usePeriodReport.ts',
 ];
 
 // 英文文案里允许出现中文的键：语言名用它自己的文字写。

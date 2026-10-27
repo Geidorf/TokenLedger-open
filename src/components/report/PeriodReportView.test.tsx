@@ -117,4 +117,24 @@ describe('PeriodReportView session entries', () => {
     expect(screen.getByText('Opens the full local session, which may extend beyond this report or request.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open details of session s1' })).toBeInTheDocument();
   });
+
+  it('renders the whole report in English and switches back instantly', () => {
+    mockReport('local', [{ id: 's1', tool: 'codex', tokens: 300, requests: 2, cost: 1 }]);
+    act(() => setLangPreference('en'));
+    expect(screen.getByRole('heading', { name: 'Weekly usage report · Oct 12—Oct 18' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Weekly' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('option', { name: 'Last week · Oct 12—Oct 18' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'This week · Oct 19—Oct 25 (in progress)' })).toBeInTheDocument();
+    expect(screen.getByText('Compared with the previous week (10-05 to 10-11)')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Monday reminder' })).toBeInTheDocument();
+    const page = document.querySelector('.period-report');
+    expect(page?.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Monthly' }));
+    expect(screen.getByRole('heading', { name: 'Monthly usage report · September 2026' })).toBeInTheDocument();
+    expect(screen.getByText('Compared with August (08-01 to 08-31)')).toBeInTheDocument();
+
+    act(() => setLangPreference('zh'));
+    expect(screen.getByRole('heading', { name: '用量月报 · 2026年9月' })).toBeInTheDocument();
+  });
 });

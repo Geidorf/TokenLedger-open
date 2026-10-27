@@ -1,5 +1,6 @@
 import { formatEstimatedUsd, formatTokens } from './format';
 import { toolDisplayName } from './toolDisplayName';
+import { localized, t } from '../i18n';
 
 /**
  * 用量异常检测（`src-tauri/src/usage_anomaly.rs`）的读数与文案。只看本机已经发生的用量：
@@ -48,31 +49,31 @@ export interface AnomalySettings {
   notify: boolean;
 }
 
-export const KIND_LABELS: Record<AnomalyKind, string> = {
-  tokenSpike: 'Token 突增',
-  costSpike: '费用突增',
-  cacheHitDrop: '缓存命中率骤降',
-  toolSurge: 'Agent 放量',
-  modelSurge: '模型放量',
-  expensiveSession: '会话异常昂贵',
-  gatewayErrors: '网关错误率突增',
-};
+export const KIND_LABELS = localized<AnomalyKind>({
+  tokenSpike: 'usageAnomaly.kind.tokenSpike',
+  costSpike: 'usageAnomaly.kind.costSpike',
+  cacheHitDrop: 'usageAnomaly.kind.cacheHitDrop',
+  toolSurge: 'usageAnomaly.kind.toolSurge',
+  modelSurge: 'usageAnomaly.kind.modelSurge',
+  expensiveSession: 'usageAnomaly.kind.expensiveSession',
+  gatewayErrors: 'usageAnomaly.kind.gatewayErrors',
+});
 
-/** 每条规则的判定口径，与 Rust 常量一致；改阈值时两边一起改。 */
-export const RULE_TEXT: Record<AnomalyKind, string> = {
-  tokenSpike: '最近 24 小时的某小时有效 Token ≥ 此前 14 天活跃小时中位数的 4 倍（且 ≥ 50 万），或最近 7 天的某天 ≥ 此前 14 天活跃日中位数的 2.5 倍（且 ≥ 200 万）',
-  costSpike: '同 Token 突增，按预估费用比；小时至少 $2、天至少 $5。含未核价记录的时段不参与',
-  cacheHitDrop: '某天缓存命中率（缓存读 ÷（输入 + 缓存读））比此前 14 天的中位数低 20 个百分点以上；当天提示词不足 100 万 Token 不评估',
-  toolSurge: '某 Agent 某天的有效 Token ≥ 它此前 14 天活跃日中位数的 3 倍（且 ≥ 200 万）；此前活跃不足 3 天不评估',
-  modelSurge: '某模型某天的有效 Token ≥ 它此前 14 天活跃日中位数的 3 倍（且 ≥ 200 万）；此前活跃不足 3 天不评估',
-  expensiveSession: '最近 7 天活跃的会话，预估费用 ≥ 近 21 天会话中位数的 5 倍（且 ≥ $3）；费用不可得时按有效 Token 比（且 ≥ 300 万）',
-  gatewayErrors: '最近 24 小时的某小时网关请求 ≥ 20 次、失败 ≥ 20%，且比此前 7 天的失败率高 15 个百分点以上（失败含自动重试前的尝试）',
-};
+/** 每条规则的判定口径，与 Rust 常量一致；改阈值时两边一起改（文案在 i18n 的 `usageAnomaly.rule.*`）。 */
+export const RULE_TEXT = localized<AnomalyKind>({
+  tokenSpike: 'usageAnomaly.rule.tokenSpike',
+  costSpike: 'usageAnomaly.rule.costSpike',
+  cacheHitDrop: 'usageAnomaly.rule.cacheHitDrop',
+  toolSurge: 'usageAnomaly.rule.toolSurge',
+  modelSurge: 'usageAnomaly.rule.modelSurge',
+  expensiveSession: 'usageAnomaly.rule.expensiveSession',
+  gatewayErrors: 'usageAnomaly.rule.gatewayErrors',
+});
 
-export const CHECK_STATE_TEXT: Record<Exclude<AnomalyCheckState, 'evaluated'>, string> = {
-  insufficientBaseline: '历史不足，暂不评估',
-  unavailable: '本机没有这类数据',
-};
+export const CHECK_STATE_TEXT = localized<Exclude<AnomalyCheckState, 'evaluated'>>({
+  insufficientBaseline: 'usageAnomaly.checkState.insufficientBaseline',
+  unavailable: 'usageAnomaly.checkState.unavailable',
+});
 
 const oneOf = <T extends string>(values: readonly T[], value: unknown): T | null =>
   typeof value === 'string' && (values as readonly string[]).includes(value) ? (value as T) : null;
@@ -137,19 +138,19 @@ export function parseAnomalySettings(value: unknown): AnomalySettings {
 function formatValue(value: number, unit: AnomalyUnit): string {
   if (unit === 'usd') return formatEstimatedUsd(value);
   if (unit === 'rate') return `${(value * 100).toFixed(1)}%`;
-  return `${formatTokens(value)} Tokens`;
+  return t('usageAnomaly.value.tokens', { tokens: formatTokens(value) });
 }
 
-/** `2026-10-24 15:00` → `今天 15:00`；`2026-10-23` → `昨天`；更早的保留 `10-21`。 */
+/** `2026-10-24 15:00` → `今天 15:00`；`2026-10-23` → `昨天`；更早的保留 `10-21`（随界面语言）。 */
 export function bucketLabel(finding: Pick<AnomalyFinding, 'bucket' | 'granularity'>, today: Date = new Date()): string {
   const date = finding.bucket.slice(0, 10);
   const iso = (offset: number) => {
     const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - offset);
     return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
   };
-  const dayText = date === iso(0) ? '今天' : date === iso(1) ? '昨天' : date.slice(5);
+  const dayText = date === iso(0) ? t('usageAnomaly.today') : date === iso(1) ? t('usageAnomaly.yesterday') : date.slice(5);
   if (finding.granularity === 'hour') return `${dayText} ${finding.bucket.slice(11, 16)}`;
-  if (finding.granularity === 'session') return `最近活跃：${dayText}`;
+  if (finding.granularity === 'session') return t('usageAnomaly.recentActive', { day: dayText });
   return dayText;
 }
 
@@ -166,21 +167,22 @@ export function describeFinding(finding: AnomalyFinding, today: Date = new Date(
     ? toolDisplayName(finding.tool ?? finding.subject ?? '')
     : finding.subject ?? '';
   const title = finding.kind === 'toolSurge' || finding.kind === 'modelSurge'
-    ? `${subject} 放量`
+    ? t('usageAnomaly.title.surge', { subject })
     : finding.kind === 'expensiveSession'
-      ? `${subject} 会话异常昂贵`
+      ? t('usageAnomaly.title.expensiveSession', { subject })
       : KIND_LABELS[finding.kind];
   const baseline = formatValue(finding.baseline, finding.unit);
   let comparison: string;
   if (finding.kind === 'cacheHitDrop') {
-    comparison = `平时 ${baseline}，低 ${((finding.baseline - finding.value) * 100).toFixed(1)} 个百分点`;
+    comparison = t('usageAnomaly.comparison.rateDrop', { baseline, points: ((finding.baseline - finding.value) * 100).toFixed(1) });
   } else if (finding.kind === 'gatewayErrors') {
-    comparison = `${finding.sample ?? 0} 次请求；平时失败率 ${baseline}`;
+    comparison = t('usageAnomaly.comparison.gateway', { count: finding.sample ?? 0, baseline });
   } else {
-    const usual = finding.kind === 'expensiveSession' ? '常见会话' : finding.granularity === 'hour' ? '平时每小时' : '平时每天';
-    comparison = `${usual} ${baseline}${finding.ratio !== null ? `，${finding.ratio}×` : ''}`;
+    const usual = finding.kind === 'expensiveSession' ? 'usageAnomaly.comparison.session' : finding.granularity === 'hour' ? 'usageAnomaly.comparison.hour' : 'usageAnomaly.comparison.day';
+    comparison = t(usual, { baseline }) + (finding.ratio !== null ? t('usageAnomaly.comparison.ratio', { ratio: `${finding.ratio}×` }) : '');
   }
-  const when = bucketLabel(finding, today) + (finding.inProgress ? ' · 进行中' : '');
+  const label = bucketLabel(finding, today);
+  const when = finding.inProgress ? t('usageAnomaly.when.inProgress', { when: label }) : label;
   return { title, when, value: formatValue(finding.value, finding.unit), comparison };
 }
 

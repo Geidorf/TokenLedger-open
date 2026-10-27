@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { beginRequest, isCurrentRequest } from '../utils/contracts/statsQuery';
+import { t } from '../i18n';
 import {
   parseAnomalyReport,
   parseAnomalySettings,
@@ -26,10 +27,10 @@ export function useUsageAnomalies(enabled: boolean) {
         if (!isCurrentRequest(loadId, requestId)) return;
         const parsed = parseAnomalyReport(value);
         setReport(parsed);
-        setError(parsed ? '' : '异常检测读取失败');
+        setError(parsed ? '' : t('usageAnomaly.error.read'));
       })
       .catch(() => {
-        if (isCurrentRequest(loadId, requestId)) setError('异常检测读取失败');
+        if (isCurrentRequest(loadId, requestId)) setError(t('usageAnomaly.error.read'));
       });
   }, [enabled]);
 
@@ -107,7 +108,7 @@ export function useUsageAnomalySettings(enabled: boolean) {
     } catch {
       if (!isCurrentRequest(saveId, requestId)) return;
       setSettings(previous);
-      setError('提醒设置未保存，请重试');
+      setError(t('usageAnomaly.error.notifySave'));
     } finally {
       if (isCurrentRequest(saveId, requestId)) setSaving(false);
     }
