@@ -13,10 +13,14 @@
 //! marker file per dimension lets that clear resume after a restart. Uploads ride
 //! the existing cloud sync cycle (a nudge after each successful sync) and never
 //! touch `token_logs` sync.
+//!
+//! The tray's background-sync pause (`background_sync_paused`) holds every automatic
+//! upload: the launch backfill, failure retries and nudges from background syncs. A
+//! manual sync still uploads, and pending clears still run (they delete data).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -222,12 +226,42 @@ pub fn usage_dimensions_publish_status(
 // ---------------------------------------------------------------------------
 // Sync-cycle hook
 
-static SYNC_NUDGE: AtomicBool = AtomicBool::new(false);
+/// Which kind of cloud sync asked for the next pass; a manual one wins over a
+/// background one waiting in the same slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Nudge {
+    None = 0,
+    Background = 1,
+    Manual = 2,
+}
+
+impl Nudge {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            2 => Nudge::Manual,
+            1 => Nudge::Background,
+            _ => Nudge::None,
+        }
+    }
+}
+
+static SYNC_NUDGE: AtomicU8 = AtomicU8::new(Nudge::None as u8);
 
 /// Called after each successful cloud sync: the next pass re-sends today, yesterday
 /// and changed days. Only sets a flag, so `token_logs` sync never waits on this.
-pub fn nudge_after_cloud_sync() {
-    SYNC_NUDGE.store(true, Ordering::SeqCst);
+/// `manual` marks the user's explicit sync, which uploads even while the tray's
+/// background sync is paused.
+pub fn nudge_after_cloud_sync(manual: bool) {
+    record_nudge(&SYNC_NUDGE, manual);
+}
+
+fn record_nudge(slot: &AtomicU8, manual: bool) {
+    let nudge = if manual {
+        Nudge::Manual
+    } else {
+        Nudge::Background
+    };
+    slot.fetch_max(nudge as u8, Ordering::SeqCst);
 }
 
 // ---------------------------------------------------------------------------
@@ -780,8 +814,10 @@ trait PublishIo: Sync {
     fn load_state(&self) -> Result<UploadState, String>;
     fn save_state(&self, state: &UploadState) -> Result<(), String>;
     fn session_secret(&self) -> Result<[u8; 32], String>;
-    fn take_nudge(&self) -> bool;
+    fn take_nudge(&self) -> Nudge;
     fn nudge_pending(&self) -> bool;
+    /// The tray's background-sync pause, read fresh each time.
+    fn background_paused(&self) -> bool;
     fn today(&self) -> (NaiveDate, NaiveDate);
     fn commit(
         &self,
@@ -947,12 +983,16 @@ impl PublishIo for AppIo {
         Ok(secret)
     }
 
-    fn take_nudge(&self) -> bool {
-        SYNC_NUDGE.swap(false, Ordering::SeqCst)
+    fn take_nudge(&self) -> Nudge {
+        Nudge::from_u8(SYNC_NUDGE.swap(Nudge::None as u8, Ordering::SeqCst))
     }
 
     fn nudge_pending(&self) -> bool {
-        SYNC_NUDGE.load(Ordering::SeqCst)
+        SYNC_NUDGE.load(Ordering::SeqCst) != Nudge::None as u8
+    }
+
+    fn background_paused(&self) -> bool {
+        crate::settings::background_sync_paused_now(&self.app)
     }
 
     fn today(&self) -> (NaiveDate, NaiveDate) {
@@ -1163,12 +1203,26 @@ impl Publisher {
                 }
             });
         }
-        let nudged = io.take_nudge();
-        let due = self.cycle_at.is_some_and(|at| Instant::now() >= at) || (nudged && !self.failing);
+        let nudge = io.take_nudge();
+        let scheduled = self.cycle_at.is_some_and(|at| Instant::now() >= at);
+        let manual = nudge == Nudge::Manual && !self.failing;
+        let due = scheduled || (nudge != Nudge::None && !self.failing);
         if !due {
             return idle(self);
         }
-        let delay = self.cycle(io, mask).await;
+        // Background sync paused: only a manual sync uploads. A due launch backfill or
+        // retry stays scheduled and runs once the pause is lifted; a background nudge
+        // is dropped, the next background sync nudges again.
+        if !manual && io.background_paused() {
+            if self.cycle_at.is_some() {
+                set_status_for(mask, |status| {
+                    status.state = "paused";
+                    status.error = None;
+                });
+            }
+            return idle(self);
+        }
+        let delay = self.cycle(io, mask, manual).await;
         Next {
             delay,
             ..idle(self)
@@ -1288,7 +1342,7 @@ impl Publisher {
     }
 
     /// One upload cycle for every enabled dimension. Returns how long to wait.
-    async fn cycle(&mut self, io: &impl PublishIo, mask: Mask) -> Duration {
+    async fn cycle(&mut self, io: &impl PublishIo, mask: Mask, manual: bool) -> Duration {
         self.cycle_at = None;
         let user = match io.stored_user() {
             Some(user) if !user.is_empty() => user,
@@ -1332,7 +1386,7 @@ impl Publisher {
             }
         }
 
-        match self.upload(io, mask, &user).await {
+        match self.upload(io, mask, &user, manual).await {
             Ok(()) => {
                 self.failing = false;
                 self.backoff = TICK;
@@ -1381,7 +1435,10 @@ impl Publisher {
         io: &impl PublishIo,
         mask: Mask,
         user: &str,
+        manual: bool,
     ) -> Result<(), RpcError> {
+        // A pause taken mid-pass stops an automatic pass before its next request.
+        let allowed = || manual || !io.background_paused();
         let (local_today, utc_today) = io.today();
         let window = window_dates(local_today, utc_today);
         let (Some(newest), Some(oldest)) = (window.first(), window.last()) else {
@@ -1413,7 +1470,7 @@ impl Publisher {
 
         let mut days = Vec::with_capacity(due.len());
         for (date, wanted) in due.iter().rev() {
-            if !wanted.still_covered_by(io.mask()) {
+            if !wanted.still_covered_by(io.mask()) || !allowed() {
                 return Err(RpcError::Cancelled);
             }
             let data = io
@@ -1431,7 +1488,7 @@ impl Publisher {
         let chunk_count = chunks.len();
         for (index, chunk) in chunks.into_iter().enumerate() {
             let dims = Mask(Dimension::ALL.map(|d| chunk.covers.iter().any(|(c, _)| *c == d)));
-            let still_on = || dims.still_covered_by(io.mask());
+            let still_on = || dims.still_covered_by(io.mask()) && allowed();
             let expected_counts = stored_counts(&chunk.payload);
             let reply = io
                 .rpc(
@@ -1547,7 +1604,7 @@ pub fn start(app: Arc<AppContext>, settings: Arc<Mutex<AppSettings>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
 
     const SECRET: [u8; 32] = [7u8; 32];
 
@@ -1876,7 +1933,9 @@ mod tests {
         user: Mutex<Option<String>>,
         markers: Mutex<[BTreeSet<String>; 3]>,
         state: Mutex<UploadState>,
-        nudge: AtomicBool,
+        nudge: AtomicU8,
+        paused: AtomicBool,
+        pause_before_send: AtomicBool,
         not_deployed: AtomicBool,
         off_before_send: AtomicBool,
         account_change_after_send: AtomicBool,
@@ -1915,6 +1974,10 @@ mod tests {
 
         fn set_marker(&self, dimension: Dimension, user: Option<&str>) -> Result<(), String> {
             self.save_owners(dimension, &user.into_iter().map(str::to_string).collect())
+        }
+
+        fn nudge(&self, nudge: Nudge) {
+            self.nudge.store(nudge as u8, Ordering::SeqCst);
         }
 
         fn sent(&self) -> Vec<(String, Value)> {
@@ -1999,11 +2062,14 @@ mod tests {
             self.secret_reads.fetch_add(1, Ordering::SeqCst);
             Ok(SECRET)
         }
-        fn take_nudge(&self) -> bool {
-            self.nudge.swap(false, Ordering::SeqCst)
+        fn take_nudge(&self) -> Nudge {
+            Nudge::from_u8(self.nudge.swap(Nudge::None as u8, Ordering::SeqCst))
         }
         fn nudge_pending(&self) -> bool {
-            self.nudge.load(Ordering::SeqCst)
+            self.nudge.load(Ordering::SeqCst) != Nudge::None as u8
+        }
+        fn background_paused(&self) -> bool {
+            self.paused.load(Ordering::SeqCst)
         }
         fn today(&self) -> (NaiveDate, NaiveDate) {
             (date("2026-10-24"), date("2026-10-24"))
@@ -2040,6 +2106,9 @@ mod tests {
             body: Value,
             still_wanted: &(dyn Fn() -> bool + Send + Sync),
         ) -> Result<RpcReply<Self::Fence>, RpcError> {
+            if self.pause_before_send.swap(false, Ordering::SeqCst) {
+                self.paused.store(true, Ordering::SeqCst);
+            }
             if self.off_before_send.load(Ordering::SeqCst) {
                 self.set_mask([false, false, false]);
             }
@@ -2101,7 +2170,7 @@ mod tests {
         let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
         block_on(async {
             for _ in 0..3 {
-                io.nudge.store(true, Ordering::SeqCst);
+                io.nudge(Nudge::Background);
                 publisher.tick(&io).await;
             }
         });
@@ -2145,7 +2214,7 @@ mod tests {
         block_on(publisher.tick(&io));
         assert!(io.sent().is_empty());
         // The sync cycle nudges: today and yesterday only.
-        io.nudge.store(true, Ordering::SeqCst);
+        io.nudge(Nudge::Background);
         block_on(publisher.tick(&io));
         let sent = io.sent();
         assert_eq!(sent.len(), 1);
@@ -2187,7 +2256,7 @@ mod tests {
             io.marker(Dimension::Providers).unwrap().as_deref(),
             Some("user-1")
         );
-        io.nudge.store(true, Ordering::SeqCst);
+        io.nudge(Nudge::Background);
         block_on(publisher.tick(&io));
         let sent = io.sent();
         assert!(sent
@@ -2257,7 +2326,7 @@ mod tests {
         block_on(publisher.tick(&io));
         assert_eq!(io.sent().len(), 1);
         assert!(publisher.failing);
-        io.nudge.store(true, Ordering::SeqCst);
+        io.nudge(Nudge::Background);
         block_on(publisher.tick(&io));
         assert!(
             io.sent().is_empty(),
@@ -2265,6 +2334,132 @@ mod tests {
         );
         let at = publisher.cycle_at.unwrap();
         assert!(at > Instant::now() + NOT_DEPLOYED_RETRY - Duration::from_secs(5));
+    }
+
+    /// Call only inside `block_on`: the status is shared with tests running in parallel.
+    fn status_state(dimension: Dimension) -> &'static str {
+        status_cell().lock().unwrap().get_mut(dimension).state
+    }
+
+    fn synced(sent: &[(String, Value)]) -> usize {
+        sent.iter().filter(|(function, _)| function == SYNC).count()
+    }
+
+    #[test]
+    fn a_paused_background_sync_holds_the_launch_backfill_until_resumed() {
+        let io = FakeIo::on([false, true, false]);
+        io.paused.store(true, Ordering::SeqCst);
+        let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+        block_on(async {
+            for _ in 0..3 {
+                publisher.tick(&io).await;
+                assert_eq!(status_state(Dimension::Providers), "paused");
+            }
+            assert!(io.sent().is_empty(), "launch backfill must wait");
+            assert_eq!(io.day_reads.load(Ordering::SeqCst), 0);
+            assert!(io.marker(Dimension::Providers).unwrap().is_none());
+
+            io.paused.store(false, Ordering::SeqCst);
+            publisher.tick(&io).await;
+            assert_eq!(status_state(Dimension::Providers), "ok");
+            assert_eq!(synced(&io.sent()), 1, "resuming runs the held backfill");
+        });
+    }
+
+    #[test]
+    fn a_paused_background_sync_holds_failure_retries() {
+        let io = FakeIo::on([false, true, false]);
+        io.invalid_upload_reply.store(true, Ordering::SeqCst);
+        let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+        block_on(async {
+            publisher.tick(&io).await;
+            assert_eq!(synced(&io.sent()), 1);
+            assert!(publisher.failing);
+
+            io.invalid_upload_reply.store(false, Ordering::SeqCst);
+            io.paused.store(true, Ordering::SeqCst);
+            publisher.cycle_at = Some(Instant::now());
+            publisher.tick(&io).await;
+            assert!(
+                io.sent().is_empty(),
+                "the due retry must wait for the pause"
+            );
+            assert_eq!(status_state(Dimension::Providers), "paused");
+
+            io.paused.store(false, Ordering::SeqCst);
+            publisher.tick(&io).await;
+            assert_eq!(synced(&io.sent()), 1);
+            assert!(!publisher.failing);
+        });
+    }
+
+    #[test]
+    fn while_paused_only_a_manual_sync_nudge_uploads() {
+        let io = FakeIo::on([true, false, true]);
+        let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+        block_on(async {
+            publisher.tick(&io).await;
+            assert_eq!(synced(&io.sent()), 1);
+
+            io.paused.store(true, Ordering::SeqCst);
+            io.nudge(Nudge::Background);
+            publisher.tick(&io).await;
+            assert!(io.sent().is_empty());
+            assert_eq!(
+                status_state(Dimension::Sessions),
+                "ok",
+                "nothing pending: keep the last upload time"
+            );
+
+            io.nudge(Nudge::Manual);
+            publisher.tick(&io).await;
+            assert_eq!(synced(&io.sent()), 1, "a manual sync still uploads");
+        });
+    }
+
+    #[test]
+    fn a_manual_nudge_outranks_a_waiting_background_one() {
+        let slot = AtomicU8::new(Nudge::None as u8);
+        record_nudge(&slot, true);
+        record_nudge(&slot, false);
+        assert_eq!(
+            Nudge::from_u8(slot.swap(Nudge::None as u8, Ordering::SeqCst)),
+            Nudge::Manual
+        );
+        record_nudge(&slot, false);
+        assert_eq!(
+            Nudge::from_u8(slot.swap(Nudge::None as u8, Ordering::SeqCst)),
+            Nudge::Background
+        );
+    }
+
+    #[test]
+    fn pausing_mid_pass_stops_an_automatic_upload_before_it_is_sent() {
+        let io = FakeIo::on([false, false, true]);
+        io.pause_before_send.store(true, Ordering::SeqCst);
+        let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+        block_on(publisher.tick(&io));
+        assert!(io.sent().is_empty());
+        block_on(publisher.tick(&io));
+        assert!(io.sent().is_empty(), "still paused: the pass stays held");
+
+        io.paused.store(false, Ordering::SeqCst);
+        block_on(publisher.tick(&io));
+        assert_eq!(synced(&io.sent()), 1);
+    }
+
+    #[test]
+    fn a_pending_clear_still_runs_while_background_sync_is_paused() {
+        let io = FakeIo::default();
+        *io.user.lock().unwrap() = Some("user-1".to_string());
+        io.paused.store(true, Ordering::SeqCst);
+        io.set_marker(Dimension::Context, Some("user-1")).unwrap();
+        let mut publisher = Publisher::new("m".to_string(), &io).unwrap();
+        block_on(publisher.tick(&io));
+        let sent = io.sent();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].0, CLEAR);
+        assert!(io.marker(Dimension::Context).unwrap().is_none());
     }
 
     #[test]
@@ -2464,7 +2659,7 @@ mod tests {
         block_on(publisher.tick(&io));
         io.sent();
         *io.user.lock().unwrap() = Some("user-2".to_string());
-        io.nudge.store(true, Ordering::SeqCst);
+        io.nudge(Nudge::Background);
         block_on(publisher.tick(&io));
         assert_eq!(io.sent().len(), 1);
         assert_eq!(

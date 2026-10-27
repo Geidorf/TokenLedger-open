@@ -1227,6 +1227,7 @@ export const zh = {
   'usageDimensions.context.fields': '每天经网关请求的系统提示、工具、历史、附件等部分字节数与条数合计。',
   'usageDimensions.off': '开启后上传：{fields} 关闭时清理当前账号这一维度的所有设备云端数据。',
   'usageDimensions.starting': '正在准备，首次会补传最近 90 天。',
+  'usageDimensions.paused': '后台同步已暂停，恢复后台同步或手动同步时再上传。',
   'usageDimensions.signedOut': '需要先在「云端同步」登录账户，手机端登录同一个账户才能看到。',
   'usageDimensions.notDeployed': '云端尚未开通这个用量维度（需要执行一次数据库迁移），稍后自动重试，其他同步不受影响。',
   'usageDimensions.error': '上传失败，稍后自动重试。',

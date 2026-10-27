@@ -1209,6 +1209,7 @@ export const en: Record<MessageKey, string> = {
   'usageDimensions.context.fields': 'Daily totals of bytes and counts for system prompts, tools, history, attachments and other gateway request parts.',
   'usageDimensions.off': 'When on, uploads: {fields} Turning it off clears this dimension for all devices on the current account.',
   'usageDimensions.starting': 'Preparing; the first upload will backfill the last 90 days.',
+  'usageDimensions.paused': 'Background sync is paused; uploads resume when it is turned back on or you sync manually.',
   'usageDimensions.signedOut': 'Sign in from Cloud sync first; the phone must use the same account.',
   'usageDimensions.notDeployed': 'This usage dimension is not available in the cloud yet (a database migration is required). It will retry automatically; other syncs are unaffected.',
   'usageDimensions.error': 'Upload failed and will retry automatically.',

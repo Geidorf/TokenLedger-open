@@ -15586,7 +15586,7 @@ pub async fn sync_to_supabase_impl(app: &AppContext) -> Result<Value, String> {
     let sync_flight = acquire_cloud_sync_singleflight().await;
     sync_to_supabase_locked(app, sync_flight)
         .await
-        .inspect(|_| crate::usage_dimensions_publish::nudge_after_cloud_sync())
+        .inspect(|_| crate::usage_dimensions_publish::nudge_after_cloud_sync(true))
 }
 
 /// 自动上传（调度器与刷新扫描后）。托盘面板「后台同步」的暂停状态在拿到 singleflight 之后才读：
@@ -15599,7 +15599,7 @@ pub async fn background_sync_to_supabase_impl(app: &AppContext) -> Result<Option
     }
     sync_to_supabase_locked(app, sync_flight)
         .await
-        .inspect(|_| crate::usage_dimensions_publish::nudge_after_cloud_sync())
+        .inspect(|_| crate::usage_dimensions_publish::nudge_after_cloud_sync(false))
         .map(Some)
 }
 
