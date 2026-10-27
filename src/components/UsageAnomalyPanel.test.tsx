@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setLangPreference } from '../i18n';
 import type { AnomalyReport } from '../utils/usageAnomaly';
 import { UsageAnomalyView } from './UsageAnomalyPanel';
 
@@ -94,5 +95,33 @@ describe('UsageAnomalyView', () => {
     renderView({ error: '异常检测读取失败' });
     expect(screen.getByRole('alert')).toHaveTextContent('刷新失败，下面是上一次检查的结果');
     expect(screen.getByRole('status')).not.toHaveClass('is-healthy');
+  });
+
+  describe('English', () => {
+    afterEach(() => setLangPreference('zh'));
+
+    it('switches every label, card and skipped check without reloading', () => {
+      renderView({
+        report: report(
+          [spike, { ...spike, id: 'm', kind: 'modelSurge', granularity: 'day', bucket: '2026-10-23', subject: 'model-b', ratio: 3 }],
+          [{ kind: 'gatewayErrors', state: 'unavailable' }],
+        ),
+      });
+      expect(screen.getByRole('button', { name: /Token 突增，今天 15:00/ })).toBeInTheDocument();
+      act(() => setLangPreference('en'));
+      expect(screen.getByText('Usage anomalies')).toBeInTheDocument();
+      expect(screen.getByText('2 found')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Token spike, Today 15:00, 2\.40M Tokens, Usually 300\.0K Tokens per hour, 8×/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^model-b surge, Yesterday, .*Usually .* per day, 3×/ })).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: 'System notification for anomalies' })).toBeInTheDocument();
+      expect(screen.getByText('Gateway error rate spike: No local data of this kind')).toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+    });
+
+    it('describes a clean window in English', () => {
+      setLangPreference('en');
+      renderView();
+      expect(screen.getByRole('status')).toHaveTextContent('No anomalies in the last 24 hours or 7 days (compared with the previous 14 days).');
+    });
   });
 });

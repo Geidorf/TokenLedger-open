@@ -12,6 +12,7 @@ import {
   type AnomalyReport,
 } from '../utils/usageAnomaly';
 import { InfoTip } from './InfoTip';
+import { useT } from '../i18n';
 import { isRealSessionId, openSessionDetail } from '../features/sessionDetail/sessionDetailRoute';
 import '../styles/usageAnomaly.css';
 
@@ -32,7 +33,9 @@ interface UsageAnomalyViewProps extends UsageAnomalyPanelProps {
 }
 
 function FindingCard({ finding, today, onSelectDate }: { finding: AnomalyFinding; today?: Date; onSelectDate?: UsageAnomalyPanelProps['onSelectDate'] }) {
+  const t = useT();
   const copy = describeFinding(finding, today);
+  const aria = { title: copy.title, when: copy.when, value: copy.value, comparison: copy.comparison };
   const drill = onSelectDate ? findingDrill(finding) : null;
   // 昂贵会话没有单日下钻，改为打开这个会话的详情。
   const session = finding.kind === 'expensiveSession' && isRealSessionId(finding.subject) ? finding.subject : null;
@@ -45,11 +48,11 @@ function FindingCard({ finding, today, onSelectDate }: { finding: AnomalyFinding
       <div className="anomaly-item-value">{copy.value}</div>
       <div className="usage-anomaly-comparison">{copy.comparison}</div>
       {finding.kind === 'expensiveSession' && finding.subject && (
-        <div className="usage-anomaly-subject" title={finding.subject}>会话 {finding.subject.slice(0, 12)}</div>
+        <div className="usage-anomaly-subject" title={finding.subject}>{t('usageAnomaly.session', { id: finding.subject.slice(0, 12) })}</div>
       )}
       {(drill || session) && (
         <div className="anomaly-item-action font-medium" aria-hidden="true">
-          {session ? '查看会话详情' : '查看当日调用明细'}
+          {t(session ? 'usageAnomaly.action.viewSession' : 'usageAnomaly.action.viewDay')}
           <ArrowRight className="h-3.5 w-3.5 ml-1" />
         </div>
       )}
@@ -60,7 +63,7 @@ function FindingCard({ finding, today, onSelectDate }: { finding: AnomalyFinding
       <button
         type="button"
         className="anomaly-item-card usage-anomaly-card"
-        aria-label={`${copy.title}，${copy.when}，${copy.value}，${copy.comparison}。点击查看会话详情`}
+        aria-label={t('usageAnomaly.aria.session', aria)}
         onClick={() => openSessionDetail({ sessionId: session, tool: finding.tool })}
       >
         {body}
@@ -72,7 +75,7 @@ function FindingCard({ finding, today, onSelectDate }: { finding: AnomalyFinding
     <button
       type="button"
       className="anomaly-item-card usage-anomaly-card"
-      aria-label={`${copy.title}，${copy.when}，${copy.value}，${copy.comparison}。点击查看当日明细`}
+      aria-label={t('usageAnomaly.aria.day', aria)}
       onClick={() => onSelectDate(drill.date, drill.tools.length || drill.models.length
         ? { tools: drill.tools, models: drill.models }
         : undefined)}
@@ -83,6 +86,7 @@ function FindingCard({ finding, today, onSelectDate }: { finding: AnomalyFinding
 }
 
 export function UsageAnomalyView({ report, error, notify, notifySaving, notifyError, onNotifyChange, onSelectDate, today }: UsageAnomalyViewProps) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const titleId = useId();
   const notifyId = useId();
@@ -90,11 +94,11 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
   const visible = expanded ? findings : findings.slice(0, VISIBLE_FINDINGS);
   const skipped = (report?.checks ?? []).filter((check) => check.state !== 'evaluated');
   const ruleTip = (
-    <InfoTip label="异常判定规则">
+    <InfoTip label={t('usageAnomaly.rules.label')}>
       <span className="usage-anomaly-rules">
-        只看本机已经发生的用量，不做预测。
+        {t('usageAnomaly.rules.intro')}
         {ANOMALY_KINDS.map((kind) => (
-          <span key={kind}><strong>{KIND_LABELS[kind]}</strong>：{RULE_TEXT[kind]}</span>
+          <span key={kind}><strong>{KIND_LABELS[kind]}</strong>{t('usageAnomaly.rules.separator')}{RULE_TEXT[kind]}</span>
         ))}
       </span>
     </InfoTip>
@@ -107,13 +111,13 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
           <span className={`panel-icon ${findings.length ? 'tone-warning' : 'tone-success'}`} aria-hidden="true">
             <ShieldAlert className="h-4 w-4" />
           </span>
-          <span>用量异常</span>
-          {findings.length > 0 && <span className="badge badge-warning ml-2">{findings.length} 项</span>}
+          <span>{t('usageAnomaly.title')}</span>
+          {findings.length > 0 && <span className="badge badge-warning ml-2">{t('usageAnomaly.count', { n: findings.length })}</span>}
           {ruleTip}
         </div>
         <div className="usage-anomaly-notify">
           <BellRing className="h-3.5 w-3.5" aria-hidden="true" />
-          <span id={notifyId}>异常时系统通知</span>
+          <span id={notifyId}>{t('usageAnomaly.notify.label')}</span>
           <button
             type="button"
             role="switch"
@@ -129,7 +133,7 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
       {notifyError && <p className="usage-anomaly-note is-error" role="alert">{notifyError}</p>}
 
       {error && report && (
-        <p className="usage-anomaly-note is-error" role="alert">刷新失败，下面是上一次检查的结果，可能已过时。</p>
+        <p className="usage-anomaly-note is-error" role="alert">{t('usageAnomaly.status.stale')}</p>
       )}
       {error && !report ? (
         <div className="anomaly-status-banner" role="status">
@@ -139,12 +143,12 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
       ) : !report ? (
         <div className="anomaly-status-banner" role="status">
           <Activity className="h-4 w-4 text-tertiary flex-none" />
-          <span>正在检查最近的用量…</span>
+          <span>{t('usageAnomaly.status.loading')}</span>
         </div>
       ) : findings.length === 0 ? (
         <div className={`anomaly-status-banner${error ? '' : ' is-healthy'}`} role="status">
           <CheckCircle2 className="h-4 w-4 text-success flex-none" />
-          <span>最近 {report.recentHours} 小时与 {report.recentDays} 天没有发现异常（与此前 {report.baselineDays} 天比较）。</span>
+          <span>{t('usageAnomaly.status.clean', { hours: report.recentHours, days: report.recentDays, baselineDays: report.baselineDays })}</span>
         </div>
       ) : (
         <div className="anomaly-items-grid">
@@ -153,7 +157,7 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
           ))}
           {findings.length > visible.length && (
             <button type="button" className="anomaly-item-card is-more" onClick={() => setExpanded(true)}>
-              <span className="anomaly-date">再显示 {findings.length - visible.length} 项</span>
+              <span className="anomaly-date">{t('usageAnomaly.more', { n: findings.length - visible.length })}</span>
             </button>
           )}
         </div>
@@ -161,7 +165,10 @@ export function UsageAnomalyView({ report, error, notify, notifySaving, notifyEr
 
       {report && skipped.length > 0 && (
         <p className="usage-anomaly-note">
-          {skipped.map((check) => `${KIND_LABELS[check.kind]}：${CHECK_STATE_TEXT[check.state as Exclude<typeof check.state, 'evaluated'>]}`).join('；')}
+          {skipped.map((check) => t('usageAnomaly.check.entry', {
+            kind: KIND_LABELS[check.kind],
+            state: CHECK_STATE_TEXT[check.state as Exclude<typeof check.state, 'evaluated'>],
+          })).join(t('usageAnomaly.check.separator'))}
         </p>
       )}
     </section>

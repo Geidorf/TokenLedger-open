@@ -36,9 +36,10 @@ pub(super) fn sanitize_body(value: &Value, max_bytes: usize) -> CapturedContent 
             failed,
         };
     }
+    let truncated = sink.dropped;
     CapturedContent {
         text: sink.finish(),
-        truncated: false,
+        truncated,
         failed,
     }
 }
@@ -186,6 +187,30 @@ impl StreamAccumulator {
         }
     }
 
+    /// Chat streams may split a function name across deltas; clients join
+    /// the fragments, so the sample does too.
+    fn append_name(&mut self, call: usize, value: &str, max_bytes: usize) {
+        if value.is_empty() {
+            return;
+        }
+        let current = self.tool_calls[call].name.as_ref().map_or(0, String::len);
+        let available = self
+            .remaining(max_bytes)
+            .min(MAX_IDENTIFIER_BYTES.saturating_sub(current));
+        let prefix = utf8_prefix(value, available);
+        if prefix.len() != value.len() {
+            self.truncated = true;
+        }
+        if prefix.is_empty() {
+            return;
+        }
+        self.stored_bytes = self.stored_bytes.saturating_add(prefix.len());
+        self.tool_calls[call]
+            .name
+            .get_or_insert_with(String::new)
+            .push_str(prefix);
+    }
+
     fn tool_call(&mut self, key: String, index: Option<u64>, _max_bytes: usize) -> Option<usize> {
         if let Some(position) = self.tool_calls.iter().position(|call| call.key == key) {
             if index.is_some() {
@@ -292,12 +317,7 @@ impl StreamAccumulator {
                         }
                         if let Some(function) = call.get("function") {
                             if let Some(name) = function.get("name").and_then(Value::as_str) {
-                                self.set_identifier(
-                                    call_position,
-                                    IdentifierField::Name,
-                                    name,
-                                    max_bytes,
-                                );
+                                self.append_name(call_position, name, max_bytes);
                             }
                             if let Some(arguments) =
                                 function.get("arguments").and_then(Value::as_str)
@@ -1049,6 +1069,8 @@ struct JsonSink {
     output: String,
     max_bytes: usize,
     overflow: bool,
+    /// Set when an encoded tool argument could not be parsed and was omitted.
+    dropped: bool,
 }
 
 impl JsonSink {
@@ -1057,6 +1079,7 @@ impl JsonSink {
             output: String::new(),
             max_bytes,
             overflow: false,
+            dropped: false,
         }
     }
 
@@ -1161,13 +1184,49 @@ fn write_sanitized(sink: &mut JsonSink, value: &Value, depth: usize) -> Result<(
                 if !sink.quoted(key) || !sink.raw(":") {
                     return Err(());
                 }
-                write_sanitized(sink, value, depth + 1)?;
+                match encoded_arguments(values, key, value) {
+                    Some(encoded) => write_encoded_arguments(sink, encoded, depth + 1)?,
+                    None => write_sanitized(sink, value, depth + 1)?,
+                }
             }
             sink.raw("}")
         }
     }
     .then_some(())
     .ok_or(())
+}
+
+/// Chat `function` objects and Responses `function_call` items carry their
+/// arguments as a JSON document encoded in a string, which the recursive walk
+/// would otherwise copy verbatim, attachments included.
+fn encoded_arguments<'a>(
+    object: &Map<String, Value>,
+    key: &str,
+    value: &'a Value,
+) -> Option<&'a str> {
+    if key != "arguments" || !object.get("name").is_some_and(Value::is_string) {
+        return None;
+    }
+    value.as_str()
+}
+
+/// Writes the sanitized argument document back as a string. Arguments that
+/// are not valid JSON are replaced by an empty string instead of being kept.
+fn write_encoded_arguments(sink: &mut JsonSink, encoded: &str, depth: usize) -> Result<(), ()> {
+    if encoded.is_empty() {
+        return sink.quoted("").then_some(()).ok_or(());
+    }
+    let Ok(parsed) = serde_json::from_str::<Value>(encoded) else {
+        sink.dropped = true;
+        return sink.quoted("").then_some(()).ok_or(());
+    };
+    let mut inner = JsonSink::new(sink.max_bytes.saturating_sub(sink.output.len()));
+    if write_sanitized(&mut inner, &parsed, depth).is_err() || inner.overflow {
+        sink.overflow = true;
+        return Err(());
+    }
+    sink.dropped |= inner.dropped;
+    sink.quoted(&inner.finish()).then_some(()).ok_or(())
 }
 
 fn attachment_marker(value: &Value) -> Option<(String, Option<u64>)> {
@@ -1412,7 +1471,8 @@ fn sanitize_argument(value: &str, max_bytes: usize) -> Option<(String, bool)> {
     let parsed = serde_json::from_str::<Value>(value).ok()?;
     let mut sink = JsonSink::new(max_bytes);
     write_sanitized(&mut sink, &parsed, 0).ok()?;
-    Some((sink.finish(), false))
+    let dropped = sink.dropped;
+    Some((sink.finish(), dropped))
 }
 
 fn payload_size(value: &str) -> u64 {
@@ -1688,6 +1748,93 @@ mod tests {
         assert!(!oversized.text.contains("secret"));
         assert!(oversized.text.len() <= 8);
         assert!(serde_json::from_str::<Value>(&oversized.text).is_ok());
+    }
+
+    #[test]
+    fn encoded_tool_arguments_lose_attachments_in_requests_and_replies() {
+        let encoded = json!({
+            "image": {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            "query": "keep ordinary arguments"
+        })
+        .to_string();
+        let request = json!({
+            "messages": [{
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": encoded}
+                }]
+            }],
+            "input": [{
+                "type": "function_call",
+                "call_id": "call_2",
+                "name": "lookup",
+                "arguments": encoded
+            }]
+        });
+        let captured = sanitize_body(&request, 32 * 1024);
+        assert!(!captured.truncated);
+        assert!(!captured.text.contains("AAAA"));
+        let output = json_output(&captured);
+        for arguments in [
+            &output["messages"][0]["tool_calls"][0]["function"]["arguments"],
+            &output["input"][0]["arguments"],
+        ] {
+            let arguments: Value = serde_json::from_str(arguments.as_str().unwrap()).unwrap();
+            assert_eq!(arguments["image"]["type"], "attachment");
+            assert_eq!(arguments["image"]["media_type"], "image/png");
+            assert_eq!(arguments["query"], "keep ordinary arguments");
+        }
+
+        let reply = json!({
+            "choices": [{"message": {"tool_calls": [{
+                "function": {"name": "lookup", "arguments": encoded}
+            }]}}]
+        });
+        let mut capture = ContentCapture::new(false, 32 * 1024);
+        capture.push(reply.to_string().as_bytes());
+        let captured = capture.finish();
+        assert!(!captured.text.contains("AAAA"));
+        assert!(captured.text.contains("keep ordinary arguments"));
+    }
+
+    #[test]
+    fn unparsable_encoded_arguments_are_not_kept() {
+        let request = json!({
+            "messages": [{"tool_calls": [{"function": {
+                "name": "lookup",
+                "arguments": "{\"image\":\"data:image/png;base64,AAAA\""
+            }}]}],
+            "note": {"arguments": "plain text without a name stays"}
+        });
+        let captured = sanitize_body(&request, 32 * 1024);
+        assert!(captured.truncated);
+        assert!(!captured.text.contains("AAAA"));
+        let output = json_output(&captured);
+        assert_eq!(
+            output["messages"][0]["tool_calls"][0]["function"]["arguments"],
+            ""
+        );
+        assert_eq!(
+            output["note"]["arguments"],
+            "plain text without a name stays"
+        );
+    }
+
+    #[test]
+    fn chat_stream_joins_split_function_names() {
+        let mut capture = ContentCapture::new(true, 4096);
+        feed(
+            &mut capture,
+            &[
+                b"data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"get_\",\"arguments\":\"\"}}]}}]}\n\n",
+                b"data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"weather\",\"arguments\":\"{}\"}}]}}]}\n\n",
+                b"data: [DONE]\n\n",
+            ],
+        );
+        let output = json_output(&capture.finish());
+        assert_eq!(output["tool_calls"][0]["name"], "get_weather");
     }
 
     #[test]
