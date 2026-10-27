@@ -119,6 +119,12 @@ impl MemberHealth {
             // supersedes the failures that started before it.
             self.counted.retain(|(seen, _)| *seen > sequence);
             self.failures = self.counted.len() as u32;
+            if self.failures < DOWN_STREAK {
+                // The streak that set the backoff is gone; the next block
+                // must meet the initial threshold again.
+                self.block_level = 0;
+                self.blocked_until = None;
+            }
             self.floor = sequence;
             return;
         }
@@ -639,6 +645,27 @@ mod tests {
         }
         health.observe(succeeded, &record(at, "a", "m1", true), at);
         assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+    }
+
+    #[test]
+    fn late_success_breaking_the_streak_resets_backoff() {
+        let health = RoutingHealth::default();
+        let at = now();
+        let tickets: Vec<_> = (0..5).map(|_| health.begin()).collect();
+        let failure = record(at, "a", "m1", false);
+        for index in [0, 1, 2, 4] {
+            health.observe(tickets[index], &failure, at);
+        }
+        health.observe(tickets[3], &record(at, "a", "m1", true), at);
+        assert!(!health.snapshot(&HashMap::new(), at).is_unhealthy("a/m1"));
+
+        // Two more failures four minutes apart: only failure 5 and the second
+        // of these fall in one five-minute window, so no initial block.
+        let later = at + Duration::minutes(4);
+        observe(&health, &record(later, "a", "m1", false), later);
+        let last = at + Duration::minutes(8);
+        observe(&health, &record(last, "a", "m1", false), last);
+        assert!(!health.snapshot(&HashMap::new(), last).is_unhealthy("a/m1"));
     }
 
     #[test]
