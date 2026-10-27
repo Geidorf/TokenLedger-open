@@ -17,7 +17,7 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = "2.6.2"
+tauri-build = "2.7.4"
 
 [dependencies]
 serde_json = { version = "1.0", features = ["preserve_order"] }
@@ -36,9 +36,9 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 # 只读写 PNG（锁屏背景解码、壁纸与预览编码）。关掉默认格式，避免带入 AVIF 编码链及其停止维护的宏依赖。
 image = { version = "0.25", default-features = false, features = ["png"] }
 ab_glyph = "0.2"
-tauri = { version = "2.0.0", features = ["custom-protocol", "tray-icon", "macos-private-api"] }
-tauri-plugin-single-instance = "2.4.3"
-tauri-plugin-notification = "2.4.0"
+tauri = { version = "2.12.5", features = ["custom-protocol", "tray-icon", "macos-private-api"] }
+tauri-plugin-single-instance = "2.5.4"
+tauri-plugin-notification = "2.7.0"
 keyring = { version = "3.6", features = ["windows-native", "apple-native", "linux-native-sync-persistent", "crypto-rust"] }
 portable-pty = "0.9"
 sha2 = "0.10"
