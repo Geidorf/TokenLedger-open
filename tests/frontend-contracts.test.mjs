@@ -4401,7 +4401,7 @@ test('Claude enhanced quota prefers the bounded in-process PTY and keeps CodexBa
   assert.match(backend, /TOKENLEDGER_CODEXBAR_BIN/);
   assert.match(backend, /CodexBarCLI/);
   assert.match(backend, /capture_codexbar_provider_output\(program, app_data_dir, "claude", "auto", timeout\)/);
-  assert.match(backend, /CLAUDE_CODEXBAR_MAX_OUTPUT_BYTES/);
+  assert.match(backend, /CLAUDE_FALLBACK_CLI_MAX_OUTPUT_BYTES/);
   assert.match(backend, /claude_codexbar_envelope\(app_data_dir, fetched_at\)/);
   assert.doesNotMatch(backend, /api\/oauth\/usage|Claude Code-credentials/);
   // U-107：实验来源收进「高级」，默认不参与；边界说明仍写明不碰凭据。

@@ -30,8 +30,8 @@ const LOCAL_MAX_WINDOWS: usize = 16;
 const PROCESS_LIST_TIMEOUT: Duration = Duration::from_secs(4);
 const PORT_LIST_TIMEOUT: Duration = Duration::from_secs(3);
 const AGY_STARTUP_POLL: Duration = Duration::from_millis(200);
-const CODEXBAR_TOTAL_TIMEOUT: Duration = Duration::from_secs(12);
-const CODEXBAR_TIMEOUT: Duration = Duration::from_secs(10);
+const FALLBACK_CLI_TOTAL_TIMEOUT: Duration = Duration::from_secs(12);
+const FALLBACK_CLI_TIMEOUT: Duration = Duration::from_secs(10);
 
 const QUOTA_SUMMARY_PATH: &str =
     "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary";
@@ -1380,7 +1380,7 @@ fn fetch_codexbar_envelope(
         return Err(AntigravityFailure::BridgeUnavailable);
     }
     let deadline = Instant::now()
-        .checked_add(CODEXBAR_TOTAL_TIMEOUT)
+        .checked_add(FALLBACK_CLI_TOTAL_TIMEOUT)
         .ok_or(AntigravityFailure::BridgeTimeout)?;
     let mut best_failure = AntigravityFailure::BridgeUnavailable;
     for program in candidates {
@@ -1392,18 +1392,18 @@ fn fetch_codexbar_envelope(
             app_data_dir,
             "antigravity",
             "cli",
-            remaining.min(CODEXBAR_TIMEOUT),
+            remaining.min(FALLBACK_CLI_TIMEOUT),
         ) {
             Ok(bytes) => bytes,
-            Err(super::ClaudeCodexBarFailure::Unavailable) => {
+            Err(super::FallbackCliFailure::Unavailable) => {
                 best_failure = prefer_failure(best_failure, AntigravityFailure::BridgeUnavailable);
                 continue;
             }
-            Err(super::ClaudeCodexBarFailure::Timeout) => {
+            Err(super::FallbackCliFailure::Timeout) => {
                 best_failure = prefer_failure(best_failure, AntigravityFailure::BridgeTimeout);
                 continue;
             }
-            Err(super::ClaudeCodexBarFailure::ResponseInvalid) => {
+            Err(super::FallbackCliFailure::ResponseInvalid) => {
                 best_failure =
                     prefer_failure(best_failure, AntigravityFailure::BridgeResponseInvalid);
                 continue;
