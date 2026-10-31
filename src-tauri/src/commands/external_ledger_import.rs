@@ -461,6 +461,7 @@ pub(crate) fn clear(db_path: &Path) -> Result<(), String> {
 }
 
 fn status_value(db_path: &Path, source_dir: Option<&Path>) -> Value {
+    let source_found = source_dir.is_some_and(Path::is_dir);
     let source = source_dir.map(|dir| dir.join(SOURCE_FILE));
     let source_meta = source.as_ref().and_then(|path| fs::metadata(path).ok());
     let source_modified = source_meta
@@ -468,7 +469,8 @@ fn status_value(db_path: &Path, source_dir: Option<&Path>) -> Value {
         .and_then(|meta| meta.modified().ok())
         .map(|time| DateTime::<Utc>::from(time).to_rfc3339());
     json!({
-        "magpieFound": source_dir.is_some_and(Path::is_dir),
+        "sourceFound": source_found,
+        "usagePath": source.as_ref().filter(|_| source_found).map(|path| path.display().to_string()),
         "usageFound": source_meta.as_ref().is_some_and(fs::Metadata::is_file),
         "usageBytes": source_meta.as_ref().map(fs::Metadata::len),
         "usageModifiedAt": source_modified,
@@ -484,7 +486,7 @@ fn emit_stats_updated(app_handle: &tauri::AppHandle) {
 
 /// 返回本机外部用量文件是否存在，以及最近一次导入结果。
 #[tauri::command]
-pub async fn magpie_import_status(
+pub async fn external_ledger_import_status(
     state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<Value, String> {
     let app = state.inner().clone();
@@ -493,12 +495,12 @@ pub async fn magpie_import_status(
         Ok(status_value(&db_path, external_ledger_dir().as_deref()))
     })
     .await
-    .map_err(|error| format!("magpie_import_status task panicked: {error}"))?
+    .map_err(|error| format!("external_ledger_import_status task panicked: {error}"))?
 }
 
 /// 导入或重新导入外部 usage.jsonl。
 #[tauri::command]
-pub async fn magpie_import_run(
+pub async fn external_ledger_import_run(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<Value, String> {
@@ -519,14 +521,14 @@ pub async fn magpie_import_run(
         serde_json::to_value(meta).map_err(|error| error.to_string())
     })
     .await
-    .map_err(|error| format!("magpie_import_run task panicked: {error}"))??;
+    .map_err(|error| format!("external_ledger_import_run task panicked: {error}"))??;
     emit_stats_updated(&app_handle);
     Ok(result)
 }
 
 /// 从 TokenLedger 删除已导入的外部用量。
 #[tauri::command]
-pub async fn magpie_import_clear(
+pub async fn external_ledger_import_clear(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<(), String> {
@@ -538,7 +540,7 @@ pub async fn magpie_import_clear(
         Ok::<(), String>(())
     })
     .await
-    .map_err(|error| format!("magpie_import_clear task panicked: {error}"))??;
+    .map_err(|error| format!("external_ledger_import_clear task panicked: {error}"))??;
     emit_stats_updated(&app_handle);
     Ok(())
 }

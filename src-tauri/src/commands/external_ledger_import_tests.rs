@@ -256,13 +256,25 @@ fn status_reports_presence_without_reading_other_source_files() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);
     let missing = status_value(&db_path, Some(&root.join("absent")));
-    assert_eq!(missing["magpieFound"], json!(false));
+    assert_eq!(missing["sourceFound"], json!(false));
     assert_eq!(missing["usageFound"], json!(false));
+    assert_eq!(missing["usagePath"], Value::Null);
+    assert_eq!(status_value(&db_path, None)["usagePath"], Value::Null);
     assert_eq!(missing["imported"], json!(false));
     let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 1, 1)]);
     let found = status_value(&db_path, source.parent());
-    assert_eq!(found["magpieFound"], json!(true));
+    assert_eq!(found["sourceFound"], json!(true));
     assert_eq!(found["usageFound"], json!(true));
+    assert!(found["usagePath"]
+        .as_str()
+        .unwrap()
+        .ends_with("usage.jsonl"));
+    assert_eq!(found["usagePath"], json!(source.display().to_string()));
+    fs::remove_file(&source).unwrap();
+    let empty = status_value(&db_path, source.parent());
+    assert_eq!(empty["sourceFound"], json!(true));
+    assert_eq!(empty["usageFound"], json!(false));
+    assert_eq!(empty["usagePath"], json!(source.display().to_string()));
     let _ = fs::remove_dir_all(root);
 }
 

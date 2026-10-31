@@ -26,7 +26,8 @@ export interface MagpieImportMeta {
 }
 
 export interface MagpieImportStatus {
-  magpieFound: boolean;
+  sourceFound: boolean;
+  usagePath: string | null;
   usageFound: boolean;
   usageBytes: number | null;
   usageModifiedAt: string | null;
@@ -63,7 +64,7 @@ export function MagpieImportCard() {
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await invoke<MagpieImportStatus>('magpie_import_status'));
+      setStatus(await invoke<MagpieImportStatus>('external_ledger_import_status'));
       setError('');
     } catch (cause) {
       setError(errorText(cause));
@@ -79,7 +80,7 @@ export function MagpieImportCard() {
     setBusy(action);
     setError('');
     try {
-      await invoke(action === 'import' ? 'magpie_import_run' : 'magpie_import_clear');
+      await invoke(action === 'import' ? 'external_ledger_import_run' : 'external_ledger_import_clear');
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -95,7 +96,7 @@ export function MagpieImportCard() {
       <SettingsGroup>
         {status && !status.usageFound && (
           <p className="settings-project-note" role="status">
-            {status.magpieFound ? '找到了 magpie，但还没有用量记录。' : '这台电脑上没有找到 magpie。'}
+            {status.sourceFound ? '找到了 magpie，但还没有用量记录。' : '这台电脑上没有找到 magpie。'}
           </p>
         )}
         {meta && <p className="settings-project-note" role="status">{magpieImportSummary(meta)}</p>}
