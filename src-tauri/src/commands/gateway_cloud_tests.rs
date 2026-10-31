@@ -686,8 +686,7 @@ fn antigravity_unknown_cache_write_survives_hourly_merge_and_fingerprint() {
 fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);
-    // A scanned row already synced, and a magpie call it duplicates plus one
-    // it doesn't, in another hour.
+    // 一条已同步扫描记录，以及与其重复的外部导入调用和另一小时的独立调用。
     insert_scan(&db_path, "dup", "s1", "2026-10-04 10:00:09", Some("user-a"));
     let at = |hour: u32, second: u32| {
         Local
@@ -697,9 +696,9 @@ fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
             .with_timezone(&Utc)
             .to_rfc3339()
     };
-    let magpie_dir = root.join("magpie");
-    fs::create_dir_all(&magpie_dir).unwrap();
-    let source = magpie_dir.join("usage.jsonl");
+    let source_dir = root.join("source-home");
+    fs::create_dir_all(&source_dir).unwrap();
+    let source = source_dir.join("usage.jsonl");
     let lines = [
         json!({"t": at(10, 10), "agent": "codex", "provider": "openai", "model": "gpt-5.5",
                "in": 200, "out": 80, "cache_read": 0, "cache_write": 0, "ms": 900,
@@ -715,7 +714,7 @@ fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
             .collect::<String>(),
     )
     .unwrap();
-    super::super::magpie_import::import_from(&db_path, &source).unwrap();
+    super::super::external_ledger_import::import_from(&db_path, &source).unwrap();
 
     let imported = collect_hours(&db_path, "user-a", "mac").unwrap();
     let first = plan(&imported, &load_state(&db_path), "user-a", "mac", &cost);
@@ -730,7 +729,7 @@ fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
     let noon_key = format!("agg_mac_codex_gpt-5.5_{noon}");
     assert!(first.upserts.iter().any(|agg| agg.unique_key() == noon_key));
 
-    super::super::magpie_import::clear(&db_path).unwrap();
+    super::super::external_ledger_import::clear(&db_path).unwrap();
     let cleared = collect_hours(&db_path, "user-a", "mac").unwrap();
     assert_eq!(
         cleared.keys().cloned().collect::<BTreeSet<_>>(),

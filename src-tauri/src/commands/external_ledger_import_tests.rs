@@ -7,7 +7,7 @@ static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn test_app() -> (AppContext, PathBuf) {
     let path = std::env::temp_dir().join(format!(
-        "tokenledger_magpie_import_{}_{}",
+        "tokenledger_external_import_{}_{}",
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::SeqCst)
     ));
@@ -38,7 +38,7 @@ fn insert_scan(conn: &Connection, key: &str, session: &str, at: &str, input: i64
     .unwrap();
 }
 
-fn magpie_line(at: DateTime<Local>, session: &str, input: i64, output: i64) -> Value {
+fn source_line(at: DateTime<Local>, session: &str, input: i64, output: i64) -> Value {
     json!({
         "t": at.with_timezone(&Utc).to_rfc3339(), "agent": "claude", "provider": "anthropic",
         "host": "api.example.com", "providerKeyName": "work key", "providerKeyId": "fp",
@@ -49,8 +49,8 @@ fn magpie_line(at: DateTime<Local>, session: &str, input: i64, output: i64) -> V
     })
 }
 
-fn write_magpie(root: &Path, lines: &[Value]) -> PathBuf {
-    let dir = root.join("magpie-home");
+fn write_source(root: &Path, lines: &[Value]) -> PathBuf {
+    let dir = root.join("source-home");
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join(SOURCE_FILE);
     let text: String = lines.iter().map(|line| format!("{line}\n")).collect();
@@ -72,22 +72,22 @@ fn merged_totals(db_path: &Path) -> (i64, i64) {
 fn parse_keeps_counted_calls_and_drops_identifying_fields() {
     let (_app, root) = test_app();
     let at = local_ts(9, 0, 0);
-    let mut rejected = magpie_line(at, "s", 1, 1);
+    let mut rejected = source_line(at, "s", 1, 1);
     rejected["rejected"] = json!(true);
-    let mut legacy_rejected = magpie_line(at, "s", 2, 1);
+    let mut legacy_rejected = source_line(at, "s", 2, 1);
     legacy_rejected["provider"] = json!("");
     legacy_rejected["status"] = json!(429);
-    let mut other = magpie_line(at, "s", 3, 1);
+    let mut other = source_line(at, "s", 3, 1);
     other["computer"] = json!("abcdef0123456789");
-    let mut routed = magpie_line(at, "", 7, 8);
+    let mut routed = source_line(at, "", 7, 8);
     routed["model"] = json!("");
     routed["req"] = json!("openrouter/vendor-model");
-    let source = write_magpie(
+    let source = write_source(
         &root,
         &[
-            magpie_line(at, "s1", 100, 20),
-            magpie_line(at, "s1", 100, 20), // the same line twice counts once
-            magpie_line(at, "s1", 0, 0),
+            source_line(at, "s1", 100, 20),
+            source_line(at, "s1", 100, 20), // the same line twice counts once
+            source_line(at, "s1", 0, 0),
             rejected,
             legacy_rejected,
             other,
@@ -131,7 +131,7 @@ fn parse_keeps_counted_calls_and_drops_identifying_fields() {
 }
 
 #[test]
-fn import_supersedes_session_duplicates_and_adds_unseen_calls_without_touching_magpie() {
+fn import_supersedes_session_duplicates_and_adds_unseen_calls_without_touching_source() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);
     let conn = db::get_connection(&db_path).unwrap();
@@ -140,11 +140,11 @@ fn import_supersedes_session_duplicates_and_adds_unseen_calls_without_touching_m
     drop(conn);
     assert_eq!(merged_totals(&db_path), (2, 130));
 
-    let source = write_magpie(
+    let source = write_source(
         &root,
         &[
-            magpie_line(local_ts(10, 0, 2), "sess-1", 100, 20),
-            magpie_line(local_ts(11, 0, 0), "", 40, 2),
+            source_line(local_ts(10, 0, 2), "sess-1", 100, 20),
+            source_line(local_ts(11, 0, 0), "", 40, 2),
         ],
     );
     let before = (
@@ -162,7 +162,7 @@ fn import_supersedes_session_duplicates_and_adds_unseen_calls_without_touching_m
             fs::read(&source).unwrap(),
             fs::metadata(&source).unwrap().modified().unwrap()
         ),
-        "magpie's own file is never written"
+        "源文件保持只读"
     );
 
     // The scanned duplicate is replaced; the unseen call is added once.
@@ -202,12 +202,12 @@ fn ambiguous_fingerprint_match_is_held_instead_of_merged() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);
     let conn = db::get_connection(&db_path).unwrap();
-    // Two scanned calls with the same tokens, both inside the window, under
-    // sessions magpie didn't see: which one magpie's call is can't be told.
+    // 两条扫描记录的 Token 相同且都在窗口内，其会话在源记录中不可见，
+    // 因此无法判断导入调用对应哪一条。
     insert_scan(&conn, "a", "x", &storage(local_ts(10, 0, 0)), 50, 5);
     insert_scan(&conn, "b", "y", &storage(local_ts(10, 0, 1)), 50, 5);
     drop(conn);
-    let source = write_magpie(&root, &[magpie_line(local_ts(10, 0, 1), "", 50, 5)]);
+    let source = write_source(&root, &[source_line(local_ts(10, 0, 1), "", 50, 5)]);
     let meta = import_from(&db_path, &source).unwrap();
     assert_eq!(meta.held, 1);
     assert_eq!(meta.matched_scans, 0);
@@ -220,7 +220,7 @@ fn ambiguous_fingerprint_match_is_held_instead_of_merged() {
 }
 
 #[test]
-fn tokenledger_gateway_row_wins_over_the_same_call_in_magpie() {
+fn tokenledger_gateway_row_wins_over_the_same_call_in_import() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);
     let dir = app.app_data_dir().join("gateway");
@@ -234,10 +234,107 @@ fn tokenledger_gateway_row_wins_over_the_same_call_in_magpie() {
         "output": 7, "cacheRead": 0, "cacheWrite": 0, "latencyMs": 1500, "error": null
     });
     fs::write(dir.join("usage-v1.jsonl"), format!("{line}\n")).unwrap();
-    let source = write_magpie(&root, &[magpie_line(at, "sess-9", 70, 7)]);
+    let source = write_source(&root, &[source_line(at, "sess-9", 70, 7)]);
     let meta = import_from(&db_path, &source).unwrap();
     assert_eq!(meta.duplicate_of_gateway, 1);
     assert_eq!(merged_totals(&db_path), (1, 77));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn legacy_files_migrate_when_reading_rows_and_status() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 10, 2)]);
+    let (calls, counts) = parse_usage(&source).unwrap();
+    let dir = store_dir(&db_path);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join(LEGACY_STORE_FILE),
+        serde_json::to_vec(&calls[0]).unwrap(),
+    )
+    .unwrap();
+    let meta = ImportMeta {
+        counts,
+        ..ImportMeta::default()
+    };
+    fs::write(
+        dir.join(LEGACY_META_FILE),
+        serde_json::to_vec(&meta).unwrap(),
+    )
+    .unwrap();
+    let before = fs::metadata(dir.join(LEGACY_STORE_FILE)).unwrap();
+
+    assert_eq!(read_rows(&db_path).unwrap().len(), calls.len());
+    assert!(signature(&db_path).is_some());
+    let status = status_value(&db_path, None);
+    assert_eq!(status["imported"], json!(true));
+    assert_eq!(status["lastImport"], serde_json::to_value(&meta).unwrap());
+    let after = fs::metadata(dir.join(STORE_FILE)).unwrap();
+    assert_eq!(before.len(), after.len());
+    assert_eq!(before.modified().unwrap(), after.modified().unwrap());
+    assert!(dir.join(META_FILE).is_file());
+    assert!(!dir.join(LEGACY_STORE_FILE).exists());
+    assert!(!dir.join(LEGACY_META_FILE).exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn current_files_take_priority_over_legacy_files() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 10, 2)]);
+    let (calls, _) = parse_usage(&source).unwrap();
+    write_store(&db_path, &calls).unwrap();
+    let dir = store_dir(&db_path);
+    let meta = ImportMeta::default();
+    fs::write(dir.join(META_FILE), serde_json::to_vec(&meta).unwrap()).unwrap();
+    fs::write(dir.join(LEGACY_STORE_FILE), "旧文件不可解析").unwrap();
+    fs::write(dir.join(LEGACY_META_FILE), "旧文件不可解析").unwrap();
+
+    assert_eq!(read_rows(&db_path).unwrap().len(), 1);
+    assert_eq!(read_meta(&db_path), Some(meta));
+    assert!(dir.join(LEGACY_STORE_FILE).is_file());
+    assert!(dir.join(LEGACY_META_FILE).is_file());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn importing_writes_current_files_and_removes_legacy_files() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 10, 2)]);
+    let dir = store_dir(&db_path);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join(LEGACY_STORE_FILE), "旧文件不可解析").unwrap();
+    fs::write(dir.join(LEGACY_META_FILE), "旧文件不可解析").unwrap();
+
+    let meta = import_from(&db_path, &source).unwrap();
+    assert_eq!(meta.counts.imported, 1);
+    assert_eq!(read_rows(&db_path).unwrap().len(), 1);
+    assert_eq!(read_meta(&db_path), Some(meta));
+    assert!(dir.join(STORE_FILE).is_file());
+    assert!(dir.join(META_FILE).is_file());
+    assert!(!dir.join(LEGACY_STORE_FILE).exists());
+    assert!(!dir.join(LEGACY_META_FILE).exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn clearing_removes_current_and_legacy_files_and_accepts_missing_files() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let dir = store_dir(&db_path);
+    fs::create_dir_all(&dir).unwrap();
+    let files = [STORE_FILE, META_FILE, LEGACY_STORE_FILE, LEGACY_META_FILE];
+    for file in files {
+        fs::write(dir.join(file), "待清理").unwrap();
+    }
+    clear(&db_path).unwrap();
+    for file in files {
+        assert!(!dir.join(file).exists());
+    }
+    clear(&db_path).unwrap();
     let _ = fs::remove_dir_all(root);
 }
 
@@ -252,17 +349,29 @@ fn corrupt_store_is_an_error_not_a_pure_scan_view() {
 }
 
 #[test]
-fn status_reports_presence_without_reading_other_magpie_files() {
+fn status_reports_presence_without_reading_other_source_files() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);
     let missing = status_value(&db_path, Some(&root.join("absent")));
-    assert_eq!(missing["magpieFound"], json!(false));
+    assert_eq!(missing["sourceFound"], json!(false));
     assert_eq!(missing["usageFound"], json!(false));
+    assert_eq!(missing["usagePath"], Value::Null);
+    assert_eq!(status_value(&db_path, None)["usagePath"], Value::Null);
     assert_eq!(missing["imported"], json!(false));
-    let source = write_magpie(&root, &[magpie_line(local_ts(8, 0, 0), "s", 1, 1)]);
+    let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 1, 1)]);
     let found = status_value(&db_path, source.parent());
-    assert_eq!(found["magpieFound"], json!(true));
+    assert_eq!(found["sourceFound"], json!(true));
     assert_eq!(found["usageFound"], json!(true));
+    assert!(found["usagePath"]
+        .as_str()
+        .unwrap()
+        .ends_with("usage.jsonl"));
+    assert_eq!(found["usagePath"], json!(source.display().to_string()));
+    fs::remove_file(&source).unwrap();
+    let empty = status_value(&db_path, source.parent());
+    assert_eq!(empty["sourceFound"], json!(true));
+    assert_eq!(empty["usageFound"], json!(false));
+    assert_eq!(empty["usagePath"], json!(source.display().to_string()));
     let _ = fs::remove_dir_all(root);
 }
 

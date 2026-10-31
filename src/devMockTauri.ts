@@ -2119,7 +2119,8 @@ let mockMagpieImport: typeof MOCK_MAGPIE_IMPORT | null = null;
 
 function mockMagpieImportStatus() {
   return {
-    magpieFound: true,
+    sourceFound: true,
+    usagePath: '~/.config/gateway/usage.jsonl',
     usageFound: true,
     usageBytes: 1_482_000,
     usageModifiedAt: '2026-10-20T07:58:00Z',
@@ -2587,12 +2588,12 @@ export function installDevMockTauri() {
         return { message: '登录成功' };
       case 'supabase_sign_up':
         return { message: '注册成功，请查收验证邮件' };
-      case 'magpie_import_status':
+      case 'external_ledger_import_status':
         return mockMagpieImportStatus();
-      case 'magpie_import_run':
+      case 'external_ledger_import_run':
         mockMagpieImport = MOCK_MAGPIE_IMPORT;
         return MOCK_MAGPIE_IMPORT;
-      case 'magpie_import_clear':
+      case 'external_ledger_import_clear':
         mockMagpieImport = null;
         return null;
       case 'usage_dimensions_publish_status': {

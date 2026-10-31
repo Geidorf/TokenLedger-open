@@ -17,7 +17,8 @@ const meta: MagpieImportMeta = {
 
 function status(patch: Record<string, unknown> = {}) {
   return {
-    magpieFound: true,
+    sourceFound: true,
+    usagePath: '~/.config/gateway/usage.jsonl',
     usageFound: true,
     usageBytes: 100,
     usageModifiedAt: '2026-10-20T00:00:00Z',
@@ -33,7 +34,7 @@ describe('MagpieImportCard', () => {
   });
 
   it('没有找到 magpie 时禁用导入', async () => {
-    vi.mocked(invoke).mockResolvedValue(status({ magpieFound: false, usageFound: false }));
+    vi.mocked(invoke).mockResolvedValue(status({ sourceFound: false, usageFound: false, usagePath: null }));
     render(<MagpieImportCard />);
     expect(await screen.findByText('这台电脑上没有找到 magpie。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '一键导入' })).toBeDisabled();
@@ -42,11 +43,11 @@ describe('MagpieImportCard', () => {
   it('一键导入后显示结果，可移除导入', async () => {
     let imported = false;
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'magpie_import_run') {
+      if (cmd === 'external_ledger_import_run') {
         imported = true;
         return meta;
       }
-      if (cmd === 'magpie_import_clear') {
+      if (cmd === 'external_ledger_import_clear') {
         imported = false;
         return null;
       }
@@ -61,7 +62,7 @@ describe('MagpieImportCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '移除导入' }));
     fireEvent.click(await screen.findByRole('button', { name: '移除' }));
-    await waitFor(() => expect(vi.mocked(invoke)).toHaveBeenCalledWith('magpie_import_clear'));
+    await waitFor(() => expect(vi.mocked(invoke)).toHaveBeenCalledWith('external_ledger_import_clear'));
     expect(await screen.findByRole('button', { name: '一键导入' })).toBeInTheDocument();
   });
 

@@ -1,18 +1,9 @@
-//! One-click import of magpie's local usage ledger (dashboard-stats-v2 §2.5,
-//! 「magpie 用量导入」).
+//! 从本机 AI 网关的 usage.jsonl 一键导入（dashboard-stats-v2 §2.5）。
 //!
-//! magpie (an open-source local AI gateway) appends one JSON line per call it
-//! serves to `usage.jsonl` in its config folder. The user can import that file
-//! once, and again whenever they like: TokenLedger reads it read-only, keeps
-//! the counted fields of each call in its own `imports/magpie-usage-v1.jsonl`
-//! beside the database, and merges those rows into stats through the gateway
-//! overlay, tagged `source = imported-magpie`, so a call an agent also logged
-//! locally is counted once. magpie's files are never written, and no other
-//! magpie file is opened here: not its providers, logins, settings or backups.
-//!
-//! What is kept of a call is what stats need: time, agent, provider id, model,
-//! the four token counts, latency and session id. Hosts, key names and
-//! fingerprints, accounts, errors, request ids and bodies are dropped on read.
+//! 只读源文件，在本机导入目录保存统计所需字段，并通过网关合并层去重。
+//! 可重复导入；不读取供应商配置、登录、设置或备份，也不修改源文件。
+//! 仅保留时间、Agent、供应商标识、模型、四类 Token、耗时和会话标识。
+//! 主机、密钥名、指纹、账号、错误、请求标识与正文在读取时丢弃。
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -30,8 +21,13 @@ use crate::app_paths::AppContext;
 use crate::{cache, db};
 
 const STORE_DIR: &str = "imports";
-const STORE_FILE: &str = "magpie-usage-v1.jsonl";
-const META_FILE: &str = "magpie-import-v1.json";
+/// 旧版导入存储文件名，只用于一次性迁移；两三个版本后连同迁移代码删除。
+const LEGACY_STORE_FILE: &str = "magpie-usage-v1.jsonl";
+const LEGACY_META_FILE: &str = "magpie-import-v1.json";
+const STORE_FILE: &str = "external-ledger-usage-v1.jsonl";
+const META_FILE: &str = "external-ledger-import-v1.json";
+/// 外部网关的配置目录名；只用于自动探测 usage.jsonl。
+const SOURCE_DIR_NAME: &str = "magpie";
 const SOURCE_FILE: &str = "usage.jsonl";
 /// A line longer than this is not a usage record (bodies are never in it).
 const MAX_LINE_BYTES: usize = 256 * 1024;
@@ -40,24 +36,22 @@ const MAX_LINE_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_LINES: usize = 2_000_000;
 const SYNTHETIC_SESSION_PREFIX: &str = "magpie:";
 
-/// magpie's config folder: `$XDG_CONFIG_HOME/magpie` when that is an absolute
-/// path, otherwise `~/.config/magpie` on every platform (magpie's own
-/// `appdir.Config`). A portable magpie keeps its folder beside its binary and
-/// is not found here.
-pub(crate) fn magpie_config_dir() -> Option<PathBuf> {
+/// 自动探测配置目录：优先采用绝对 XDG_CONFIG_HOME，否则使用主目录下的 .config。
+/// 可移植安装在程序旁保存的配置目录不在自动探测范围内。
+pub(crate) fn external_ledger_dir() -> Option<PathBuf> {
     if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
         let xdg = PathBuf::from(xdg);
         if xdg.is_absolute() {
-            return Some(xdg.join("magpie"));
+            return Some(xdg.join(SOURCE_DIR_NAME));
         }
     }
-    dirs::home_dir().map(|home| home.join(".config").join("magpie"))
+    dirs::home_dir().map(|home| home.join(".config").join(SOURCE_DIR_NAME))
 }
 
-/// One magpie `usage.jsonl` line, only the fields TokenLedger reads.
+/// 外部 usage.jsonl 的一行，仅包含 TokenLedger 读取的字段。
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
-struct MagpieRecord {
+struct ExternalLedgerRecord {
     t: String,
     agent: String,
     provider: String,
@@ -81,7 +75,7 @@ struct MagpieRecord {
 /// One imported call as TokenLedger keeps it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ImportedCall {
-    /// Stable identity of the call, from its magpie fields.
+    /// 由源记录字段生成的稳定调用标识。
     pub key: String,
     /// UTC RFC 3339, when the call ended.
     pub t: String,
@@ -120,7 +114,7 @@ fn fnv_hex(text: &str) -> String {
     format!("{hash:016x}")
 }
 
-fn model_of(record: &MagpieRecord) -> String {
+fn model_of(record: &ExternalLedgerRecord) -> String {
     for candidate in [&record.model, &record.served] {
         let value = candidate.trim();
         if !value.is_empty() {
@@ -143,7 +137,7 @@ enum Parsed {
 }
 
 fn parse_line(line: &str) -> Parsed {
-    let Ok(record) = serde_json::from_str::<MagpieRecord>(line) else {
+    let Ok(record) = serde_json::from_str::<ExternalLedgerRecord>(line) else {
         return Parsed::Invalid;
     };
     let Ok(at) = DateTime::parse_from_rfc3339(record.t.trim()) else {
@@ -158,12 +152,11 @@ fn parse_line(line: &str) -> Parsed {
     if tokens.iter().any(|value| *value < 0) {
         return Parsed::Invalid;
     }
-    // A call brought here by magpie's own sync was made on another computer;
-    // that computer's TokenLedger counts it.
+    // 外部网关同步来的调用发生在其他电脑，由那台电脑上的账本统计。
     if !record.computer.trim().is_empty() {
         return Parsed::OtherComputer;
     }
-    // Refused locally before any vendor was asked (magpie's IsRejected).
+    // 在请求任何供应商之前已被本地拒绝。
     if record.rejected || (record.provider.trim().is_empty() && record.status >= 400) {
         return Parsed::Rejected;
     }
@@ -222,11 +215,9 @@ fn read_line_capped(reader: &mut impl BufRead, buffer: &mut Vec<u8>) -> std::io:
     }
 }
 
-/// Reads a magpie `usage.jsonl`; a line that doesn't parse is counted and
-/// skipped, as magpie itself does.
+/// 读取外部 usage.jsonl；无法解析的行计入无效行数后跳过。
 pub(crate) fn parse_usage(path: &Path) -> Result<(Vec<ImportedCall>, ParseCounts), String> {
-    let file =
-        fs::File::open(path).map_err(|error| format!("读取 magpie 用量文件失败：{error}"))?;
+    let file = fs::File::open(path).map_err(|error| format!("读取外部用量文件失败：{error}"))?;
     let mut reader = BufReader::new(file);
     let mut counts = ParseCounts::default();
     let mut calls = Vec::new();
@@ -235,7 +226,7 @@ pub(crate) fn parse_usage(path: &Path) -> Result<(Vec<ImportedCall>, ParseCounts
     loop {
         buffer.clear();
         let read = read_line_capped(&mut reader, &mut buffer)
-            .map_err(|error| format!("读取 magpie 用量文件失败：{error}"))?;
+            .map_err(|error| format!("读取外部用量文件失败：{error}"))?;
         if read == 0 {
             break;
         }
@@ -280,12 +271,25 @@ pub(super) fn store_dir(db_path: &Path) -> PathBuf {
         .join(STORE_DIR)
 }
 
+fn resolve_store_file(db_path: &Path, new: &str, legacy: &str) -> PathBuf {
+    let dir = store_dir(db_path);
+    let path = dir.join(new);
+    if path.exists() {
+        return path;
+    }
+    let legacy_path = dir.join(legacy);
+    if legacy_path.exists() && fs::rename(&legacy_path, &path).is_err() {
+        return legacy_path;
+    }
+    path
+}
+
 fn store_path(db_path: &Path) -> PathBuf {
-    store_dir(db_path).join(STORE_FILE)
+    resolve_store_file(db_path, STORE_FILE, LEGACY_STORE_FILE)
 }
 
 fn meta_path(db_path: &Path) -> PathBuf {
-    store_dir(db_path).join(META_FILE)
+    resolve_store_file(db_path, META_FILE, LEGACY_META_FILE)
 }
 
 fn write_atomic(path: &Path, body: &[u8]) -> Result<(), String> {
@@ -308,7 +312,10 @@ pub(crate) fn write_store(db_path: &Path, calls: &[ImportedCall]) -> Result<(), 
         serde_json::to_writer(&mut body, call).map_err(|error| error.to_string())?;
         body.push(b'\n');
     }
-    write_atomic(&store_path(db_path), &body)
+    let dir = store_dir(db_path);
+    write_atomic(&dir.join(STORE_FILE), &body)?;
+    let _ = fs::remove_file(dir.join(LEGACY_STORE_FILE));
+    Ok(())
 }
 
 /// Cache signature of the imported store; `None` when nothing was imported.
@@ -340,7 +347,7 @@ pub(super) fn call_to_row(
     let agent = Some(call.agent.to_ascii_lowercase()).filter(|value| !value.is_empty());
     Some(GatewayRow {
         id: gateway_overlay::row_id(&format!("{SYNTHETIC_SESSION_PREFIX}{}", call.key)),
-        source: RowSource::ImportedMagpie,
+        source: RowSource::ImportedExternal,
         request_id: format!("{SYNTHETIC_SESSION_PREFIX}{}", call.key),
         tool: if agent.is_none() {
             "magpie".to_string()
@@ -373,14 +380,14 @@ pub(super) fn read_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(format!("读取已导入的 magpie 用量失败：{error}")),
+        Err(error) => return Err(format!("读取已导入的外部用量失败：{error}")),
     };
     let mut rows = Vec::new();
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let call: ImportedCall = serde_json::from_str(line)
-            .map_err(|_| "已导入的 magpie 用量文件已损坏，请重新导入。".to_string())?;
+            .map_err(|_| "已导入的外部用量文件已损坏，请重新导入。".to_string())?;
         let row = call_to_row(&call, &local_storage_time)
-            .ok_or_else(|| "已导入的 magpie 用量文件已损坏，请重新导入。".to_string())?;
+            .ok_or_else(|| "已导入的外部用量文件已损坏，请重新导入。".to_string())?;
         rows.push(row);
     }
     Ok(rows)
@@ -416,13 +423,13 @@ fn merge_report(db_path: &Path) -> Result<(usize, usize, usize), String> {
     let merged = gateway_overlay::gateway_rows_cached(db_path, &signature)?;
     let kept: BTreeSet<i64> = merged
         .iter()
-        .filter(|row| row.source == RowSource::ImportedMagpie)
+        .filter(|row| row.source == RowSource::ImportedExternal)
         .map(|row| row.id)
         .collect();
     let duplicate_of_gateway = imported.len().saturating_sub(kept.len());
     let imported_only: Vec<GatewayRow> = merged
         .iter()
-        .filter(|row| row.source == RowSource::ImportedMagpie)
+        .filter(|row| row.source == RowSource::ImportedExternal)
         .cloned()
         .collect();
     let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
@@ -440,8 +447,7 @@ fn merge_report(db_path: &Path) -> Result<(usize, usize, usize), String> {
     ))
 }
 
-/// Reads `source` (a magpie `usage.jsonl`) into the imported store, replacing
-/// any earlier import, and reports how it merges.
+/// 从源 usage.jsonl 替换本机已导入的用量，并报告合并结果。
 pub(crate) fn import_from(db_path: &Path, source: &Path) -> Result<ImportMeta, String> {
     let (calls, counts) = parse_usage(source)?;
     write_store(db_path, &calls)?;
@@ -456,31 +462,37 @@ pub(crate) fn import_from(db_path: &Path, source: &Path) -> Result<ImportMeta, S
         held,
     };
     let body = serde_json::to_vec_pretty(&meta).map_err(|error| error.to_string())?;
-    write_atomic(&meta_path(db_path), &body)?;
+    let dir = store_dir(db_path);
+    write_atomic(&dir.join(META_FILE), &body)?;
+    let _ = fs::remove_file(dir.join(LEGACY_META_FILE));
     Ok(meta)
 }
 
-/// Removes the imported store; magpie's own file is untouched.
+/// 删除本机已导入的用量；源文件保持不变。
 pub(crate) fn clear(db_path: &Path) -> Result<(), String> {
-    for path in [store_path(db_path), meta_path(db_path)] {
+    let dir = store_dir(db_path);
+    for file in [STORE_FILE, META_FILE, LEGACY_STORE_FILE, LEGACY_META_FILE] {
+        let path = dir.join(file);
         match fs::remove_file(&path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("删除已导入的 magpie 用量失败：{error}")),
+            Err(error) => return Err(format!("删除已导入的外部用量失败：{error}")),
         }
     }
     Ok(())
 }
 
-fn status_value(db_path: &Path, magpie_dir: Option<&Path>) -> Value {
-    let source = magpie_dir.map(|dir| dir.join(SOURCE_FILE));
+fn status_value(db_path: &Path, source_dir: Option<&Path>) -> Value {
+    let source_found = source_dir.is_some_and(Path::is_dir);
+    let source = source_dir.map(|dir| dir.join(SOURCE_FILE));
     let source_meta = source.as_ref().and_then(|path| fs::metadata(path).ok());
     let source_modified = source_meta
         .as_ref()
         .and_then(|meta| meta.modified().ok())
         .map(|time| DateTime::<Utc>::from(time).to_rfc3339());
     json!({
-        "magpieFound": magpie_dir.is_some_and(Path::is_dir),
+        "sourceFound": source_found,
+        "usagePath": source.as_ref().filter(|_| source_found).map(|path| path.display().to_string()),
         "usageFound": source_meta.as_ref().is_some_and(fs::Metadata::is_file),
         "usageBytes": source_meta.as_ref().map(fs::Metadata::len),
         "usageModifiedAt": source_modified,
@@ -494,23 +506,23 @@ fn emit_stats_updated(app_handle: &tauri::AppHandle) {
     let _ = app_handle.emit("stats-updated", json!({ "source": "backend" }));
 }
 
-/// Whether magpie's usage file is present here, and the last import.
+/// 返回本机外部用量文件是否存在，以及最近一次导入结果。
 #[tauri::command]
-pub async fn magpie_import_status(
+pub async fn external_ledger_import_status(
     state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<Value, String> {
     let app = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let db_path = db::get_db_path(&app);
-        Ok(status_value(&db_path, magpie_config_dir().as_deref()))
+        Ok(status_value(&db_path, external_ledger_dir().as_deref()))
     })
     .await
-    .map_err(|error| format!("magpie_import_status task panicked: {error}"))?
+    .map_err(|error| format!("external_ledger_import_status task panicked: {error}"))?
 }
 
-/// Imports (or re-imports) magpie's `usage.jsonl`.
+/// 导入或重新导入外部 usage.jsonl。
 #[tauri::command]
-pub async fn magpie_import_run(
+pub async fn external_ledger_import_run(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<Value, String> {
@@ -518,24 +530,27 @@ pub async fn magpie_import_run(
     let result = tauri::async_runtime::spawn_blocking(move || {
         let db_path = db::get_db_path(&app);
         db::init_db(&db_path).map_err(|error| error.to_string())?;
-        let dir = magpie_config_dir().ok_or_else(|| "找不到用户主目录。".to_string())?;
+        let dir = external_ledger_dir().ok_or_else(|| "找不到用户主目录。".to_string())?;
         let source = dir.join(SOURCE_FILE);
         if !source.is_file() {
-            return Err("没有找到 magpie 的用量文件，请先在这台电脑上使用 magpie。".to_string());
+            return Err(
+                "没有在配置目录里找到 usage.jsonl，请确认本地 AI 网关已在这台电脑上记录过用量。"
+                    .to_string(),
+            );
         }
         let meta = import_from(&db_path, &source)?;
         cache::invalidate_all(&db_path);
         serde_json::to_value(meta).map_err(|error| error.to_string())
     })
     .await
-    .map_err(|error| format!("magpie_import_run task panicked: {error}"))??;
+    .map_err(|error| format!("external_ledger_import_run task panicked: {error}"))??;
     emit_stats_updated(&app_handle);
     Ok(result)
 }
 
-/// Removes imported magpie usage from TokenLedger.
+/// 从 TokenLedger 删除已导入的外部用量。
 #[tauri::command]
-pub async fn magpie_import_clear(
+pub async fn external_ledger_import_clear(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<(), String> {
@@ -547,11 +562,11 @@ pub async fn magpie_import_clear(
         Ok::<(), String>(())
     })
     .await
-    .map_err(|error| format!("magpie_import_clear task panicked: {error}"))??;
+    .map_err(|error| format!("external_ledger_import_clear task panicked: {error}"))??;
     emit_stats_updated(&app_handle);
     Ok(())
 }
 
 #[cfg(test)]
-#[path = "magpie_import_tests.rs"]
+#[path = "external_ledger_import_tests.rs"]
 mod tests;
