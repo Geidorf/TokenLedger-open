@@ -12,6 +12,75 @@ import org.junit.Test
 
 class StatsJsonTest {
     @Test
+    fun rejectsMissingNullAndWrongCoreContainers() {
+        listOf("tools", "models", "trends", "heatmap", "history").forEach { key ->
+            listOf<Any?>(null, JSONObject.NULL, "invalid", 42, true).forEach { invalid ->
+                val root = JSONObject(fixture("complete-v2.json"))
+                if (invalid == null) root.remove(key) else root.put(key, invalid)
+                assertThrows("$key=$invalid", IllegalArgumentException::class.java) {
+                    StatsJson.parse(root.toString())
+                }
+            }
+            val root = JSONObject(fixture("complete-v2.json"))
+            root.put(key, if (key in listOf("trends", "history")) JSONObject() else JSONArray())
+            assertThrows(IllegalArgumentException::class.java) { StatsJson.parse(root.toString()) }
+        }
+    }
+
+    @Test
+    fun rejectsInvalidCoreChildNumbers() {
+        val root = JSONObject(fixture("legacy-v1.json"))
+        val item = JSONObject("""{"input":1,"output":2,"cached":0,"total":3,"requests":1,"cost":0}""")
+        listOf("input", "output", "cached", "total", "requests").forEach { key ->
+            listOf<Any?>(null, JSONObject.NULL, "NaN", "Infinity", -1).forEach { invalid ->
+                val tool = JSONObject(item.toString())
+                if (invalid == null) tool.remove(key) else tool.put(key, invalid)
+                root.put("tools", JSONObject().put("tool", tool))
+                assertThrows(IllegalArgumentException::class.java) { StatsJson.parse(root.toString()) }
+            }
+        }
+        root.put("tools", JSONObject())
+        listOf("models", "trends", "heatmap", "history").forEach { key ->
+            val bad = when (key) {
+                "models" -> "{\"m\":{\"total\":1e999,\"requests\":1}}"
+                "trends" -> "[{\"date\":\"10:00\",\"tool\":1e999}]"
+                "heatmap" -> "{\"2026-01-01\":1e999}"
+                else -> "[{\"id\":1,\"inputTokens\":1e999,\"outputTokens\":0,\"cachedTokens\":0,\"cost\":0}]"
+            }
+            val raw = root.toString().replace("\"$key\":" + root.get(key).toString(), "\"$key\":$bad")
+            assertThrows(IllegalArgumentException::class.java) { StatsJson.parse(raw) }
+        }
+    }
+
+    @Test
+    fun cacheSplitsRequireBothSidesAndExactNonNegativeTotal() {
+        listOf("tools", "models").forEach { key ->
+            listOf("80,\"cacheWrite\":10", "-1,\"cacheWrite\":101", "9223372036854775807,\"cacheWrite\":1").forEach { split ->
+                val root = JSONObject(fixture("legacy-v1.json"))
+                root.put(key, JSONObject("""{"x":{"input":1,"output":0,"cached":100,"total":1,"requests":1,"cost":0,"cacheRead":$split}}"""))
+                val stats = StatsJson.parse(root.toString())
+                assertNull(if (key == "tools") stats.tools.getValue("x").cacheRead else stats.models.getValue("x").cacheRead)
+                assertNull(if (key == "tools") stats.tools.getValue("x").cacheWrite else stats.models.getValue("x").cacheWrite)
+            }
+        }
+    }
+
+    @Test
+    fun toolUnknownCostsStayNullAndDisplayUnavailable() {
+        listOf<Any?>(null, JSONObject.NULL, "NaN", "Infinity", -1).forEach { cost ->
+            val root = JSONObject(fixture("legacy-v1.json"))
+            val item = JSONObject("""{"input":1,"output":0,"cached":0,"total":1,"requests":1}""")
+            if (cost != null) item.put("cost", cost)
+            root.put("tools", JSONObject().put("tool", item))
+            val tool = StatsJson.parse(root.toString()).tools.getValue("tool")
+            assertNull(tool.cost)
+            assertEquals(VALUE_UNAVAILABLE, CurrencyUnit.USD.format(tool.cost))
+            assertNull(CompositionEntry("tool", 1).toToolStat().cost)
+        }
+        assertEquals(0.0, CompositionEntry("free", 1, cost = 0.0).toToolStat().cost)
+    }
+
+    @Test
     fun parsesStatsWithoutMeta() {
         val stats = StatsJson.parse(
             """

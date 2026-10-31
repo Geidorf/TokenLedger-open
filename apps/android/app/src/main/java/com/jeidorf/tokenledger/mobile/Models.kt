@@ -70,6 +70,11 @@ private fun JSONObject.strictSafeIntegerOrNull(name: String): Long? {
     return exact.takeIf { it in 0L..MAX_SAFE_INTEGER }
 }
 
+internal fun provenCacheSplit(cached: Long, read: Long?, write: Long?): Pair<Long, Long>? {
+    if (read == null || write == null || cached < 0L || read < 0L || write < 0L) return null
+    return if (runCatching { Math.addExact(read, write) }.getOrNull() == cached) read to write else null
+}
+
 enum class RangeKey(val rpcValue: String, val label: String) {
     Today("today", "今日"),
     Week("week", "本周"),
@@ -132,7 +137,7 @@ data class ToolStat(
     val output: Long,
     val cached: Long,
     val total: Long,
-    val cost: Double,
+    val cost: Double? = null,
     val requests: Long,
     /** 缺失表示来源无法证明；真实 0 必须保留为 0。 */
     val cacheRead: Long? = null,
@@ -437,11 +442,11 @@ object StatsJson {
     fun parse(raw: String): StatsData {
         val root = JSONObject(raw)
         val summary = parseSummary(requireCoreSummary(root.optJSONObject("summary")))
-        val tools = parseTools(root.optJSONObject("tools"))
-        val models = parseModels(root.optJSONObject("models"))
-        val trends = parseTrends(root.optJSONArray("trends"))
-        val heatmap = parseLongMap(root.optJSONObject("heatmap"))
-        val history = parseHistory(root.optJSONArray("history"))
+        val tools = parseTools(requireObject(root, "tools"))
+        val models = parseModels(requireObject(root, "models"))
+        val trends = parseTrends(requireArray(root, "trends"))
+        val heatmap = parseLongMap(requireObject(root, "heatmap"))
+        val history = parseHistory(requireArray(root, "history"))
         val machines = parseStringList(root.optJSONArray("machines"))
         val metaObject = root.optJSONObject("meta")
         val meta = metaObject?.let(::parseMeta)
@@ -655,6 +660,20 @@ object StatsJson {
         )
     }
 
+    private fun requireObject(parent: JSONObject, key: String): JSONObject =
+        requireNotNull(parent.optJSONObject(key)) { "StatsData is missing required object $key" }
+
+    private fun requireArray(parent: JSONObject, key: String): JSONArray =
+        requireNotNull(parent.optJSONArray(key)) { "StatsData is missing required array $key" }
+
+    private fun requireNumber(obj: JSONObject, key: String): Number {
+        val value = obj.opt(key)
+        require(value is Number && value.toDouble().isFinite() && value.toDouble() >= 0.0) {
+            "StatsData $key is invalid"
+        }
+        return value
+    }
+
     private fun requireCoreSummary(obj: JSONObject?): JSONObject {
         requireNotNull(obj) { "StatsData is missing required summary" }
         listOf(
@@ -680,17 +699,21 @@ object StatsJson {
         val keys = obj.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            val item = obj.optJSONObject(key) ?: continue
+            val item = requireObject(obj, key)
+            val split = provenCacheSplit(
+                item.longValue("cached"), item.optLongOrNull("cacheRead"), item.optLongOrNull("cacheWrite")
+            )
+            listOf("input", "output", "cached", "total", "requests").forEach { requireNumber(item, it) }
             result[key] = ToolStat(
                 name = item.optString("name", key),
                 input = item.longValue("input"),
                 output = item.longValue("output"),
                 cached = item.longValue("cached"),
                 total = item.longValue("total"),
-                cost = item.doubleValue("cost"),
+                cost = item.optFiniteNonNegativeDoubleOrNull("cost"),
                 requests = item.longValue("requests"),
-                cacheRead = item.optLongOrNull("cacheRead"),
-                cacheWrite = item.optLongOrNull("cacheWrite"),
+                cacheRead = split?.first,
+                cacheWrite = split?.second,
                 models = parseLongMap(item.optJSONObject("models")),
                 heatmap = parseLongMap(item.optJSONObject("heatmap"))
             )
@@ -704,7 +727,13 @@ object StatsJson {
         val keys = obj.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            val item = obj.optJSONObject(key) ?: continue
+            val item = requireObject(obj, key)
+            listOf("total", "requests").forEach { requireNumber(item, it) }
+            // 旧云端模型项可只带 total/requests；显式提供的拆分数值仍须有效。
+            listOf("input", "output", "cached").filter(item::has).forEach { requireNumber(item, it) }
+            val split = provenCacheSplit(
+                item.longValue("cached"), item.optLongOrNull("cacheRead"), item.optLongOrNull("cacheWrite")
+            )
             result[key] = ModelStat(
                 name = item.optString("name", key),
                 total = item.longValue("total"),
@@ -714,8 +743,8 @@ object StatsJson {
                 cached = item.longValue("cached"),
                 cost = item.optFiniteNonNegativeDoubleOrNull("cost"),
                 heatmap = parseLongMap(item.optJSONObject("heatmap")),
-                cacheRead = item.optLongOrNull("cacheRead"),
-                cacheWrite = item.optLongOrNull("cacheWrite")
+                cacheRead = split?.first,
+                cacheWrite = split?.second
             )
         }
         return result
@@ -725,14 +754,14 @@ object StatsJson {
         if (array == null) return emptyList()
         return buildList {
             for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
+                val item = requireNotNull(array.optJSONObject(i)) { "StatsData item $i must be object" }
                 val date = item.optString("date")
                 val values = linkedMapOf<String, Long>()
                 val keys = item.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
                     // "date" 与 "__" 前缀是保留键（如 __requests），不属于工具序列。
-                    if (key != "date" && !key.startsWith("__")) values[key] = item.longValue(key)
+                    if (key != "date" && !key.startsWith("__")) values[key] = requireNumber(item, key).toLong()
                 }
                 add(TrendPoint(date, values, requests = item.longValue("__requests")))
             }
@@ -743,7 +772,14 @@ object StatsJson {
         if (array == null) return emptyList()
         return buildList {
             for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
+                val item = requireNotNull(array.optJSONObject(i)) { "StatsData item $i must be object" }
+                listOf("inputTokens", "outputTokens", "cachedTokens", "cost").forEach {
+                    requireNumber(item, it)
+                }
+                require(item.opt("id") is Number && (item.opt("id") as Number).toDouble().isFinite()) {
+                    "StatsData history.id is invalid"
+                }
+                listOf("cacheWriteTokens", "requests").filter(item::has).forEach { requireNumber(item, it) }
                 add(
                     LogHistoryItem(
                         id = item.longValue("id"),
@@ -1113,7 +1149,7 @@ object StatsJson {
         val keys = obj.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            result[key] = obj.longValue(key)
+            result[key] = requireNumber(obj, key).toLong()
         }
         return result
     }

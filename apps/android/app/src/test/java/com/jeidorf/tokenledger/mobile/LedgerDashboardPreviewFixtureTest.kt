@@ -261,7 +261,7 @@ class LedgerDashboardPreviewFixtureTest {
         assertEquals(summary.cachedTokens, tools.sumOf { it.cached })
         assertEquals(summary.cacheReadTokens, tools.mapNotNull { it.cacheRead }.sum())
         assertEquals(summary.cacheWriteTokens, tools.mapNotNull { it.cacheWrite }.sum())
-        assertEquals(summary.totalCost, tools.sumOf { it.cost }, 1e-9)
+        assertEquals(summary.totalCost, tools.sumOf { requireNotNull(it.cost) }, 1e-9)
         assertEquals(summary.totalRequests, tools.sumOf { it.requests })
     }
 

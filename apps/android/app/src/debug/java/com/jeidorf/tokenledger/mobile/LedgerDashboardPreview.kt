@@ -362,7 +362,7 @@ internal fun ledgerEntitySnapshotFixture(): DashboardUiState {
         cachedTokens = tool.cached,
         cacheReadTokens = tool.cacheRead ?: 0L,
         cacheWriteTokens = tool.cacheWrite ?: 0L,
-        totalCost = tool.cost,
+        totalCost = requireNotNull(tool.cost),
         totalRequests = tool.requests,
         avgTokensPerReq = tool.effectiveTokens / tool.requests.coerceAtLeast(1L)
     )
