@@ -66,6 +66,21 @@ class StatsJsonTest {
     }
 
     @Test
+    fun toolUnknownCostsStayNullAndDisplayUnavailable() {
+        listOf<Any?>(null, JSONObject.NULL, "NaN", "Infinity", -1).forEach { cost ->
+            val root = JSONObject(fixture("legacy-v1.json"))
+            val item = JSONObject("""{"input":1,"output":0,"cached":0,"total":1,"requests":1}""")
+            if (cost != null) item.put("cost", cost)
+            root.put("tools", JSONObject().put("tool", item))
+            val tool = StatsJson.parse(root.toString()).tools.getValue("tool")
+            assertNull(tool.cost)
+            assertEquals(VALUE_UNAVAILABLE, CurrencyUnit.USD.format(tool.cost))
+            assertNull(CompositionEntry("tool", 1).toToolStat().cost)
+        }
+        assertEquals(0.0, CompositionEntry("free", 1, cost = 0.0).toToolStat().cost)
+    }
+
+    @Test
     fun parsesStatsWithoutMeta() {
         val stats = StatsJson.parse(
             """

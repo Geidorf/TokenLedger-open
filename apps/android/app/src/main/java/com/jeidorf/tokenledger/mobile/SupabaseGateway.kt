@@ -857,7 +857,7 @@ private fun CanonicalDashboardQuery.toStatsQueryEcho(): StatsQueryEcho = StatsQu
 private fun CompositionEntry.provenCacheSplit(): Pair<Long, Long>? =
     provenCacheSplit(cachedTokens, cacheReadTokens, cacheWriteTokens)
 
-private fun CompositionEntry.toToolStat(): ToolStat {
+internal fun CompositionEntry.toToolStat(): ToolStat {
     val split = provenCacheSplit()
     return ToolStat(
         name = value,
@@ -865,7 +865,7 @@ private fun CompositionEntry.toToolStat(): ToolStat {
         output = outputTokens,
         cached = cachedTokens,
         total = tokens,
-        cost = cost ?: 0.0,
+        cost = cost,
         requests = requests,
         cacheRead = split?.first,
         cacheWrite = split?.second
