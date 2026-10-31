@@ -348,11 +348,9 @@ pub(crate) fn gemini_counter_value(value: &Value) -> Option<i64> {
     (0..=GEMINI_MAX_COUNTER).contains(&parsed).then_some(parsed)
 }
 
-/// `normalize_timestamp` intentionally has a wall-clock fallback for legacy
-/// sources. Gemini must reject malformed timestamps instead, otherwise one
-/// broken message would be silently assigned the current time. Formatting is
-/// done here directly so a value accepted by validation can never fall back to
-/// the current wall-clock time during normalization.
+/// Gemini must reject malformed timestamps instead of letting a broken message
+/// be assigned the current time. Formatting is done here directly so a value
+/// accepted by validation can never be normalized into something else.
 pub(crate) fn gemini_timestamp(value: &Value) -> Option<String> {
     match value {
         Value::Number(number) => number

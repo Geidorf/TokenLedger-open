@@ -83,7 +83,7 @@ fn dsh_timestamp(value: &Value) -> Option<String> {
             .filter(|value| *value > 0)
             .and_then(|value| i64::try_from(value).ok())
     })?;
-    Some(normalize_timestamp(&Value::Number(raw.into())))
+    parse_timestamp(&Value::Number(raw.into()))
 }
 
 pub(crate) fn scan_dsh_file(
@@ -449,7 +449,7 @@ mod scanner_dsh_tests {
         assert_eq!(logs[0].cache_write_tokens, 0);
         assert_eq!(
             logs[0].timestamp,
-            normalize_timestamp(&json!(1786629979947_i64))
+            parse_timestamp(&json!(1786629979947_i64)).expect("epoch parses")
         );
         assert_ne!(logs[0].unique_key, logs[1].unique_key);
         assert!(logs

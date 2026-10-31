@@ -214,7 +214,7 @@ pub(crate) fn claude_record_from_value(
         .and_then(Value::as_str)
         .unwrap_or("claude-unknown");
     let model = clean_model_name(raw_model);
-    let timestamp = normalize_timestamp(data.get("timestamp").unwrap_or(&Value::Null));
+    let timestamp = parse_timestamp(data.get("timestamp").unwrap_or(&Value::Null))?;
     let message_id = message.get("id").and_then(Value::as_str).unwrap_or("");
     let unique_key = if message_id.is_empty() {
         let uuid = data.get("uuid").and_then(Value::as_str).unwrap_or("");
