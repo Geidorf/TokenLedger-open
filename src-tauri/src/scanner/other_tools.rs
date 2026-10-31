@@ -166,7 +166,10 @@ pub(crate) fn scan_opencode_like(
                                             Value::Null
                                         };
 
-                                        let timestamp = normalize_timestamp(&ts);
+                                        let Some(timestamp) = parse_timestamp(&ts) else {
+                                            skipped_rows += 1;
+                                            continue;
+                                        };
                                         let unique_key = format!("{}_{}", tool_name, row_id);
                                         let cost_usd =
                                             to_float(data.get("cost").unwrap_or(&Value::Null));
@@ -436,7 +439,9 @@ pub(crate) fn scan_tencent_marvis(
                                 serde_json::Value::String(String::from_utf8_lossy(&b).to_string())
                             }
                         };
-                        let timestamp = normalize_timestamp(&ts_json);
+                        let Some(timestamp) = parse_timestamp(&ts_json) else {
+                            continue;
+                        };
                         let unique_key = format!("marvis_tencent_{}_{}", user_id, id);
 
                         logs.push(LogRecord {
@@ -677,7 +682,9 @@ pub(crate) fn scan_workbuddy_project_logs(
                                     .or_else(|| provider.get("timestamp"))
                                     .unwrap_or(&Value::Null);
 
-                                let timestamp = normalize_timestamp(ts);
+                                let Some(timestamp) = parse_timestamp(ts) else {
+                                    continue;
+                                };
                                 let session_id = data
                                     .get("sessionId")
                                     .and_then(|v| v.as_str())
@@ -796,7 +803,10 @@ pub(crate) fn scan_workbuddy_agent_logs(logs: &mut Vec<LogRecord>) -> usize {
                             .unwrap_or_else(|| "workbuddy-agent".to_string());
                         let model = format!("workbuddy-{}", agent_name);
 
-                        let timestamp = normalize_timestamp(&Value::String(ts_str.to_string()));
+                        let Some(timestamp) = parse_timestamp(&Value::String(ts_str.to_string()))
+                        else {
+                            continue;
+                        };
                         let unique_key = format!("workbuddy_{}", req_id);
 
                         logs.push(LogRecord {
@@ -902,7 +912,9 @@ pub(crate) fn scan_qclaw(logs: &mut Vec<LogRecord>) -> usize {
                                         .or_else(|| message.get("timestamp"))
                                         .unwrap_or(&Value::Null);
 
-                                    let timestamp = normalize_timestamp(ts);
+                                    let Some(timestamp) = parse_timestamp(ts) else {
+                                        continue;
+                                    };
                                     let msg_id = data
                                         .get("id")
                                         .and_then(|v| v.as_str())
@@ -984,8 +996,11 @@ pub(crate) fn scan_qclaw(logs: &mut Vec<LogRecord>) -> usize {
                                         .unwrap_or("hermes-model")
                                         .to_string();
 
-                                    let timestamp =
-                                        normalize_timestamp(&Value::String(accessed_at));
+                                    let Some(timestamp) =
+                                        parse_timestamp(&Value::String(accessed_at))
+                                    else {
+                                        continue;
+                                    };
                                     let unique_key = format!("hermes_{}", response_id);
 
                                     logs.push(LogRecord {
@@ -1076,7 +1091,10 @@ pub(crate) fn scan_hermes(logs: &mut Vec<LogRecord>) -> usize {
                             continue;
                         }
 
-                        let timestamp = normalize_timestamp(&serde_json::json!(started_at));
+                        let Some(timestamp) = parse_timestamp(&serde_json::json!(started_at))
+                        else {
+                            continue;
+                        };
                         let unique_key = format!("hermes_{}", id);
                         let cached = c_read.saturating_add(c_write);
 
@@ -1186,7 +1204,11 @@ pub(crate) fn scan_trae(
                             && line.chars().nth(10) == Some('T')
                         {
                             if let Some(raw_ts) = line.split_whitespace().next() {
-                                timestamp = normalize_timestamp(&Value::String(raw_ts.to_string()));
+                                if let Some(parsed) =
+                                    parse_timestamp(&Value::String(raw_ts.to_string()))
+                                {
+                                    timestamp = parsed;
+                                }
                             }
                         }
 
@@ -1236,7 +1258,11 @@ pub(crate) fn scan_trae(
                                 .get(1)
                                 .and_then(|x| x.as_str().parse::<i64>().ok())
                                 .unwrap_or(0);
-                            timestamp = normalize_timestamp(&Value::Number(created_millis.into()));
+                            if let Some(parsed) =
+                                parse_timestamp(&Value::Number(created_millis.into()))
+                            {
+                                timestamp = parsed;
+                            }
                         }
 
                         if timestamp.is_empty() {
@@ -1379,9 +1405,12 @@ pub(crate) fn scan_zcode_db(db_path: &std::path::Path, logs: &mut Vec<LogRecord>
                             continue;
                         }
 
-                        // started_at is a 13-digit ms epoch; normalize_timestamp
+                        // started_at is a 13-digit ms epoch; parse_timestamp
                         // scales it down via its >1e11 rule.
-                        let timestamp = normalize_timestamp(&serde_json::json!(started_at));
+                        let Some(timestamp) = parse_timestamp(&serde_json::json!(started_at))
+                        else {
+                            continue;
+                        };
                         let unique_key = format!("zcode_{}", id);
 
                         logs.push(LogRecord {
@@ -1607,7 +1636,9 @@ pub(crate) fn scan_deepseekgui_dir_checkpointed(
                                                 .to_string();
 
                                             let ts = data.get("timestamp").unwrap_or(&Value::Null);
-                                            let timestamp = normalize_timestamp(ts);
+                                            let Some(timestamp) = parse_timestamp(ts) else {
+                                                continue;
+                                            };
 
                                             let session_id = data
                                                 .get("threadId")

@@ -42,14 +42,13 @@ pub fn opencode_like_db_path(tool_name: &str) -> PathBuf {
         .join(format!("{tool_name}.db"))
 }
 
-/// Normalizes timestamp to "YYYY-MM-DD HH:MM:SS" local time.
-pub fn normalize_timestamp(ts_val: &Value) -> String {
-    parse_timestamp(ts_val).unwrap_or_else(|| Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
-}
-
-/// Same parse as [`normalize_timestamp`] without the wall-clock fallback.
-/// Use it wherever the timestamp feeds a unique key: a key built from "now"
-/// changes on every scan and re-inserts the same record each time.
+/// Parses a timestamp into "YYYY-MM-DD HH:MM:SS" local time.
+///
+/// `None` means the value cannot be parsed. Callers skip the row instead of
+/// substituting the current wall-clock time: corrupt or unknown-format rows
+/// stamped "now" land in today's totals and corrupt daily usage, budget
+/// alerts and anomaly detection, and a key built from "now" changes on every
+/// scan so the same record is re-inserted each time.
 pub(crate) fn parse_timestamp(ts_val: &Value) -> Option<String> {
     match ts_val {
         Value::Number(num) => {
@@ -81,12 +80,32 @@ pub(crate) fn parse_timestamp(ts_val: &Value) -> Option<String> {
                 return Some(local_dt.format("%Y-%m-%d %H:%M:%S").to_string());
             }
 
-            // Try parsing as ISO format without offset or custom format
-            let s_cleaned = s.replace('T', " ").replace('Z', "");
-            let s_no_frac = s_cleaned.split('.').next().unwrap_or(&s_cleaned);
+            // Try parsing as ISO format without offset or custom format.
+            // A trailing `Z` marks UTC; with a space instead of `T` the value
+            // is not RFC 3339, so it gets here unparsed. Reading it as local
+            // time would shift every row by the zone offset and can move it
+            // into the wrong day bucket. No suffix keeps the legacy local
+            // reading.
+            let s_t = s.replace('T', " ");
+            let (s_without_suffix, is_utc) = match s_t.strip_suffix('Z') {
+                Some(rest) => (rest, true),
+                None => (s_t.as_str(), false),
+            };
+            let s_no_frac = s_without_suffix
+                .split('.')
+                .next()
+                .unwrap_or(s_without_suffix);
 
             // Try naive datetime parse
             if let Ok(dt) = NaiveDateTime::parse_from_str(s_no_frac, "%Y-%m-%d %H:%M:%S") {
+                if is_utc {
+                    return Some(
+                        dt.and_utc()
+                            .with_timezone(&Local)
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string(),
+                    );
+                }
                 return Some(dt.format("%Y-%m-%d %H:%M:%S").to_string());
             }
 

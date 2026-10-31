@@ -473,7 +473,9 @@ pub(crate) fn scan_minimax_connection(
                 Value::String(String::from_utf8_lossy(&b).to_string())
             }
         };
-        let timestamp = normalize_timestamp(&ts_json);
+        let Some(timestamp) = parse_timestamp(&ts_json) else {
+            continue;
+        };
         let cache_write = cache_write.unwrap_or(0);
         let cached_tokens = cache_read.unwrap_or(0).saturating_add(cache_write);
         let output_tokens = output_tokens.saturating_add(reasoning_tokens.unwrap_or(0));

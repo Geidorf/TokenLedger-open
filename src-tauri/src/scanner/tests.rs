@@ -3842,3 +3842,83 @@ fn scan_lock_excludes_another_holder_until_released() {
     assert!(other.try_lock().is_ok());
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[cfg(test)]
+mod scanner_timestamp_tests {
+    use super::*;
+
+    /// 期望值按运行机器的本地时区动态算出，多时区 CI 都能通过。
+    fn local_from_utc(naive: &str) -> String {
+        chrono::NaiveDateTime::parse_from_str(naive, "%Y-%m-%d %H:%M:%S")
+            .expect("valid naive datetime")
+            .and_utc()
+            .with_timezone(&Local)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
+    }
+
+    #[test]
+    fn space_separated_utc_string_converts_to_local() {
+        // RFC 3339 要求 `T` 分隔；空格加 `Z` 的串进不了带偏移分支，但它仍是
+        // UTC，直接当本地时间会整体偏移时区差、并可能跨日错桶。
+        let expected = local_from_utc("2026-04-13 22:30:26");
+        assert_eq!(
+            parse_timestamp(&Value::String("2026-04-13 22:30:26.211Z".to_string())),
+            Some(expected.clone())
+        );
+        assert_eq!(
+            parse_timestamp(&Value::String("2026-04-13 22:30:26Z".to_string())),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn rfc3339_conversion_is_unchanged() {
+        let expected = local_from_utc("2026-04-13 22:30:26");
+        for raw in ["2026-04-13T22:30:26.211Z", "2026-04-14T06:30:26.211+08:00"] {
+            assert_eq!(
+                parse_timestamp(&Value::String(raw.to_string())),
+                Some(expected.clone()),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn string_without_zone_suffix_keeps_local_reading() {
+        assert_eq!(
+            parse_timestamp(&Value::String("2026-04-13 22:30:26".to_string())),
+            Some("2026-04-13 22:30:26".to_string())
+        );
+    }
+
+    #[test]
+    fn unparseable_values_yield_none_instead_of_today() {
+        for raw in [
+            Value::Null,
+            Value::String("not a timestamp".to_string()),
+            Value::String("2026-04-13".to_string()),
+        ] {
+            assert_eq!(parse_timestamp(&raw), None, "{raw}");
+        }
+    }
+
+    #[test]
+    fn corrupt_timestamp_row_is_skipped_instead_of_booked_today() {
+        let mut record = serde_json::json!({
+            "type": "assistant",
+            "uuid": "uuid-1",
+            "timestamp": "2026-04-13T25:61:61Z",
+            "message": {
+                "id": "msg_1",
+                "model": "claude-sonnet-4",
+                "usage": {"input_tokens": 10, "output_tokens": 2}
+            }
+        });
+        assert!(claude_record_from_value(&record, "session-1", 1).is_none());
+
+        // 同一行只换时间戳就必须重新计入，证明跳过是时间戳驱动的。
+        record["timestamp"] = serde_json::json!("2026-04-13T22:30:26.211Z");
+        assert!(claude_record_from_value(&record, "session-1", 1).is_some());
+    }
+}

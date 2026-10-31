@@ -473,7 +473,7 @@ pub(crate) struct ParsedCodexTokenEvent {
     pub(crate) delta: CodexUsageCounters,
     pub(crate) event_index: Option<u32>,
     pub(crate) model: String,
-    pub(crate) timestamp: String,
+    pub(crate) timestamp: Option<String>,
     pub(crate) timestamp_utc: Option<DateTime<Utc>>,
 }
 
@@ -725,7 +725,7 @@ pub(crate) fn parse_codex_rollout_reader_checked<
             delta,
             event_index: nonzero_index,
             model: current_model.clone(),
-            timestamp: normalize_timestamp(record.get("timestamp").unwrap_or(&Value::Null)),
+            timestamp: parse_timestamp(record.get("timestamp").unwrap_or(&Value::Null)),
             timestamp_utc: parsed_timestamp,
         });
         if !first_model_seen {
@@ -895,6 +895,7 @@ pub(crate) fn codex_logs_from_rollout(
         .enumerate()
         .filter_map(|(offset, event)| {
             let event_index = event.event_index?;
+            let timestamp = event.timestamp.clone()?;
             (offset >= replay_prefix).then(|| {
                 let combined_cache = event
                     .delta
@@ -910,7 +911,7 @@ pub(crate) fn codex_logs_from_rollout(
                     output_tokens: to_i64(event.delta.output),
                     cached_tokens: to_i64(combined_cache),
                     cache_write_tokens: to_i64(event.delta.cache_write.min(combined_cache)),
-                    timestamp: event.timestamp.clone(),
+                    timestamp,
                     session_id: rollout.root_thread_id.clone(),
                     unique_key: format!("codex_v2_{}_{}", rollout.root_thread_id, event_index),
                     cost_usd: None,
