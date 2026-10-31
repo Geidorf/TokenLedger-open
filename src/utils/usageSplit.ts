@@ -4,7 +4,7 @@ import { splitModelCacheRead } from './modelDistribution';
 import { localized } from '../i18n';
 
 /**
- * 统一「Split by」（对齐 magpie Usage 页）：同一份 StatsData 按 Agent、模型或设备拆分，
+ * 统一「Split by」（按维度拆分）：同一份 StatsData 按 Agent、模型或设备拆分，
  * 选中一项后其他维度随之收窄。只用契约已有字段，不推断：
  * - Agent × 模型的交叉只有 `tools[].models` 里的有效 Token，没有记录数与费用；
  * - 设备只有 `machineDistribution` 的整体构成，不能与 Agent、模型交叉；

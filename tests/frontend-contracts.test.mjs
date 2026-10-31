@@ -1869,7 +1869,7 @@ test('overview day drill opens a single-day review and model cost reports use ev
   const source = populatedDashboardSource();
   assert.match(source, /<ModelCostDistributionPanel models=\{allModelsList\}/);
   assert.match(source, /<CostEfficiencyQuadrantPanel models=\{allModelsList\}/);
-  // 模型排行并入用量拆分的模型维度（对齐 magpie Split by），同样看到全部模型。
+  // 模型排行并入用量拆分的模型维度（按维度拆分，Split by），同样看到全部模型。
   assert.match(source, /<UsageSplitPanel stats=\{stats\}/);
 });
 
