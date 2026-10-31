@@ -15,7 +15,7 @@ TokenLedger 是跨平台 AI Token 消耗账本：桌面端负责本地扫描、�
 
 - **统计口径不可漂移**：有效 Token = 输入 + 输出；缓存读写单列，不得再次并入有效 Token。扫描字段、去重键和估算工具以 README 与 Rust scanner 为准。
 - **同一契约跨端一致**：React、Rust、Supabase、Android 的 `StatsData` 必须共同演进；任何字段新增都要兼容旧云端并补契约测试。
-- **外部额度不走私有接口**：不得抓取或逆向 ChatGPT/Codex、Claude 等消费者产品的未公开内部接口；只使用官方文档支持的 API、用户显式授权的本地来源或手工配置。
+- **外部额度不走私有接口**：不得抓取或逆向 ChatGPT/Codex、Claude 等消费者产品的未公开内部接口；只使用官方文档支持的 API、用户显式授权的本地来源或手工配置。唯一例外是实验性来源：默认关闭、需用户逐版本确认风险、只用用户自有 API Key 或同机 127.0.0.1 回环来源，不得抓取消费者产品的网页会话或 Cookie；具体清单以 [docs/design/quota-source-compliance.md](docs/design/quota-source-compliance.md) 为准。
 - **竞品信息脱敏**：提交信息、PR 与 Issue、代码注释、日志、文档、分支名、标识符与文件名里不得出现参照或对标产品的名称、仓库与作者；一律用中性描述（见 [docs/COLLABORATION.md](docs/COLLABORATION.md) 第 9 节）。
 - **共享文件单写**：`docs/PROJECT.md`、`docs/REQUIREMENTS.md`、`docs/DESIGN.md`、`docs/contracts/**`、Supabase 迁移编号、lockfile 与版本文件，由维护者或派单明确指定的唯一拥有者维护。
 - **保护并行改动**：禁止 `git add .`、`git add -A`、`git reset --hard`、`git clean`、`git checkout -- <file>`；只精确暂存自己拥有的文件。

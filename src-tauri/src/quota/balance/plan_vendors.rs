@@ -62,7 +62,7 @@ pub(crate) struct PlanEndpoint {
     pub url: &'static str,
 }
 
-// Inferred, undocumented: magpie 0.1.810 strings
+// 无公开文档，端点由客户端行为推断
 // `https://open.bigmodel.cn/api/monitor/usage/quota/limit`,
 // `https://api.z.ai/api/monitor/usage/quota/limit`, `/v1/token_plan/remains`
 // with `api.minimaxi.com` / `api.minimax.io`, and `https://api.kimi.com/coding`
