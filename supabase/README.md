@@ -36,6 +36,7 @@
 | `20261024040000_security_hardening` | 权限收紧（v9）：`sync_state` 仅服务角色、v1 RPC 用户校验与空 `search_path`、pgcrypto 移出 public、`token_logs` 撤多余权限 |
 | `20261024050000_budget_snapshot_sync` | 预算状态快照中转与读取 |
 | `20261024060000_usage_dimensions_cloud_v1` | 云端用量维度：会话、账号白名单、Context 构成（保留 90 天） |
+| `20261031100000_quota_fallback_cli_reason_codes` | 额度快照原因码白名单追加兜底 CLI 新码（旧码保留）；部署：`supabase db push`；仅新增允许值，无需回滚 |
 
 ## 2026-10-24 云端用量维度：会话、账号、Context 构成（usage-dimensions-cloud-v1）
 
