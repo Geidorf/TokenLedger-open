@@ -69,6 +69,65 @@ begin
 end;
 $$;
 
+-- 兜底 CLI 新原因码及全部历史白名单兼容回归。
+do $$
+declare
+  v_reason text;
+  v_signature text;
+  v_role text;
+  v_reason_count integer := 0;
+begin
+  foreach v_reason in array array[
+    'claude_fallback_cli_unavailable',
+    'claude_fallback_cli_timeout',
+    'claude_fallback_cli_response_invalid',
+    'claude_statusline_snapshot_missing'
+  ] loop
+    if private.quota_snapshot_reason_valid_v1(v_reason) is distinct from true then
+      raise exception 'quota reason code % is not registered', v_reason;
+    end if;
+  end loop;
+  if private.quota_snapshot_reason_valid_v1('quota_reason_regression_unknown') is distinct from false then
+    raise exception 'unregistered quota reason code must stay rejected';
+  end if;
+
+  for v_reason in
+    select matches[1]
+    from pg_catalog.regexp_matches(
+      pg_catalog.pg_get_functiondef('private.quota_snapshot_reason_base_v1(text)'::regprocedure),
+      '''([a-z_]+)''', 'g'
+    ) as matches
+  loop
+    v_reason_count := v_reason_count + 1;
+    if private.quota_snapshot_reason_valid_v1(v_reason) is distinct from true then
+      raise exception 'historical quota reason code % was lost', v_reason;
+    end if;
+  end loop;
+  if v_reason_count = 0 then
+    raise exception 'historical quota reason whitelist must not be empty';
+  end if;
+
+  foreach v_signature in array array[
+    'private.quota_snapshot_reason_base_v1(text)',
+    'private.quota_snapshot_reason_valid_v1(text)'
+  ] loop
+    foreach v_role in array array['public', 'anon', 'authenticated', 'service_role'] loop
+      if pg_catalog.has_function_privilege(v_role, v_signature, 'EXECUTE') then
+        raise exception '% unexpectedly has execute on %', v_role, v_signature;
+      end if;
+    end loop;
+    if not exists (
+      select 1 from pg_catalog.pg_proc p
+      where p.oid = pg_catalog.to_regprocedure(v_signature)
+        and p.provolatile = 'i' and p.proparallel = 's'
+        and coalesce(p.proconfig, array[]::text[]) @> array['search_path=""']
+    ) then
+      raise exception '% lost immutable, parallel safe or empty search_path', v_signature;
+    end if;
+  end loop;
+end;
+$$;
+
 set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '99999999-9999-9999-9999-999999999999', true
