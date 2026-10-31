@@ -242,6 +242,103 @@ fn tokenledger_gateway_row_wins_over_the_same_call_in_import() {
 }
 
 #[test]
+fn legacy_files_migrate_when_reading_rows_and_status() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 10, 2)]);
+    let (calls, counts) = parse_usage(&source).unwrap();
+    let dir = store_dir(&db_path);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join(LEGACY_STORE_FILE),
+        serde_json::to_vec(&calls[0]).unwrap(),
+    )
+    .unwrap();
+    let meta = ImportMeta {
+        counts,
+        ..ImportMeta::default()
+    };
+    fs::write(
+        dir.join(LEGACY_META_FILE),
+        serde_json::to_vec(&meta).unwrap(),
+    )
+    .unwrap();
+    let before = fs::metadata(dir.join(LEGACY_STORE_FILE)).unwrap();
+
+    assert_eq!(read_rows(&db_path).unwrap().len(), calls.len());
+    assert!(signature(&db_path).is_some());
+    let status = status_value(&db_path, None);
+    assert_eq!(status["imported"], json!(true));
+    assert_eq!(status["lastImport"], serde_json::to_value(&meta).unwrap());
+    let after = fs::metadata(dir.join(STORE_FILE)).unwrap();
+    assert_eq!(before.len(), after.len());
+    assert_eq!(before.modified().unwrap(), after.modified().unwrap());
+    assert!(dir.join(META_FILE).is_file());
+    assert!(!dir.join(LEGACY_STORE_FILE).exists());
+    assert!(!dir.join(LEGACY_META_FILE).exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn current_files_take_priority_over_legacy_files() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 10, 2)]);
+    let (calls, _) = parse_usage(&source).unwrap();
+    write_store(&db_path, &calls).unwrap();
+    let dir = store_dir(&db_path);
+    let meta = ImportMeta::default();
+    fs::write(dir.join(META_FILE), serde_json::to_vec(&meta).unwrap()).unwrap();
+    fs::write(dir.join(LEGACY_STORE_FILE), "旧文件不可解析").unwrap();
+    fs::write(dir.join(LEGACY_META_FILE), "旧文件不可解析").unwrap();
+
+    assert_eq!(read_rows(&db_path).unwrap().len(), 1);
+    assert_eq!(read_meta(&db_path), Some(meta));
+    assert!(dir.join(LEGACY_STORE_FILE).is_file());
+    assert!(dir.join(LEGACY_META_FILE).is_file());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn importing_writes_current_files_and_removes_legacy_files() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let source = write_source(&root, &[source_line(local_ts(8, 0, 0), "s", 10, 2)]);
+    let dir = store_dir(&db_path);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join(LEGACY_STORE_FILE), "旧文件不可解析").unwrap();
+    fs::write(dir.join(LEGACY_META_FILE), "旧文件不可解析").unwrap();
+
+    let meta = import_from(&db_path, &source).unwrap();
+    assert_eq!(meta.counts.imported, 1);
+    assert_eq!(read_rows(&db_path).unwrap().len(), 1);
+    assert_eq!(read_meta(&db_path), Some(meta));
+    assert!(dir.join(STORE_FILE).is_file());
+    assert!(dir.join(META_FILE).is_file());
+    assert!(!dir.join(LEGACY_STORE_FILE).exists());
+    assert!(!dir.join(LEGACY_META_FILE).exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn clearing_removes_current_and_legacy_files_and_accepts_missing_files() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let dir = store_dir(&db_path);
+    fs::create_dir_all(&dir).unwrap();
+    let files = [STORE_FILE, META_FILE, LEGACY_STORE_FILE, LEGACY_META_FILE];
+    for file in files {
+        fs::write(dir.join(file), "待清理").unwrap();
+    }
+    clear(&db_path).unwrap();
+    for file in files {
+        assert!(!dir.join(file).exists());
+    }
+    clear(&db_path).unwrap();
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn corrupt_store_is_an_error_not_a_pure_scan_view() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);

@@ -21,9 +21,11 @@ use crate::app_paths::AppContext;
 use crate::{cache, db};
 
 const STORE_DIR: &str = "imports";
-/// 本机已导入的用量与导入元数据文件。
-const STORE_FILE: &str = "magpie-usage-v1.jsonl";
-const META_FILE: &str = "magpie-import-v1.json";
+/// 旧版导入存储文件名，只用于一次性迁移；两三个版本后连同迁移代码删除。
+const LEGACY_STORE_FILE: &str = "magpie-usage-v1.jsonl";
+const LEGACY_META_FILE: &str = "magpie-import-v1.json";
+const STORE_FILE: &str = "external-ledger-usage-v1.jsonl";
+const META_FILE: &str = "external-ledger-import-v1.json";
 /// 外部网关的配置目录名；只用于自动探测 usage.jsonl。
 const SOURCE_DIR_NAME: &str = "magpie";
 const SOURCE_FILE: &str = "usage.jsonl";
@@ -269,12 +271,25 @@ pub(super) fn store_dir(db_path: &Path) -> PathBuf {
         .join(STORE_DIR)
 }
 
+fn resolve_store_file(db_path: &Path, new: &str, legacy: &str) -> PathBuf {
+    let dir = store_dir(db_path);
+    let path = dir.join(new);
+    if path.exists() {
+        return path;
+    }
+    let legacy_path = dir.join(legacy);
+    if legacy_path.exists() && fs::rename(&legacy_path, &path).is_err() {
+        return legacy_path;
+    }
+    path
+}
+
 fn store_path(db_path: &Path) -> PathBuf {
-    store_dir(db_path).join(STORE_FILE)
+    resolve_store_file(db_path, STORE_FILE, LEGACY_STORE_FILE)
 }
 
 fn meta_path(db_path: &Path) -> PathBuf {
-    store_dir(db_path).join(META_FILE)
+    resolve_store_file(db_path, META_FILE, LEGACY_META_FILE)
 }
 
 fn write_atomic(path: &Path, body: &[u8]) -> Result<(), String> {
@@ -297,7 +312,10 @@ pub(crate) fn write_store(db_path: &Path, calls: &[ImportedCall]) -> Result<(), 
         serde_json::to_writer(&mut body, call).map_err(|error| error.to_string())?;
         body.push(b'\n');
     }
-    write_atomic(&store_path(db_path), &body)
+    let dir = store_dir(db_path);
+    write_atomic(&dir.join(STORE_FILE), &body)?;
+    let _ = fs::remove_file(dir.join(LEGACY_STORE_FILE));
+    Ok(())
 }
 
 /// Cache signature of the imported store; `None` when nothing was imported.
@@ -444,13 +462,17 @@ pub(crate) fn import_from(db_path: &Path, source: &Path) -> Result<ImportMeta, S
         held,
     };
     let body = serde_json::to_vec_pretty(&meta).map_err(|error| error.to_string())?;
-    write_atomic(&meta_path(db_path), &body)?;
+    let dir = store_dir(db_path);
+    write_atomic(&dir.join(META_FILE), &body)?;
+    let _ = fs::remove_file(dir.join(LEGACY_META_FILE));
     Ok(meta)
 }
 
 /// 删除本机已导入的用量；源文件保持不变。
 pub(crate) fn clear(db_path: &Path) -> Result<(), String> {
-    for path in [store_path(db_path), meta_path(db_path)] {
+    let dir = store_dir(db_path);
+    for file in [STORE_FILE, META_FILE, LEGACY_STORE_FILE, LEGACY_META_FILE] {
+        let path = dir.join(file);
         match fs::remove_file(&path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
