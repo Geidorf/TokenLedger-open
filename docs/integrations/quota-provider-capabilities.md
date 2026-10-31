@@ -18,8 +18,8 @@ TokenLedger 必须把以下三类数据明确分开：
 
 - Codex 官方 `app-server` 的稳定 JSON-RPC 方法 `account/rateLimits/read` 可返回当前已登录 ChatGPT 账户的限流窗口。TokenLedger 仅在用户显式开启后启动本机 `codex app-server --stdio`，完成初始化并读取该方法；不启用 experimental API，也不读取或复用 OAuth Token。旧版 Codex 或 app-server 不可用时，才回退到受限 JSONL `rate_limits` 观察，并明确标记为实验性来源。
 - Claude Code 官方 status line 会通过 stdin 向用户配置的命令发送 `rate_limits.five_hour` / `seven_day` 的已用百分比和重置时间。TokenLedger 仅在用户显式开启后，保留这些白名单字段的正规化快照；`~/.claude/settings.json` 只在用户确认预览后改写 `statusLine` 一项（ADR-018，带备份与恢复），不会保存 cwd、session id、transcript path 或原始 stdin。
-- 对 Claude 消费者额度，显式授权的增强来源仍有两级，但顺序改为跨平台内置 CLI PTY 优先，依次尝试 Claude Desktop 随附代理与 Claude Code；失败后才以已安装 CodexBar 的标准化 CLI 兜底。同机 2026-07-17 真实证据保留：内置 `/usage` 加载失败时 CodexBar `web` 可返回四个窗口，但这不再使 macOS 外部桥接成为 Windows 的主要依赖。TokenLedger 本身不读取钥匙串/Cookie/OAuth 或网页原始响应，也不直接请求未公开消费者接口。
-- Antigravity 采用同一“内置优先、桥接可选”策略。TokenLedger 独立实现 CodexBar 可审计思路：复用同用户 Antigravity App/IDE/agy 的 loopback 服务，或短暂启动已安装 agy PTY；TUI 只排空，额度来自 127.0.0.1 的三个 RPC。CodexBar 兜底仅允许 local/CLI 标准化来源，拒绝 OAuth。2026-07-18 本机真实 App 与 TokenLedger 自启 agy 两条路径都返回 Gemini 5h/周及 Claude/GPT 5h/周四个窗口，未调用 CodexBar且身份字段未进入 envelope。
+- 对 Claude 消费者额度，显式授权的增强来源仍有两级，但顺序改为跨平台内置 CLI PTY 优先，依次尝试 Claude Desktop 随附代理与 Claude Code；失败后才以已安装第三方额度工具的标准化 CLI 兜底。同机 2026-07-17 真实证据保留：内置 `/usage` 加载失败时第三方工具的 `web` 来源可返回四个窗口，但这不再使 macOS 外部桥接成为 Windows 的主要依赖。TokenLedger 本身不读取钥匙串/Cookie/OAuth 或网页原始响应，也不直接请求未公开消费者接口。
+- Antigravity 采用同一“内置优先、桥接可选”策略。TokenLedger 独立实现可审计的本地来源思路：复用同用户 Antigravity App/IDE/agy 的 loopback 服务，或短暂启动已安装 agy PTY；TUI 只排空，额度来自 127.0.0.1 的三个 RPC。第三方兜底仅允许 local/CLI 标准化来源，拒绝 OAuth。2026-07-18 本机真实 App 与 TokenLedger 自启 agy 两条路径都返回 Gemini 5h/周及 Claude/GPT 5h/周四个窗口，未调用第三方工具且身份字段未进入 envelope。
 - OpenAI / Anthropic API 组织用量，以及 Claude Enterprise Analytics，继续作为不同 scope 的后续 Provider；组织密钥不得进入 React、APK、Git 或日志。
 
 因此当前产品策略是：**官方本地协议优先、受控观察仅回退、本地增强逐来源显式授权、企业/API 数据独立建模、不可得时诚实降级**。
@@ -33,10 +33,10 @@ TokenLedger 必须把以下三类数据明确分开：
 | `openai-api-organization` | OpenAI Platform API 组织 | Organization Usage / Costs API | OpenAI Admin API key | 按时间、模型、项目、用户/API key 聚合的 API 用量与费用 | ChatGPT/Codex 消费者订阅余量；无预算时不能推导百分比 | `supported` | 后续 Provider 候选，尚未接入产品 |
 | `openai-codex-workspace` | ChatGPT Business/Enterprise/Edu 工作区 | Codex Analytics API | 匹配工作区与权限的组织凭据 | 工作区级聚合 Codex 报表 | 个人订阅窗口、通用 Platform 账单上限 | `supported-plan-dependent` | 后续 Provider 候选；能力探测失败不回退私有接口 |
 | `anthropic-claude-consumer` | Claude Pro/Max 的 Claude Code 窗口 | Claude Code status line stdin JSON | 用户手工配置 status line + TokenLedger 显式 opt-in；首次 API 响应后才可能出现 | 5 小时/7 天窗口的已用百分比与重置时间；每个窗口可独立缺失 | 可轮询 REST API、完整账单、Team/Enterprise 任意 seat 保证、跨机器实时合并 | `plan-dependent` | 已实现白名单正规化快照；字段缺失时不制造 0 |
-| `anthropic-claude-consumer` | Claude Pro/Max，含 Claude 桌面版自用场景 | 用户授权的 CodexBar 标准化 CLI 桥接 | CodexBar 已安装且其 Claude web/OAuth/CLI 来源已授权 + TokenLedger 单独启用 | CodexBar 标准化 JSON 中的 5 小时、每周、模型/功能额度窗口与重置时间 | TokenLedger 不取得或保存 CodexBar 持有的 Cookie/OAuth/钥匙串、账户身份或网页原始响应；API Admin 输出不转为消费者额度 | `experimental` | 已实现固定参数/目录/超时/256 KiB/16 窗口与来源白名单；本机真实 CodexBar `web` 来源已返回 4 个标准化窗口，身份字段已丢弃 |
-| `anthropic-claude-consumer` | Claude Pro/Max，含 Claude 桌面版自用场景 | TokenLedger 内置 Claude CLI PTY 主路径；来源发现与解析参考 CodexBar | Claude Desktop 随附代理或 Claude Code 已登录 + TokenLedger 单独启用 | `/usage` 返回的 5 小时、每周与模型百分比窗口，支持 used/left 与相对 reset | 某些计划只返回订阅提示或加载失败；不读取凭据，不保证所有桌面账户都有数值 | `experimental` | 已实现桌面版优先发现、无工具 PTY、全新会话重试与字段白名单；本机 `/usage` 当前诚实返回加载失败，随后可由 CodexBar 兜底 |
-| `google-antigravity-consumer` | Antigravity 消费者模型额度 | TokenLedger 内置同用户 App/IDE/agy loopback；来源协议参考 CodexBar 固定提交 | Antigravity/agy 已登录 + TokenLedger 单独启用 | Gemini 与 Claude/GPT 的 5 小时、周等百分比窗口及可信重置时间 | 账户身份、账单、绝对 Token 上限；不使用远端 OAuth | `experimental` | 已实现 App/IDE/已有 agy 发现、自启 agy PTY、loopback only、256 KiB/16 窗口与 LKG；本机两条真实内置路径均返回 4 个窗口 |
-| `google-antigravity-consumer` | Antigravity 消费者模型额度 | 可选 CodexBar 标准化 local/CLI 兜底 | CodexBar 已安装 + TokenLedger 额外启用兜底 | CodexBar 标准化 app/cli/ide/local 窗口 | OAuth/远端抓取、账户身份、原始响应 | `experimental` | 已实现固定 `--provider antigravity --source cli`、来源白名单与字段投影；仅在内置路径失败后执行 |
+| `anthropic-claude-consumer` | Claude Pro/Max，含 Claude 桌面版自用场景 | 用户授权的第三方标准化 CLI 桥接 | 第三方额度工具已安装且其 Claude web/OAuth/CLI 来源已授权 + TokenLedger 单独启用 | 第三方标准化 JSON 中的 5 小时、每周、模型/功能额度窗口与重置时间 | TokenLedger 不取得或保存该工具持有的 Cookie/OAuth/钥匙串、账户身份或网页原始响应；API Admin 输出不转为消费者额度 | `experimental` | 已实现固定参数/目录/超时/256 KiB/16 窗口与来源白名单；本机真实第三方 `web` 来源已返回 4 个标准化窗口，身份字段已丢弃 |
+| `anthropic-claude-consumer` | Claude Pro/Max，含 Claude 桌面版自用场景 | TokenLedger 内置 Claude CLI PTY 主路径；来源发现与解析参考第三方公开实现 | Claude Desktop 随附代理或 Claude Code 已登录 + TokenLedger 单独启用 | `/usage` 返回的 5 小时、每周与模型百分比窗口，支持 used/left 与相对 reset | 某些计划只返回订阅提示或加载失败；不读取凭据，不保证所有桌面账户都有数值 | `experimental` | 已实现桌面版优先发现、无工具 PTY、全新会话重试与字段白名单；本机 `/usage` 当前诚实返回加载失败，随后可由第三方桥接兜底 |
+| `google-antigravity-consumer` | Antigravity 消费者模型额度 | TokenLedger 内置同用户 App/IDE/agy loopback；来源协议参考第三方公开实现 | Antigravity/agy 已登录 + TokenLedger 单独启用 | Gemini 与 Claude/GPT 的 5 小时、周等百分比窗口及可信重置时间 | 账户身份、账单、绝对 Token 上限；不使用远端 OAuth | `experimental` | 已实现 App/IDE/已有 agy 发现、自启 agy PTY、loopback only、256 KiB/16 窗口与 LKG；本机两条真实内置路径均返回 4 个窗口 |
+| `google-antigravity-consumer` | Antigravity 消费者模型额度 | 可选第三方标准化 local/CLI 兜底 | 第三方工具已安装 + TokenLedger 额外启用兜底 | 第三方标准化 app/cli/ide/local 窗口 | OAuth/远端抓取、账户身份、原始响应 | `experimental` | 已实现固定 `--provider antigravity --source cli`、来源白名单与字段投影；仅在内置路径失败后执行 |
 | `anthropic-enterprise-analytics` | Claude Enterprise 产品分析 | Claude Enterprise Analytics API | Enterprise 主所有者启用，Analytics API key（`read:analytics`） | 聊天/Claude Code 活动、采用率；usage-based 计划可得成本与使用 | 个人 Pro/Max 额度；Admin API key 与 Analytics API key 不可互换 | `supported-plan-dependent` | 后续 Provider 候选，尚未接入产品 |
 | `anthropic-api-organization` | Claude Console API 组织 | Usage and Cost API | Anthropic Admin API key；个人账户不可用 | 模型/工作区等维度 Token 用量与美元费用 | Claude Pro/Max 消费者窗口；无预算时不能推导百分比 | `supported` | 后续 Provider 候选，尚未接入产品 |
 | `manual-budget` | 任意用户自定义预算 | 本地配置 | 无第三方 secret | 用户定义的周期、用量与上限 | 官方权益或官方重置承诺 | `manual` | 设计预留，当前未把手工值伪装成官方额度 |
@@ -63,9 +63,9 @@ TokenLedger 必须把以下三类数据明确分开：
 
 ### 3.3 外部实现参考（非官方 Provider）
 
-- [CodexBar Claude Provider](https://github.com/steipete/CodexBar/blob/main/docs/claude.md)：Claude Desktop/Code 本地代理发现、CLI PTY `/usage` 交互、used/left 百分比与计划无数值时的诚实降级。TokenLedger 仅参考其公开实现思路并独立实现受限子集，不要求安装 CodexBar，也不复制 CodexBar 的 OAuth/Web/Cookie/Keychain 来源。
-- [CodexBar Antigravity Provider（固定提交）](https://github.com/steipete/CodexBar/blob/e6b2ea490cec47d122ba14e32bfc41e53d98422c/docs/antigravity.md)：App/agy/IDE 本地服务发现、三个额度 RPC、PTY 生命周期与诚实降级。TokenLedger 独立重写跨平台受限子集，不复制 OAuth 凭据源，也不把 CodexBar 作为运行必需。
-- [CodexBar Provider 架构](https://github.com/steipete/CodexBar/blob/main/docs/provider.md)：用于校验来源规划、fallback 与错误边界；不是 TokenLedger 运行时依赖或稳定上游接口。
+- 第三方额度工具的 Claude Provider 公开文档（链接已删除）：Claude Desktop/Code 本地代理发现、CLI PTY `/usage` 交互、used/left 百分比与计划无数值时的诚实降级。TokenLedger 仅参考其公开实现思路并独立实现受限子集，不要求安装第三方工具，也不复制其 OAuth/Web/Cookie/Keychain 来源。
+- 第三方额度工具的 Antigravity Provider 公开文档（固定提交，链接已删除）：App/agy/IDE 本地服务发现、三个额度 RPC、PTY 生命周期与诚实降级。TokenLedger 独立重写跨平台受限子集，不复制 OAuth 凭据源，也不把第三方工具作为运行必需。
+- 第三方额度工具的 Provider 架构文档（链接已删除）：用于校验来源规划、fallback 与错误边界；不是 TokenLedger 运行时依赖或稳定上游接口。
 
 ### 3.4 组织内部 OpenAPI（自建网关类）
 
@@ -115,21 +115,21 @@ TokenLedger 必须把以下三类数据明确分开：
 - 正规化快照以私有权限原子替换，status line stdout 只输出类似 `Claude 5h 24% · 7d 41%` 的短摘要；不输出路径、会话或原始数据。
 - 该能力仅适用于官方说明覆盖的 Claude.ai Pro/Max，且需等待会话首次 API 响应；不是 TokenLedger 可主动轮询的 REST API。
 
-### 5.4 `anthropic-claude-consumer` 内置 CLI PTY 与 CodexBar 兜底
+### 5.4 `anthropic-claude-consumer` 内置 CLI PTY 与第三方桥接兜底
 
 - 默认关闭并与 Claude Code status line 分开授权。开启后先在 macOS Application Support、Windows Roaming/Local 与 Linux config 中发现 Claude/Claude-3p 桌面版随附的最高版本本地代理，并回退到用户 Home、GUI PATH 与 Homebrew 常见位置中的 Claude Code；所有候选必须规范化为可执行普通文件并去重。
 - 使用跨平台 PTY 固定执行本地代理 `--allowed-tools ""`，工作目录为 TokenLedger 应用数据 `ClaudeProbe`，`TERM`/`NO_COLOR` 固定；不经 shell，不传提示词，不授予工具，不读取或复制 Claude credential。首次遇到信任提示时，只确认 TokenLedger 自己创建的隔离目录。
 - 交互等待启动页后发送 `/usage`，加载期间按有界间隔发送 Enter；总时长 24 秒、输出 256 KiB、120×40 终端、最多 16 个窗口。完成、失败或超时时终止子进程并关闭 PTY，不把 stdout/stderr 原文写入磁盘或 UI。
 - ANSI/光标控制正规化后，只解析 `Current session`、`Current week (all models)`、Sonnet/Opus 的百分比；同时支持 `% used` 与 `% left`，相对 reset 需落在七天上界内。账户、组织、成本、Session Token 明细和其他终端字段全部丢弃。成功 envelope 标 `experimental/local-authorized`。
-- 内置 PTY 失败后才发现 CodexBar CLI，并以固定 Claude/auto/JSON 参数、TokenLedger 应用数据工作目录、空 stdin、丢弃 stderr、独立进程组、20 秒单次及 24 秒桥接总时限执行。输出上限 256 KiB，只接受 `web/oauth/claude/cli/claude-web` 来源、有效 `updatedAt`、0..100 百分比、8 天内 reset 与最多 16 个唯一窗口。账户/组织/identity/pace/error/source 原文不进入 envelope；两级恢复链合计不超过 44 秒。
-- 两级增强来源都失败时，如果 status line 同时启用且存在合法快照则回退；否则合格 LKG 继续按通用规则呈现 stale。CodexBar 缺失/超时/无效响应与内置 PTY 的登录失效、CLI 缺失、加载失败、计划无数值分别使用已注册 reason。
+- 内置 PTY 失败后才发现第三方桥接 CLI，并以固定 Claude/auto/JSON 参数、TokenLedger 应用数据工作目录、空 stdin、丢弃 stderr、独立进程组、20 秒单次及 24 秒桥接总时限执行。输出上限 256 KiB，只接受 `web/oauth/claude/cli/claude-web` 来源、有效 `updatedAt`、0..100 百分比、8 天内 reset 与最多 16 个唯一窗口。账户/组织/identity/pace/error/source 原文不进入 envelope；两级恢复链合计不超过 44 秒。
+- 两级增强来源都失败时，如果 status line 同时启用且存在合法快照则回退；否则合格 LKG 继续按通用规则呈现 stale。第三方桥接缺失/超时/无效响应与内置 PTY 的登录失效、CLI 缺失、加载失败、计划无数值分别使用已注册 reason。
 
-### 5.5 `google-antigravity-consumer` 内置 loopback/agy 与 CodexBar 兜底
+### 5.5 `google-antigravity-consumer` 内置 loopback/agy 与第三方桥接兜底
 
 - 默认关闭。内置路径先发现同用户 Antigravity App、已有 agy 与 IDE language server；App/IDE 必须从进程参数取得 CSRF，agy 端点不使用 token。进程与端口发现固定使用绝对 `ps/lsof` 或 Windows PowerShell，不执行 shell 字符串。
 - 若现有来源均失败，从 TokenLedger/Antigravity 显式绝对覆盖、绝对 PATH 目录与平台已知位置解析 `agy`，以 160×50 PTY 启动。TUI 只由后台 reader 排空、不解析也不持久化；完成/失败/超时只 kill/wait 本次 child，不终止用户原有 agy。
 - 请求仅限 `127.0.0.1` 的 RetrieveUserQuotaSummary、GetUserStatus、GetCommandModelConfigs。专用 client 固定 no-proxy，HTTPS 自签名放宽不复用于互联网；完整路径 20 秒、单请求 3 秒、响应 256 KiB、最多 16 个进程/端口/窗口。
-- 内置失败后，额外 opt-in 的 CodexBar 兜底固定 Antigravity/cli/JSON 参数；标准化输出只接受 app/cli/ide/local，显式拒绝 oauth。两条路径都只保留去身份的百分比、周期与 reset，能力标 `experimental/local-authorized`。
+- 内置失败后，额外 opt-in 的第三方桥接兜底固定 Antigravity/cli/JSON 参数；标准化输出只接受 app/cli/ide/local，显式拒绝 oauth。两条路径都只保留去身份的百分比、周期与 reset，能力标 `experimental/local-authorized`。
 
 ### 5.6 组织/企业 Provider
 
@@ -147,7 +147,7 @@ TokenLedger 必须把以下三类数据明确分开：
 
 ## 6. 当前启停、缓存与失败处理
 
-- Codex、Claude 与 Antigravity 三个 Provider 各自默认关闭；Claude status line、Claude 内置增强、Antigravity 内置读取及其 CodexBar 兜底分别由设置字段控制，启用一个不会授权另一个 Provider。
+- Codex、Claude 与 Antigravity 三个 Provider 各自默认关闭；Claude status line、Claude 内置增强、Antigravity 内置读取及其第三方桥接兜底分别由设置字段控制，启用一个不会授权另一个 Provider。
 - 关闭单个 Claude 来源后不再读取它；关闭最后一个 Claude 来源才清除 Provider LKG/停止跨设备同步。Claude status line 即使继续写入正规化输入快照，UI 也必须忽略，直到用户重新开启。
 - 为关闭与异步读取并发的撤权竞态兜底，聚合命令在 Provider 完成后重新读取当前设置，清除已禁用来源并把返回值替换为授权必需；Claude helper 写后也重新检查设置，若期间关闭则清理快照并拒绝成功。持久写入与删除使用同一串行锁。
 - 每个 `providerId + scope` 最多一个 in-flight refresh；短时间重复请求复用结果，不在 React render 或 Android recomposition 中重复启动来源。
@@ -172,15 +172,15 @@ TokenLedger 必须把以下三类数据明确分开：
 | Claude status line 两个窗口 | 5h/7d 百分比与重置正确；stdout 仅安全短摘要 | 匿名主二进制探针与自动化通过；待 Pro/Max 实际会话验收 |
 | Claude stdin 含 cwd/session/transcript 等字段 | 磁盘只出现白名单正规化字段 | 匿名二进制探针与白名单扫描通过 |
 | Claude 输入缺字段、超限、重置越界或快照损坏 | 不更新有效快照；返回明确 reason；不输出原文 | 自动化通过 |
-| CodexBar 真实 Claude 消费者来源 | 只接收标准化窗口，拒绝 API Admin scope，丢弃账户/组织/pace/原始来源字段 | 本机 CodexBar CLI `0.42.1` 真实 `web` 来源返回 5 小时、全模型每周、Daily Routines 与模型每周共 4 个窗口；忽略式真实账户 Rust 门禁通过 |
-| CodexBar 缺失、超时、非 Claude/API scope、超 16 窗口或重复 ID | 受控 reason；内置 PTY 已先执行；合格 LKG 保持 stale | 固定参数真实子进程、parser 与前端静态契约通过 |
+| 第三方桥接的真实 Claude 消费者来源 | 只接收标准化窗口，拒绝 API Admin scope，丢弃账户/组织/pace/原始来源字段 | 本机第三方桥接 CLI `0.42.1` 真实 `web` 来源返回 5 小时、全模型每周、Daily Routines 与模型每周共 4 个窗口；忽略式真实账户 Rust 门禁通过 |
+| 第三方桥接缺失、超时、非 Claude/API scope、超 16 窗口或重复 ID | 受控 reason；内置 PTY 已先执行；合格 LKG 保持 stale | 固定参数真实子进程、parser 与前端静态契约通过 |
 | Claude 合成 PTY used/left 输出 | 5h/7d/模型窗口进入 experimental envelope；账户与终端原文不进入输出 | 合成 parser 3 组与真实 PTY 往返测试通过 |
 | Claude Desktop 随附代理与 Claude Code 候选 | 桌面版最高版本优先，候选必须为规范化可执行文件；不访问 Keychain | 本机发现桌面版 `2.1.142` 与 Claude Code `2.1.211`；生产路径优先桌面版，真实 `/usage` 当前均诚实返回加载失败 |
 | PTY 超时、输出越界、计划无数值或登录失效 | 24 秒预算内返回注册 reason；终端原文/账户信息不进入 UI/LKG/日志，合格 LKG 保持 stale | parser/边界与合成 PTY 自动化通过；真实来源恢复后待平台验收 |
-| 用户未安装 CodexBar | 不索取凭据；Claude 与 Antigravity 仍使用各自内置主路径 | 候选空集、失败分类与内置路径自动化通过 |
+| 用户未安装第三方桥接工具 | 不索取凭据；Claude 与 Antigravity 仍使用各自内置主路径 | 候选空集、失败分类与内置路径自动化通过 |
 | Antigravity App 同用户 loopback | CSRF 只留在进程内；专用 no-proxy client 只请求 127.0.0.1，输出不含账户身份 | 2026-07-18 macOS 真实 App 读取通过，4 个窗口；Windows 真实进程待外部验收 |
 | Antigravity App 不可用但 agy 已安装 | 规范化绝对路径、PTY 只排空、端点就绪后读取，结束仅回收本次 child | 2026-07-18 macOS 真实自启 agy 读取通过，4 个窗口；自动化 parser/生命周期通过 |
-| Antigravity CodexBar 兜底 | 只接受 app/cli/ide/local；`oauth` 与未知来源 fail closed | 合成标准化 parser 与 OAuth 拒绝测试通过；真实 CLI 已作参考对照，不作为内置实测来源 |
+| Antigravity 第三方桥接兜底 | 只接受 app/cli/ide/local；`oauth` 与未知来源 fail closed | 合成标准化 parser 与 OAuth 拒绝测试通过；真实 CLI 已作参考对照，不作为内置实测来源 |
 | 应用重启后来源暂不可用 | 30 天内合格 LKG 变 stale；超期后拒绝 | 自动化通过 |
 | 用户在读取/写入期间关闭 Codex/Claude/Antigravity | 完成后复核授权，不返回已撤权数据；内存、输入快照和 LKG 清除或忽略 | 竞态与原子设置自动化通过；待真实多进程 UI 复核 |
 | 公司 OpenAPI key 缺失、被拒绝或系统凭据不可读 | `auth-required/error`；React/APK 只见状态，拿不到 secret | 自动化覆盖缺 key/安全边界；真实系统凭据与有效 key 待验 |
