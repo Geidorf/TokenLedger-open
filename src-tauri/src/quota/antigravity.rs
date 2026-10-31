@@ -1,10 +1,11 @@
 use super::{
-    canonical_executable, capture_codexbar_provider_output, format_timestamp,
-    resolve_codexbar_executables, sanitize_codexbar_identifier, sanitize_codexbar_label,
-    valid_codex_reset_time, CachedEnvelope, QuotaAction, QuotaActionKind, QuotaCapability,
-    QuotaMode, QuotaProviderEnvelope, QuotaScope, QuotaSource, QuotaStatus, QuotaUnit,
-    QuotaWindowSnapshot, QuotaWindowStatus, ANTIGRAVITY_PROVIDER_ID, CODEX_MAX_WINDOW_MINUTES,
-    LAST_GOOD_RETENTION, MAX_FUTURE_CLOCK_SKEW_SECONDS, RECENT_RESULT_REUSE, STALE_AFTER_SECONDS,
+    canonical_executable, capture_fallback_cli_provider_output, format_timestamp,
+    resolve_fallback_cli_executables, sanitize_fallback_cli_identifier,
+    sanitize_fallback_cli_label, valid_codex_reset_time, CachedEnvelope, QuotaAction,
+    QuotaActionKind, QuotaCapability, QuotaMode, QuotaProviderEnvelope, QuotaScope, QuotaSource,
+    QuotaStatus, QuotaUnit, QuotaWindowSnapshot, QuotaWindowStatus, ANTIGRAVITY_PROVIDER_ID,
+    CODEX_MAX_WINDOW_MINUTES, LAST_GOOD_RETENTION, MAX_FUTURE_CLOCK_SKEW_SECONDS,
+    RECENT_RESULT_REUSE, STALE_AFTER_SECONDS,
 };
 use chrono::{DateTime, Utc};
 use portable_pty::{native_pty_system, CommandBuilder as PtyCommandBuilder, MasterPty, PtySize};
@@ -30,8 +31,8 @@ const LOCAL_MAX_WINDOWS: usize = 16;
 const PROCESS_LIST_TIMEOUT: Duration = Duration::from_secs(4);
 const PORT_LIST_TIMEOUT: Duration = Duration::from_secs(3);
 const AGY_STARTUP_POLL: Duration = Duration::from_millis(200);
-const CODEXBAR_TOTAL_TIMEOUT: Duration = Duration::from_secs(12);
-const CODEXBAR_TIMEOUT: Duration = Duration::from_secs(10);
+const FALLBACK_CLI_TOTAL_TIMEOUT: Duration = Duration::from_secs(12);
+const FALLBACK_CLI_TIMEOUT: Duration = Duration::from_secs(10);
 
 const QUOTA_SUMMARY_PATH: &str =
     "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary";
@@ -114,7 +115,7 @@ pub(super) fn clear_antigravity_probe_cache() {
 pub(super) async fn antigravity_envelope(
     app_data_dir: &Path,
     fetched_at: DateTime<Utc>,
-    codexbar_fallback_enabled: bool,
+    fallback_cli_enabled: bool,
 ) -> QuotaProviderEnvelope {
     let cache_key = app_data_dir.to_path_buf();
     if let Some(cached) = lock_probe_state()
@@ -129,10 +130,10 @@ pub(super) async fn antigravity_envelope(
     let native_result = fetch_native_envelope(fetched_at).await;
     let result = match native_result {
         Ok(envelope) => Ok(envelope),
-        Err(native_failure) if codexbar_fallback_enabled => {
+        Err(native_failure) if fallback_cli_enabled => {
             let app_data_dir = app_data_dir.to_path_buf();
             let bridge = tauri::async_runtime::spawn_blocking(move || {
-                fetch_codexbar_envelope(&app_data_dir, fetched_at)
+                fetch_fallback_cli_envelope(&app_data_dir, fetched_at)
             })
             .await
             .unwrap_or(Err(AntigravityFailure::BridgeUnavailable));
@@ -653,7 +654,7 @@ fn parse_quota_summary(
         let group_name = group
             .get("displayName")
             .and_then(Value::as_str)
-            .and_then(sanitize_codexbar_label)
+            .and_then(sanitize_fallback_cli_label)
             .unwrap_or_else(|| format!("Quota {}", group_index + 1));
         let group_slug = safe_slug(&group_name).unwrap_or_else(|| format!("group-{group_index}"));
         let buckets = group
@@ -674,7 +675,7 @@ fn parse_quota_summary(
             let bucket_id = bucket
                 .get("bucketId")
                 .and_then(Value::as_str)
-                .and_then(sanitize_codexbar_identifier)
+                .and_then(sanitize_fallback_cli_identifier)
                 .ok_or(AntigravityFailure::ResponseInvalid)?;
             let window_id = format!("antigravity-{group_slug}-{bucket_id}");
             if !stable_ids.insert(window_id.clone()) {
@@ -686,7 +687,7 @@ fn parse_quota_summary(
             let bucket_name = bucket
                 .get("displayName")
                 .and_then(Value::as_str)
-                .and_then(sanitize_codexbar_label)
+                .and_then(sanitize_fallback_cli_label)
                 .unwrap_or_else(|| bucket_id.clone());
             let used = (100.0 - remaining_fraction * 100.0).clamp(0.0, 100.0);
             let window_minutes = cadence_minutes(&bucket_id, &bucket_name);
@@ -1371,45 +1372,45 @@ fn capture_command_stdout(
     Ok(bytes)
 }
 
-fn fetch_codexbar_envelope(
+fn fetch_fallback_cli_envelope(
     app_data_dir: &Path,
     fetched_at: DateTime<Utc>,
 ) -> Result<QuotaProviderEnvelope, AntigravityFailure> {
-    let candidates = resolve_codexbar_executables();
+    let candidates = resolve_fallback_cli_executables();
     if candidates.is_empty() {
         return Err(AntigravityFailure::BridgeUnavailable);
     }
     let deadline = Instant::now()
-        .checked_add(CODEXBAR_TOTAL_TIMEOUT)
+        .checked_add(FALLBACK_CLI_TOTAL_TIMEOUT)
         .ok_or(AntigravityFailure::BridgeTimeout)?;
     let mut best_failure = AntigravityFailure::BridgeUnavailable;
     for program in candidates {
         let remaining = deadline
             .checked_duration_since(Instant::now())
             .ok_or(AntigravityFailure::BridgeTimeout)?;
-        let bytes = match capture_codexbar_provider_output(
+        let bytes = match capture_fallback_cli_provider_output(
             &program,
             app_data_dir,
             "antigravity",
             "cli",
-            remaining.min(CODEXBAR_TIMEOUT),
+            remaining.min(FALLBACK_CLI_TIMEOUT),
         ) {
             Ok(bytes) => bytes,
-            Err(super::ClaudeCodexBarFailure::Unavailable) => {
+            Err(super::FallbackCliFailure::Unavailable) => {
                 best_failure = prefer_failure(best_failure, AntigravityFailure::BridgeUnavailable);
                 continue;
             }
-            Err(super::ClaudeCodexBarFailure::Timeout) => {
+            Err(super::FallbackCliFailure::Timeout) => {
                 best_failure = prefer_failure(best_failure, AntigravityFailure::BridgeTimeout);
                 continue;
             }
-            Err(super::ClaudeCodexBarFailure::ResponseInvalid) => {
+            Err(super::FallbackCliFailure::ResponseInvalid) => {
                 best_failure =
                     prefer_failure(best_failure, AntigravityFailure::BridgeResponseInvalid);
                 continue;
             }
         };
-        match parse_codexbar_output(&bytes, fetched_at) {
+        match parse_fallback_cli_output(&bytes, fetched_at) {
             Ok(envelope) => return Ok(envelope),
             Err(failure) => best_failure = prefer_failure(best_failure, failure),
         }
@@ -1417,7 +1418,7 @@ fn fetch_codexbar_envelope(
     Err(best_failure)
 }
 
-fn parse_codexbar_output(
+fn parse_fallback_cli_output(
     bytes: &[u8],
     fetched_at: DateTime<Utc>,
 ) -> Result<QuotaProviderEnvelope, AntigravityFailure> {
@@ -1472,12 +1473,12 @@ fn parse_codexbar_output(
             let id = item
                 .get("id")
                 .and_then(Value::as_str)
-                .and_then(sanitize_codexbar_identifier)
+                .and_then(sanitize_fallback_cli_identifier)
                 .unwrap_or_else(|| format!("extra-{index}"));
             let label = item
                 .get("title")
                 .and_then(Value::as_str)
-                .and_then(sanitize_codexbar_label)
+                .and_then(sanitize_fallback_cli_label)
                 .unwrap_or_else(|| format!("Antigravity quota {}", index + 1));
             windows.push(normalize_bridge_window(
                 format!("codexbar-{id}"),
@@ -1683,7 +1684,8 @@ mod tests {
                 ]
             }
         });
-        let envelope = parse_codexbar_output(payload.to_string().as_bytes(), now).expect("bridge");
+        let envelope =
+            parse_fallback_cli_output(payload.to_string().as_bytes(), now).expect("bridge");
         assert_eq!(envelope.windows.len(), 2);
         assert!(envelope
             .windows
@@ -1700,7 +1702,7 @@ mod tests {
             "usage": {"updatedAt": format_timestamp(now), "primary": {"usedPercent": 1.0}}
         });
         assert_eq!(
-            parse_codexbar_output(payload.to_string().as_bytes(), now),
+            parse_fallback_cli_output(payload.to_string().as_bytes(), now),
             Err(AntigravityFailure::BridgeResponseInvalid)
         );
     }

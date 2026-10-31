@@ -4397,12 +4397,12 @@ test('Claude enhanced quota prefers the bounded in-process PTY and keeps CodexBa
   assert.match(backend, /disableDeepLinkRegistration/);
   assert.match(backend, /retry_candidates/);
   assert.match(backend, /state\.recent\.remove\(app_data_dir\)/);
-  assert.match(backend, /resolve_codexbar_executables/);
+  assert.match(backend, /resolve_fallback_cli_executables/);
   assert.match(backend, /TOKENLEDGER_CODEXBAR_BIN/);
   assert.match(backend, /CodexBarCLI/);
-  assert.match(backend, /capture_codexbar_provider_output\(program, app_data_dir, "claude", "auto", timeout\)/);
-  assert.match(backend, /CLAUDE_CODEXBAR_MAX_OUTPUT_BYTES/);
-  assert.match(backend, /claude_codexbar_envelope\(app_data_dir, fetched_at\)/);
+  assert.match(backend, /capture_fallback_cli_provider_output\(program, app_data_dir, "claude", "auto", timeout\)/);
+  assert.match(backend, /CLAUDE_FALLBACK_CLI_MAX_OUTPUT_BYTES/);
+  assert.match(backend, /claude_fallback_cli_envelope\(app_data_dir, fetched_at\)/);
   assert.doesNotMatch(backend, /api\/oauth\/usage|Claude Code-credentials/);
   // U-107：实验来源收进「高级」，默认不参与；边界说明仍写明不碰凭据。
   assert.match(settings, /FALLBACK_CLI_NAME = 'CodexBar'/);
@@ -4423,7 +4423,7 @@ test('Antigravity quota is native-first on every desktop and restricts CodexBar 
   assert.match(backend, /ManagedAgyProcess/);
   assert.match(backend, /resolve_agy_executables/);
   assert.match(backend, /native_pty_system/);
-  assert.match(backend, /capture_codexbar_provider_output\([\s\S]+"antigravity",[\s\S]+"cli"/);
+  assert.match(backend, /capture_fallback_cli_provider_output\([\s\S]+"antigravity",[\s\S]+"cli"/);
   assert.match(backend, /Some\("app" \| "cli" \| "ide" \| "local"\)/);
   assert.doesNotMatch(backend, /api\/oauth|accounts\.google\.com/);
   assert.match(settings, /只请求当前用户 Antigravity App、IDE 或 agy 的 127\.0\.0\.1 本地服务/);

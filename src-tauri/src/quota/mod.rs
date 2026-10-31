@@ -52,11 +52,11 @@ const CLAUDE_NATIVE_CLI_SETTLE: Duration = Duration::from_millis(900);
 const CLAUDE_NATIVE_MAX_OUTPUT_BYTES: usize = 256 * 1024;
 const CLAUDE_NATIVE_MAX_WINDOWS: usize = 16;
 const CLAUDE_PROBE_SETTINGS_MAX_BYTES: usize = 16 * 1024;
-const CLAUDE_CODEXBAR_TOTAL_TIMEOUT: Duration = Duration::from_secs(24);
-const CLAUDE_CODEXBAR_TIMEOUT: Duration = Duration::from_secs(20);
-const CLAUDE_CODEXBAR_READER_JOIN_TIMEOUT: Duration = Duration::from_millis(250);
-const CLAUDE_CODEXBAR_MAX_OUTPUT_BYTES: usize = 256 * 1024;
-const CLAUDE_CODEXBAR_MAX_WINDOWS: usize = 16;
+const CLAUDE_FALLBACK_CLI_TOTAL_TIMEOUT: Duration = Duration::from_secs(24);
+const CLAUDE_FALLBACK_CLI_TIMEOUT: Duration = Duration::from_secs(20);
+const CLAUDE_FALLBACK_CLI_READER_JOIN_TIMEOUT: Duration = Duration::from_millis(250);
+const CLAUDE_FALLBACK_CLI_MAX_OUTPUT_BYTES: usize = 256 * 1024;
+const CLAUDE_FALLBACK_CLI_MAX_WINDOWS: usize = 16;
 const CODEX_LAST_GOOD_FILE: &str = "quota_lkg_codex.json";
 const CLAUDE_LAST_GOOD_FILE: &str = "quota_lkg_claude.json";
 const ANTIGRAVITY_LAST_GOOD_FILE: &str = "quota_lkg_antigravity.json";
@@ -201,9 +201,9 @@ pub(crate) async fn get_local_quota_providers_impl_with_retry_flag(
     let (
         codex_enabled,
         claude_statusline_enabled,
-        claude_codexbar_enabled,
+        claude_experimental_enabled,
         antigravity_local_enabled,
-        antigravity_codexbar_enabled,
+        antigravity_fallback_cli_enabled,
         custom_endpoints,
     ) = (
         settings.quota_codex_local_enabled,
@@ -216,9 +216,9 @@ pub(crate) async fn get_local_quota_providers_impl_with_retry_flag(
     let mut providers = provider_envelopes(
         codex_enabled,
         claude_statusline_enabled,
-        claude_codexbar_enabled,
+        claude_experimental_enabled,
         antigravity_local_enabled,
-        antigravity_codexbar_enabled,
+        antigravity_fallback_cli_enabled,
         app.app_data_dir().to_path_buf(),
     )
     .await;
@@ -230,9 +230,9 @@ pub(crate) async fn get_local_quota_providers_impl_with_retry_flag(
     let (
         current_codex_enabled,
         current_claude_statusline_enabled,
-        current_claude_codexbar_enabled,
+        current_claude_experimental_enabled,
         current_antigravity_local_enabled,
-        current_antigravity_codexbar_enabled,
+        current_antigravity_fallback_cli_enabled,
     ) = (
         current.quota_codex_local_enabled,
         current.quota_claude_statusline_enabled,
@@ -244,9 +244,9 @@ pub(crate) async fn get_local_quota_providers_impl_with_retry_flag(
         app.app_data_dir(),
         current_codex_enabled,
         current_claude_statusline_enabled,
-        current_claude_codexbar_enabled,
+        current_claude_experimental_enabled,
         current_antigravity_local_enabled,
-        current_antigravity_codexbar_enabled,
+        current_antigravity_fallback_cli_enabled,
         &mut providers,
     );
     providers.retain(|provider| {
@@ -273,18 +273,18 @@ pub(crate) async fn get_local_quota_providers_impl_with_retry_flag(
 async fn provider_envelopes(
     codex_enabled: bool,
     claude_statusline_enabled: bool,
-    claude_codexbar_enabled: bool,
+    claude_experimental_enabled: bool,
     antigravity_local_enabled: bool,
-    antigravity_codexbar_enabled: bool,
+    antigravity_fallback_cli_enabled: bool,
     app_data_dir: PathBuf,
 ) -> Vec<QuotaProviderEnvelope> {
     clear_disabled_provider_data(
         &app_data_dir,
         codex_enabled,
         claude_statusline_enabled,
-        claude_codexbar_enabled,
+        claude_experimental_enabled,
         antigravity_local_enabled,
-        antigravity_codexbar_enabled,
+        antigravity_fallback_cli_enabled,
     );
     let codex = if !codex_enabled {
         codex_authorization_required()
@@ -324,11 +324,11 @@ async fn provider_envelopes(
         codex_error("source_not_found")
     };
 
-    let claude = if !claude_statusline_enabled && !claude_codexbar_enabled {
+    let claude = if !claude_statusline_enabled && !claude_experimental_enabled {
         claude_authorization_required()
     } else {
         let fetched_at = Utc::now();
-        let envelope = if claude_codexbar_enabled {
+        let envelope = if claude_experimental_enabled {
             let app_data_for_worker = app_data_dir.clone();
             let enhanced = match tauri::async_runtime::spawn_blocking(move || {
                 claude_native_envelope(&app_data_for_worker, fetched_at)
@@ -360,7 +360,7 @@ async fn provider_envelopes(
     } else {
         let fetched_at = Utc::now();
         let envelope =
-            antigravity_envelope(&app_data_dir, fetched_at, antigravity_codexbar_enabled).await;
+            antigravity_envelope(&app_data_dir, fetched_at, antigravity_fallback_cli_enabled).await;
         finalize_with_persisted_last_good(
             &app_data_dir,
             ANTIGRAVITY_LAST_GOOD_FILE,
@@ -388,9 +388,9 @@ pub(crate) fn clear_disabled_provider_data(
     app_data_dir: &Path,
     codex_enabled: bool,
     claude_statusline_enabled: bool,
-    claude_codexbar_enabled: bool,
+    claude_experimental_enabled: bool,
     antigravity_local_enabled: bool,
-    antigravity_codexbar_enabled: bool,
+    antigravity_fallback_cli_enabled: bool,
 ) {
     let _persistence = persistence_guard();
     if !codex_enabled {
@@ -400,16 +400,16 @@ pub(crate) fn clear_disabled_provider_data(
     if !claude_statusline_enabled {
         remove_persisted_snapshot(app_data_dir, CLAUDE_STATUSLINE_FILE);
     }
-    if !claude_codexbar_enabled {
+    if !claude_experimental_enabled {
         clear_claude_native_probe_cache();
     }
-    if !claude_statusline_enabled && !claude_codexbar_enabled {
+    if !claude_statusline_enabled && !claude_experimental_enabled {
         remove_persisted_snapshot(app_data_dir, CLAUDE_LAST_GOOD_FILE);
     }
     if !antigravity_local_enabled {
         clear_antigravity_probe_cache();
         remove_persisted_snapshot(app_data_dir, ANTIGRAVITY_LAST_GOOD_FILE);
-    } else if !antigravity_codexbar_enabled {
+    } else if !antigravity_fallback_cli_enabled {
         // The built-in probe remains enabled; only cached bridge-derived
         // results are discarded by starting the next refresh from scratch.
         clear_antigravity_probe_cache();
@@ -420,18 +420,18 @@ fn enforce_current_authorization(
     app_data_dir: &Path,
     codex_enabled: bool,
     claude_statusline_enabled: bool,
-    claude_codexbar_enabled: bool,
+    claude_experimental_enabled: bool,
     antigravity_local_enabled: bool,
-    antigravity_codexbar_enabled: bool,
+    antigravity_fallback_cli_enabled: bool,
     providers: &mut [QuotaProviderEnvelope],
 ) {
     clear_disabled_provider_data(
         app_data_dir,
         codex_enabled,
         claude_statusline_enabled,
-        claude_codexbar_enabled,
+        claude_experimental_enabled,
         antigravity_local_enabled,
-        antigravity_codexbar_enabled,
+        antigravity_fallback_cli_enabled,
     );
     if !codex_enabled {
         if let Some(codex) = providers
@@ -441,7 +441,7 @@ fn enforce_current_authorization(
             *codex = codex_authorization_required();
         }
     }
-    if !claude_statusline_enabled && !claude_codexbar_enabled {
+    if !claude_statusline_enabled && !claude_experimental_enabled {
         if let Some(claude) = providers
             .iter_mut()
             .find(|provider| provider.provider_id == CLAUDE_PROVIDER_ID)
@@ -1592,7 +1592,7 @@ fn stale_from_last_good(
         if reason_code.starts_with("claude_native_") {
             claude_native_error_code(reason_code).action
         } else if reason_code.starts_with("claude_codexbar_") {
-            claude_codexbar_error(reason_code).action
+            claude_fallback_cli_error(reason_code).action
         } else {
             claude_error(reason_code).action
         }
@@ -1970,13 +1970,13 @@ enum SnapshotFailure {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ClaudeCodexBarFailure {
+enum FallbackCliFailure {
     Unavailable,
     Timeout,
     ResponseInvalid,
 }
 
-impl ClaudeCodexBarFailure {
+impl FallbackCliFailure {
     fn reason_code(self) -> &'static str {
         match self {
             Self::Unavailable => "claude_codexbar_unavailable",
@@ -1998,15 +1998,15 @@ impl ClaudeCodexBarFailure {
     }
 }
 
-fn parse_codexbar_claude_output(
+fn parse_fallback_cli_claude_output(
     bytes: &[u8],
     fetched_at: DateTime<Utc>,
-) -> Result<QuotaProviderEnvelope, ClaudeCodexBarFailure> {
-    if bytes.is_empty() || bytes.len() > CLAUDE_CODEXBAR_MAX_OUTPUT_BYTES {
-        return Err(ClaudeCodexBarFailure::ResponseInvalid);
+) -> Result<QuotaProviderEnvelope, FallbackCliFailure> {
+    if bytes.is_empty() || bytes.len() > CLAUDE_FALLBACK_CLI_MAX_OUTPUT_BYTES {
+        return Err(FallbackCliFailure::ResponseInvalid);
     }
     let root: Value =
-        serde_json::from_slice(bytes).map_err(|_| ClaudeCodexBarFailure::ResponseInvalid)?;
+        serde_json::from_slice(bytes).map_err(|_| FallbackCliFailure::ResponseInvalid)?;
     let payload = match &root {
         Value::Array(items) => items
             .iter()
@@ -2016,34 +2016,34 @@ fn parse_codexbar_claude_output(
         }
         _ => None,
     }
-    .ok_or(ClaudeCodexBarFailure::ResponseInvalid)?;
+    .ok_or(FallbackCliFailure::ResponseInvalid)?;
     let source = payload
         .get("source")
         .and_then(Value::as_str)
-        .ok_or(ClaudeCodexBarFailure::ResponseInvalid)?;
+        .ok_or(FallbackCliFailure::ResponseInvalid)?;
     if !matches!(source, "web" | "oauth" | "claude" | "cli" | "claude-web") {
         // API/Admin output is a different scope and must never be projected as
         // a consumer subscription window by this bridge.
-        return Err(ClaudeCodexBarFailure::ResponseInvalid);
+        return Err(FallbackCliFailure::ResponseInvalid);
     }
     let usage = payload
         .get("usage")
         .and_then(Value::as_object)
-        .ok_or(ClaudeCodexBarFailure::ResponseInvalid)?;
+        .ok_or(FallbackCliFailure::ResponseInvalid)?;
     let observed_at = usage
         .get("updatedAt")
         .and_then(Value::as_str)
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .map(|timestamp| timestamp.with_timezone(&Utc))
-        .ok_or(ClaudeCodexBarFailure::ResponseInvalid)?;
+        .ok_or(FallbackCliFailure::ResponseInvalid)?;
     let future_limit = fetched_at
         .checked_add_signed(chrono::Duration::seconds(MAX_FUTURE_CLOCK_SKEW_SECONDS))
-        .ok_or(ClaudeCodexBarFailure::ResponseInvalid)?;
+        .ok_or(FallbackCliFailure::ResponseInvalid)?;
     if observed_at > future_limit
         || fetched_at.signed_duration_since(observed_at).num_seconds()
             > LAST_GOOD_RETENTION.as_secs() as i64
     {
-        return Err(ClaudeCodexBarFailure::ResponseInvalid);
+        return Err(FallbackCliFailure::ResponseInvalid);
     }
 
     let mut windows = Vec::new();
@@ -2053,7 +2053,7 @@ fn parse_codexbar_claude_output(
         ("tertiary", "Tertiary window", None),
     ] {
         if let Some(window) = usage.get(key).filter(|value| !value.is_null()) {
-            windows.push(normalize_codexbar_window(
+            windows.push(normalize_fallback_cli_window(
                 &format!("codexbar-{key}"),
                 label,
                 window,
@@ -2064,23 +2064,23 @@ fn parse_codexbar_claude_output(
         }
     }
     if let Some(extra) = usage.get("extraRateWindows").and_then(Value::as_array) {
-        let remaining = CLAUDE_CODEXBAR_MAX_WINDOWS.saturating_sub(windows.len());
+        let remaining = CLAUDE_FALLBACK_CLI_MAX_WINDOWS.saturating_sub(windows.len());
         if extra.len() > remaining {
-            return Err(ClaudeCodexBarFailure::ResponseInvalid);
+            return Err(FallbackCliFailure::ResponseInvalid);
         }
         for (index, item) in extra.iter().enumerate() {
             let window = item.get("window").unwrap_or(item);
             let id = item
                 .get("id")
                 .and_then(Value::as_str)
-                .and_then(sanitize_codexbar_identifier)
+                .and_then(sanitize_fallback_cli_identifier)
                 .unwrap_or_else(|| format!("extra-{index}"));
             let label = item
                 .get("title")
                 .and_then(Value::as_str)
-                .and_then(sanitize_codexbar_label)
+                .and_then(sanitize_fallback_cli_label)
                 .unwrap_or_else(|| format!("Additional window {}", index + 1));
-            windows.push(normalize_codexbar_window(
+            windows.push(normalize_fallback_cli_window(
                 &format!("codexbar-{id}"),
                 &label,
                 window,
@@ -2090,15 +2090,15 @@ fn parse_codexbar_claude_output(
             )?);
         }
     }
-    if windows.is_empty() || windows.len() > CLAUDE_CODEXBAR_MAX_WINDOWS {
-        return Err(ClaudeCodexBarFailure::ResponseInvalid);
+    if windows.is_empty() || windows.len() > CLAUDE_FALLBACK_CLI_MAX_WINDOWS {
+        return Err(FallbackCliFailure::ResponseInvalid);
     }
     let mut stable_ids = std::collections::HashSet::new();
     if windows
         .iter()
         .any(|window| !stable_ids.insert(window.window_id.as_str()))
     {
-        return Err(ClaudeCodexBarFailure::ResponseInvalid);
+        return Err(FallbackCliFailure::ResponseInvalid);
     }
     let observation_stale =
         fetched_at.signed_duration_since(observed_at).num_seconds() > STALE_AFTER_SECONDS;
@@ -2135,20 +2135,20 @@ fn parse_codexbar_claude_output(
     })
 }
 
-fn normalize_codexbar_window(
+fn normalize_fallback_cli_window(
     window_id: &str,
     window_label: &str,
     value: &Value,
     default_minutes: Option<u64>,
     observed_at: DateTime<Utc>,
     fetched_at: DateTime<Utc>,
-) -> Result<QuotaWindowSnapshot, ClaudeCodexBarFailure> {
+) -> Result<QuotaWindowSnapshot, FallbackCliFailure> {
     let used = value
         .get("usedPercent")
         .and_then(Value::as_f64)
-        .ok_or(ClaudeCodexBarFailure::ResponseInvalid)?;
+        .ok_or(FallbackCliFailure::ResponseInvalid)?;
     if !used.is_finite() || !(0.0..=100.0).contains(&used) {
-        return Err(ClaudeCodexBarFailure::ResponseInvalid);
+        return Err(FallbackCliFailure::ResponseInvalid);
     }
     let window_minutes = value
         .get("windowMinutes")
@@ -2158,15 +2158,15 @@ fn normalize_codexbar_window(
     let resets_at = match value.get("resetsAt") {
         Some(Value::String(raw)) => {
             let reset = DateTime::parse_from_rfc3339(raw)
-                .map_err(|_| ClaudeCodexBarFailure::ResponseInvalid)?
+                .map_err(|_| FallbackCliFailure::ResponseInvalid)?
                 .with_timezone(&Utc);
             if !valid_codex_reset_time(reset, observed_at) {
-                return Err(ClaudeCodexBarFailure::ResponseInvalid);
+                return Err(FallbackCliFailure::ResponseInvalid);
             }
             Some(format_timestamp(reset))
         }
         Some(Value::Null) | None => None,
-        _ => return Err(ClaudeCodexBarFailure::ResponseInvalid),
+        _ => return Err(FallbackCliFailure::ResponseInvalid),
     };
     let reset_stale = resets_at
         .as_deref()
@@ -2473,7 +2473,7 @@ pub(crate) fn claude_local_envelope_may_replace_remote(
     })
 }
 
-fn sanitize_codexbar_identifier(value: &str) -> Option<String> {
+fn sanitize_fallback_cli_identifier(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()
         && value.len() <= 64
@@ -2483,7 +2483,7 @@ fn sanitize_codexbar_identifier(value: &str) -> Option<String> {
     .then(|| value.to_string())
 }
 
-fn sanitize_codexbar_label(value: &str) -> Option<String> {
+fn sanitize_fallback_cli_label(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()
         && value.chars().count() <= 64
@@ -2491,7 +2491,7 @@ fn sanitize_codexbar_label(value: &str) -> Option<String> {
     .then(|| value.to_string())
 }
 
-fn resolve_codexbar_executables() -> Vec<PathBuf> {
+fn resolve_fallback_cli_executables() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(explicit) = env::var_os("TOKENLEDGER_CODEXBAR_BIN") {
         let explicit = PathBuf::from(explicit);
@@ -2553,50 +2553,50 @@ fn resolve_codexbar_executables() -> Vec<PathBuf> {
     resolved
 }
 
-fn claude_codexbar_envelope(
+fn claude_fallback_cli_envelope(
     app_data_dir: &Path,
     fetched_at: DateTime<Utc>,
-) -> Result<QuotaProviderEnvelope, ClaudeCodexBarFailure> {
-    let candidates = resolve_codexbar_executables();
+) -> Result<QuotaProviderEnvelope, FallbackCliFailure> {
+    let candidates = resolve_fallback_cli_executables();
     if candidates.is_empty() {
-        return Err(ClaudeCodexBarFailure::Unavailable);
+        return Err(FallbackCliFailure::Unavailable);
     }
     let deadline = Instant::now()
-        .checked_add(CLAUDE_CODEXBAR_TOTAL_TIMEOUT)
-        .ok_or(ClaudeCodexBarFailure::Timeout)?;
-    let mut best_failure = ClaudeCodexBarFailure::Unavailable;
+        .checked_add(CLAUDE_FALLBACK_CLI_TOTAL_TIMEOUT)
+        .ok_or(FallbackCliFailure::Timeout)?;
+    let mut best_failure = FallbackCliFailure::Unavailable;
     for candidate in candidates {
         let remaining = deadline
             .checked_duration_since(Instant::now())
-            .ok_or(ClaudeCodexBarFailure::Timeout)?;
-        let bytes = match capture_codexbar_claude_output(
+            .ok_or(FallbackCliFailure::Timeout)?;
+        let bytes = match capture_fallback_cli_claude_output(
             &candidate,
             app_data_dir,
-            remaining.min(CLAUDE_CODEXBAR_TIMEOUT),
+            remaining.min(CLAUDE_FALLBACK_CLI_TIMEOUT),
         ) {
             Ok(bytes) => bytes,
             Err(failure) => {
-                best_failure = prefer_codexbar_failure(best_failure, failure);
+                best_failure = prefer_fallback_cli_failure(best_failure, failure);
                 continue;
             }
         };
-        match parse_codexbar_claude_output(&bytes, fetched_at) {
+        match parse_fallback_cli_claude_output(&bytes, fetched_at) {
             Ok(envelope) => return Ok(envelope),
-            Err(failure) => best_failure = prefer_codexbar_failure(best_failure, failure),
+            Err(failure) => best_failure = prefer_fallback_cli_failure(best_failure, failure),
         }
     }
     Err(best_failure)
 }
 
-fn prefer_codexbar_failure(
-    current: ClaudeCodexBarFailure,
-    candidate: ClaudeCodexBarFailure,
-) -> ClaudeCodexBarFailure {
-    fn priority(failure: ClaudeCodexBarFailure) -> u8 {
+fn prefer_fallback_cli_failure(
+    current: FallbackCliFailure,
+    candidate: FallbackCliFailure,
+) -> FallbackCliFailure {
+    fn priority(failure: FallbackCliFailure) -> u8 {
         match failure {
-            ClaudeCodexBarFailure::ResponseInvalid => 3,
-            ClaudeCodexBarFailure::Timeout => 2,
-            ClaudeCodexBarFailure::Unavailable => 1,
+            FallbackCliFailure::ResponseInvalid => 3,
+            FallbackCliFailure::Timeout => 2,
+            FallbackCliFailure::Unavailable => 1,
         }
     }
     if priority(candidate) > priority(current) {
@@ -2606,26 +2606,26 @@ fn prefer_codexbar_failure(
     }
 }
 
-fn capture_codexbar_claude_output(
+fn capture_fallback_cli_claude_output(
     program: &Path,
     app_data_dir: &Path,
     timeout: Duration,
-) -> Result<Vec<u8>, ClaudeCodexBarFailure> {
-    capture_codexbar_provider_output(program, app_data_dir, "claude", "auto", timeout)
+) -> Result<Vec<u8>, FallbackCliFailure> {
+    capture_fallback_cli_provider_output(program, app_data_dir, "claude", "auto", timeout)
 }
 
-fn capture_codexbar_provider_output(
+fn capture_fallback_cli_provider_output(
     program: &Path,
     app_data_dir: &Path,
     provider: &str,
     source: &str,
     timeout: Duration,
-) -> Result<Vec<u8>, ClaudeCodexBarFailure> {
+) -> Result<Vec<u8>, FallbackCliFailure> {
     if !matches!(provider, "claude" | "antigravity") || !matches!(source, "auto" | "cli") {
-        return Err(ClaudeCodexBarFailure::Unavailable);
+        return Err(FallbackCliFailure::Unavailable);
     }
     let working_directory =
-        secure_app_data_root(app_data_dir, true).map_err(|_| ClaudeCodexBarFailure::Unavailable)?;
+        secure_app_data_root(app_data_dir, true).map_err(|_| FallbackCliFailure::Unavailable)?;
     let mut command = Command::new(program);
     command
         .args([
@@ -2658,26 +2658,26 @@ fn capture_codexbar_provider_output(
     configure_app_server_command(&mut command);
     let mut child = command
         .spawn()
-        .map_err(|_| ClaudeCodexBarFailure::Unavailable)?;
+        .map_err(|_| FallbackCliFailure::Unavailable)?;
     let tree_id = child.id();
     let Some(mut stdout) = child.stdout.take() else {
         terminate_process_tree(tree_id);
         let _ = child.kill();
         let _ = wait_for_child_exit(&mut child, APP_SERVER_TERMINATION_TIMEOUT);
-        return Err(ClaudeCodexBarFailure::Unavailable);
+        return Err(FallbackCliFailure::Unavailable);
     };
     let (sender, receiver) = mpsc::sync_channel(1);
     let reader = thread::spawn(move || {
         let mut bytes = Vec::new();
         let result = Read::by_ref(&mut stdout)
-            .take((CLAUDE_CODEXBAR_MAX_OUTPUT_BYTES + 1) as u64)
+            .take((CLAUDE_FALLBACK_CLI_MAX_OUTPUT_BYTES + 1) as u64)
             .read_to_end(&mut bytes)
             .map(|_| bytes);
         let _ = sender.send(result);
     });
     let deadline = Instant::now()
         .checked_add(timeout)
-        .ok_or(ClaudeCodexBarFailure::Timeout)?;
+        .ok_or(FallbackCliFailure::Timeout)?;
 
     let status = loop {
         match child.try_wait() {
@@ -2687,33 +2687,33 @@ fn capture_codexbar_provider_output(
                 terminate_process_tree(tree_id);
                 let _ = child.kill();
                 let _ = wait_for_child_exit(&mut child, APP_SERVER_TERMINATION_TIMEOUT);
-                let _ = receiver.recv_timeout(CLAUDE_CODEXBAR_READER_JOIN_TIMEOUT);
+                let _ = receiver.recv_timeout(CLAUDE_FALLBACK_CLI_READER_JOIN_TIMEOUT);
                 if reader.is_finished() {
                     let _ = reader.join();
                 }
-                return Err(ClaudeCodexBarFailure::Timeout);
+                return Err(FallbackCliFailure::Timeout);
             }
             Err(_) => {
                 terminate_process_tree(tree_id);
                 let _ = child.kill();
                 let _ = wait_for_child_exit(&mut child, APP_SERVER_TERMINATION_TIMEOUT);
-                return Err(ClaudeCodexBarFailure::Unavailable);
+                return Err(FallbackCliFailure::Unavailable);
             }
         }
     };
-    let bytes = match receiver.recv_timeout(CLAUDE_CODEXBAR_READER_JOIN_TIMEOUT) {
+    let bytes = match receiver.recv_timeout(CLAUDE_FALLBACK_CLI_READER_JOIN_TIMEOUT) {
         Ok(Ok(bytes)) => bytes,
-        Ok(Err(_)) => return Err(ClaudeCodexBarFailure::Unavailable),
+        Ok(Err(_)) => return Err(FallbackCliFailure::Unavailable),
         Err(_) => {
             terminate_process_tree(tree_id);
-            return Err(ClaudeCodexBarFailure::Timeout);
+            return Err(FallbackCliFailure::Timeout);
         }
     };
     if reader.is_finished() {
         let _ = reader.join();
     }
-    if !status.success() || bytes.is_empty() || bytes.len() > CLAUDE_CODEXBAR_MAX_OUTPUT_BYTES {
-        return Err(ClaudeCodexBarFailure::ResponseInvalid);
+    if !status.success() || bytes.is_empty() || bytes.len() > CLAUDE_FALLBACK_CLI_MAX_OUTPUT_BYTES {
+        return Err(FallbackCliFailure::ResponseInvalid);
     }
     Ok(bytes)
 }
@@ -2810,25 +2810,25 @@ fn claude_native_envelope(app_data_dir: &Path, fetched_at: DateTime<Utc>) -> Quo
     // captured correctly. Probe the independently normalized bridge whenever
     // native is incomplete, and also when CodexBar is installed so same-role
     // conflicts can be arbitrated instead of silently trusting PTY order.
-    let codexbar_installed = !resolve_codexbar_executables().is_empty();
-    let codexbar_result = if !native_complete || codexbar_installed {
+    let fallback_cli_installed = !resolve_fallback_cli_executables().is_empty();
+    let fallback_cli_result = if !native_complete || fallback_cli_installed {
         probe_deadline
             .and_then(|deadline| deadline.checked_duration_since(Instant::now()))
             .filter(|remaining| !remaining.is_zero())
-            .ok_or(ClaudeCodexBarFailure::Timeout)
-            .and_then(|_| claude_codexbar_envelope(app_data_dir, fetched_at))
+            .ok_or(FallbackCliFailure::Timeout)
+            .and_then(|_| claude_fallback_cli_envelope(app_data_dir, fetched_at))
     } else {
-        Err(ClaudeCodexBarFailure::Unavailable)
+        Err(FallbackCliFailure::Unavailable)
     };
-    let codexbar_failure = codexbar_result.as_ref().err().copied();
-    sources.extend(codexbar_result);
+    let fallback_cli_failure = fallback_cli_result.as_ref().err().copied();
+    sources.extend(fallback_cli_result);
 
     let envelope = merge_claude_provider_envelopes(&sources).unwrap_or_else(|| {
-        match (native_failure, codexbar_failure) {
-            (Some(native_failure), Some(ClaudeCodexBarFailure::Unavailable)) => {
+        match (native_failure, fallback_cli_failure) {
+            (Some(native_failure), Some(FallbackCliFailure::Unavailable)) => {
                 claude_native_error(native_failure)
             }
-            (_, Some(bridge_failure)) => claude_codexbar_error(bridge_failure.reason_code()),
+            (_, Some(bridge_failure)) => claude_fallback_cli_error(bridge_failure.reason_code()),
             (Some(native_failure), None) => claude_native_error(native_failure),
             (None, _) => claude_native_error(ClaudeNativeFailure::ResponseInvalid),
         }
@@ -3713,7 +3713,7 @@ pub async fn authorize_claude_native_quota(
             .map_err(|_| "Claude 本地 /usage 读取任务失败".to_string())?;
     if !matches!(envelope.status, QuotaStatus::Ok | QuotaStatus::Stale) {
         let reason_code = envelope.reason_code.as_deref().unwrap_or_default();
-        if let Some(failure) = claude_codexbar_failure_from_reason(reason_code) {
+        if let Some(failure) = claude_fallback_cli_failure_from_reason(reason_code) {
             return Err(failure.user_message().to_string());
         }
         let failure = claude_native_failure_from_reason(reason_code)
@@ -3771,11 +3771,11 @@ pub async fn authorize_antigravity_quota(
     ))
 }
 
-fn claude_codexbar_failure_from_reason(reason_code: &str) -> Option<ClaudeCodexBarFailure> {
+fn claude_fallback_cli_failure_from_reason(reason_code: &str) -> Option<FallbackCliFailure> {
     match reason_code {
-        "claude_codexbar_unavailable" => Some(ClaudeCodexBarFailure::Unavailable),
-        "claude_codexbar_timeout" => Some(ClaudeCodexBarFailure::Timeout),
-        "claude_codexbar_response_invalid" => Some(ClaudeCodexBarFailure::ResponseInvalid),
+        "claude_codexbar_unavailable" => Some(FallbackCliFailure::Unavailable),
+        "claude_codexbar_timeout" => Some(FallbackCliFailure::Timeout),
+        "claude_codexbar_response_invalid" => Some(FallbackCliFailure::ResponseInvalid),
         _ => None,
     }
 }
@@ -3977,7 +3977,7 @@ fn claude_authorization_required() -> QuotaProviderEnvelope {
     }
 }
 
-fn claude_codexbar_error(reason_code: &str) -> QuotaProviderEnvelope {
+fn claude_fallback_cli_error(reason_code: &str) -> QuotaProviderEnvelope {
     QuotaProviderEnvelope {
         schema_version: 1,
         provider_id: CLAUDE_PROVIDER_ID.to_string(),
@@ -6319,7 +6319,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
             }
         }]);
 
-        let envelope = parse_codexbar_claude_output(payload.to_string().as_bytes(), fetched_at)
+        let envelope = parse_fallback_cli_claude_output(payload.to_string().as_bytes(), fetched_at)
             .expect("parse normalized CodexBar Claude output");
         assert_eq!(envelope.status, QuotaStatus::Ok);
         assert_eq!(envelope.capability, QuotaCapability::Experimental);
@@ -6356,8 +6356,8 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
             }]),
         ] {
             assert_eq!(
-                parse_codexbar_claude_output(payload.to_string().as_bytes(), fetched_at),
-                Err(ClaudeCodexBarFailure::ResponseInvalid)
+                parse_fallback_cli_claude_output(payload.to_string().as_bytes(), fetched_at),
+                Err(FallbackCliFailure::ResponseInvalid)
             );
         }
     }
@@ -6385,9 +6385,12 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
         permissions.set_mode(0o700);
         fs::set_permissions(&program, permissions).expect("mark fake CodexBar executable");
 
-        let output =
-            capture_codexbar_claude_output(&program, &directory.path, CLAUDE_CODEXBAR_TIMEOUT)
-                .expect("capture fixed CodexBar command");
+        let output = capture_fallback_cli_claude_output(
+            &program,
+            &directory.path,
+            CLAUDE_FALLBACK_CLI_TIMEOUT,
+        )
+        .expect("capture fixed CodexBar command");
         assert_eq!(output, b"[]");
     }
 
@@ -6498,7 +6501,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
     #[ignore = "requires an installed, user-authorized CodexBar Claude source"]
     fn quota_codexbar_real_account_bridge_returns_normalized_windows() {
         let directory = TestAppData::new("claude-codexbar-real-account");
-        let envelope = claude_codexbar_envelope(&directory.path, Utc::now())
+        let envelope = claude_fallback_cli_envelope(&directory.path, Utc::now())
             .expect("read real Claude quota through CodexBar");
         assert_eq!(envelope.provider_id, CLAUDE_PROVIDER_ID);
         assert!(matches!(
@@ -6611,7 +6614,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
             fetched_at,
         )
         .expect("native");
-        let codexbar = parse_codexbar_claude_output(
+        let codexbar = parse_fallback_cli_claude_output(
             serde_json::json!({
                 "provider": "claude",
                 "source": "web",
@@ -6645,7 +6648,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
         let native =
             parse_claude_cli_usage(b"Current session\n100% left\n", fetched_at).expect("native");
         assert!(!claude_envelope_has_complete_core_roles(&native));
-        let codexbar = parse_codexbar_claude_output(
+        let codexbar = parse_fallback_cli_claude_output(
             serde_json::json!({
                 "provider": "claude",
                 "source": "web",
@@ -6742,7 +6745,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
         };
         let stale_statusline = claude_envelope_from_snapshot(statusline_snapshot, fetched_at);
         assert_eq!(stale_statusline.status, QuotaStatus::Stale);
-        let fresh_codexbar = parse_codexbar_claude_output(
+        let fresh_codexbar = parse_fallback_cli_claude_output(
             serde_json::json!({
                 "provider": "claude",
                 "source": "web",
@@ -6771,7 +6774,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
     fn quota_claude_role_arbitration_normalizes_historical_all_models_week() {
         let fetched_at =
             DateTime::<Utc>::from_timestamp(1_900_000_000, 0).expect("test fetched time");
-        let mut codexbar = parse_codexbar_claude_output(
+        let mut codexbar = parse_fallback_cli_claude_output(
             serde_json::json!({
                 "provider": "claude",
                 "source": "web",
@@ -6815,7 +6818,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
         assert_eq!(stale.status, QuotaStatus::Stale);
         assert!(!is_direct_source_observation(&stale));
 
-        let fresh = parse_codexbar_claude_output(
+        let fresh = parse_fallback_cli_claude_output(
             serde_json::json!({
                 "provider": "claude",
                 "source": "web",
@@ -6990,7 +6993,7 @@ printf '%s\n' '{"id":2,"result":{"rateLimits":{"planType":"test-plan","primary":
                 }
             }
         });
-        let live = parse_codexbar_claude_output(payload.to_string().as_bytes(), fetched_at)
+        let live = parse_fallback_cli_claude_output(payload.to_string().as_bytes(), fetched_at)
             .expect("parse CodexBar Claude output");
 
         let stale = stale_from_last_good(
