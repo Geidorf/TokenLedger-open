@@ -115,7 +115,7 @@ interface QuotaProviderEnvelope {
 
 多窗口允许分别缺失；例如 Claude 只返回 5h 窗口时，不得补一个 7d 零值。窗口顺序不承载语义，消费者按稳定键关联与排序。
 
-Claude 的 5h 与 7d 是两个规范角色，不把某个来源返回任意非空窗口解释成整个 Provider 完整。多个已授权本地来源同时存在时允许按角色补齐与仲裁：只考虑 `ok/stale` 窗口；同角色冲突按 status line、标准化 CodexBar、内置 PTY 的来源置信度依次选择，再比较窗口新鲜度、`observedAt` 与 `fetchedAt`。获胜窗口必须原样保留来源稳定键和时间，不能用本次仲裁时间刷新观测。Sonnet/Opus 等附加窗口独立保留，不得冒充规范 7d 角色。该规则只规范同一 v1 envelope 的生产与合并，不增加 wire 字段。
+Claude 的 5h 与 7d 是两个规范角色，不把某个来源返回任意非空窗口解释成整个 Provider 完整。多个已授权本地来源同时存在时允许按角色补齐与仲裁：只考虑 `ok/stale` 窗口；同角色冲突按 status line、标准化第三方桥接、内置 PTY 的来源置信度依次选择，再比较窗口新鲜度、`observedAt` 与 `fetchedAt`。获胜窗口必须原样保留来源稳定键和时间，不能用本次仲裁时间刷新观测。Sonnet/Opus 等附加窗口独立保留，不得冒充规范 7d 角色。该规则只规范同一 v1 envelope 的生产与合并，不增加 wire 字段。
 
 ## 4. Reason code 注册表
 
@@ -140,16 +140,16 @@ Claude 的 5h 与 7d 是两个规范角色，不把某个来源返回任意非�
 | `claude_statusline_snapshot_missing` | envelope / `error` | 尚未收到含 `rate_limits` 的官方 status line 输入 | 引导完成一次 Claude Code API 请求后重试 | 已实现 |
 | `claude_statusline_snapshot_invalid` | envelope / `error` | 正规化快照越界、损坏、过期或身份检查失败 | 检查配置并重新触发 status line | 已实现 |
 | `claude_native_authorization_required` | envelope / `auth-required`；LKG 时 `stale` | Claude 本地代理明确返回登录失效或需要重新登录 | 引导在 Claude Desktop/Code 中登录后重试 | 已实现 |
-| `claude_native_cli_unavailable` | envelope / `error`；LKG 时 `stale` | 未发现 Claude Desktop 随附代理或本机 Claude Code | 引导安装/启动并登录 Claude；不要求 CodexBar | 已实现 |
+| `claude_native_cli_unavailable` | envelope / `error`；LKG 时 `stale` | 未发现 Claude Desktop 随附代理或本机 Claude Code | 引导安装/启动并登录 Claude；不要求第三方额度工具 | 已实现 |
 | `claude_native_timeout` / `claude_native_usage_unavailable` | envelope / `error`；LKG 时 `stale` | PTY 超时或 Claude CLI 的 `/usage` 通道自身加载失败；Claude Desktop 网页额度可能同时正常 | 保留 LKG；换用其他本地候选并以全新会话有界重试，失败不缓存；不读取钥匙串 | 已实现 |
 | `claude_native_subscription_unavailable` | envelope / `error`；LKG 时 `stale` | 当前计划仅返回订阅提示，没有可量化的 5h/周窗口 | 诚实显示计划未提供数值，不从 Token 活动量估算 | 已实现 |
 | `claude_native_response_invalid` | envelope / `error`；LKG 时 `stale` | 输出超限、百分比/重置越界或没有合法窗口 | 不保存终端原文；保留 LKG 并提示来源异常 | 已实现 |
-| `claude_codexbar_unavailable` / `claude_codexbar_timeout` / `claude_codexbar_response_invalid` | envelope / `error`；LKG 时 `stale` | 用户授权的 CodexBar 标准化桥接缺失、超时或没有返回可验证的 Claude 消费者窗口 | 保留 LKG；检查 CodexBar Claude 来源授权或使用内置 PTY 回退，不向 TokenLedger 索取凭据 | 已实现 |
+| `claude_codexbar_unavailable` / `claude_codexbar_timeout` / `claude_codexbar_response_invalid` | envelope / `error`；LKG 时 `stale` | 用户授权的第三方标准化桥接缺失、超时或没有返回可验证的 Claude 消费者窗口（上列标识符为历史 wire 键，保持兼容，后续随导入功能改名工程统一处理） | 保留 LKG；检查桥接工具中的 Claude 来源授权或使用内置 PTY 回退，不向 TokenLedger 索取凭据 | 已实现 |
 | `antigravity_local_authorization_required` | envelope / `auth-required` | Antigravity 本地来源默认关闭或授权已撤销 | 解释 loopback/CLI 只读边界；可选 `open-settings` | 已实现 |
 | `antigravity_native_authorization_required` | envelope / `auth-required`；LKG 时 `stale` | 本地服务明确拒绝访问或 Antigravity 登录不可用 | 引导在 Antigravity 中完成登录，不索取凭据 | 已实现 |
 | `antigravity_native_source_not_found` / `antigravity_native_port_unavailable` | envelope / `error`；LKG 时 `stale` | 未发现同用户 App/IDE/agy，或其 loopback 监听端口不可用 | 启动/登录 Antigravity 或安装 agy；不扩大到远端 OAuth | 已实现 |
 | `antigravity_native_timeout` / `antigravity_native_response_invalid` | envelope / `error`；LKG 时 `stale` | 本地服务超时、响应越界或没有合法额度窗口 | 保留 LKG；有界重试，不记录 RPC/TUI 原文 | 已实现 |
-| `antigravity_codexbar_unavailable` / `antigravity_codexbar_timeout` / `antigravity_codexbar_response_invalid` | envelope / `error`；LKG 时 `stale` | 可选 CodexBar local/CLI 兜底缺失、超时或返回非本地/无效窗口 | 保留 LKG；继续使用内置路径，不向 TokenLedger 索取 OAuth | 已实现 |
+| `antigravity_codexbar_unavailable` / `antigravity_codexbar_timeout` / `antigravity_codexbar_response_invalid` | envelope / `error`；LKG 时 `stale` | 可选第三方 local/CLI 兜底缺失、超时或返回非本地/无效窗口 | 保留 LKG；继续使用内置路径，不向 TokenLedger 索取 OAuth | 已实现 |
 | `observation_stale` | envelope/window / `stale` | 当前仅有历史快照或窗口已过新鲜期/reset | 显示原 `observedAt` 与刷新动作，不清零 | 已实现 |
 | `reset_elapsed` | envelope/window / `stale` | 来源仍新鲜但该窗口 reset 时间已过 | 保留原观测并等待来源刷新，不清零 | 已实现 |
 | `credits_unlimited` | Credits window / `ok` 或 `stale` | 来源明确声明 Credits 不设固定上限 | 显示“无限 Credits”，不画进度条 | 已实现 |
@@ -169,10 +169,10 @@ Claude 的 5h 与 7d 是两个规范角色，不把某个来源返回任意非�
 | `openai-codex-local` app-server | `consumer-subscription` / `local-authorized` | `stable` | 用户显式启用后，通过官方文档支持的本地 app-server 读取一个或多个窗口；不得读取 OAuth 文件或网页 Cookie |
 | `openai-codex-local` JSONL fallback | `consumer-subscription` / `local-authorized` | `experimental` | 仅在官方路径不可用时受限读取白名单字段；UI 必须显示实验来源，不同步原始路径/内容 |
 | `anthropic-claude-consumer` status line | `consumer-subscription` / `local-authorized` | `plan-dependent` | 用户显式配置并启用；5h/7d 窗口独立可缺失，不把 status line 输入当可轮询 REST API |
-| `anthropic-claude-consumer` CodexBar 标准化桥接 | `consumer-subscription` / `local-authorized` | `experimental` | 用户单独启用并在 CodexBar 中授权来源；TokenLedger 以规范化绝对路径、固定参数/工作目录/超时/输出上限启动 CLI，只接受标准化 Claude 消费者 JSON 并拒绝 API 组织 scope；不读取或保存 CodexBar 持有的 Cookie/OAuth/钥匙串或原始响应 |
-| `anthropic-claude-consumer` built-in CLI PTY | `consumer-subscription` / `local-authorized` | `experimental` | 用户单独启用；TokenLedger 参考 CodexBar 的 CLI PTY 思路，依次尝试 Claude Desktop 随附代理与本机 Claude Code，失败后以全新会话有界重试；只在额度标题至下一标题的有界区间解析 `/usage` 百分比，截断重绘不得串用相邻窗口；不要求安装 CodexBar，不读取 Cookie/OAuth/钥匙串或调用未公开消费者 API |
+| `anthropic-claude-consumer` 第三方标准化桥接 | `consumer-subscription` / `local-authorized` | `experimental` | 用户单独启用并在该第三方工具中授权来源；TokenLedger 以规范化绝对路径、固定参数/工作目录/超时/输出上限启动 CLI，只接受标准化 Claude 消费者 JSON 并拒绝 API 组织 scope；不读取或保存该工具持有的 Cookie/OAuth/钥匙串或原始响应 |
+| `anthropic-claude-consumer` built-in CLI PTY | `consumer-subscription` / `local-authorized` | `experimental` | 用户单独启用；TokenLedger 独立实现公开的 CLI PTY 思路，依次尝试 Claude Desktop 随附代理与本机 Claude Code，失败后以全新会话有界重试；只在额度标题至下一标题的有界区间解析 `/usage` 百分比，截断重绘不得串用相邻窗口；不要求安装第三方额度工具，不读取 Cookie/OAuth/钥匙串或调用未公开消费者 API |
 | `google-antigravity-consumer` built-in loopback/agy | `consumer-subscription` / `local-authorized` | `experimental` | 用户单独启用；发现同用户 App/IDE/agy 或短暂启动规范化绝对路径 agy，只请求 127.0.0.1 的额度/状态 RPC；专用 client 才允许本地自签名证书，TUI 不解析，账户身份丢弃，且只回收自己启动的 child |
-| `google-antigravity-consumer` CodexBar local fallback | `consumer-subscription` / `local-authorized` | `experimental` | 用户额外启用且已安装 CodexBar 时，仅在内置路径失败后以固定 `antigravity + cli` 参数读取标准化 JSON；只接受 app/cli/ide/local source，拒绝 oauth 与账户身份 |
+| `google-antigravity-consumer` 第三方 local fallback | `consumer-subscription` / `local-authorized` | `experimental` | 用户额外启用且已安装第三方桥接工具时，仅在内置路径失败后以固定 `antigravity + cli` 参数读取标准化 JSON；只接受 app/cli/ide/local source，拒绝 oauth 与账户身份 |
 | OpenAI/Anthropic API organization（预留，尚无生产者） | `api-organization` / `official-api` | `stable` 或 `plan-dependent` | 只使用对应官方组织凭据；消费者订阅与组织 usage/cost 不互换 |
 | `company-openapi-<configId>` | `api-organization` / `official-api` | `plan-dependent` | 用户可配置最多 5 个命名 HTTPS 来源；key 仅进系统安全存储。两条独立实测 HTTP 200 响应确认相同字段/类型后，只按同一人民币单位换算三类 `percent` 窗口：`key_day_cost_cny / key_daily_limit_effective_cny`、`user_quota.day_cost_cny / user_quota.day_limit_cny`、`user_quota.month_cost_cny / user_quota.month_limit_cny`。成功结果可写 LKG，并在第二层同步授权开启后进入既有 owner-bound v2；金额、余额、URL、key 与原始 JSON 不得进入 envelope/云端。余额无总额、上游综合比率含义未公开、Key 过期不等于额度 reset，均不得猜测 |
 | `manual-budget`（预留，尚无生产者；同步层已能校验） | `manual-budget` / `manual` | `manual` | 明确标为用户配置，不冒充供应商权益或官方 reset 承诺 |
@@ -186,7 +186,7 @@ Claude 的 5h 与 7d 是两个规范角色，不把某个来源返回任意非�
 
 - 消费者本地 Provider 默认关闭并逐来源 opt-in；授权范围在设置页可解释、可撤销、只读。关闭最后一个同 Provider 来源后停止新读取，清理或忽略内存/LKG，并在异步结果写回前再次校验授权代次。
 - Quota Provider 结果只以标准 envelope 交给 React/Android，不携带组织 secret、本地凭据、Cookie、原始 session、cwd、transcript、提示词、响应或来源路径。桌面设置页可通过独立 `get_claude_statusline_command` 取得仅包含当前 TokenLedger 可执行文件路径的转义配置片段，供用户可见地复制；依据 ADR-018（U-105、U-106），也可经独立设置命令预览并写入 Claude Code `settings.json` 的 `statusLine` 一项（带备份与恢复），用户原有的 status line 命令保存在本机私有文件中，由 helper 继续执行。配置片段、原命令与备份都不写入 envelope/LKG、不同步、不进日志，也不下发 Android。
-- 用户授权本地增强时，TokenLedger 不得直接读取第三方 Cookie/OAuth/钥匙串或调用未公开消费者 API。允许执行由用户另行安装并授权的 CodexBar 外部桥接；Claude 可在内置结果缺角色时补齐，也可在已安装时有界取样以仲裁同角色冲突，其他 Provider 仍只把它作为内置主路径失败后的可选兜底。桥接必须固定规范化绝对路径、参数、工作目录、超时、输出字节和窗口数量，并按 Provider 白名单来源。账户身份、外部错误、pace、原始响应与凭据一律丢弃。内置 PTY/loopback 同样固定路径、端点、超时与上限，不经 shell，不解析 Antigravity TUI；本地证书放宽不得离开 127.0.0.1 专用 client。
+- 用户授权本地增强时，TokenLedger 不得直接读取第三方 Cookie/OAuth/钥匙串或调用未公开消费者 API。允许执行由用户另行安装并授权的第三方外部桥接；Claude 可在内置结果缺角色时补齐，也可在已安装时有界取样以仲裁同角色冲突，其他 Provider 仍只把它作为内置主路径失败后的可选兜底。桥接必须固定规范化绝对路径、参数、工作目录、超时、输出字节和窗口数量，并按 Provider 白名单来源。账户身份、外部错误、pace、原始响应与凭据一律丢弃。内置 PTY/loopback 同样固定路径、端点、超时与上限，不经 shell，不解析 Antigravity TUI；本地证书放宽不得离开 127.0.0.1 专用 client。
 - 本地路径、子进程、行长、消息数、总字节、扫描深度和执行时间必须有界；日志只允许 providerId、状态、reason code 与不可关联请求 ID。
 - secret 只保存在系统安全存储或受控后端。跨机器若同步额度，只同步经验证的 envelope，不同步 secret、原始来源或本地路径。
 - 公司 OpenAPI 配置的地址不是 secret，但仍属于本机连接元数据，不进入 envelope 或云端投影。请求只允许 HTTPS（本机 loopback 调试除外），固定 Bearer header、禁止 URL 凭据/query key/redirect，并限制连接时间、总时间和响应大小；429 按有界 `Retry-After` 或持久指数退避抑制重复请求。
@@ -236,7 +236,7 @@ Claude 的 5h 与 7d 是两个规范角色，不把某个来源返回任意非�
 
 旧 `get_quota_snapshots_v1()` 在升级后读取同一批持久有效行；旧 `replace_quota_snapshots_v1()` 降级为只对 `ok/stale` 做 additive latest-wins，不再删除遗漏 Provider，也不能跨越 v2 墓碑；旧 `clear_quota_snapshots_v1()` 仍被视为用户主动的全局删除，并通过 epoch 阻止迟到写。`expires_at` 与旧 purge cron 被停用，`private.purge_expired_quota_snapshots_v1()` 仅兼容返回 0。
 
-**本机专用原因码上传（T10.318，2026-10-17；2026-10-22 精确匹配加固）**：§4 已登记的 14 个本机失败码（Claude native 6、Antigravity native 5、Antigravity CodexBar 3）可随 LKG `stale` 快照出现，但它们不在云端 wire 枚举里（服务端 `quota_snapshot_reason_valid_v1` 未登记，已发布的读取方遇到未知码会让整条读取失败）。因此本机投影上传前仅将这 14 个精确码换成 `source_temporarily_unavailable`（`src-tauri/src/quota_sync.rs` `cloud_reason_code`），本机显示仍用原码；未登记的同前缀码不得被泛化映射，必须继续被 envelope/window 投影校验拒绝。要让这些码上云，须按 §7 门控枚举例外走新 transport 版本。
+**本机专用原因码上传（T10.318，2026-10-17；2026-10-22 精确匹配加固）**：§4 已登记的 14 个本机失败码（Claude native 6、Antigravity native 5、Antigravity 第三方桥接 3）可随 LKG `stale` 快照出现，但它们不在云端 wire 枚举里（服务端 `quota_snapshot_reason_valid_v1` 未登记，已发布的读取方遇到未知码会让整条读取失败）。因此本机投影上传前仅将这 14 个精确码换成 `source_temporarily_unavailable`（`src-tauri/src/quota_sync.rs` `cloud_reason_code`），本机显示仍用原码；未登记的同前缀码不得被泛化映射，必须继续被 envelope/window 投影校验拒绝。要让这些码上云，须按 §7 门控枚举例外走新 transport 版本。
 
 ### 6.2 传输身份与竞态
 
