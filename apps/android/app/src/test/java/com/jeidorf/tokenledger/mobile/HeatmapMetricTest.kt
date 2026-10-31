@@ -45,6 +45,7 @@ class HeatmapMetricTest {
     fun statsJsonReadsEachFieldIndependently() {
         val stats = StatsJson.parse(
             """{"summary":{"totalTokens":1000,"inputTokens":800,"outputTokens":200,"cachedTokens":0,"totalCost":0.1,"totalRequests":12,"avgTokensPerReq":83},
+               "tools":{},"models":{},"trends":[],"history":[],
                "heatmap":{"2026-09-01":1000,"2026-09-02":0},
                "heatmapRequests":{"2026-09-01":12,"2026-09-02":1}}"""
         )

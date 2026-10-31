@@ -212,10 +212,9 @@ class CacheSavingsParsingTest {
         assertFalse(stats.summary.cacheSplitKnown)
         assertNull(stats.summary.cacheSavedUsd)
         assertNull(stats.summary.cacheSavings)
-        // 每个工具各自上报的读取量字段不受牵连（该字段独立解析，不做跨字段证明）；
-        // 真正被判定为不可得的是汇总层的缓存净节省，即上面三个 assertNull。
+        // 工具拆分也必须双侧显式且与 combined 一致；单侧上报保持 combined。
         assertEquals(8_000_000L, stats.tools.getValue("claude").cacheRead)
-        assertEquals(800_000L, stats.tools.getValue("codex").cacheRead)
+        assertNull(stats.tools.getValue("codex").cacheRead)
         assertNull(stats.tools.getValue("codex").cacheWrite)
     }
 
