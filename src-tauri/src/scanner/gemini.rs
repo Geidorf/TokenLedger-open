@@ -371,19 +371,33 @@ pub(crate) fn gemini_timestamp(value: &Value) -> Option<String> {
                         .to_string(),
                 )
             } else {
-                let cleaned = trimmed.replace('T', " ").replace('Z', "");
-                let (without_fraction, fraction_valid) = match cleaned.split_once('.') {
+                let spaced = trimmed.replace('T', " ");
+                // A trailing `Z` marks UTC; the wall-clock digits must be
+                // converted to local time rather than read as local directly.
+                let (naive_text, is_utc) = match spaced.strip_suffix('Z') {
+                    Some(stripped) => (stripped, true),
+                    None => (spaced.as_str(), false),
+                };
+                let (without_fraction, fraction_valid) = match naive_text.split_once('.') {
                     Some((base, fraction)) => (
                         base,
                         !fraction.is_empty() && fraction.chars().all(|ch| ch.is_ascii_digit()),
                     ),
-                    None => (cleaned.as_str(), true),
+                    None => (naive_text, true),
                 };
                 if fraction_valid {
                     if let Ok(parsed) =
                         chrono::NaiveDateTime::parse_from_str(without_fraction, "%Y-%m-%d %H:%M:%S")
                     {
-                        return Some(parsed.format("%Y-%m-%d %H:%M:%S").to_string());
+                        return Some(if is_utc {
+                            parsed
+                                .and_utc()
+                                .with_timezone(&chrono::Local)
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string()
+                        } else {
+                            parsed.format("%Y-%m-%d %H:%M:%S").to_string()
+                        });
                     }
                 }
                 trimmed
@@ -861,6 +875,36 @@ mod scanner_gemini_tests {
         assert!(gemini_timestamp(&json!("1e9"))
             .as_deref()
             .is_some_and(|timestamp| timestamp.starts_with("2001-09-09 ")));
+    }
+
+    #[test]
+    fn non_rfc3339_utc_timestamp_is_converted_to_local_time() {
+        let expected = chrono::NaiveDate::from_ymd_opt(2026, 8, 19)
+            .unwrap()
+            .and_hms_opt(0, 40, 3)
+            .unwrap()
+            .and_utc()
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        assert_eq!(
+            gemini_timestamp(&json!("2026-08-19 00:40:03.421Z")),
+            Some(expected)
+        );
+        assert_eq!(
+            gemini_timestamp(&json!("2026-08-19 00:40:03")),
+            Some("2026-08-19 00:40:03".to_string())
+        );
+        assert_eq!(
+            gemini_timestamp(&json!("2026-08-19T00:40:03.421Z")),
+            Some(
+                chrono::DateTime::parse_from_rfc3339("2026-08-19T00:40:03.421Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Local)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            )
+        );
     }
 
     #[test]
