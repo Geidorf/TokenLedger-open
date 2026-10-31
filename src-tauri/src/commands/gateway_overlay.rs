@@ -17,19 +17,18 @@ use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection};
 use crate::db;
 use crate::gateway::{accounting, ContextSize, LedgerRecord};
 
-/// Slack around a gateway request's `[ts − latencyMs, ts]` span: magpie's 2 s
-/// end-time match plus up to 1 s of second truncation on each side, plus 1 s.
+/// 网关请求 `[ts − latencyMs, ts]` 区间两侧的容差：2 秒结束时间匹配，
+/// 加上两端各至多 1 秒的截断误差，再加 1 秒余量。
 pub(super) const DEDUPE_WINDOW_SECS: i64 = 5;
 const LEDGER_FILES: [&str; 2] = ["usage-v1.jsonl.1", "usage-v1.jsonl"];
 pub(super) const SYNTHETIC_SESSION_PREFIX: &str = "gateway:";
 
-/// Where a merged row came from: TokenLedger's own gateway, or magpie's
-/// `usage.jsonl` imported by the user (`magpie_import`).
+/// 合并行的来源：TokenLedger 自有网关，或用户导入的外部 usage.jsonl。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum RowSource {
     #[default]
     Gateway,
-    ImportedMagpie,
+    ImportedExternal,
     /// Another computer's call, shared by the peer on WebDAV (`peer_shared`).
     SharedPeer,
 }
@@ -38,7 +37,7 @@ impl RowSource {
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Gateway => "gateway",
-            Self::ImportedMagpie => "imported-magpie",
+            Self::ImportedExternal => "imported-magpie",
             Self::SharedPeer => "shared-peer",
         }
     }
@@ -207,8 +206,8 @@ pub(super) struct OverlayResolution {
     pub held: BTreeSet<i64>,
 }
 
-/// Rule A then rule B, as `superseded_scan_ids`; imported magpie rows are
-/// never matched by rule B when more than one candidate fits.
+/// 先规则 A 再规则 B，与 superseded_scan_ids 相同；外部导入行
+/// 在规则 B 有多个候选时不做匹配。
 pub(super) fn resolve_overlay(
     gateway: &[GatewayRow],
     scans: &[ScanCandidate],
@@ -307,7 +306,7 @@ pub(super) fn resolve_overlay(
             })
             .filter(|(delta, _, _)| *delta <= window_secs)
             .collect::<Vec<_>>();
-        if row.source == RowSource::ImportedMagpie && fitting.len() > 1 {
+        if row.source == RowSource::ImportedExternal && fitting.len() > 1 {
             held.insert(row.id);
             continue;
         }
@@ -354,8 +353,8 @@ pub(super) fn accounting_coverage(db_path: &Path) -> Result<Option<accounting::C
 
 /// Permanent accounting revision invalidates stats caches even after diagnostic rotation.
 /// An unreadable source retains presence; consumers must return Err, not pure-scan fallback.
-/// An imported magpie ledger (`magpie_import`) joins the signature, so importing,
-/// re-importing or removing it invalidates the same caches.
+/// 外部导入账本也参与签名，因此导入、
+/// 重新导入或移除都会使相同缓存失效。
 fn local_signature(db_path: &Path) -> Option<String> {
     let accounting =
         accounting_present(db_path).then(|| match accounting::horizon(&gateway_dir(db_path)) {
@@ -366,8 +365,8 @@ fn local_signature(db_path: &Path) -> Option<String> {
         accounting,
         super::external_ledger_import::signature(db_path),
     ) {
-        (Some(accounting), Some(magpie)) => Some(format!("{accounting}|{magpie}")),
-        (accounting, magpie) => accounting.or(magpie),
+        (Some(accounting), Some(imported)) => Some(format!("{accounting}|{imported}")),
+        (accounting, imported) => accounting.or(imported),
     }
 }
 
@@ -394,9 +393,9 @@ fn accounting_id(record: &LedgerRecord) -> String {
     accounting::accounting_id(record)
 }
 
-/// TokenLedger's own gateway rows, then the imported magpie rows that are not
-/// the same request seen by both gateways (a TokenLedger gateway row wins,
-/// matched by the same rules A and B as a scanned row).
+/// 先读取自有网关记录，再加入未与其重复的外部导入记录；
+/// 两个网关记录同一请求时优先采用自有网关记录，
+/// 匹配使用与扫描记录相同的规则 A 和 B。
 fn read_local_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
     let mut rows = if accounting_present(db_path) {
         read_gateway_rows(db_path)?
@@ -670,8 +669,7 @@ pub(super) struct GatewayDetail {
     pub context: Option<ContextSize>,
 }
 
-/// Source (`gateway` or `imported-magpie`), provider and duration of a merged
-/// row on a connection from `open_stats_connection`.
+/// 读取 open_stats_connection 连接中合并行的来源、供应商与耗时。
 pub(super) fn gateway_detail(conn: &Connection, id: i64) -> Option<GatewayDetail> {
     if id >= 0 {
         return None;
