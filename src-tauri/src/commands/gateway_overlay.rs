@@ -362,7 +362,10 @@ fn local_signature(db_path: &Path) -> Option<String> {
             Ok((coverage, through)) => format!("accounting:{}:{through}", coverage.revision),
             Err(_) => "accounting:unreadable".to_string(),
         });
-    match (accounting, super::magpie_import::signature(db_path)) {
+    match (
+        accounting,
+        super::external_ledger_import::signature(db_path),
+    ) {
         (Some(accounting), Some(magpie)) => Some(format!("{accounting}|{magpie}")),
         (accounting, magpie) => accounting.or(magpie),
     }
@@ -400,7 +403,7 @@ fn read_local_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
     } else {
         Vec::new()
     };
-    let imported = super::magpie_import::read_rows(db_path)?;
+    let imported = super::external_ledger_import::read_rows(db_path)?;
     if imported.is_empty() {
         return Ok(rows);
     }

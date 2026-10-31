@@ -553,5 +553,5 @@ pub async fn magpie_import_clear(
 }
 
 #[cfg(test)]
-#[path = "magpie_import_tests.rs"]
+#[path = "external_ledger_import_tests.rs"]
 mod tests;

@@ -445,7 +445,7 @@ fn gateway_state_path(db_path: &Path) -> PathBuf {
 /// keeps its state: a state file in the gateway folder is legacy-history
 /// evidence to the accounting store (§2.5), which must not be faked.
 fn import_state_path(db_path: &Path) -> PathBuf {
-    super::magpie_import::store_dir(db_path).join(STATE_FILE)
+    super::external_ledger_import::store_dir(db_path).join(STATE_FILE)
 }
 
 fn state_path(db_path: &Path) -> PathBuf {

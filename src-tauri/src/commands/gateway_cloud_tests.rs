@@ -715,7 +715,7 @@ fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
             .collect::<String>(),
     )
     .unwrap();
-    super::super::magpie_import::import_from(&db_path, &source).unwrap();
+    super::super::external_ledger_import::import_from(&db_path, &source).unwrap();
 
     let imported = collect_hours(&db_path, "user-a", "mac").unwrap();
     let first = plan(&imported, &load_state(&db_path), "user-a", "mac", &cost);
@@ -730,7 +730,7 @@ fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
     let noon_key = format!("agg_mac_codex_gpt-5.5_{noon}");
     assert!(first.upserts.iter().any(|agg| agg.unique_key() == noon_key));
 
-    super::super::magpie_import::clear(&db_path).unwrap();
+    super::super::external_ledger_import::clear(&db_path).unwrap();
     let cleared = collect_hours(&db_path, "user-a", "mac").unwrap();
     assert_eq!(
         cleared.keys().cloned().collect::<BTreeSet<_>>(),

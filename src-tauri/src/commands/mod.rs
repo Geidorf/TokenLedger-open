@@ -6928,10 +6928,10 @@ fn read_local_rows_filtered(
 
 pub(crate) mod anomaly_rows;
 mod device_cloud_move;
+pub mod external_ledger_import;
 mod gateway_cloud;
 mod gateway_overlay;
 pub mod gateway_request_log;
-pub mod magpie_import;
 pub mod peer_shared;
 mod price_feed;
 mod price_memo;
