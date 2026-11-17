@@ -228,7 +228,7 @@ T10.112 桌面样式收束：KPI 取消多色光晕与悬停位移，语义图�
 
 #### 品牌图标（T10.222）
 
-- `src/assets/brand/tokenledger-mark.svg` 是品牌几何的唯一编辑源：账本竖脊与记录条，24×24 坐标、圆端圆角；不使用位图生成模型或霓虹叠层。`npm run icons:generate` 派生 React/Canvas 与 Android 的路径常量、安装图标和平台资源；`icons:check` 与故障回归接入 `npm run check`，生成失败不得报告成功或留下半套资源。旧 Python 入口只转交 Node 生成器，修改源图后必须重新生成并提交派生资源。
+- `src/assets/brand/tokenledger-mark.svg` 是品牌几何的唯一编辑源：账本竖脊与记录条，24×24 坐标、圆端圆角；不使用位图生成模型或霓虹叠层。`npm run icons:generate` 派生 React/Canvas 与 Android 的路径常量、安装图标和平台资源；`icons:check` 与故障回归接入 `npm run check`，生成失败不得报告成功或留下半套资源。旧 Python 入口只转交 Node 生成器，修改源图后必须重新生成并提交派生资源。文本产物统一生成 LF，检查仅容许 CRLF 检出差异；二进制仍逐字节匹配锁定 CLI 的输出，工具链升级后须重新生成并核验像素不变。
 - 界面 SVG 继承 `currentColor`：侧栏与分享弹窗使用明暗主题的 `--color-primary`，系统高对比度使用 CanvasText；侧栏不再叠加渐变底板。桌面首次绘制的背景/文字与主题令牌一致，提前设置 `color-scheme`。桌面与 Android 海报页脚直接绘制同一路径、沿用各布局的前景色，不加载应用位图。
 - 安装图标采用稳定蓝底白色符号，macOS 托盘使用透明单色模板，由系统按菜单栏外观着色。Android 保留五密度传统图标，并为 API 26+ 提供全幅蓝色背景和仅含符号的自适应前景，API 33+ 另有 monochrome 层；系统负责外部遮罩，前景不自带圆角底板。自适应层使用 108dp 画布与 66dp 安全区。
 - 图标资源不改变版本号、主题偏好、统计或分享数据。Android 启动窗口当前仍固定深色；应用内浅/深/E-ink、Launcher 主题图标和启动窗口外观分别验收，不能互相替代。
@@ -602,6 +602,7 @@ T10.306h 后台小组件两条缓存写入在网络前捕获请求身份，最�
 - 快捷设置磁贴（`LedgerQuickTileService`，非 active 模式）：每次展开通知栏时重读本地缓存，最多每 10 分钟触发一次后台刷新。主行「可用 N%」，副行「来源 窗口 · 今日 ¥x」。不早于本地今天零点写入的「今日」费用才显示。点按打开应用，锁屏时先解锁。
 - 交互：卡片整体点击只打开 TokenLedger。样式、来源、范围与主题通过 Launcher 的添加/重新配置 Activity 修改；卡片内不提供字符图标或循环轮播，避免误触后实例用途变化。全部来源为默认值，也允许某个实例固定单一来源。
 - 主题：`WidgetThemeMode.System/Light/Dark` 按 appWidgetId 持久化。System 在渲染时读取 `uiMode`，Light/Dark 使用固定语义色，不反向修改 `LedgerAppearance`。
+- 会话失效：登出先同步持久化会话撤销标记，再从 ViewModel 触发 `WidgetRefresher.redrawAll`；鉴权过期同样立即重绘。恢复中登出使用已提交会话的账号清理缓存，不仅依赖尚未建立的 UI 会话。重绘读取撤销后的身份，不等待异步缓存清理或远程撤销，Launcher 重绘失败不能撤销本地登出。
 - 数据：`WidgetStateRepository` 只读 owner-bound LKG；Provider 复用 Android 稳定排序 helper。百分比从 `remaining / limit` 映射为 available fraction，费用按构建配置汇率换算为人民币；来源时效取当前 Provider 窗口最大 `observedAt`。
 - 受限窗口选择：完整额度页继续展示全部合法窗口；小组件、今日页和摆件等每个 Provider 只能放一至两个窗口的表面不得使用 transport 下标。Codex 偏好长窗口，其他消费者来源偏好短窗口；角色先由可信 `windowMinutes` 判定，机器 ID 文字仅作缺字段兜底。同角色内按已用比例降序选择最吃紧窗口，再以 `windowId` 打破平手。偏好角色缺失时可以确定性替代，但必须显示“替代”文字；未展示窗口显示 `+N`，让可见文本与读屏同时表达截断事实。
 - 隐藏费用：`PrivacyStore` 只持久化 Android 展示偏好，主应用与小组件共用。开启后金额格式化为 `¥***.*`，原始统计、缓存、云同步和导出路径保持不变；该能力不是加密或数据撤回。

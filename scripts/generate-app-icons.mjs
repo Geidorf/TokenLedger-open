@@ -13,7 +13,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ANDROID_FOREGROUND_SCALE = 2.9;
@@ -367,12 +367,22 @@ function buildStage(root, tauriCli, stage) {
   validateStage(stage, mark);
 }
 
+// Only generated text permits checkout line-ending conversion. Keep all other
+// bytes (including whitespace and binary encodings) significant.
+function comparableOutput(output, data) {
+  if (!['.ts', '.kt', '.svg', '.xml'].includes(extname(output))) return data;
+  return Buffer.from(data.toString('latin1').replace(/\r\n/g, '\n'), 'latin1');
+}
+
 export function findDrift(stage, root) {
   const drift = [];
   for (const output of expectedOutputs()) {
     const generated = join(stage, output);
     const current = join(root, output);
-    if (!existsSync(current) || !readFileSync(current).equals(readFileSync(generated))) drift.push(output);
+    if (!existsSync(current)
+      || !comparableOutput(output, readFileSync(current)).equals(comparableOutput(output, readFileSync(generated)))) {
+      drift.push(output);
+    }
   }
   return drift;
 }

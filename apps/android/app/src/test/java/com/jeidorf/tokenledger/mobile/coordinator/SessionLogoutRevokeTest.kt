@@ -70,6 +70,22 @@ class SessionLogoutRevokeTest {
     }
 
     @Test
+    fun signOutWhileRestoringClearsTheCommittedUsersCaches() = runTest {
+        val source = FakeSource().apply { committed = committedSession }
+        val coordinator = SessionCoordinator(source, this)
+        assertEquals(DashboardSessionState.Restoring, coordinator.sessionState.value)
+        var cleanedUser: String? = null
+
+        coordinator.signOut { cleanedUser = it }
+        runCurrent()
+
+        assertEquals(committedSession.userId, cleanedUser)
+        assertEquals(listOf(committedSession), source.remoteRevoked)
+        assertEquals(DashboardSessionState.SignedOut, coordinator.sessionState.value)
+        assertEquals(1, source.clearCount)
+    }
+
+    @Test
     fun signOutFallsBackToTheUiSessionWhenNothingIsCommitted() = runTest {
         val source = FakeSource()
         val coordinator = SessionCoordinator(source, this)

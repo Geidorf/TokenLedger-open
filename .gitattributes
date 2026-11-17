@@ -17,3 +17,12 @@ scripts/fixtures/run-health-daemon-slice.txt text eol=lf
 # png/gz/zip 一起纳入匹配（复算：base 的 3342 个跟踪文件里 765 个 eol 被改写，含 656 个二进制；
 # 质量位口径 772/656），以后新增 evidence 目录请一行一目录，或用扩展名白名单（*.txt / *.json / *.log）。
 docs/task-logs/T10.148/evidence/** text eol=lf
+
+# Generated icon text must also stay LF on Windows checkouts.
+/public/tokenledger-icon.svg text eol=lf
+/apps/android/app/src/main/java/com/jeidorf/tokenledger/mobile/TokenLedgerBrand.kt text eol=lf
+/apps/android/app/src/main/res/values/icon_colors.xml text eol=lf
+/apps/android/app/src/main/res/drawable/ic_launcher_foreground.xml text eol=lf
+/apps/android/app/src/main/res/drawable/ic_launcher_monochrome.xml text eol=lf
+/apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher*.xml text eol=lf
+/apps/android/app/src/main/res/mipmap-anydpi-v33/ic_launcher*.xml text eol=lf

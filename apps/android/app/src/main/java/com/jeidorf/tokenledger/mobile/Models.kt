@@ -132,7 +132,8 @@ data class ToolStat(
     val output: Long,
     val cached: Long,
     val total: Long,
-    val cost: Double,
+    /** 缺失表示费用不可得；真实 0 必须保留为 0.0。 */
+    val cost: Double?,
     val requests: Long,
     /** 缺失表示来源无法证明；真实 0 必须保留为 0。 */
     val cacheRead: Long? = null,
@@ -687,7 +688,7 @@ object StatsJson {
                 output = item.longValue("output"),
                 cached = item.longValue("cached"),
                 total = item.longValue("total"),
-                cost = item.doubleValue("cost"),
+                cost = item.optFiniteNonNegativeDoubleOrNull("cost"),
                 requests = item.longValue("requests"),
                 cacheRead = item.optLongOrNull("cacheRead"),
                 cacheWrite = item.optLongOrNull("cacheWrite"),

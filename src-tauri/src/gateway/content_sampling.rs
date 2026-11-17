@@ -22,6 +22,7 @@ const MAX_PLAINTEXT: usize = 256 * 1024;
 pub(super) const CONTENT_BUDGET: usize = (MAX_PLAINTEXT - 2048) / 2;
 const RETENTION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const STORE_ERROR: &str = "内容采样存储不可用，已停止采样。";
+const KEY_UNAVAILABLE: &str = "系统钥匙串暂时不可读，已暂停采样；配置与加密样本已保留，请重试。";
 const KEY_ERROR: &str = "内容采样密钥不可用，已停止采样并清理样本。";
 const READ_ERROR: &str = "此内容样本不可用或已损坏。";
 
@@ -362,12 +363,20 @@ impl ContentSampling {
                 self.secrets
                     .set(KEY_ACCOUNT, &value)
                     .map_err(|_| KEY_ERROR.to_string())?;
-                if self.secrets.get(KEY_ACCOUNT).ok().flatten().as_ref() != Some(&value) {
-                    return Err(KEY_ERROR.to_string());
+                match self.secrets.get(KEY_ACCOUNT) {
+                    Ok(Some(verified)) if verified == value => {}
+                    _ => {
+                        self.pause_for_key_error(inner);
+                        return Err(KEY_UNAVAILABLE.to_string());
+                    }
                 }
                 value
             }
-            _ => {
+            Err(_) => {
+                self.pause_for_key_error(inner);
+                return Err(KEY_UNAVAILABLE.to_string());
+            }
+            Ok(None) => {
                 self.key_lost(inner);
                 return Err(inner.error.clone().unwrap_or_else(|| KEY_ERROR.to_string()));
             }
@@ -390,7 +399,22 @@ impl ContentSampling {
         };
         let key = UnboundKey::new(&CHACHA20_POLY1305, &decoded);
         decoded.fill(0);
-        key.map(LessSafeKey::new).map_err(|_| KEY_ERROR.to_string())
+        let key = key
+            .map(LessSafeKey::new)
+            .map_err(|_| KEY_ERROR.to_string())?;
+        if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
+            inner.error = None;
+        }
+        Ok(key)
+    }
+
+    fn pause_for_key_error(&self, inner: &mut Inner) {
+        // A locked or unavailable keychain is not evidence that the key was lost.
+        // Revoke in-flight captures, but retain the existing authorization and ciphertext.
+        inner.generation = inner.generation.wrapping_add(1);
+        inner.error = Some(KEY_UNAVAILABLE.to_string());
+        self.ready.store(false, Ordering::SeqCst);
+        self.active_hint.store(false, Ordering::SeqCst);
     }
 
     fn key_lost(&self, inner: &mut Inner) {
@@ -630,6 +654,11 @@ impl ContentSampling {
     ) -> Result<(), String> {
         let result = self.finish_sample(ticket, response, status, incomplete);
         if let Err(error) = &result {
+            // key() already paused this generation while holding the lock.
+            // Do not overwrite a later successful status/configure recovery.
+            if error == KEY_UNAVAILABLE {
+                return result;
+            }
             self.ready.store(false, Ordering::SeqCst);
             let mut inner = self.lock();
             inner.configuration = Configuration::default();
@@ -787,6 +816,9 @@ impl ContentSampling {
     }
 
     pub(super) fn active(&self) -> bool {
+        if !self.ready.load(Ordering::SeqCst) {
+            return false;
+        }
         let Ok(inner) = self.inner.try_lock() else {
             return self.active_hint.load(Ordering::SeqCst);
         };

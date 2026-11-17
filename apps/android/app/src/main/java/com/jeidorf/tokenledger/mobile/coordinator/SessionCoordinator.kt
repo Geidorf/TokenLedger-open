@@ -149,7 +149,7 @@ internal class SessionCoordinator(
         // The committed session is preferred: a background refresh may have rotated past the UI copy.
         val revoked = revokeAndEnqueueClear() ?: uiSession
         revoked?.let(::launchRemoteRevoke)
-        val userId = uiSession?.userId
+        val userId = revoked?.userId
         advanceSessionGeneration()
         restoreJob?.cancel()
         signInJob?.cancel()

@@ -39,6 +39,7 @@ import type { PricingSectionProps } from "./settings/PricingSection";
 import { PriceMigrationNoticeOpenContext } from "./settings/PriceMigrationNotice";
 import { DataHelpSection } from "./settings/DataHelpSection";
 import type { DataHelpSectionProps } from "./settings/DataHelpSection";
+import { SettingsVisibilityContext } from "./settings/SettingsVisibility";
 import { SettingsSection } from "./settings/SettingsPrimitives";
 import { ModelAccessCard } from "../features/gateway/ModelAccessCard";
 import type { ModelAccessCardProps } from "../features/gateway/ModelAccessCard";
@@ -264,7 +265,9 @@ export function SettingsTab(props: SettingsTabProps) {
           hidden={activeSection !== "settings-quota"}
           aria-hidden={activeSection !== "settings-quota"}
         >
-          <QuotaSection {...props.quota} />
+          <SettingsVisibilityContext.Provider value={activeSection === "settings-quota"}>
+            <QuotaSection {...props.quota} />
+          </SettingsVisibilityContext.Provider>
         </section>
         {activeSection === "settings-budget" && (
           <section>
@@ -298,7 +301,9 @@ export function SettingsTab(props: SettingsTabProps) {
           hidden={activeSection !== "settings-data"}
           aria-hidden={activeSection !== "settings-data"}
         >
-          <DataHelpSection {...props.dataHelp} onOpenCloudSection={openCloud} />
+          <SettingsVisibilityContext.Provider value={activeSection === "settings-data"}>
+            <DataHelpSection {...props.dataHelp} onOpenCloudSection={openCloud} />
+          </SettingsVisibilityContext.Provider>
         </section>
       </div>
     </div>

@@ -1212,3 +1212,30 @@ describe('额度提醒设置（T10.287）', () => {
     expect(toggle).toHaveAttribute('aria-checked', 'false');
   });
 });
+
+it('隐藏额度分区或保存失败清空 API key，普通编辑草稿保留', async () => {
+  const { SettingsVisibilityContext } = await import('./SettingsVisibility');
+  vi.mocked(invoke).mockImplementation(async (command) => {
+    if (command === 'upsert_custom_quota_endpoint') throw new Error('额度保存失败');
+    return [];
+  });
+  const ui = (visible: boolean) => <SettingsVisibilityContext.Provider value={visible}>
+    <QuotaSection appSettings={DEFAULT_SETTINGS} cloudStatus={cloudStatus} quotaProviders={[]} quotaSyncStatus={quotaSyncStatus}
+      busy={busyState()} onSettingChange={vi.fn()} onClaudeNativeQuotaChange={vi.fn()} onAntigravityLocalQuotaChange={vi.fn()}
+      onAuthorizeClaudeNativeQuota={vi.fn()} onAuthorizeAntigravityQuota={vi.fn()} onQuotaSyncToggle={vi.fn()} onQuotaSyncNow={vi.fn()}
+      onDeleteQuotaProvider={vi.fn()} onClearQuotaSnapshots={vi.fn()} onConfirm={vi.fn(async () => true)} onCustomQuotaChanged={vi.fn()} />
+  </SettingsVisibilityContext.Provider>;
+  const view = render(ui(true));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('list_custom_quota_endpoints'));
+  fireEvent.change(screen.getByLabelText('公司额度来源名称'), { target: { value: '未保存名称' } });
+  fireEvent.change(screen.getByLabelText('公司额度 API key'), { target: { value: 'secret' } });
+  view.rerender(ui(false));
+  view.rerender(ui(true));
+  expect(screen.getByLabelText('公司额度 API key')).toHaveValue('');
+  expect(screen.getByLabelText('公司额度来源名称')).toHaveValue('未保存名称');
+  fireEvent.change(screen.getByLabelText('公司额度 API key'), { target: { value: 'retry-secret' } });
+  fireEvent.click(screen.getByRole('button', { name: '添加并刷新额度' }));
+  await screen.findByText('Error: 额度保存失败');
+  expect(screen.getByLabelText('公司额度 API key')).toHaveValue('');
+  expect(screen.getByLabelText('公司额度来源名称')).toHaveValue('未保存名称');
+});

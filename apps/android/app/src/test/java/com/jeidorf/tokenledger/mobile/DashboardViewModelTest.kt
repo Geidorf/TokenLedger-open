@@ -104,13 +104,47 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun signOutRequestsWidgetRedrawWithoutAnyActiveComposition() = runTest {
+        val repository = FakeDashboardRepository { session, _, _ -> session to stats(1) }
+        var redraws = 0
+        val viewModel = viewModel(repository, onSessionInvalidated = {
+            assertNull(repository.storedSession)
+            redraws++
+        })
+
+        viewModel.signOut()
+        runCurrent()
+
+        assertEquals(1, redraws)
+        assertEquals(DashboardSessionState.SignedOut, viewModel.uiState.value.sessionState)
+    }
+
+    @Test
+    fun widgetRedrawFailureDoesNotUndoLogout() = runTest {
+        val repository = FakeDashboardRepository { session, _, _ -> session to stats(1) }
+        var redraws = 0
+        val viewModel = viewModel(repository, onSessionInvalidated = {
+            redraws++
+            throw IOException("launcher unavailable")
+        })
+
+        viewModel.signOut()
+        runCurrent()
+
+        assertEquals(1, redraws)
+        assertEquals(DashboardSessionState.SignedOut, viewModel.uiState.value.sessionState)
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
     fun signOutGenerationAlsoRejectsLateSessionRestore() = runTest {
         val restoredSession = CompletableDeferred<MobileSession?>()
         val repository = FakeDashboardRepository(
             fetch = { session, _, _ -> session to stats(1) },
             restore = { restoredSession.awaitIgnoringCancellation() }
         )
-        val viewModel = viewModel(repository)
+        var redraws = 0
+        val viewModel = viewModel(repository, onSessionInvalidated = { redraws++ })
 
         viewModel.signOut()
         restoredSession.complete(SESSION)
@@ -119,6 +153,7 @@ class DashboardViewModelTest {
         assertEquals(DashboardSessionState.SignedOut, viewModel.uiState.value.sessionState)
         assertNull(viewModel.uiState.value.session)
         assertEquals(1, repository.clearSessionCalls)
+        assertEquals(1, redraws)
     }
 
     @Test
@@ -127,9 +162,11 @@ class DashboardViewModelTest {
             throw DashboardAuthExpiredException()
         }
         val cache = FakeDashboardCache()
-        val viewModel = viewModel(repository, cache)
+        var redraws = 0
+        val viewModel = viewModel(repository, cache, onSessionInvalidated = { redraws++ })
         runCurrent()
 
+        assertEquals(1, redraws)
         assertTrue(viewModel.uiState.value.sessionState is DashboardSessionState.Expired)
         assertNull(viewModel.uiState.value.session)
         assertNull(viewModel.uiState.value.visibleData)
@@ -474,12 +511,14 @@ class DashboardViewModelTest {
 
     private fun viewModel(
         repository: FakeDashboardRepository,
-        cache: FakeDashboardCache = FakeDashboardCache()
+        cache: FakeDashboardCache = FakeDashboardCache(),
+        onSessionInvalidated: suspend () -> Unit = {}
     ): DashboardViewModel = DashboardViewModel(
         repository = repository,
         cache = cache,
         timeProvider = FakeTimeProvider,
-        automaticRefreshEnabled = false
+        automaticRefreshEnabled = false,
+        onSessionInvalidated = onSessionInvalidated
     )
 
     private fun stats(totalTokens: Long): StatsData = StatsData(

@@ -416,7 +416,8 @@ fn collect_hours_with_scan_hook(
                 output_tokens: row.output_tokens,
                 cached_tokens: row.cached_tokens,
                 cache_write_tokens: row.cache_write_tokens,
-                cache_write_known: None,
+                cache_write_known: (row.source == gateway_overlay::RowSource::Gateway)
+                    .then_some(true),
                 cost_usd: None,
                 machine_id: fallback_machine.to_string(),
                 pending: false,

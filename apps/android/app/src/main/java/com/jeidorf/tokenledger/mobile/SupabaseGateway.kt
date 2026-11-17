@@ -862,7 +862,7 @@ private fun CompositionEntry.provenCacheSplit(): Pair<Long, Long>? {
     return if (total == cachedTokens) read to write else null
 }
 
-private fun CompositionEntry.toToolStat(): ToolStat {
+internal fun CompositionEntry.toToolStat(): ToolStat {
     val split = provenCacheSplit()
     return ToolStat(
         name = value,
@@ -870,7 +870,7 @@ private fun CompositionEntry.toToolStat(): ToolStat {
         output = outputTokens,
         cached = cachedTokens,
         total = tokens,
-        cost = cost ?: 0.0,
+        cost = cost?.takeIf { it.isFinite() && it >= 0.0 },
         requests = requests,
         cacheRead = split?.first,
         cacheWrite = split?.second

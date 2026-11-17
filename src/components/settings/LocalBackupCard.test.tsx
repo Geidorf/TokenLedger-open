@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalBackupCard, defaultSections, type LocalBackupPreview, type LocalBackupStatus } from './LocalBackupCard';
@@ -93,4 +93,64 @@ describe('LocalBackupCard', () => {
       budgets: false, settings: true, prices: false, quotaAlerts: false,
     });
   });
+});
+
+it('离开数据分区清空全部密码，迟到预览不能恢复旧确认流程', async () => {
+  const { SettingsVisibilityContext } = await import('./SettingsVisibility');
+  let resolvePreview!: (value: LocalBackupPreview) => void;
+  vi.mocked(invoke).mockImplementation(async (cmd) => {
+    if (cmd === 'local_backup_preview') return new Promise<LocalBackupPreview>((resolve) => { resolvePreview = resolve; });
+    return status;
+  });
+  const ui = (visible: boolean) => <SettingsVisibilityContext.Provider value={visible}><LocalBackupCard /></SettingsVisibilityContext.Provider>;
+  const view = render(ui(true));
+  await waitFor(() => expect(screen.getAllByLabelText('备份文件夹')[0]).toHaveValue('/backups'));
+  fireEvent.change(screen.getByLabelText('备份文件'), { target: { value: '/backups/draft.tlbackup' } });
+  for (const input of view.container.querySelectorAll('input[type="password"]')) {
+    fireEvent.change(input, { target: { value: 'long enough' } });
+  }
+  fireEvent.click(screen.getByRole('button', { name: '预览备份' }));
+  view.rerender(ui(false));
+  view.rerender(ui(true));
+  for (const input of view.container.querySelectorAll('input[type="password"]')) expect(input).toHaveValue('');
+  expect(screen.getByLabelText('备份文件')).toHaveValue('/backups/draft.tlbackup');
+  await act(async () => { resolvePreview(preview); });
+  await waitFor(() => expect(screen.getByRole('button', { name: '预览备份' })).not.toHaveAttribute('aria-busy', 'true'));
+  expect(screen.queryByRole('button', { name: '恢复选中的部分' })).not.toBeInTheDocument();
+});
+
+it('导出失败也清除两份口令，保留目录用于重试', async () => {
+  vi.mocked(invoke).mockImplementation(async (cmd) => {
+    if (cmd === 'local_backup_export') throw new Error('导出失败');
+    return status;
+  });
+  render(<LocalBackupCard />);
+  await waitFor(() => expect(screen.getAllByLabelText('备份文件夹')[0]).toHaveValue('/backups'));
+  fireEvent.change(screen.getAllByLabelText('备份密码')[0], { target: { value: 'long enough' } });
+  fireEvent.change(screen.getByLabelText('再输一次密码'), { target: { value: 'long enough' } });
+  fireEvent.click(screen.getByRole('button', { name: '导出加密备份' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('导出失败');
+  expect(screen.getAllByLabelText('备份密码')[0]).toHaveValue('');
+  expect(screen.getByLabelText('再输一次密码')).toHaveValue('');
+  expect(screen.getAllByLabelText('备份文件夹')[0]).toHaveValue('/backups');
+});
+
+it.each(['local_backup_preview', 'local_backup_apply'])('%s 失败要求重新输入口令，成功预览可继续恢复', async (failure) => {
+  vi.mocked(invoke).mockImplementation(async (cmd) => {
+    if (cmd === failure) throw new Error('恢复操作失败');
+    if (cmd === 'local_backup_preview') return preview;
+    return status;
+  });
+  render(<LocalBackupCard />);
+  fireEvent.change(screen.getByLabelText('备份文件'), { target: { value: '/backups/example.tlbackup' } });
+  fireEvent.change(screen.getAllByLabelText('备份密码')[1], { target: { value: 'long enough' } });
+  fireEvent.click(screen.getByRole('button', { name: '预览备份' }));
+  if (failure === 'local_backup_apply') {
+    const apply = await screen.findByRole('button', { name: '恢复选中的部分' });
+    expect(screen.getAllByLabelText('备份密码')[1]).toHaveValue('long enough');
+    fireEvent.click(apply);
+  }
+  expect(await screen.findByRole('alert')).toHaveTextContent('恢复操作失败');
+  expect(screen.getAllByLabelText('备份密码')[1]).toHaveValue('');
+  expect(screen.getByLabelText('备份文件')).toHaveValue('/backups/example.tlbackup');
 });

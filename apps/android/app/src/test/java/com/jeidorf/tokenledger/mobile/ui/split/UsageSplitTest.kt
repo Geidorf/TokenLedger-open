@@ -33,6 +33,24 @@ class UsageSplitTest {
     private fun available(result: SplitResult) = result as SplitResult.Available
 
     @Test
+    fun agentCostSortKeepsUnknownLastAndPreservesTheResponseTotal() {
+        val base = stats()
+        val template = base.tools.values.first()
+        val data = base.copy(tools = mapOf(
+            "unknown" to template.copy(name = "unknown", cost = null),
+            "free" to template.copy(name = "free", cost = 0.0),
+            "paid" to template.copy(name = "paid", cost = 1.5)
+        ))
+        val result = available(splitUsage(data, SplitDimension.Agent, SplitMetric.Cost, TokenDisplayMode.Effective, false))
+        assertEquals(listOf("paid", "free", "unknown"), result.rows.map { it.name })
+        assertEquals(1, result.unknownCount)
+        assertEquals(2.0, result.total)
+        assertEquals(0.0, result.rows[1].value(SplitMetric.Cost))
+        assertNull(result.rows[2].value(SplitMetric.Cost))
+        assertNull(result.sharePercent(result.rows[2], SplitMetric.Cost))
+    }
+
+    @Test
     fun agentRowsSortByMetricAndFollowTokenMode() {
         val byTokens = available(splitUsage(stats(), SplitDimension.Agent, SplitMetric.Tokens, TokenDisplayMode.Effective, false))
         assertEquals(listOf("Claude Code", "Codex"), byTokens.rows.map { it.name })

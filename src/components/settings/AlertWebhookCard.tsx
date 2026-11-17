@@ -121,6 +121,8 @@ export function AlertWebhookCard() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    // The URL may itself contain the webhook credential. Clear both before I/O.
+    setDraft((current) => ({ ...current, url: '', secret: '' }));
     if (!draft.url.trim() && !keepsUrl) {
       setFormError(t('webhook.form.urlRequired'));
       return;
@@ -138,6 +140,7 @@ export function AlertWebhookCard() {
       clearSecret: signed && draft.clearSecret,
     });
     if (ok) setDraft(EMPTY_DRAFT);
+    else setDraft((current) => ({ ...current, url: '', secret: '' }));
   };
 
   const edit = (endpoint: WebhookEndpoint) => {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useSettingsVisible } from './SettingsVisibility';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Archive, FolderSearch, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import { useT, type MessageKey } from '../../i18n';
@@ -178,6 +179,21 @@ export function LocalBackupCard() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
 
+  const previewGeneration = useRef(0);
+  const visible = useSettingsVisible();
+  useEffect(() => {
+    if (visible) return;
+    previewGeneration.current += 1;
+    setExportPass('');
+    setExportConfirm('');
+    setRestorePass('');
+    setAutoPass('');
+    setPreview(null);
+    setSections(null);
+  }, [visible]);
+
+  useEffect(() => () => { previewGeneration.current += 1; }, []);
+
   const applyAuto = (auto: LocalBackupAutoView) => {
     setAutoEnabled(auto.enabled);
     setAutoDir(auto.dir);
@@ -209,18 +225,25 @@ export function LocalBackupCard() {
     try {
       return await task();
     } catch (cause) {
+      if (action === 'preview') setRestorePass('');
       setError(errorText(cause, t('backup.error.generic')));
       return undefined;
     } finally {
+      if (action === 'export') {
+        setExportPass('');
+        setExportConfirm('');
+      }
+      if (action === 'apply') setRestorePass('');
+      if (action === 'saveAuto') setAutoPass('');
       setBusy(null);
     }
   };
 
   const exportReady = exportPass.length >= MIN_PASSPHRASE && exportPass === exportConfirm && dir.trim() !== '';
   const doExport = () => run('export', async () => {
-    const done = await invoke<LocalBackupExportResult>('local_backup_export', { input: { dir, passphrase: exportPass } });
     setExportPass('');
     setExportConfirm('');
+    const done = await invoke<LocalBackupExportResult>('local_backup_export', { input: { dir, passphrase: exportPass } });
     setNote(t('backup.export.done', { path: done.path, size: prettyBytes(done.bytes), rows: formatNum(done.ledgerRows) }));
   });
 
@@ -229,31 +252,38 @@ export function LocalBackupCard() {
   });
 
   const pickFile = (next: string) => {
+    previewGeneration.current += 1;
     setPath(next);
+    setRestorePass('');
     setPreview(null);
     setSections(null);
     setResult(null);
   };
 
   const doPreview = () => run('preview', async () => {
+    const generation = previewGeneration.current;
+    setPreview(null);
+    setSections(null);
     const next = await invoke<LocalBackupPreview>('local_backup_preview', { input: { path, passphrase: restorePass } });
+    if (generation !== previewGeneration.current) return;
     setPreview(next);
     setSections(defaultSections(next));
     setResult(null);
   });
 
   const doApply = () => run('apply', async () => {
-    if (!preview || !sections) return;
+    if (!preview || !sections || !restorePass) return;
+    setRestorePass('');
     const done = await invoke<LocalBackupApplyResult>('local_backup_apply', {
       input: { path, passphrase: restorePass, digest: preview.digest, sections, conflict },
     });
     setResult(done);
     setPreview(null);
     setSections(null);
-    setRestorePass('');
   });
 
   const saveAuto = () => run('saveAuto', async () => {
+    setAutoPass('');
     const view = await invoke<LocalBackupAutoView>('local_backup_save_auto', {
       input: {
         enabled: autoEnabled,
@@ -263,7 +293,6 @@ export function LocalBackupCard() {
         ...(autoPass ? { passphrase: autoPass } : {}),
       },
     });
-    setAutoPass('');
     applyAuto(view);
     setStatus((current) => (current ? { ...current, auto: view } : current));
     setNote(t('backup.auto.saved'));
@@ -450,7 +479,7 @@ export function LocalBackupCard() {
               </label>
             </div>
             <SettingsActionRow busy={busy !== null}>
-              <button className="primary-inline" type="button" onClick={() => void doApply()} disabled={!anyPicked || busy !== null}>
+              <button className="primary-inline" type="button" onClick={() => void doApply()} disabled={!anyPicked || !restorePass || busy !== null}>
                 {busy === 'apply' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                 {busy === 'apply' ? t('backup.restore.applyBusy') : t('backup.restore.apply')}
               </button>

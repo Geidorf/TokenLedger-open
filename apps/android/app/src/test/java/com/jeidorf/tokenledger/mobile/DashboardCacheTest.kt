@@ -167,11 +167,12 @@ class DashboardCacheTest {
                     output = 0,
                     cached = 5,
                     total = 10,
-                    cost = 0.0,
+                    cost = null,
                     requests = 1,
                     cacheRead = null,
                     cacheWrite = null
-                )
+                ),
+                "free-tool" to ToolStat("free-tool", 0, 0, 0, 0, 0.0, 1)
             )
         )
         val snapshot = DashboardCachedSnapshot(stats, savedAtEpochMillis = 123L)
@@ -192,6 +193,8 @@ class DashboardCacheTest {
         assertNull(decoded.stats.models.getValue("unknown").cacheRead)
         assertNull(decoded.stats.models.getValue("unknown").cacheWrite)
         assertEquals(0.0, decoded.stats.models.getValue("free").cost)
+        assertNull(decoded.stats.tools.getValue("unknown-tool").cost)
+        assertEquals(0.0, decoded.stats.tools.getValue("free-tool").cost)
         assertNull(decoded.stats.tools.getValue("unknown-tool").cacheRead)
         assertNull(decoded.stats.tools.getValue("unknown-tool").cacheWrite)
     }

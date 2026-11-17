@@ -567,7 +567,9 @@ fn install_overlay_for_machine(
               WHERE id NOT IN (SELECT id FROM temp.gw_superseded)
              UNION ALL
              SELECT id, tool, model, input_tokens, output_tokens, cached_tokens,
-                    cache_write_tokens, timestamp, session_id, cost_usd, machine_id, NULL AS cache_write_known, 'reported' AS usage_provenance
+                    cache_write_tokens, timestamp, session_id, cost_usd, machine_id,
+                    CASE WHEN source = 'gateway' THEN 1 ELSE NULL END AS cache_write_known,
+                    'reported' AS usage_provenance
                FROM temp.gw_rows;",
     )?;
     let mut insert_row = conn.prepare(

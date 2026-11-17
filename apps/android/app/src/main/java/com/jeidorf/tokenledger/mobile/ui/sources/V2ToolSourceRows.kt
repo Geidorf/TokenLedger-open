@@ -48,6 +48,8 @@ import com.jeidorf.tokenledger.mobile.LocalCostMaskEnabled
 import com.jeidorf.tokenledger.mobile.LocalDashboardCurrency
 import com.jeidorf.tokenledger.mobile.TokenDisplayMode
 import com.jeidorf.tokenledger.mobile.ToolStat
+import com.jeidorf.tokenledger.mobile.VALUE_UNAVAILABLE
+import com.jeidorf.tokenledger.mobile.isKnownCost
 import com.jeidorf.tokenledger.mobile.displayedTokenCount
 import com.jeidorf.tokenledger.mobile.formatInteger
 import com.jeidorf.tokenledger.mobile.ledgerMotionEnabled
@@ -81,7 +83,9 @@ internal fun V2ToolSourceRows(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         tools.forEachIndexed { index, tool ->
             val toolTokens = displayedTokenCount(tokenDisplayMode, tool.effectiveTokens, tool.cached)
-            val costLabel = v2FormatMoney(context, tool.cost, isCostMasked, currency)
+            val costLabel = if (isKnownCost(tool.cost)) {
+                v2FormatMoney(context, tool.cost, isCostMasked, currency)
+            } else VALUE_UNAVAILABLE
             val isSelected = selectedIndex == index
             val rowModifier = if (selectedIndex != null && isSelected) {
                 Modifier

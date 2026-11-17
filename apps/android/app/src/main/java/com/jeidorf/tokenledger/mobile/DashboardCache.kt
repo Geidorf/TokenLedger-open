@@ -480,7 +480,7 @@ internal object DashboardSnapshotJson {
         .put("output", tool.output)
         .put("cached", tool.cached)
         .put("total", tool.total)
-        .put("cost", tool.cost)
+        .put("cost", tool.cost?.takeIf { it.isFinite() && it >= 0.0 } ?: JSONObject.NULL)
         .put("requests", tool.requests)
         .put("models", longMapToJson(tool.models))
         .put("heatmap", longMapToJson(tool.heatmap))

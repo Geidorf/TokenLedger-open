@@ -811,3 +811,41 @@ fn usage_details_provider_filter_without_a_gateway_ledger_is_empty() {
     assert_eq!(details["filteredSummary"]["totalRequests"], json!(0));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn only_native_gateway_zero_write_is_proven_in_stats_overlay() {
+    for source in [RowSource::Gateway, RowSource::SharedPeer] {
+        let (app, root) = test_app();
+        let conn = db::get_connection(&db::get_db_path(&app)).unwrap();
+        conn.execute("INSERT INTO token_logs(tool,model,input_tokens,output_tokens,cached_tokens,cache_write_tokens,timestamp,session_id,unique_key,machine_id,cache_write_known) VALUES('codex','legacy-model',1,1,100,0,'2026-10-08 00:00:00','legacy','unknown-zero','fixture',NULL)", []).unwrap();
+        let mut gateway = fixture_rows(&fixture()).remove(0);
+        gateway.id = -100;
+        gateway.source = source;
+        gateway.cached_tokens = 100;
+        gateway.cache_write_tokens = 0;
+        install_overlay(&conn, &[gateway]).unwrap();
+        let rows = conn.prepare("SELECT id,tool,model,input_tokens,output_tokens,cached_tokens,cache_write_tokens,timestamp,session_id,cost_usd,machine_id,cache_write_known,usage_provenance FROM token_logs ORDER BY id").unwrap()
+            .query_map([], super::super::map_stat_row).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].cache_write_known,
+            (source == RowSource::Gateway).then_some(true)
+        );
+        assert_eq!(
+            rows[0].cache_split_is_proven(),
+            source == RowSource::Gateway
+        );
+        assert_eq!(rows[0].cache_read_tokens(), 100);
+        assert_eq!(rows[1].cache_write_known, None);
+        assert!(
+            !rows[1].cache_split_is_proven(),
+            "legacy scan zero is not provenance"
+        );
+        assert!(
+            !rows.iter().all(|row| row.cache_split_is_proven()),
+            "a mixed bucket remains unknown"
+        );
+        drop(conn);
+        fs::remove_dir_all(root).unwrap();
+    }
+}

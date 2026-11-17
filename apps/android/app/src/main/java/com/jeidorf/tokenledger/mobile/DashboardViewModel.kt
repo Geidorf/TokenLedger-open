@@ -18,6 +18,7 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,7 +75,8 @@ class DashboardViewModel internal constructor(
     private val dailyQuoteRepository: DailyQuoteDataSource = LocalDailyQuoteDataSource,
     private val timeProvider: DashboardTimeProvider = SystemDashboardTimeProvider,
     private val automaticRefreshEnabled: Boolean = true,
-    private val quotaFreshnessSchedulingEnabled: Boolean = true
+    private val quotaFreshnessSchedulingEnabled: Boolean = true,
+    private val onSessionInvalidated: suspend () -> Unit = {}
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow(
         DashboardUiState(configured = repository.isConfigured)
@@ -716,6 +718,7 @@ class DashboardViewModel internal constructor(
             sessionState = DashboardSessionState.SignedOut,
             loadingMode = DashboardLoadingMode.Idle
         )
+        redrawWidgetsAfterSessionInvalidation()
     }
 
     private fun restoreSession() {
@@ -791,6 +794,21 @@ class DashboardViewModel internal constructor(
             sessionState = DashboardSessionState.Expired(),
             loadingMode = DashboardLoadingMode.Idle
         )
+        redrawWidgetsAfterSessionInvalidation()
+    }
+
+    private fun redrawWidgetsAfterSessionInvalidation() {
+        // The persistent tombstone is already committed. Redraw from that authority,
+        // without waiting for a network revoke, cache cleanup, or a foreground composition.
+        viewModelScope.launch {
+            try {
+                onSessionInvalidated()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // A launcher failure cannot undo local logout or turn it into a login error.
+            }
+        }
     }
 
     companion object {
@@ -808,7 +826,10 @@ class DashboardViewModel internal constructor(
                         cache = DashboardCache(appContext),
                         quotaRepository = QuotaRepository(),
                         quotaCache = QuotaCache(appContext),
-                        dailyQuoteRepository = DailyQuoteRepository(appContext)
+                        dailyQuoteRepository = DailyQuoteRepository(appContext),
+                        onSessionInvalidated = {
+                            com.jeidorf.tokenledger.mobile.widget.WidgetRefresher.redrawAll(appContext)
+                        }
                     ) as T
                 }
             }

@@ -122,6 +122,37 @@ test('漂移检查能指出变化的派生文件', () => {
   }
 });
 
+test('文本仅忽略 CRLF 与 LF，二进制和其他文本差异仍报告漂移', () => {
+  const fixture = mkdtempSync(join(tmpdir(), 'tokenledger-icon-eol-'));
+  const stage = join(fixture, 'stage');
+  const root = join(fixture, 'root');
+  try {
+    writeOutputSet(stage, 'same');
+    writeOutputSet(root, 'same');
+    const textOutputs = expectedOutputs().filter((path) => /\.(ts|kt|svg|xml)$/.test(path));
+    for (const output of textOutputs) {
+      writeFileSync(join(stage, output), '品牌\nsecond line\n');
+      writeFileSync(join(root, output), '品牌\r\nsecond line\r\n');
+    }
+    assert.deepEqual(findDrift(stage, root), []);
+    const changedText = textOutputs[0];
+    writeFileSync(join(root, changedText), '品牌\r\nchanged line\r\n');
+    assert.deepEqual(findDrift(stage, root), [changedText]);
+    writeFileSync(join(root, changedText), '品牌\rsecond line\r');
+    assert.deepEqual(findDrift(stage, root), [changedText]);
+    const binary = expectedOutputs().find((path) => path.endsWith('.png'));
+    writeFileSync(join(stage, binary), Buffer.from([0x89, 0x0a, 0xff]));
+    writeFileSync(join(root, binary), Buffer.from([0x89, 0x0d, 0x0a, 0xff]));
+    assert.deepEqual(findDrift(stage, root), [binary, changedText].sort());
+    // Invalid UTF-8 bytes must not collapse to identical replacement characters.
+    writeFileSync(join(stage, changedText), Buffer.from([0xff, 0x0a]));
+    writeFileSync(join(root, changedText), Buffer.from([0xfe, 0x0a]));
+    assert.deepEqual(findDrift(stage, root), [binary, changedText].sort());
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
 test('旧文件已移入备份而新文件安装失败时完整回滚', () => {
   const fixture = mkdtempSync(join(tmpdir(), 'tokenledger-icon-rollback-'));
   const stage = join(fixture, 'stage');

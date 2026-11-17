@@ -37,7 +37,7 @@ fn gateway(id: i64, input: i64, output: i64) -> HourRow {
         output_tokens: output,
         cached_tokens: 100,
         cache_write_tokens: 0,
-        cache_write_known: None,
+        cache_write_known: Some(true),
         cost_usd: None,
         machine_id: "mac".into(),
         pending: false,
@@ -753,4 +753,44 @@ fn removed_import_hours_are_reuploaded_as_scan_only_and_then_released() {
     save_state(&db_path, &second.next_state).unwrap();
     assert!(collect_hours(&db_path, "user-a", "mac").unwrap().is_empty());
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn explicit_gateway_zero_write_remains_known_but_unknown_scan_makes_bucket_unknown() {
+    let gateway = gateway(-1, 10, 2);
+    let aggregate = aggregate_hour(HOUR, &[gateway.clone()], &cost);
+    assert_eq!(aggregate[0].payload("user")["cache_write_tokens"], 0);
+    assert_eq!(aggregate[0].cached_tokens, 100);
+    let mut unknown = scan(1, "gpt-5.5", 4, 1);
+    unknown.cache_write_known = Some(false);
+    let mixed = aggregate_hour(HOUR, &[gateway, unknown], &cost);
+    assert!(mixed[0].payload("user")["cache_write_tokens"].is_null());
+    assert_eq!(mixed[0].cached_tokens, 200);
+    assert_eq!((mixed[0].requests, mixed[0].gateway_requests), (2, 1));
+}
+
+#[test]
+fn collecting_gateway_read_cache_preserves_explicit_zero_write_provenance() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let dir = gateway_overlay::gateway_dir(&db_path);
+    fs::create_dir_all(&dir).unwrap();
+    let end = Local
+        .with_ymd_and_hms(2026, 10, 4, 10, 0, 10)
+        .single()
+        .unwrap();
+    let line = json!({
+        "ts": end.with_timezone(&Utc).to_rfc3339(), "requestId": "cache-zero-write",
+        "agent": "codex", "session": null, "endpoint": "responses", "provider": "p",
+        "requestedModel": "p/m", "upstreamModel": "m", "wire": "responses",
+        "stream": true, "status": 200, "ok": true, "input": 10, "output": 2,
+        "cacheRead": 100, "cacheWrite": 0, "latencyMs": 10, "error": null
+    });
+    fs::write(dir.join("usage-v1.jsonl"), format!("{line}\n")).unwrap();
+    let hours = collect_hours(&db_path, "user-a", "mac").unwrap();
+    assert_eq!(hours[HOUR].len(), 1);
+    assert_eq!(hours[HOUR][0].cache_write_known, Some(true));
+    assert_eq!(hours[HOUR][0].cache_write_tokens, 0);
+    assert_eq!(hours[HOUR][0].cached_tokens, 100);
+    fs::remove_dir_all(root).unwrap();
 }

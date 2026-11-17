@@ -75,3 +75,25 @@ describe('PeerSyncCard', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /导入选中的/ })).not.toBeInTheDocument());
   });
 });
+
+it('离开数据分区清空密码但保留普通草稿；保存失败也清空密码', async () => {
+  const { SettingsVisibilityContext } = await import('./SettingsVisibility');
+  vi.mocked(invoke).mockImplementation(async (cmd) => {
+    if (cmd === 'peer_sync_save_config') throw new Error('保存失败');
+    return { url: '', user: '', hasPassword: false, hasPassphrase: false };
+  });
+  const ui = (visible: boolean) => <SettingsVisibilityContext.Provider value={visible}><PeerSyncCard /></SettingsVisibilityContext.Provider>;
+  const view = render(ui(true));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('peer_sync_get_config'));
+  fireEvent.change(screen.getByLabelText('WebDAV 地址'), { target: { value: 'https://dav.example/draft' } });
+  fireEvent.change(screen.getByLabelText('外部网关同步密码'), { target: { value: 'sensitive' } });
+  view.rerender(ui(false));
+  view.rerender(ui(true));
+  expect(screen.getByLabelText('外部网关同步密码')).toHaveValue('');
+  expect(screen.getByLabelText('WebDAV 地址')).toHaveValue('https://dav.example/draft');
+  fireEvent.change(screen.getByLabelText('外部网关同步密码'), { target: { value: 'retry-secret' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('保存失败');
+  expect(screen.getByLabelText('外部网关同步密码')).toHaveValue('');
+  expect(screen.getByLabelText('WebDAV 地址')).toHaveValue('https://dav.example/draft');
+});

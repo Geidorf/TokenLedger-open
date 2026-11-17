@@ -1,3 +1,4 @@
+import { useSettingsVisible } from './SettingsVisibility';
 import { invoke } from '@tauri-apps/api/core';
 import { type FormEvent, type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -631,6 +632,12 @@ export function QuotaSection(props: QuotaSectionProps) {
   const [customName, setCustomName] = useState('');
   const [customUrl, setCustomUrl] = useState('https://your-gateway.example.com/v1/me/quota');
   const [customApiKey, setCustomApiKey] = useState('');
+  const visible = useSettingsVisible();
+  useEffect(() => {
+    if (visible) return;
+    setCustomApiKey('');
+  }, [visible]);
+
   const [activeQuotaRead, setActiveQuotaRead] = useState<'claude' | 'antigravity' | null>(null);
   const orphanedCustomProviders = orphanedCustomQuotaProviders(customEndpoints, props.quotaProviders);
 
@@ -805,6 +812,7 @@ export function QuotaSection(props: QuotaSectionProps) {
     event.preventDefault();
     setCustomEndpointBusy(true);
     setCustomEndpointError('');
+    setCustomApiKey('');
     try {
       const endpoints = await invoke<CustomQuotaEndpointView[]>('upsert_custom_quota_endpoint', {
         input: {
@@ -823,6 +831,7 @@ export function QuotaSection(props: QuotaSectionProps) {
     } catch (error) {
       setCustomEndpointError(String(error));
     } finally {
+      setCustomApiKey('');
       setCustomEndpointBusy(false);
     }
   };

@@ -33,6 +33,8 @@
 `summary.totalTokens/inputTokens/outputTokens/cachedTokens/totalCost/totalRequests/avgTokensPerReq`
 以及顶层 `tools/models/trends/heatmap/history` 是 v1 必填核心；缺失或非有限数值属于 malformed 响应，客户端必须显示不可用/错误，不得静默补 0。缓存拆分等文档标为可选的字段仍可缺失。
 
+工具/模型单项费用与必填的 `summary.totalCost` 分开处理：旧响应或兼容映射中单项 `cost` 缺失、为 `null`、非有限或为负时，该项费用不可得，不补为 0；真实有限的 0 保留为已知零。Android 工具行、实体兼容映射及本地缓存往返保留这一差别，未知项不按 0 参与费用排序、费用占比或金额汇总；不能因此放宽顶层 summary 核心字段校验。
+
 `tools` 与 `models` 的每项 composition 可含可选 `cacheRead`/`cacheWrite`（读缓存/写缓存拆分，`cached = cacheRead + cacheWrite`）。二者只在来源能证明拆分时输出（本地按行 `cache_write_tokens` 校验，云端按同一口径），任一缓存行缺 provenance 时整项剥离这两个字段——缺失表示「无法拆分」，不得被客户端解读为 0 或空。
 
 本地 `history[]`、明细 `items[]`（含实体明细）可附加 `usageProvenance: reported | estimated`（T10.315），独立于缓存量与缓存读写是否完整；真实用量的缓存为 0 仍是 `reported`。本机扫描从持久来源列投影，网关已记账行输出 `reported`。旧响应与云端小时聚合允许缺失，客户端不得要求此字段或根据缺失断言真实来源；React 保留旧展示回退，Android 继续忽略未知可选字段。本扩展不新增云端存储列或 RPC 要求。
@@ -166,7 +168,7 @@
 | 项目 | 网关不知道工作目录，不猜测：带真实 session 时沿用该 `(tool, session_id)` 在本机项目索引（ADR-016）里的归属，否则归入「未归属」 |
 | 成本 | 与扫描记录相同，按本机价格表以 (tool, model) 估价，并按记录时间取生效价、按请求长度取长上下文分档（价格表 schema 2，见 `MODEL_PRICING.md`「价格变动与历史记录」），不使用供应商账单 |
 
-Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入），`outputTokens = output`，`cachedTokens = cacheRead + cacheWrite`，`cacheWriteTokens = cacheWrite`；有效 Token 仍为输入 + 输出，缓存读写单列，不得再并入。网关记录的读写拆分总是可证明的（两侧显式）。
+Token 口径：`inputTokens = input`（网关已扣除缓存读取的净输入），`outputTokens = output`，`cachedTokens = cacheRead + cacheWrite`，`cacheWriteTokens = cacheWrite`；有效 Token 仍为输入 + 输出，缓存读写单列，不得再并入。网关记录的读写拆分总是可证明的（两侧显式）。本机统计临时视图和上传前小时行必须为本机网关来源显式标记 `cache_write_known = true`，因此读取大于 0、写入恰为 0 仍是已知拆分；不能在临时合并时丢掉这一来源事实。扫描历史、外部导入及共享记录不得仅因经过同一临时表就提升为已知，继续沿用各自的来源标志与旧数据保守判定。
 
 **去重：重复时以网关记录为准。** 同一请求可能同时被网关记账、又被 Agent 自己的本地日志扫描到。合并时按下列顺序把重复的扫描记录标为「被网关取代」，被取代的扫描记录不进入任何统计（summary、tools、models、trends、heatmap、comparison、明细、facet 与实体看板），网关记录保留。每条网关记录覆盖区间 `[ts − latencyMs, ts]`（两端都换算为本机存储时间，截断到秒；开始晚于结束时按结束处理），窗口 `W = 5 秒` 加在区间两侧，依据见本节末尾。
 

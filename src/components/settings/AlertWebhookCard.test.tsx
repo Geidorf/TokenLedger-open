@@ -163,3 +163,20 @@ describe('AlertWebhookCard', () => {
     expect(screen.getByRole('note').textContent).toContain('用量异常');
   });
 });
+
+it('保存失败清空 Webhook 凭据和地址，保留名称以便重新输入后重试', async () => {
+  vi.mocked(invoke).mockImplementation(async (cmd) => {
+    if (cmd === 'save_alert_webhook') throw new Error('保存失败');
+    return view;
+  });
+  render(<AlertWebhookCard />);
+  await screen.findByText('还没有 Webhook');
+  fireEvent.change(screen.getByLabelText('Webhook 名称'), { target: { value: '未保存名称' } });
+  fireEvent.change(screen.getByLabelText('Webhook 地址'), { target: { value: 'https://example.com/secret' } });
+  fireEvent.change(screen.getByLabelText('签名密钥（可选）'), { target: { value: 'secret' } });
+  fireEvent.click(screen.getByRole('button', { name: '添加 Webhook' }));
+  await screen.findByRole('alert');
+  expect(screen.getByLabelText('Webhook 地址')).toHaveValue('');
+  expect(screen.getByLabelText('签名密钥（可选）')).toHaveValue('');
+  expect(screen.getByLabelText('Webhook 名称')).toHaveValue('未保存名称');
+});

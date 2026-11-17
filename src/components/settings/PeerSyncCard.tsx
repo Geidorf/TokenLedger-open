@@ -1,3 +1,4 @@
+import { useSettingsVisible } from './SettingsVisibility';
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CloudDownload, RefreshCw, Save } from 'lucide-react';
@@ -67,6 +68,13 @@ export function PeerSyncCard() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
 
+  const visible = useSettingsVisible();
+  useEffect(() => {
+    if (visible) return;
+    setPassword('');
+    setPassphrase('');
+  }, [visible]);
+
   const apply = (next: PeerSyncConfig) => {
     setConfig(next);
     setUrl(next.url);
@@ -96,11 +104,17 @@ export function PeerSyncCard() {
       setError(errorText(cause));
       return undefined;
     } finally {
+      if (action === 'save') {
+        setPassword('');
+        setPassphrase('');
+      }
       setBusy(null);
     }
   };
 
   const save = () => run('save', async () => {
+    setPassword('');
+    setPassphrase('');
     const next = await invoke<PeerSyncConfig>('peer_sync_save_config', {
       input: {
         url,
@@ -113,8 +127,6 @@ export function PeerSyncCard() {
     // 旧预览来自之前的地址或密码，导入会按新设置重新下载，必须重新读取。
     setPreview(null);
     setPicked(new Set());
-    setPassword('');
-    setPassphrase('');
     setNote(t('peerSync.saved'));
   });
 

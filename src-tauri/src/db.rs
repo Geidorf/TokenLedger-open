@@ -299,7 +299,7 @@ fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Res
 
     // Idempotently backfill legacy data even when the new DB already has rows.
     // Synthetic tests opt out so they never inspect real legacy paths under
-    // the developer's cwd or HOME.
+    // the developer's HOME.
     if migrate_legacy {
         migrate_legacy_db(db_path).ok();
     }
@@ -1372,17 +1372,18 @@ pub fn init_local_cache(conn: &Connection) -> Result<()> {
 }
 
 fn migrate_legacy_db(new_db_path: &PathBuf) -> Result<()> {
-    let current_dir = std::env::current_dir().unwrap_or_default();
+    // A CLI/MCP caller controls its working directory. Never discover an
+    // import there: even a read-only query would otherwise ingest arbitrary
+    // rows into the real ledger and queue them for cloud synchronization.
+    // Retain only the historical, fixed per-user macOS location.
     #[cfg(target_os = "macos")]
-    let old_paths = {
-        let mut paths = vec![current_dir.join("tokenboard.db")];
-        if let Some(home) = std::env::var_os("HOME") {
-            paths.push(PathBuf::from(home).join("Desktop/tokenboard/tokenboard.db"));
-        }
-        paths
-    };
+    let old_paths: Vec<PathBuf> = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|home| home.is_absolute())
+        .map(|home| vec![home.join("Desktop/tokenboard/tokenboard.db")])
+        .unwrap_or_default();
     #[cfg(not(target_os = "macos"))]
-    let old_paths = vec![current_dir.join("tokenboard.db")];
+    let old_paths: Vec<PathBuf> = Vec::new();
 
     let machine_id = crate::device_identity::for_db_or_unknown(new_db_path);
 
@@ -1453,6 +1454,88 @@ mod schema_upgrade_tests {
     const LATEST_SCHEMA_VERSION: i64 = ANTIGRAVITY_PROVENANCE_SCHEMA_VERSION;
 
     static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn legacy_import_ignores_working_directory_and_preserves_fixed_location() {
+        const CHILD_ROOT: &str = "TOKENLEDGER_LEGACY_IMPORT_TEST_ROOT";
+        if let Some(root) = std::env::var_os(CHILD_ROOT) {
+            let root = PathBuf::from(root);
+            let path = root.join("ledger.db");
+            // Call the actual discovery path, not init_db's cfg(test) opt-out.
+            migrate_legacy_db(&path).unwrap();
+            migrate_legacy_db(&path).unwrap();
+            std::fs::write(root.join("migration-ran"), b"ok").unwrap();
+            return;
+        }
+
+        let root = std::env::temp_dir().join(format!(
+            "tokenledger_legacy_import_{}_{}",
+            std::process::id(),
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let untrusted = root.join("caller");
+        let home = root.join("home");
+        let fixed = home.join("Desktop/tokenboard");
+        std::fs::create_dir_all(&untrusted).unwrap();
+        std::fs::create_dir_all(&fixed).unwrap();
+        for (directory, key) in [(&untrusted, "cwd-row"), (&fixed, "fixed-row")] {
+            let conn = Connection::open(directory.join("tokenboard.db")).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE token_logs (
+                    tool TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER,
+                    cached_tokens INTEGER, timestamp TEXT, session_id TEXT, unique_key TEXT
+                );",
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO token_logs VALUES (
+                    'fixture', 'model', 10, 20, 0, '2026-10-01 00:00:00', 'session', ?1
+                )",
+                [key],
+            )
+            .unwrap();
+        }
+        let path = root.join("ledger.db");
+        init_test_db(&path).unwrap();
+
+        // Isolate cwd and HOME changes from concurrently running tests. The
+        // child runs this one test and takes the guarded migration-only path.
+        let thread = std::thread::current();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", thread.name().unwrap(), "--nocapture"])
+            .current_dir(&untrusted)
+            .env(CHILD_ROOT, &root)
+            .env("HOME", &home)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "migration child failed: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            root.join("migration-ran").exists(),
+            "child must run the test"
+        );
+        let conn = get_connection(&path).unwrap();
+        let rows: Vec<(String, i64)> = conn
+            .prepare("SELECT unique_key, sync_status FROM token_logs ORDER BY unique_key")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_>>()
+            .unwrap();
+        #[cfg(target_os = "macos")]
+        assert_eq!(rows, vec![("fixed-row".to_string(), 0)]);
+        #[cfg(not(target_os = "macos"))]
+        assert!(
+            rows.is_empty(),
+            "caller-controlled rows must not be imported"
+        );
+        drop(conn);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn v15_preserves_cumulative_baseline_and_rolls_back_failed_schema() {

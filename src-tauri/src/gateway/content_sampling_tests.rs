@@ -382,7 +382,7 @@ fn filter_requires_a_condition_and_stays_within_24_hours() {
 }
 
 #[test]
-fn missing_wrong_length_and_unreadable_keys_fail_closed() {
+fn missing_and_wrong_length_keys_fail_closed() {
     let (root, sampling, secrets) = memory_sampling("missing_key");
     sampling.configure(next(2, true)).unwrap();
     begin_and_finish(&sampling, &id(0), "request", "response", 200);
@@ -399,17 +399,125 @@ fn missing_wrong_length_and_unreadable_keys_fail_closed() {
     assert_eq!(sampling.status().mode, SamplingMode::Off);
     assert!(sample_files(&root).is_empty());
     let _ = fs::remove_dir_all(root);
+}
 
-    let root = gateway_dir("unreadable_key");
+#[test]
+fn transient_key_read_failure_preserves_samples_and_authorization_after_restart() {
+    let root = gateway_dir("transient_key_restart");
+    let secrets = Arc::new(UnreadableSecrets::default());
+    let first = ContentSampling::new(&root, secrets.clone());
+    first.configure(next(3, true)).unwrap();
+    begin_and_finish(&first, &id(0), "request", "response", 200);
+    let state = fs::read(root.join(STATE_FILE)).unwrap();
+    let sample_path = sample_files(&root).pop().unwrap();
+    let ciphertext = fs::read(&sample_path).unwrap();
+    let key = secrets.get(KEY_ACCOUNT).unwrap();
+
+    secrets.unreadable.store(true, Ordering::SeqCst);
+    let restarted = ContentSampling::new(&root, secrets.clone());
+    let status = restarted.status();
+    assert_eq!(status.mode, SamplingMode::Next);
+    assert_eq!(status.remaining, Some(2));
+    assert_eq!(status.stored_count, 1);
+    assert_eq!(status.error.as_deref(), Some(KEY_UNAVAILABLE));
+    assert!(!restarted.active());
+    assert!(restarted.reserve().is_none());
+    assert_eq!(restarted.read(&id(0)).err().unwrap(), KEY_UNAVAILABLE);
+    assert!(restarted.configure(next(20, true)).is_err());
+    assert_eq!(fs::read(root.join(STATE_FILE)).unwrap(), state);
+    assert_eq!(fs::read(&sample_path).unwrap(), ciphertext);
+
+    secrets.unreadable.store(false, Ordering::SeqCst);
+    let recovered = restarted.status();
+    assert_eq!(recovered.remaining, Some(2));
+    assert!(recovered.error.is_none());
+    assert!(restarted.active());
+    assert_eq!(secrets.get(KEY_ACCOUNT).unwrap(), key);
+    assert_eq!(restarted.read(&id(0)).unwrap().response, "response");
+    begin_and_finish(&restarted, &id(1), "new request", "new response", 200);
+    assert_eq!(restarted.status().remaining, Some(1));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn transient_key_failure_at_finish_keeps_filter_and_revokes_inflight_tickets() {
+    let root = gateway_dir("transient_key_finish");
     let secrets = Arc::new(UnreadableSecrets::default());
     let sampling = ContentSampling::new(&root, secrets.clone());
-    sampling.configure(next(1, true)).unwrap();
-    begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    sampling.configure(filter("agent-a", false, 1)).unwrap();
+    let start = |number| {
+        sampling
+            .begin(
+                &id(number),
+                Some("agent-a"),
+                None,
+                false,
+                captured("request"),
+            )
+            .unwrap()
+    };
+    sampling
+        .finish(start(0), captured("saved"), 200, false)
+        .unwrap();
+    let failing = start(1);
+    let late = start(2);
+    let queued = sampling.reserve().unwrap();
+    let state = fs::read(root.join(STATE_FILE)).unwrap();
     secrets.unreadable.store(true, Ordering::SeqCst);
-    let status = sampling.status();
-    assert_eq!(status.mode, SamplingMode::Off);
-    assert_eq!(status.error.as_deref(), Some(KEY_ERROR));
-    assert!(sample_files(&root).is_empty());
+    assert_eq!(
+        sampling
+            .finish(failing, captured("unsaved"), 200, false)
+            .err()
+            .unwrap(),
+        KEY_UNAVAILABLE
+    );
+    assert_eq!(fs::read(root.join(STATE_FILE)).unwrap(), state);
+    assert_eq!(sample_files(&root).len(), 1);
+    assert!(!sampling.active());
+    assert!(sampling.reserve().is_none());
+
+    secrets.unreadable.store(false, Ordering::SeqCst);
+    let recovered = sampling.status();
+    assert_eq!(recovered.mode, SamplingMode::Filter);
+    assert!(recovered.error.is_none());
+    assert_eq!(fs::read(root.join(STATE_FILE)).unwrap(), state);
+    sampling.finish(late, captured("late"), 200, false).unwrap();
+    assert!(sampling
+        .begin_reserved(
+            queued,
+            &id(3),
+            Some("agent-a"),
+            None,
+            false,
+            captured("queued")
+        )
+        .is_none());
+    assert_eq!(sample_files(&root).len(), 1);
+    assert_eq!(sampling.read(&id(0)).unwrap().response, "saved");
+    sampling
+        .finish(start(4), captured("recovered"), 200, false)
+        .unwrap();
+    assert_eq!(sampling.status().stored_count, 2);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn transient_verification_failure_does_not_replace_the_new_key_on_retry() {
+    let root = gateway_dir("transient_key_verification");
+    let secrets = Arc::new(UnreadableSecrets::default());
+    secrets.fail_on_read.store(2, Ordering::SeqCst);
+    let sampling = ContentSampling::new(&root, secrets.clone());
+    assert_eq!(
+        sampling.configure(next(2, true)).err().unwrap(),
+        KEY_UNAVAILABLE
+    );
+    assert!(sampling.reserve().is_none());
+    assert!(!root.join(STATE_FILE).exists());
+    let key = secrets.get(KEY_ACCOUNT).unwrap().unwrap();
+    sampling.configure(next(2, true)).unwrap();
+    assert_eq!(secrets.get(KEY_ACCOUNT).unwrap().unwrap(), key);
+    begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    assert_eq!(sampling.status().stored_count, 1);
     let _ = fs::remove_dir_all(root);
 }
 
@@ -417,11 +525,16 @@ fn missing_wrong_length_and_unreadable_keys_fail_closed() {
 struct UnreadableSecrets {
     values: Mutex<HashMap<String, String>>,
     unreadable: AtomicBool,
+    reads: AtomicUsize,
+    fail_on_read: AtomicUsize,
 }
 
 impl SecretStore for UnreadableSecrets {
     fn get(&self, account: &str) -> Result<Option<String>, String> {
-        if self.unreadable.load(Ordering::SeqCst) {
+        let read = self.reads.fetch_add(1, Ordering::SeqCst) + 1;
+        if self.unreadable.load(Ordering::SeqCst)
+            || self.fail_on_read.load(Ordering::SeqCst) == read
+        {
             return Err("test keychain unavailable".to_string());
         }
         Ok(self.values.lock().unwrap().get(account).cloned())
