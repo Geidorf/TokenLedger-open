@@ -909,7 +909,12 @@ fn mutate(shape: Shape, seed: &[Value], rng: &mut Rng) -> Mutated {
                 } else {
                     rng.below(line.len() + 1)
                 };
-                let bad: &[u8] = rng.pick(&[&b"\xFF"[..], b"\xC3", b"\xE4\xB8", b"\xED\xA0\x80"]);
+                let bad: &[u8] = *rng.pick(&[
+                    b"\xFF".as_slice(),
+                    b"\xC3".as_slice(),
+                    b"\xE4\xB8".as_slice(),
+                    b"\xED\xA0\x80".as_slice(),
+                ]);
                 line.splice(at..at, bad.iter().copied());
             }
             Mutation::FlipByte => {
