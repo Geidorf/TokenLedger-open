@@ -27,6 +27,8 @@ pub const DAV_USAGE_FOLDER: &str = "usage";
 pub const USAGE_FILE_EXT: &str = concat!(".", app!(), "-usage");
 /// The file in its config folder naming this computer for sharing.
 pub const LOCAL_COMPUTER_FILE: &str = "usage-computer.json";
+/// The peer's local cache of the usage it fetched from other computers.
+pub const SHARED_USAGE_CACHE: &str = "usage-others";
 
 /// Its config folder: under `$XDG_CONFIG_HOME` when that is an absolute
 /// path, otherwise under `~/.config` on every platform, as it finds it.

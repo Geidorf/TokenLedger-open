@@ -7,7 +7,9 @@
 //! that also runs TokenLedger already counts its calls itself.
 
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -15,7 +17,9 @@ use serde::{Deserialize, Serialize};
 use super::backup::{self, Opener};
 use super::dav::{DavClient, FOLDER};
 use crate::commands::peer_shared::{parse_call, SharedCall, SharedComputer};
-use crate::peer_wire::{config_dir, DAV_USAGE_FOLDER, LOCAL_COMPUTER_FILE, USAGE_FILE_EXT};
+use crate::peer_wire::{
+    config_dir, DAV_USAGE_FOLDER, LOCAL_COMPUTER_FILE, SHARED_USAGE_CACHE, USAGE_FILE_EXT,
+};
 
 /// The peer keeps this many days on the server.
 pub const SHARED_DAYS: i64 = 90;
@@ -83,7 +87,12 @@ pub fn parse_day(computer: &str, packed: &[u8]) -> Result<(String, Vec<SharedCal
     if plain.len() as u64 > MAX_PLAIN_BYTES {
         return Err("外部网关共享的用量文件过大。".to_string());
     }
-    let day: SharedDay = serde_json::from_slice(&plain).map_err(|_| broken())?;
+    parse_plain_day(computer, &plain)
+}
+
+fn parse_plain_day(computer: &str, plain: &[u8]) -> Result<(String, Vec<SharedCall>), String> {
+    let broken = || "外部网关共享的用量文件无法识别。".to_string();
+    let day: SharedDay = serde_json::from_slice(plain).map_err(|_| broken())?;
     if !day.computer.is_empty() && !day.computer.eq_ignore_ascii_case(computer) {
         return Err(broken());
     }
@@ -123,6 +132,139 @@ fn group(files: Vec<(String, String)>, local: Option<&str>, today: NaiveDate) ->
 }
 
 type Days = BTreeMap<String, Vec<(NaiveDate, String)>>;
+
+type CachedDays = BTreeMap<String, BTreeMap<NaiveDate, PathBuf>>;
+
+fn cache_error(error: io::Error) -> String {
+    format!("读取外部网关本机共享用量失败（{}）。", error.kind())
+}
+
+fn cached_days(
+    root: &Path,
+    local: Option<&str>,
+    today: NaiveDate,
+) -> Result<Option<CachedDays>, String> {
+    let dirs = match fs::read_dir(root) {
+        Ok(dirs) => dirs,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(cache_error(error)),
+    };
+    let oldest = today - chrono::Duration::days(SHARED_DAYS);
+    let newest = today + chrono::Duration::days(1);
+    let mut days = BTreeMap::new();
+    for dir in dirs {
+        let dir = dir.map_err(cache_error)?;
+        let Some(id) = dir.file_name().into_string().ok().filter(|id| {
+            !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_hexdigit())
+        }) else {
+            continue;
+        };
+        let id = id.to_ascii_lowercase();
+        if Some(id.as_str()) == local || !dir.file_type().map_err(cache_error)?.is_dir() {
+            continue;
+        }
+        let mut files = BTreeMap::new();
+        for file in fs::read_dir(dir.path()).map_err(cache_error)? {
+            let file = file.map_err(cache_error)?;
+            let name = file.file_name();
+            let Some(day) = name
+                .to_str()
+                .and_then(|n| n.strip_suffix(".json"))
+                .and_then(|day| NaiveDate::parse_from_str(day, "%Y-%m-%d").ok())
+            else {
+                continue;
+            };
+            if day >= oldest && day <= newest && file.file_type().map_err(cache_error)?.is_file() {
+                files.insert(day, file.path());
+            }
+        }
+        if !files.is_empty() {
+            days.insert(id, files);
+            if days.len() > MAX_COMPUTERS {
+                days.pop_last();
+            }
+        }
+    }
+    Ok(Some(days))
+}
+
+fn read_cached_day(id: &str, path: &Path) -> Result<(String, Vec<SharedCall>), String> {
+    let mut plain = Vec::new();
+    File::open(path)
+        .map_err(cache_error)?
+        .take(MAX_PLAIN_BYTES + 1)
+        .read_to_end(&mut plain)
+        .map_err(cache_error)?;
+    if plain.len() as u64 > MAX_PLAIN_BYTES {
+        return Err("外部网关共享的用量文件过大。".into());
+    }
+    parse_plain_day(id, &plain)
+}
+
+fn local_days() -> Result<Option<CachedDays>, String> {
+    let Some(dir) = config_dir() else {
+        return Ok(None);
+    };
+    cached_days(
+        &dir.join(SHARED_USAGE_CACHE),
+        local_computer().as_deref(),
+        chrono::Local::now().date_naive(),
+    )
+}
+
+pub fn cached_computers(selected: &[String]) -> Result<Option<Vec<RemoteComputer>>, String> {
+    let Some(days) = local_days()? else {
+        return Ok(None);
+    };
+    days.iter()
+        .filter_map(|(id, files)| {
+            let (day, path) = files.last_key_value()?;
+            Some(read_cached_day(id, path).map(|(name, _)| RemoteComputer {
+                id: id.clone(),
+                name,
+                days: files.len(),
+                latest: day.to_string(),
+                enabled: selected.contains(id),
+            }))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+}
+
+pub fn pull_cached(
+    selected: &[String],
+) -> Result<Option<(Vec<SharedCall>, Vec<SharedComputer>)>, String> {
+    let Some(days) = local_days()? else {
+        return Ok(None);
+    };
+    pull_cached_days(&days, selected).map(Some)
+}
+
+fn pull_cached_days(
+    days: &CachedDays,
+    selected: &[String],
+) -> Result<(Vec<SharedCall>, Vec<SharedComputer>), String> {
+    let mut calls = Vec::new();
+    let mut computers = Vec::new();
+    for id in selected {
+        let Some(files) = days.get(id) else { continue };
+        let mut computer = SharedComputer {
+            id: id.clone(),
+            ..SharedComputer::default()
+        };
+        for path in files.values() {
+            let (name, day_calls) = read_cached_day(id, path)?;
+            if !name.is_empty() {
+                computer.name = name;
+            }
+            computer.days += 1;
+            computer.calls += day_calls.len();
+            calls.extend(day_calls);
+        }
+        computers.push(computer);
+    }
+    Ok((calls, computers))
+}
 
 pub struct SharedSource {
     client: DavClient,
@@ -256,6 +398,39 @@ struct DayRead {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn local_cache_keeps_selected_recent_remote_usage() {
+        let root = std::env::temp_dir().join(format!(
+            "tokenledger-shared-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        let today = NaiveDate::from_ymd_opt(2026, 11, 18).unwrap();
+        assert!(cached_days(&root, Some("aa"), today).unwrap().is_none());
+        for id in ["aa", "bb", "cc"] {
+            let dir = root.join(id);
+            fs::create_dir_all(&dir).unwrap();
+            let day = serde_json::json!({
+                "computer": id, "name": "other", "day": "2026-11-18", "calls": [
+                    {"t": "2026-11-18T10:12:00+08:00", "model": "sample", "in": 20, "out": 5}
+                ]
+            });
+            fs::write(dir.join("2026-11-18.json"), day.to_string()).unwrap();
+            fs::write(dir.join("2026-07-01.json"), "expired").unwrap();
+        }
+        let days = cached_days(&root, Some("aa"), today).unwrap().unwrap();
+        assert_eq!(
+            days.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["bb", "cc"]
+        );
+        let (calls, computers) = pull_cached_days(&days, &["bb".into()]).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].computer, "bb");
+        assert_eq!(calls[0].source_hour, "2026-11-18 10:00:00");
+        assert_eq!(computers[0].days, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     fn gzip(text: &str) -> Vec<u8> {
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());

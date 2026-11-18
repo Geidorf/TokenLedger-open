@@ -335,10 +335,21 @@ pub async fn peer_sync_shared_list(
 ) -> Result<SharedListing, String> {
     peer_sync::ensure_main(&window)?;
     let app = state.inner().clone();
-    let source = peer_sync::shared_source(app.app_data_dir(), &peer_sync::secrets())?;
-    let computers = source
-        .computers(&peer_sync::shared_selection(app.app_data_dir()))
-        .await?;
+    let selected = peer_sync::shared_selection(app.app_data_dir());
+    let local_selection = selected.clone();
+    let cached = tauri::async_runtime::spawn_blocking(move || {
+        peer_sync::shared::cached_computers(&local_selection)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    let computers = match cached {
+        Some(computers) => computers,
+        None => {
+            peer_sync::shared_source(app.app_data_dir(), &peer_sync::secrets())?
+                .computers(&selected)
+                .await?
+        }
+    };
     Ok(SharedListing {
         computers,
         last: read_meta(&db::get_db_path(&app)),
@@ -364,8 +375,20 @@ pub async fn peer_sync_shared_pull(
         emit_stats_updated(&app_handle);
         return Ok(SharedMeta::default());
     }
-    let source = peer_sync::shared_source(app.app_data_dir(), &peer_sync::secrets())?;
-    let (calls, computers) = source.pull(&picked).await?;
+    let local_selection = picked.clone();
+    let cached = tauri::async_runtime::spawn_blocking(move || {
+        peer_sync::shared::pull_cached(&local_selection)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    let (calls, computers) = match cached {
+        Some(data) => data,
+        None => {
+            peer_sync::shared_source(app.app_data_dir(), &peer_sync::secrets())?
+                .pull(&picked)
+                .await?
+        }
+    };
     let meta = tauri::async_runtime::spawn_blocking(move || {
         db::init_db(&db_path).map_err(|error| error.to_string())?;
         let meta = write_store(&db_path, &calls, computers)?;
