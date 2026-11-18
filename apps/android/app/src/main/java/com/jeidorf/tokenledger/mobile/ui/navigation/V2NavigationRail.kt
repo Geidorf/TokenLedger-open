@@ -34,7 +34,8 @@ internal fun V2NavigationRail(
     palette: MobileV2Palette,
     selected: MobileDestination,
     onSelect: (MobileDestination) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    destinations: List<MobileDestination> = MobileDestination.entries
 ) {
     val tokens = palette.tokens
     val dividerColor = tokens.divider
@@ -54,7 +55,7 @@ internal fun V2NavigationRail(
         containerColor = tokens.chrome
     ) {
         Spacer(Modifier.height(10.dp))
-        MobileDestination.entries.forEach { destination ->
+        destinations.forEach { destination ->
             NavigationRailItem(
                 selected = selected == destination,
                 onClick = { onSelect(destination) },

@@ -298,12 +298,12 @@ impl Gateway {
         *state = RunState::Stopped;
     }
 
-    /// 升级迁移用（U-112）：有启用的供应商，或 Codex / 任一 Agent 留有未恢复的网关
-    /// 备份清单。只看本应用的数据目录，不读 Agent 自己的配置文件。
+    /// 升级迁移用（U-112）：Codex 或任一 Agent 留有未恢复的网关备份清单时视为使用中。
+    /// 仅导入或启用过供应商但未接管任何 Agent 配置时不算使用中；只看本应用的数据目录，
+    /// 不读 Agent 自己的配置文件。
     pub fn was_in_use(&self) -> bool {
         let manifest = "manifest.json";
-        self.providers().iter().any(|provider| provider.enabled)
-            || self.dir.join("codex-backup-v1").join(manifest).is_file()
+        self.dir.join("codex-backup-v1").join(manifest).is_file()
             || std::fs::read_dir(self.dir.join("agent-backup-v1")).is_ok_and(|entries| {
                 entries
                     .flatten()
@@ -2431,9 +2431,12 @@ mod tests {
     }
 
     #[test]
-    fn previous_use_counts_enabled_providers_and_unrestored_agent_backups() {
+    fn was_in_use_requires_unrestored_agent_backups() {
         let h = harness("in-use");
-        assert!(h.gateway.was_in_use());
+        assert!(
+            !h.gateway.was_in_use(),
+            "enabled providers alone do not count as in use without agent backups"
+        );
 
         let dir = temp_dir("in-use-agent");
         let gateway = Gateway::new(&dir, Arc::new(MemorySecrets::default()), 0);
@@ -2446,22 +2449,7 @@ mod tests {
         );
 
         let codex = CodexConfig::new(h.dir.join("codex-home/config.toml"), &h.dir);
-        h.gateway
-            .upsert_provider(ProviderRecord {
-                enabled: false,
-                ..provider("resp", 1, WireApi::Responses)
-            })
-            .unwrap();
-        h.gateway
-            .upsert_provider(ProviderRecord {
-                enabled: false,
-                ..provider("chat", 1, WireApi::Chat)
-            })
-            .unwrap();
         assert!(!h.gateway.was_in_use());
-        h.gateway
-            .upsert_provider(provider("resp", 1, WireApi::Responses))
-            .unwrap();
         h.gateway
             .codex_apply(
                 &codex,
@@ -2471,6 +2459,10 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(
+            h.gateway.was_in_use(),
+            "Codex backup manifest marks gateway as in use"
+        );
         h.gateway
             .upsert_provider(ProviderRecord {
                 enabled: false,

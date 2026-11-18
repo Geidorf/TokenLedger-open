@@ -58,7 +58,8 @@ private val DockPadding = 5.dp
 internal fun V2NavigationBar(
     palette: MobileV2Palette,
     selected: MobileDestination,
-    onSelect: (MobileDestination) -> Unit
+    onSelect: (MobileDestination) -> Unit,
+    destinations: List<MobileDestination> = MobileDestination.entries
 ) {
     val tokens = palette.tokens
     val shape = RoundedCornerShape(DockRadius)
@@ -78,7 +79,7 @@ internal fun V2NavigationBar(
                 .padding(DockPadding),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            MobileDestination.entries.forEach { destination ->
+            destinations.forEach { destination ->
                 V2DockItem(
                     palette = palette,
                     destination = destination,

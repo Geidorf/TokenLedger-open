@@ -42,8 +42,9 @@ private const val POLL_MS = 5_000L
 private const val POLL_NOT_DEPLOYED_MS = 60_000L
 
 /**
- * 只在路由页可见、应用在前台时轮询。换账号时清空旧结果；读失败保留上一份结果，
- * 由页面按「多久之前」如实显示，不把旧快照当新的。
+ * 已登录且应用在前台时做一次轻量初始探测，用于判断云端是否存在路由快照；
+ * 仅在路由页可见（[active] 为 true）时才开启周期轮询。换账号时清空旧结果；
+ * 读失败保留上一份结果，由页面按「多久之前」如实显示，不把旧快照当新的。
  */
 @Composable
 internal fun rememberRoutingFeed(
@@ -57,7 +58,7 @@ internal fun rememberRoutingFeed(
     val currentSession by rememberUpdatedState(session)
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(active, userId, lifecycleOwner) {
-        if (!active || userId == null) return@LaunchedEffect
+        if (userId == null) return@LaunchedEffect
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 val current = currentSession ?: break
@@ -69,6 +70,7 @@ internal fun rememberRoutingFeed(
                 } catch (error: Throwable) {
                     feed.copy(signedIn = true, failure = RoutingReadFailure.classify(error))
                 }
+                if (!active) break
                 delay(if (feed.failure == RoutingReadFailure.NotDeployed) POLL_NOT_DEPLOYED_MS else POLL_MS)
             }
         }

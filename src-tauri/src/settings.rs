@@ -739,8 +739,8 @@ pub(crate) fn update_desktop_widget_enabled(
     })
 }
 
-/// 旧设置文件第一次被读到时决定模型接入开关（U-112）：`was_in_use` 为真（升级前已有
-/// 启用的供应商或指向网关的 Agent）则保持开启，否则关闭；写回标记后不再重判。从没写过
+/// 旧设置文件第一次被读到时决定模型接入开关（U-112）：`was_in_use` 为真（升级前仍有
+/// 指向网关且未恢复的 Agent 备份清单）则保持开启，否则关闭；写回标记后不再重判。从没写过
 /// 设置文件的旧安装同样要判断，新安装判断结果自然为假。`was_in_use` 在设置锁外执行。
 pub(crate) fn migrate_model_access_once(
     app: &AppContext,

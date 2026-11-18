@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import type { SceneFlow } from '../../features/gateway/routingScene';
-import { describeRecentRoute, gatewayState, type TrayPanelStatus } from './PanelCard';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import type { RoutingScene, SceneFlow } from '../../features/gateway/routingScene';
+import type { CardModel } from './cardModel';
+import { describeRecentRoute, gatewayState, PanelCard, type PanelControls, type TrayPanelStatus } from './PanelCard';
 
 const STATUS: TrayPanelStatus = {
   gatewayEnabled: true,
@@ -35,5 +37,63 @@ describe('PanelCard', () => {
     expect(describeRecentRoute(flow({ phase: 'failed', hops: [{ target: 'relay', outcome: 'failed', status: 529 }] })))
       .toEqual({ path: 'codex → relay ✕', outcome: 'failed' });
     expect(describeRecentRoute(flow({ phase: 'inflight', hops: [] }))).toEqual({ path: 'codex → 选路中', outcome: 'pending' });
+  });
+
+  const MODEL: CardModel = {
+    cost: '$1.20',
+    tokens: '12.3K',
+    records: 5,
+    change: { text: '+10%', tone: 'up' },
+    quota: { kind: 'ready', items: [] },
+    status: { text: '刚刚', tone: 'ok' },
+  } as unknown as CardModel;
+
+  const makeControls = (gatewayEnabled: boolean): PanelControls => ({
+    status: { ...STATUS, gatewayEnabled, gatewayRunning: gatewayEnabled },
+    pending: null,
+    error: '',
+    onToggle: vi.fn(),
+    onCloseGateway: vi.fn(),
+  });
+
+  const EMPTY_SCENE: RoutingScene = {
+    empty: 'idle',
+    sources: [],
+    agents: [],
+    targets: [],
+    flows: [],
+    stats: { requests: 0, rerouted: 0, failed: 0, inflight: 0 },
+  };
+
+  it('网关关闭且无实时路由时隐藏网关区块与网关开关，仅保留同步与扫描开关', () => {
+    const { container } = render(
+      <PanelCard model={MODEL} now={1_000} scene={EMPTY_SCENE} loaded controls={makeControls(false)} />,
+    );
+    expect(container.querySelector('.wl-panel-gateway')).toBeNull();
+    expect(screen.queryByRole('switch', { name: '网关' })).toBeNull();
+    expect(screen.getByRole('switch', { name: '后台同步' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '后台扫描' })).toBeInTheDocument();
+  });
+
+  it('网关开启或存在非空实时路由时完整保留网关区块与三个开关', () => {
+    const { container, rerender } = render(
+      <PanelCard model={MODEL} now={1_000} scene={EMPTY_SCENE} loaded controls={makeControls(true)} />,
+    );
+    expect(container.querySelector('.wl-panel-gateway')).not.toBeNull();
+    expect(screen.getByRole('switch', { name: '网关' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '后台同步' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '后台扫描' })).toBeInTheDocument();
+
+    const activeScene: RoutingScene = {
+      ...EMPTY_SCENE,
+      empty: null,
+      agents: [{ id: 'codex', label: 'codex', state: 'ok' }],
+      targets: [{ id: 'anthropic/claude', label: 'anthropic/claude', state: 'ok' }],
+      flows: [flow({ id: 'f1', hops: [{ target: 'anthropic/claude', outcome: 'ok' }] })],
+      stats: { requests: 1, rerouted: 0, failed: 0, inflight: 0 },
+    };
+    rerender(<PanelCard model={MODEL} now={1_000} scene={activeScene} loaded controls={makeControls(false)} />);
+    expect(container.querySelector('.wl-panel-gateway')).not.toBeNull();
+    expect(screen.getByRole('switch', { name: '网关' })).toBeInTheDocument();
   });
 });

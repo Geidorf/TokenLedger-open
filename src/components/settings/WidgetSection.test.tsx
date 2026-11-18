@@ -239,4 +239,17 @@ describe("WidgetSection", () => {
     expect(provider.value).toBe("google-antigravity-consumer");
     expect(screen.getByText(/这个来源当前读不到/)).toBeInTheDocument();
   });
+
+  it("模型接入关闭且未开启路由发布时隐藏手机动态壁纸发布卡；开启任一开关时显示", () => {
+    renderSection({ model_access_enabled: false, routing_publish_enabled: false });
+    expect(screen.queryByRole("heading", { name: "手机动态壁纸" })).toBeNull();
+
+    cleanup();
+    renderSection({ model_access_enabled: true, routing_publish_enabled: false });
+    expect(screen.getByRole("heading", { name: "手机动态壁纸" })).toBeInTheDocument();
+
+    cleanup();
+    renderSection({ model_access_enabled: false, routing_publish_enabled: true });
+    expect(screen.getByRole("heading", { name: "手机动态壁纸" })).toBeInTheDocument();
+  });
 });

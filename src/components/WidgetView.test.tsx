@@ -327,13 +327,13 @@ describe('WidgetView', () => {
       return null;
     });
     render(<WidgetView />);
-    expect(await screen.findByText('已关闭')).toBeInTheDocument();
-    const gateway = await screen.findByRole('switch', { name: /网关/ });
-    expect(gateway).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('switch', { name: /后台同步/ })).toHaveAttribute('aria-checked', 'false');
-    fireEvent.click(gateway);
+    const sync = await screen.findByRole('switch', { name: /后台同步/ });
+    expect(sync).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('switch', { name: /网关/ })).toBeNull();
+    expect(screen.queryByText('已关闭')).toBeNull();
+    fireEvent.click(sync);
     expect(await screen.findByRole('alert')).toHaveTextContent('切换失败，请到主窗口重试');
-    expect(screen.getByRole('switch', { name: /网关/ })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: /后台同步/ })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('「实时路由」读脱敏的网关视图画失败切换，不读额度、不出现范围分段', async () => {

@@ -1559,7 +1559,7 @@ let mockSettings: AppSettings = normalizeMockClaudeToggles({
     enabled,
     apiKeyConfigured,
   })),
-  model_access_enabled: true,
+  model_access_enabled: false,
   model_access_version: 1,
 });
 let mockQuotaSyncStatus: QuotaSyncStatus = { enabled: false, state: 'disabled' };

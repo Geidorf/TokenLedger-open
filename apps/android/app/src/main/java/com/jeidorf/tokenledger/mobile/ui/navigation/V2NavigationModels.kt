@@ -22,6 +22,17 @@ internal enum class MobileDestination(val label: String, val icon: ImageVector) 
 }
 
 /**
+ * 导航栏与侧边栏展示的一级目的地列表。
+ * 云端没有任何路由快照且当前不在路由页时隐藏「路由」，避免新用户或未开启网关同步的用户点进空白页。
+ */
+internal fun visibleMobileDestinations(showRouting: Boolean): List<MobileDestination> =
+    if (showRouting) {
+        MobileDestination.entries
+    } else {
+        listOf(MobileDestination.Usage, MobileDestination.Quota, MobileDestination.Me)
+    }
+
+/**
  * 「用量」下的子页；原「今日」成了概览，原「明细」对齐桌面端改叫「请求」。
  * 「会话」对齐桌面同名子页，云端只有小时聚合，所以显示活动节律而不是会话列表。
  */

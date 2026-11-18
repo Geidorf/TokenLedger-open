@@ -264,11 +264,13 @@ export function WidgetSection(props: WidgetSectionProps) {
         <WidgetContentGroup {...props} surface="desktop" surfaceName="桌面小组件" />
         <WidgetPreview surface="desktop" config={widgetConfigFromSettings(appSettings, "desktop")} />
       </SettingsCard>
-      <RoutingPublishCard
-        appSettings={appSettings}
-        busy={props.busy}
-        onSettingChange={props.onSettingChange}
-      />
+      {(appSettings.model_access_enabled || appSettings.routing_publish_enabled === true) && (
+        <RoutingPublishCard
+          appSettings={appSettings}
+          busy={props.busy}
+          onSettingChange={props.onSettingChange}
+        />
+      )}
     </SettingsSection>
   );
 }

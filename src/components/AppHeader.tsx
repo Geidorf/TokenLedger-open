@@ -51,6 +51,8 @@ interface AppHeaderProps {
   dataStatus: HeaderDataStatus;
   /** 用量子页的二级分段；不传时退回只读标题。 */
   onTabChange?: (tab: Tab) => void;
+  /** 模型接入总开关；关闭时用量子页已提升到顶栏，不再重复渲染二级分段。 */
+  modelAccessEnabled?: boolean;
 }
 
 // This is the single window-drag contract for the desktop shell. Tauri's
@@ -152,6 +154,7 @@ export function AppHeader({
   onThemeChange,
   dataStatus,
   onTabChange,
+  modelAccessEnabled = false,
 }: AppHeaderProps) {
   // Labels read the current language directly; subscribing re-renders the header when it changes.
   useLang();
@@ -362,7 +365,7 @@ export function AppHeader({
       onDoubleClick={handleWindowDragDoubleClick}
     >
       <div className="toolbar-brand min-w-0">
-        {usageSurface && onTabChange ? (
+        {usageSurface && modelAccessEnabled && onTabChange ? (
           <nav ref={usageIndicatorRef} className="usage-subnav tl-seg" data-window-drag-block aria-label={t('header.subnav')}>
             {USAGE_SUB_OPTIONS.map((option) => {
               const tab = USAGE_SUB_TABS[option.id];

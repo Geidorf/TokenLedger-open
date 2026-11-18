@@ -496,9 +496,9 @@ describe('用量页头二级分段', () => {
     dataStatus: { loading: false, stale: false, lastRefreshedAt: null, unsyncedRecords: 0, cloudCapabilityVerified: true, cloudFirstSyncCompleted: true },
   };
 
-  it('列出概览、请求、会话、额度、报告，标出当前子页，点击切到对应 Tab', () => {
+  it('模型接入开启时列出概览、请求、会话、额度、报告，标出当前子页，点击切到对应 Tab', () => {
     const onTabChange = vi.fn();
-    render(<AppHeader {...props} activeTab="behavior" onTabChange={onTabChange} />);
+    render(<AppHeader {...props} activeTab="behavior" onTabChange={onTabChange} modelAccessEnabled />);
     const nav = screen.getByRole('navigation', { name: '用量子页' });
     expect(within(nav).getAllByRole('button').map((button) => button.textContent)).toEqual(['概览', '请求', '会话', '额度', '报告']);
     expect(within(nav).getByRole('button', { name: '会话' })).toHaveAttribute('aria-current', 'page');
@@ -508,6 +508,14 @@ describe('用量页头二级分段', () => {
     expect(onTabChange).toHaveBeenLastCalledWith('allowances');
     fireEvent.click(within(nav).getByRole('button', { name: '报告' }));
     expect(onTabChange).toHaveBeenLastCalledWith('reports');
+  });
+
+  it('模型接入默认关闭时不渲染重复的用量子页分段，改用标题与新鲜度胶囊', () => {
+    render(<AppHeader {...props} activeTab="behavior" onTabChange={vi.fn()} />);
+    expect(screen.queryByRole('navigation', { name: '用量子页' })).toBeNull();
+    const header = document.querySelector('header')!;
+    expect(header.querySelector('.toolbar-title')).toHaveTextContent('用量 · 会话');
+    expect(within(header).getByRole('status')).toHaveTextContent('本机数据');
   });
 
   it('设置页没有用量分段，仍显示页名', () => {

@@ -51,7 +51,7 @@ const baseProps = {
 describe('Sidebar（顶栏）', () => {
   it('一级分段顺序：Agent、供应商、网关、路由、用量；设置在右侧齿轮', () => {
     const onTabChange = vi.fn();
-    render(<Sidebar {...baseProps} activeTab="gateway" onTabChange={onTabChange} />);
+    render(<Sidebar {...baseProps} activeTab="gateway" onTabChange={onTabChange} modelAccessEnabled />);
     const nav = screen.getByRole('navigation', { name: '主要页面导航' });
     const labels = Array.from(nav.querySelectorAll('button')).map((button) => button.textContent);
     expect(labels).toEqual(['Agent', '供应商', '网关', '路由', '用量']);
@@ -65,24 +65,31 @@ describe('Sidebar（顶栏）', () => {
     expect(onTabChange).toHaveBeenLastCalledWith('settings');
   });
 
-  it('模型接入关闭时只剩「用量」一段（U-112）', () => {
-    render(<Sidebar {...baseProps} activeTab="dashboard" onTabChange={vi.fn()} modelAccessEnabled={false} />);
+  it('模型接入默认关闭时直接将用量子页作为顶栏一级分段渲染', () => {
+    const onTabChange = vi.fn();
+    render(<Sidebar {...baseProps} activeTab="behavior" onTabChange={onTabChange} />);
     const nav = screen.getByRole('navigation', { name: '主要页面导航' });
-    expect(Array.from(nav.querySelectorAll('button')).map((button) => button.textContent)).toEqual(['用量']);
-    for (const name of ['Agent', '供应商', '网关', '路由']) expect(screen.queryByRole('button', { name })).toBeNull();
+    expect(Array.from(nav.querySelectorAll('button')).map((button) => button.textContent)).toEqual(['概览', '请求', '会话', '额度', '报告']);
+    for (const name of ['Agent', '供应商', '网关', '路由', '用量']) expect(screen.queryByRole('button', { name })).toBeNull();
+    expect(screen.getByRole('button', { name: '会话' })).toHaveAttribute('aria-current', 'page');
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '请求' }));
+    expect(onTabChange).toHaveBeenCalledWith('logs');
+    fireEvent.click(screen.getByRole('button', { name: '报告' }));
+    expect(onTabChange).toHaveBeenLastCalledWith('reports');
     expect(screen.getByRole('button', { name: '设置与云端' })).toBeInTheDocument();
   });
 
   it('四个用量子页都高亮「用量」；在用量页再点不换子页，从别处点回到概览', () => {
     const onTabChange = vi.fn();
-    const { rerender } = render(<Sidebar {...baseProps} activeTab="behavior" onTabChange={onTabChange} />);
+    const { rerender } = render(<Sidebar {...baseProps} activeTab="behavior" onTabChange={onTabChange} modelAccessEnabled />);
     for (const tab of ['dashboard', 'logs', 'behavior', 'allowances'] as const) {
-      rerender(<Sidebar {...baseProps} activeTab={tab} onTabChange={onTabChange} />);
+      rerender(<Sidebar {...baseProps} activeTab={tab} onTabChange={onTabChange} modelAccessEnabled />);
       expect(screen.getByRole('button', { name: '用量' })).toHaveAttribute('aria-current', 'page');
     }
     fireEvent.click(screen.getByRole('button', { name: '用量' }));
     expect(onTabChange).toHaveBeenLastCalledWith('allowances');
-    rerender(<Sidebar {...baseProps} activeTab="agents" onTabChange={onTabChange} />);
+    rerender(<Sidebar {...baseProps} activeTab="agents" onTabChange={onTabChange} modelAccessEnabled />);
     expect(screen.getByRole('button', { name: '用量' })).not.toHaveAttribute('aria-current');
     fireEvent.click(screen.getByRole('button', { name: '用量' }));
     expect(onTabChange).toHaveBeenLastCalledWith('dashboard');

@@ -6,6 +6,8 @@ import { isUsageTab } from '../types';
 import { showsWindowsLockscreenControls } from '../utils/frontendContracts';
 import { useSegmentedIndicator } from '../hooks/useSegmentedIndicator';
 import { handleWindowDragDoubleClick, handleWindowDragMouseDown } from './AppHeader';
+import { USAGE_SUB_OPTIONS } from './usage/UsagePage';
+import { USAGE_SUB_TABS } from '../utils/usageNavigation';
 import { t, useLang } from '../i18n';
 
 interface SidebarProps {
@@ -82,6 +84,15 @@ interface NavItem {
  */
 const USAGE_NAV_ITEM: NavItem = { id: 'dashboard', get label() { return t('shell.nav.usage'); }, matches: isUsageTab };
 
+const USAGE_NAV_ITEMS: NavItem[] = USAGE_SUB_OPTIONS.map((option) => {
+  const tab = USAGE_SUB_TABS[option.id];
+  return {
+    id: tab,
+    get label() { return option.label; },
+    matches: (active) => active === tab,
+  };
+});
+
 const MODEL_NAV_ITEMS: NavItem[] = [
   { id: 'agents', get label() { return t('shell.nav.agents'); }, matches: (tab) => tab === 'agents' },
   { id: 'providers', get label() { return t('shell.nav.providers'); }, matches: (tab) => tab === 'providers' },
@@ -120,7 +131,7 @@ export function Sidebar({
   onOpenShareCard,
   wallpaperBusy,
   appVersion,
-  modelAccessEnabled = true,
+  modelAccessEnabled = false,
 }: SidebarProps) {
   const showLockscreenControls = showsWindowsLockscreenControls();
   // The active page's thumb slides between segments (T10.150); items keep aria-current.
@@ -170,7 +181,7 @@ export function Sidebar({
     : t('shell.sync.recoverVerify');
   const syncRecoveryLabel = t(!cloudStatusKnown ? 'shell.sync.recoverCheckShort' : !cloudAuthenticated ? 'shell.sync.recoverSignInShort' : 'shell.sync.recoverVerifyShort');
   const settingsActive = activeTab === 'settings';
-  const navItems = modelAccessEnabled ? [...MODEL_NAV_ITEMS, USAGE_NAV_ITEM] : [USAGE_NAV_ITEM];
+  const navItems = modelAccessEnabled ? [...MODEL_NAV_ITEMS, USAGE_NAV_ITEM] : USAGE_NAV_ITEMS;
 
   return (
     <header

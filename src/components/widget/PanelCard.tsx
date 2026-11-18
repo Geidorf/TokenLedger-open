@@ -103,11 +103,20 @@ function toggleOn(status: TrayPanelStatus, id: PanelToggleTarget): boolean {
   return !status.scanPaused;
 }
 
-function Toggles({ controls, staticPreview }: { controls: PanelControls | null; staticPreview: boolean }) {
+function Toggles({
+  controls,
+  staticPreview,
+  showGateway,
+}: {
+  controls: PanelControls | null;
+  staticPreview: boolean;
+  showGateway: boolean;
+}) {
   const status = controls?.status ?? null;
+  const visibleToggles = showGateway ? TOGGLES : TOGGLES.filter((toggle) => toggle.id !== 'gateway');
   return (
     <div className="wl-toggles" role="group" aria-label="快捷开关">
-      {TOGGLES.map((toggle) => {
+      {visibleToggles.map((toggle) => {
         const on = status ? toggleOn(status, toggle.id) : toggle.id !== 'gateway';
         const glyph = <toggle.icon size={15} strokeWidth={2} aria-hidden="true" />;
         const body = (
@@ -158,6 +167,7 @@ export function PanelCard({ model, now, scene, loaded, controls, noticeActions, 
   const quota = model.quota;
   const items = quota.kind === 'ready' ? quota.items.slice(0, PANEL_QUOTA_LIMIT) : [];
   const hidden = quota.kind === 'ready' ? quota.items.length - items.length : 0;
+  const showGateway = Boolean(controls?.status?.gatewayEnabled) || Boolean(scene && !scene.empty);
   const gateway = gatewayState(controls?.status ?? null);
   const recent = scene && !scene.empty ? scene.flows.slice(0, PANEL_RECENT_LIMIT) : [];
   return (
@@ -196,40 +206,44 @@ export function PanelCard({ model, now, scene, loaded, controls, noticeActions, 
           <QuotaNotice quota={quota} actions={noticeActions} ringSize={44} />
         )}
       </section>
-      <hr className="wl-hr" />
-      <section className="wl-panel-gateway" aria-label="网关与最近路由">
-        <div className="wl-row wl-title">
-          <span className="wl-cap">网关</span>
-          <span className="wl-gw-state" data-tone={gateway.tone}><i aria-hidden="true" />{gateway.text}</span>
-        </div>
-        <div className="wl-panel-stage">
-          {!scene ? (
-            <div className="rs-empty is-compact" role="note">
-              <b>Agent → 网关 → 上游</b>
-              <span>网关有请求时在这里实时流动，失败切换可见。</span>
+      {showGateway && (
+        <>
+          <hr className="wl-hr" />
+          <section className="wl-panel-gateway" aria-label="网关与最近路由">
+            <div className="wl-row wl-title">
+              <span className="wl-cap">网关</span>
+              <span className="wl-gw-state" data-tone={gateway.tone}><i aria-hidden="true" />{gateway.text}</span>
             </div>
-          ) : !loaded ? null : scene.empty ? (
-            <RoutingStageEmpty scene={scene} variant="compact" />
-          ) : (
-            <RoutingStage scene={scene} variant="compact" title="最近路由动画" />
-          )}
-        </div>
-        {recent.length > 0 && (
-          <ol className="wl-recent" aria-label="最近路由">
-            {recent.map((flow) => {
-              const route = describeRecentRoute(flow);
-              return (
-                <li key={flow.id} data-outcome={route.outcome}>
-                  <i aria-hidden="true" />
-                  <span className="wl-recent-path">{route.path}</span>
-                  <span className="wl-meta">{route.outcome === 'pending' ? '进行中' : formatAgo(flow.at, Date.now())}</span>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </section>
-      <Toggles controls={controls} staticPreview={staticPreview} />
+            <div className="wl-panel-stage">
+              {!scene ? (
+                <div className="rs-empty is-compact" role="note">
+                  <b>Agent → 网关 → 上游</b>
+                  <span>网关有请求时在这里实时流动，失败切换可见。</span>
+                </div>
+              ) : !loaded ? null : scene.empty ? (
+                <RoutingStageEmpty scene={scene} variant="compact" />
+              ) : (
+                <RoutingStage scene={scene} variant="compact" title="最近路由动画" />
+              )}
+            </div>
+            {recent.length > 0 && (
+              <ol className="wl-recent" aria-label="最近路由">
+                {recent.map((flow) => {
+                  const route = describeRecentRoute(flow);
+                  return (
+                    <li key={flow.id} data-outcome={route.outcome}>
+                      <i aria-hidden="true" />
+                      <span className="wl-recent-path">{route.path}</span>
+                      <span className="wl-meta">{route.outcome === 'pending' ? '进行中' : formatAgo(flow.at, Date.now())}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
+        </>
+      )}
+      <Toggles controls={controls} staticPreview={staticPreview} showGateway={showGateway} />
       {controls?.error && <span className="wl-meta is-error wl-panel-error" role="alert">{controls.error}</span>}
     </div>
   );

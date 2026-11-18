@@ -102,6 +102,8 @@ import com.jeidorf.tokenledger.mobile.ui.adaptive.v2PaneArrangement
 import com.jeidorf.tokenledger.mobile.ui.adaptive.v2UsesTwoPane
 import com.jeidorf.tokenledger.mobile.ui.adaptive.v2WidePageArrangement
 import com.jeidorf.tokenledger.mobile.ui.adaptive.v2UsesWideContentFrame
+import com.jeidorf.tokenledger.mobile.ui.routing.LocalRoutingFeedOverride
+import com.jeidorf.tokenledger.mobile.ui.routing.RoutingFeed
 import com.jeidorf.tokenledger.mobile.ui.routing.rememberRoutingFeed
 import com.jeidorf.tokenledger.mobile.ui.routing.v2RoutingItems
 import com.jeidorf.tokenledger.mobile.ui.calendar.V2DayReviewSummary
@@ -135,6 +137,7 @@ import com.jeidorf.tokenledger.mobile.ui.navigation.v2EntityIdentitySlot
 import com.jeidorf.tokenledger.mobile.ui.navigation.v2ScrolledUnder
 import com.jeidorf.tokenledger.mobile.ui.navigation.v2TopBarSubtitle
 import com.jeidorf.tokenledger.mobile.ui.navigation.v2TopBarTitle
+import com.jeidorf.tokenledger.mobile.ui.navigation.visibleMobileDestinations
 import com.jeidorf.tokenledger.mobile.ui.navigation.dashboardSection
 import com.jeidorf.tokenledger.mobile.ui.quota.TODAY_QUOTA_LIMIT
 import com.jeidorf.tokenledger.mobile.ui.quota.TODAY_SOURCE_LIMIT
@@ -330,6 +333,15 @@ internal fun LedgerDashboardV2Screen(
         )
         showGuide = false
     }
+    // 路由页仅在可见时周期轮询云端快照，平时在已登录状态下做一次轻量初始探测以决定是否展示「路由」入口。
+    val routingFeed = rememberRoutingFeed(
+        state.session,
+        active = !showSettings && !entityMode && destination == MobileDestination.Routing
+    )
+    val showRouting = LocalRoutingFeedOverride.current != null ||
+        destination == MobileDestination.Routing ||
+        routingFeed.result?.snapshots?.isNotEmpty() == true
+    val visibleDestinations = visibleMobileDestinations(showRouting)
 
     CompositionLocalProvider(
         LocalCostMaskEnabled provides costMasked,
@@ -369,7 +381,8 @@ internal fun LedgerDashboardV2Screen(
                         V2NavigationBar(
                             palette = palette,
                             selected = destination,
-                            onSelect = ::selectDestination
+                            onSelect = ::selectDestination,
+                            destinations = visibleDestinations
                         )
                     }
                 }
@@ -468,6 +481,7 @@ internal fun LedgerDashboardV2Screen(
                                 tokenDisplayMode = tokenDisplayMode,
                                 state = state,
                                 displayedStats = displayedData,
+                                routingFeed = routingFeed,
                                 wide = wide,
                                 windowWidthDp = windowWidthDp,
                                 twoPane = twoPane,
@@ -509,7 +523,8 @@ internal fun LedgerDashboardV2Screen(
                     palette = palette,
                     selected = destination,
                     onSelect = ::selectDestination,
-                    modifier = Modifier.align(Alignment.CenterStart)
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    destinations = visibleDestinations
                 )
             }
             if (showGuide) {
@@ -576,6 +591,7 @@ internal fun V2DestinationContent(
     tokenDisplayMode: TokenDisplayMode,
     state: DashboardUiState,
     displayedStats: StatsData?,
+    routingFeed: RoutingFeed,
     wide: Boolean,
     windowWidthDp: Int,
     twoPane: Boolean = false,
@@ -620,8 +636,6 @@ internal fun V2DestinationContent(
     val quotaListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_quota") { LazyListState() }
     val widgetListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_widget") { LazyListState() }
     val routingListState = rememberSaveable(saver = LazyListState.Saver, key = "v2_scroll_routing") { LazyListState() }
-    // 路由页只在可见时轮询云端路由快照（routing-snapshot-v1），不影响用量统计的读取。
-    val routingFeed = rememberRoutingFeed(state.session, active = destination == MobileDestination.Routing)
     // 「会话」子页只在可见时按当前查询读云端活动节律（activity-rhythm-cloud-v1）。
     val rhythmFeed = rememberRhythmFeed(
         state.session,

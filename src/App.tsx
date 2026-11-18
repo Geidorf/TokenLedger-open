@@ -774,6 +774,7 @@ function MainApp() {
           themeMode={theme.mode}
           onThemeChange={theme.set}
           onTabChange={changeTab}
+          modelAccessEnabled={Boolean(modelAccessEnabled)}
           dataStatus={{
             loading: statsHook.statsLoading || busy.scan || busy.sync,
             stale: Boolean(statsHook.stats?.meta?.stale),
