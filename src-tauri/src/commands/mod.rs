@@ -6933,6 +6933,7 @@ mod gateway_overlay;
 pub mod gateway_request_log;
 pub mod magpie_import;
 pub mod peer_shared;
+mod peer_shared_cloud;
 mod price_feed;
 mod price_memo;
 mod price_repricing;
@@ -15621,6 +15622,25 @@ async fn sync_to_supabase_locked(
     let moved_count =
         device_cloud_move::move_legacy_cloud_rows(app, &db_path, &config, &session, &session_lease)
             .await?;
+    let shared = match peer_shared_cloud::sync(
+        app,
+        &db_path,
+        &config,
+        &session,
+        &session_lease,
+        &fallback_machine,
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            session_lease.ensure_current(app)?;
+            peer_shared_cloud::Outcome {
+                changed: 0,
+                warning: Some(error),
+            }
+        }
+    };
     let has_pending_work = {
         let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
         conn.query_row(
@@ -15648,7 +15668,7 @@ async fn sync_to_supabase_locked(
             &|_| 0.0,
         )
         .has_work();
-    if !has_pending_work && !gateway_dirty && moved_count == 0 {
+    if !has_pending_work && !gateway_dirty && moved_count == 0 && shared.changed == 0 {
         session_lease.ensure_current(app)?;
         return Ok(json!({
             "success": true,
@@ -15657,7 +15677,7 @@ async fn sync_to_supabase_locked(
             "purged_count": 0,
             "summary_refreshed": false,
             "history_pending": history_guard.pending(),
-            "warning": history_guard.warning(None)
+            "warning": history_guard.warning(shared.warning.as_deref())
         }));
     }
     let prices = load_prices(app);
@@ -15926,6 +15946,7 @@ async fn sync_to_supabase_locked(
     if sync_logs.is_empty()
         && purged_count == 0
         && moved_count == 0
+        && shared.changed == 0
         && gateway_deletes.is_empty()
         && gateway_mark_ids.is_empty()
     {
@@ -15940,7 +15961,7 @@ async fn sync_to_supabase_locked(
             "purged_count": 0,
             "summary_refreshed": true,
             "history_pending": history_guard.pending(),
-            "warning": history_guard.warning(None)
+            "warning": history_guard.warning(shared.warning.as_deref())
         }));
     }
 
@@ -16069,14 +16090,18 @@ async fn sync_to_supabase_locked(
         }
     };
     let summary_refreshed = refresh_warning.is_none();
+    let warning = match (shared.warning, refresh_warning) {
+        (Some(shared), Some(refresh)) => Some(format!("{shared} {refresh}")),
+        (shared, refresh) => shared.or_else(|| refresh.map(str::to_owned)),
+    };
+    let synced_count = sync_logs.len() + shared.changed;
     let mut message = if purged_count > 0 {
         format!(
             "已同步 {} 个云端小时聚合组，并完成 {} 项历史清理。",
-            sync_logs.len(),
-            purged_count
+            synced_count, purged_count
         )
     } else {
-        format!("已同步 {} 个云端小时聚合组。", sync_logs.len())
+        format!("已同步 {synced_count} 个云端小时聚合组。")
     };
     if moved_count > 0 {
         message.push_str(&format!(
@@ -16087,11 +16112,11 @@ async fn sync_to_supabase_locked(
     Ok(json!({
         "success": true,
         "message": message,
-        "synced_count": sync_logs.len(),
+        "synced_count": synced_count,
         "purged_count": purged_count,
         "moved_count": moved_count,
         "summary_refreshed": summary_refreshed,
-        "warning": history_guard.warning(refresh_warning),
+        "warning": history_guard.warning(warning.as_deref()),
         "history_pending": history_guard.pending()
     }))
 }

@@ -132,7 +132,7 @@ fn shared_calls_are_counted_under_their_computer_and_never_replace_a_scan() {
     );
     drop(conn);
 
-    // Shared rows are another computer's to upload.
+    // The local merge cannot include remote rows in this computer's cloud totals.
     assert!(
         super::super::gateway_cloud::collect_hours(&db_path, "user-a", "mac")
             .unwrap()

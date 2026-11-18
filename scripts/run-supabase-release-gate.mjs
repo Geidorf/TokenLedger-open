@@ -348,6 +348,10 @@ psql(container, {
   label: 'Gateway-merged aggregate provenance, RLS and delete refresh regression',
 });
 psql(container, {
+  file: 'supabase/tests/shared_usage_cloud_regression.sql',
+  label: 'Shared usage relay, takeover and account isolation regression',
+});
+psql(container, {
   file: 'supabase/tests/routing_snapshot_regression.sql',
   label: 'Live routing snapshot relay, validation, capacity and RLS regression',
 });

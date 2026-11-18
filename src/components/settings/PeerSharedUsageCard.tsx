@@ -43,8 +43,7 @@ function pulledNote(meta: PeerSharedMeta) {
 
 /**
  * 「数据与帮助」里的其他电脑共享用量：外部网关会把每台电脑每天的调用加密放在同一个
- * WebDAV 文件夹里。默认一台都不统计；只勾选没有装 TokenLedger 的电脑，否则会重复计数。
- * 这些调用只在本机统计里显示，不上传云端。
+ * WebDAV 文件夹里。默认一台都不统计；云同步按原始电脑上传汇总。
  */
 export function PeerSharedUsageCard() {
   useLang();

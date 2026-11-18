@@ -36,6 +36,7 @@
 | `20261024040000_security_hardening` | 权限收紧（v9）：`sync_state` 仅服务角色、v1 RPC 用户校验与空 `search_path`、pgcrypto 移出 public、`token_logs` 撤多余权限 |
 | `20261024050000_budget_snapshot_sync` | 预算状态快照中转与读取 |
 | `20261024060000_usage_dimensions_cloud_v1` | 云端用量维度：会话、账号白名单、Context 构成（保留 90 天） |
+| `20261118010000_shared_usage_cloud` | WebDAV 共享用量代传、设备归属和小时汇总接管 |
 
 ## 2026-10-24 云端用量维度：会话、账号、Context 构成（usage-dimensions-cloud-v1）
 
@@ -249,6 +250,7 @@
 - `tests/quota_balance_reason_regression.sql`：验证余额原因码的 v3 写入、未登记原因拒绝、v2 投影省略、函数权限与 RLS（只在 `supabase:verify:release` 中执行）。
 - `tests/release_readiness_regression.sql`：验证 RC 所需的 RLS、权限、Advisor 修复、兼容签名和执行计划。
 - `tests/gateway_aggregate_provenance_regression.sql`：网关合并聚合的来源列、旧客户端兼容、RLS、RPC 合计与删除标脏。
+- `tests/shared_usage_cloud_regression.sql`：代传去重、原机接管、历史保留和跨账号隔离。
 - `schema.sql`：仅保留为 v3.1 基线/灾难恢复资料；它不是当前部署入口，常规部署、多人协作和 CI 均不得以它替代迁移链。
 
 ## 本地验证

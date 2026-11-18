@@ -7,8 +7,7 @@
 //! `imports/peer-shared-v1.jsonl` and hands them to the stats overlay as
 //! rows of their own (`source = shared-peer`), under a machine id per
 //! computer. They are another computer's calls: they never replace a row
-//! scanned here, and they are never uploaded to the cloud, where that
-//! computer's own TokenLedger (if any) counts them.
+//! scanned here. Cloud sync publishes their hourly totals separately.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -61,6 +60,9 @@ pub(crate) struct SharedCall {
     pub key: String,
     /// UTC RFC 3339, when the call ended.
     pub t: String,
+    /// Source wall-clock hour, independent of the relay's timezone.
+    #[serde(default)]
+    pub source_hour: String,
     pub agent: String,
     pub provider: String,
     pub model: String,
@@ -145,6 +147,7 @@ pub(crate) fn parse_call(computer: &str, value: &serde_json::Value) -> Option<Sh
         computer: computer.to_string(),
         key: fnv_hex(&identity),
         t,
+        source_hour: at.format("%Y-%m-%d %H:00:00").to_string(),
         agent: record.agent.trim().to_string(),
         provider: record.provider.trim().to_string(),
         model,
@@ -290,18 +293,26 @@ pub(super) fn call_to_row(
 /// Kept shared calls as overlay rows; empty when none were pulled. A store
 /// that exists but can't be read is an error, never silently dropped.
 pub(super) fn read_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
+    read_calls(db_path)?
+        .iter()
+        .map(|call| call_to_row(call, &local_storage_time).ok_or_else(broken_store))
+        .collect()
+}
+
+fn broken_store() -> String {
+    "共享用量文件已损坏，请重新同步。".to_string()
+}
+
+pub(super) fn read_calls(db_path: &Path) -> Result<Vec<SharedCall>, String> {
     let text = match fs::read_to_string(store_path(db_path)) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(format!("读取共享用量失败：{error}")),
     };
-    let broken = || "共享用量文件已损坏，请重新同步。".to_string();
-    let mut rows = Vec::new();
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        let call: SharedCall = serde_json::from_str(line).map_err(|_| broken())?;
-        rows.push(call_to_row(&call, &local_storage_time).ok_or_else(broken)?);
-    }
-    Ok(rows)
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).map_err(|_| broken_store()))
+        .collect()
 }
 
 fn emit_stats_updated(app_handle: &tauri::AppHandle) {
