@@ -843,15 +843,16 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let mut previous = None;
                 loop {
-                    let active = sampling_gateway.content_sampling_active();
-                    if previous != Some(active) {
-                        let _ = sampling_notice.set_text(if active {
-                            "正在采样请求内容"
-                        } else {
-                            "内容采样已关闭"
+                    use gateway::SamplingActivity;
+                    let activity = sampling_gateway.content_sampling_activity();
+                    if previous != Some(activity) {
+                        let _ = sampling_notice.set_text(match activity {
+                            SamplingActivity::Active => "正在采样请求内容",
+                            SamplingActivity::Paused => "内容采样已暂停",
+                            SamplingActivity::Off => "内容采样已关闭",
                         });
-                        let _ = sampling_stop.set_enabled(active);
-                        previous = Some(active);
+                        let _ = sampling_stop.set_enabled(activity != SamplingActivity::Off);
+                        previous = Some(activity);
                     }
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 }

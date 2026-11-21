@@ -180,11 +180,13 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
     void run(() => contentSamplingApi.remove(null), t('sampling.notify.deleted'));
   };
 
-  const stateLabel = active
-    ? t('sampling.state.active')
-    : status
-      ? t('sampling.state.off')
-      : t('sampling.state.loading');
+  const stateLabel = status?.paused
+    ? t('sampling.state.paused')
+    : active
+      ? t('sampling.state.active')
+      : status
+        ? t('sampling.state.off')
+        : t('sampling.state.loading');
   const detail = authorized
     ? status.mode === 'next'
       ? t('sampling.detail.next', { count: status.remaining ?? 0 })
@@ -209,11 +211,7 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
               <p>{detail}</p>
             </div>
           </div>
-          {authorized && status.paused ? (
-            <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={openStop}>{t('sampling.stop.title')}</button>
-          ) : (
-            <button type="button" role="switch" aria-checked={active} aria-label={t('sampling.switchLabel')} disabled={!status || busy} className={`mw-switch ${active ? 'is-on' : ''}`} onClick={() => (active ? openStop() : openEnable())}><span /></button>
-          )}
+          <button type="button" role="switch" aria-checked={authorized} aria-label={t('sampling.switchLabel')} disabled={!status || busy} className={`mw-switch ${authorized ? 'is-on' : ''}`} onClick={() => (authorized ? openStop() : openEnable())}><span /></button>
         </div>
         <div className="content-sampling-foot">
           <span className={`content-sampling-state${active ? ' is-active' : ''}`}>{stateLabel}</span>

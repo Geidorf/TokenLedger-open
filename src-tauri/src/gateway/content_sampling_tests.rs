@@ -248,7 +248,7 @@ fn persistence_failure_disables_sampling_and_invalidates_pending_tickets() {
     assert!(sampling
         .begin(&id(1), None, None, false, captured("request"))
         .is_none());
-    assert!(!sampling.active());
+    assert!(sampling.activity() == SamplingActivity::Off);
     fs::remove_file(&directory).unwrap();
     fs::create_dir(&directory).unwrap();
     sampling
@@ -427,7 +427,10 @@ fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
     let status = sampling.status();
     assert_eq!(status.error.as_deref(), Some(KEY_UNAVAILABLE));
     assert!(status.paused);
-    assert!(!sampling.active());
+    assert!(sampling.activity() == SamplingActivity::Paused);
+    let locked = sampling.lock();
+    assert!(sampling.activity() == SamplingActivity::Paused);
+    drop(locked);
     assert!(sampling.reserve().is_none());
     assert!(sampling.read(&id(0)).is_err());
     assert_eq!(fs::read(state_path).unwrap(), state_before);
@@ -438,7 +441,7 @@ fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
     assert_eq!(status.remaining, Some(2));
     assert!(!status.paused);
     assert!(status.error.is_none());
-    assert!(sampling.active());
+    assert!(sampling.activity() == SamplingActivity::Active);
     assert_eq!(sampling.read(&id(0)).unwrap().response, "response");
     sampling
         .finish(late, captured("late response"), 200, false)
@@ -447,6 +450,33 @@ fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
     begin_and_finish(&sampling, &id(3), "request", "response", 200);
     assert_eq!(sampling.status().remaining, Some(1));
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn removing_last_samples_clears_pause_immediately_when_off() {
+    for stop in [true, false] {
+        let root = gateway_dir("remove_paused_samples");
+        let secrets = Arc::new(UnreadableSecrets::default());
+        let sampling = ContentSampling::new(&root, secrets.clone());
+        sampling
+            .configure(next(if stop { 2 } else { 1 }, true))
+            .unwrap();
+        begin_and_finish(&sampling, &id(0), "request", "response", 200);
+        secrets.unreadable.store(true, Ordering::SeqCst);
+        assert!(sampling.status().paused);
+
+        let status = if stop {
+            sampling.configure(SamplingInput::default()).unwrap()
+        } else {
+            sampling.delete(Some(vec![id(0)])).unwrap()
+        };
+        assert_eq!(status.mode, SamplingMode::Off);
+        assert_eq!(status.stored_count, 0);
+        assert!(!status.paused);
+        assert!(status.error.is_none());
+        assert!(sampling.activity() == SamplingActivity::Off);
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[derive(Default)]

@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{DateTime, Utc};
@@ -35,6 +35,13 @@ pub enum SamplingMode {
     Off,
     Next,
     Filter,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SamplingActivity {
+    Off,
+    Paused,
+    Active,
 }
 
 #[derive(Default, Deserialize)]
@@ -131,7 +138,7 @@ pub(super) struct ContentSampling {
     pending: Arc<AtomicUsize>,
     ready: AtomicBool,
     skipped: AtomicBool,
-    active_hint: AtomicBool,
+    activity_hint: AtomicU8,
 }
 
 fn timestamp(seconds: i64) -> Option<String> {
@@ -218,7 +225,7 @@ impl ContentSampling {
             pending: Arc::new(AtomicUsize::new(0)),
             ready: AtomicBool::new(false),
             skipped: AtomicBool::new(false),
-            active_hint: AtomicBool::new(false),
+            activity_hint: AtomicU8::new(SamplingActivity::Off as u8),
         }
     }
 
@@ -414,6 +421,14 @@ impl ContentSampling {
         self.ready.store(false, Ordering::SeqCst);
         inner.generation = inner.generation.wrapping_add(1);
         inner.key_paused = true;
+        self.activity_hint.store(
+            if inner.configuration.mode == SamplingMode::Off {
+                SamplingActivity::Off
+            } else {
+                SamplingActivity::Paused
+            } as u8,
+            Ordering::SeqCst,
+        );
         inner.error = Some(KEY_UNAVAILABLE.to_string());
         KEY_UNAVAILABLE.to_string()
     }
@@ -479,6 +494,16 @@ impl ContentSampling {
         }
     }
 
+    fn clear_pause_if_unused(&self, inner: &mut Inner, files: &[SampleFile]) {
+        if inner.key_paused && inner.configuration.mode == SamplingMode::Off && files.is_empty() {
+            inner.key_paused = false;
+            if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
+                inner.error = None;
+            }
+            self.ready.store(true, Ordering::SeqCst);
+        }
+    }
+
     pub(super) fn status(&self) -> SamplingStatus {
         let mut inner = self.lock();
         let mut files = match self.maintain(&mut inner, Utc::now().timestamp()) {
@@ -497,12 +522,7 @@ impl ContentSampling {
                 files = self.files().unwrap_or(files);
             }
         } else {
-            if !needs_key && inner.key_paused {
-                inner.key_paused = false;
-                if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
-                    inner.error = None;
-                }
-            }
+            self.clear_pause_if_unused(&mut inner, &files);
             self.ready.store(true, Ordering::SeqCst);
         }
         if inner.error.is_none() && self.skipped.load(Ordering::SeqCst) {
@@ -555,6 +575,7 @@ impl ContentSampling {
         self.skipped.store(false, Ordering::SeqCst);
         self.ready.store(!inner.key_paused, Ordering::SeqCst);
         let files = self.maintain(&mut inner, Utc::now().timestamp())?;
+        self.clear_pause_if_unused(&mut inner, &files);
         Ok(self.snapshot(&inner, &files))
     }
 
@@ -830,21 +851,28 @@ impl ContentSampling {
                 .is_none_or(|wanted| Some(wanted) == group)
     }
 
-    pub(super) fn active(&self) -> bool {
-        if !self.ready.load(Ordering::SeqCst) {
-            return false;
-        }
+    pub(super) fn activity(&self) -> SamplingActivity {
         let Ok(inner) = self.inner.try_lock() else {
-            return self.active_hint.load(Ordering::SeqCst);
+            return match self.activity_hint.load(Ordering::SeqCst) {
+                value if value == SamplingActivity::Active as u8 => SamplingActivity::Active,
+                value if value == SamplingActivity::Paused as u8 => SamplingActivity::Paused,
+                _ => SamplingActivity::Off,
+            };
         };
-        let active = !inner.key_paused
-            && inner.configuration.mode != SamplingMode::Off
-            && inner
+        let activity = if inner.configuration.mode == SamplingMode::Off
+            || inner
                 .configuration
                 .expires_at
-                .is_none_or(|expires| expires > Utc::now().timestamp());
-        self.active_hint.store(active, Ordering::SeqCst);
-        active
+                .is_some_and(|expires| expires <= Utc::now().timestamp())
+        {
+            SamplingActivity::Off
+        } else if inner.key_paused || !self.ready.load(Ordering::SeqCst) {
+            SamplingActivity::Paused
+        } else {
+            SamplingActivity::Active
+        };
+        self.activity_hint.store(activity as u8, Ordering::SeqCst);
+        activity
     }
 
     #[cfg(test)]
@@ -869,6 +897,7 @@ impl ContentSampling {
         }
         inner.error = inner.key_paused.then(|| KEY_UNAVAILABLE.to_string());
         let files = self.maintain(&mut inner, Utc::now().timestamp())?;
+        self.clear_pause_if_unused(&mut inner, &files);
         Ok(self.snapshot(&inner, &files))
     }
 }

@@ -327,6 +327,7 @@ export const zh = {
   'sampling.state.loading': '读取状态…',
   'sampling.state.active': '正在采样',
   'sampling.state.off': '未采样',
+  'sampling.state.paused': '采样已暂停',
   'sampling.detail.off': '默认关闭。需要排查回答质量时，临时记录少量请求与回复原文。',
   'sampling.detail.next': '正在采样接下来的 {count} 次请求，采满后自动关闭。',
   'sampling.detail.agent': 'Agent：{value}',

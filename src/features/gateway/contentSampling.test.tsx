@@ -121,9 +121,11 @@ describe('内容采样状态与控制', () => {
     mockSet.mockResolvedValue(off);
     render(<ContentSamplingPanel controller={controller({ ...active, paused: true, error })} />);
     expect(screen.getByRole('alert')).toHaveTextContent(error);
-    expect(screen.getByText('未采样')).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: '请求内容采样' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '停止内容采样' }));
+    expect(screen.getByText('采样已暂停')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '设置采样' })).not.toBeInTheDocument();
+    const toggle = screen.getByRole('switch', { name: '请求内容采样' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
     fireEvent.click(screen.getByRole('checkbox', { name: /同时删除已有样本/ }));
     fireEvent.click(screen.getByRole('button', { name: '停止并保留样本' }));
     await waitFor(() => expect(mockSet).toHaveBeenCalledWith({ mode: 'off', deleteExisting: false }));

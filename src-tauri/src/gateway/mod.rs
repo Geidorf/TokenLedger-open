@@ -38,6 +38,7 @@ pub use codex_config::{
     CodexApplyResult, CodexConfig, CodexInspection, CodexPreview, CodexRestoreResult,
 };
 #[cfg(test)]
+pub(crate) use content_sampling::SamplingActivity;
 pub use content_sampling::SamplingMode;
 pub use content_sampling::{ContentSample, SamplingInput, SamplingStatus};
 pub use health::HealthReport;
@@ -850,8 +851,8 @@ impl Gateway {
         self.shared.sampling.status()
     }
 
-    pub fn content_sampling_active(&self) -> bool {
-        self.shared.sampling.active()
+    pub(crate) fn content_sampling_activity(&self) -> SamplingActivity {
+        self.shared.sampling.activity()
     }
 
     pub fn set_content_sampling(&self, input: SamplingInput) -> Result<SamplingStatus, String> {
