@@ -298,8 +298,7 @@ fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Res
     init_discovered_models(&conn)?;
 
     // Idempotently backfill legacy data even when the new DB already has rows.
-    // Synthetic tests opt out so they never inspect real legacy paths under
-    // the developer's cwd or HOME.
+    // 测试默认跳过迁移，避免读取开发机上真实的旧账本。
     if migrate_legacy {
         migrate_legacy_db(db_path).ok();
     }
@@ -1371,76 +1370,80 @@ pub fn init_local_cache(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn legacy_db_path(macos_home: Option<&Path>) -> Option<PathBuf> {
+    macos_home
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join("Desktop/tokenboard/tokenboard.db"))
+}
+
 fn migrate_legacy_db(new_db_path: &PathBuf) -> Result<()> {
-    let current_dir = std::env::current_dir().unwrap_or_default();
+    // 只有 macOS 的历史固定位置支持自动迁移。
     #[cfg(target_os = "macos")]
-    let old_paths = {
-        let mut paths = vec![current_dir.join("tokenboard.db")];
-        if let Some(home) = std::env::var_os("HOME") {
-            paths.push(PathBuf::from(home).join("Desktop/tokenboard/tokenboard.db"));
-        }
-        paths
-    };
+    let macos_home = std::env::var_os("HOME").map(PathBuf::from);
     #[cfg(not(target_os = "macos"))]
-    let old_paths = vec![current_dir.join("tokenboard.db")];
+    let macos_home: Option<PathBuf> = None;
+
+    if let Some(old_db_path) = legacy_db_path(macos_home.as_deref()) {
+        migrate_legacy_db_from(new_db_path, &old_db_path)?;
+    }
+    Ok(())
+}
+
+fn migrate_legacy_db_from(new_db_path: &Path, old_db_path: &Path) -> Result<()> {
+    if !old_db_path.exists() || old_db_path == new_db_path {
+        return Ok(());
+    }
 
     let machine_id = crate::device_identity::for_db_or_unknown(new_db_path);
+    let new_conn = Connection::open(new_db_path)?;
+    new_conn.execute(
+        "ATTACH DATABASE ? AS old_db",
+        [old_db_path.to_string_lossy().to_string()],
+    )?;
 
-    for old_p in old_paths {
-        if !old_p.exists() || old_p == *new_db_path {
-            continue;
+    let table_exists: Result<i64> = new_conn.query_row(
+        "SELECT 1 FROM old_db.sqlite_master WHERE type='table' AND name='token_logs'",
+        [],
+        |r| r.get(0),
+    );
+    if table_exists.is_err() {
+        let _ = new_conn.execute("DETACH DATABASE old_db", []);
+        return Ok(());
+    }
+
+    let mut check_stmt = new_conn.prepare("PRAGMA old_db.table_info(token_logs)")?;
+    let mut check_rows = check_stmt.query([])?;
+    let mut old_has_cost = false;
+    let mut old_has_machine_id = false;
+    while let Some(row) = check_rows.next()? {
+        let name: String = row.get(1)?;
+        match name.as_str() {
+            "cost_usd" => old_has_cost = true,
+            "machine_id" => old_has_machine_id = true,
+            _ => {}
         }
+    }
+    drop(check_rows);
+    drop(check_stmt);
 
-        let new_conn = Connection::open(new_db_path)?;
-        new_conn.execute(
-            "ATTACH DATABASE ? AS old_db",
-            [old_p.to_string_lossy().to_string()],
-        )?;
-
-        let table_exists: Result<i64> = new_conn.query_row(
-            "SELECT 1 FROM old_db.sqlite_master WHERE type='table' AND name='token_logs'",
-            [],
-            |r| r.get(0),
-        );
-        if table_exists.is_err() {
-            let _ = new_conn.execute("DETACH DATABASE old_db", []);
-            continue;
-        }
-
-        let mut check_stmt = new_conn.prepare("PRAGMA old_db.table_info(token_logs)")?;
-        let mut check_rows = check_stmt.query([])?;
-        let mut old_has_cost = false;
-        let mut old_has_machine_id = false;
-        while let Some(row) = check_rows.next()? {
-            let name: String = row.get(1)?;
-            match name.as_str() {
-                "cost_usd" => old_has_cost = true,
-                "machine_id" => old_has_machine_id = true,
-                _ => {}
-            }
-        }
-        drop(check_rows);
-        drop(check_stmt);
-
-        let cost_expr = if old_has_cost { "cost_usd" } else { "NULL" };
-        let machine_expr = if old_has_machine_id {
-            "COALESCE(NULLIF(machine_id, ''), ?1)"
-        } else {
-            "?1"
-        };
-        // Claude and Codex legacy rows predate their corrected dedup/cache
-        // normalization. Their JSONL sources of truth are rescanned instead.
-        let insert_sql = format!(
-            "INSERT OR IGNORE INTO token_logs
+    let cost_expr = if old_has_cost { "cost_usd" } else { "NULL" };
+    let machine_expr = if old_has_machine_id {
+        "COALESCE(NULLIF(machine_id, ''), ?1)"
+    } else {
+        "?1"
+    };
+    // Claude and Codex legacy rows predate their corrected dedup/cache
+    // normalization. Their JSONL sources of truth are rescanned instead.
+    let insert_sql = format!(
+        "INSERT OR IGNORE INTO token_logs
              (tool, model, input_tokens, output_tokens, cached_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status)
              SELECT tool, model, input_tokens, output_tokens, cached_tokens, timestamp, session_id, unique_key, {cost_expr}, {machine_expr}, 0
              FROM old_db.token_logs
              WHERE tool NOT IN ('claude', 'codex')"
-        );
+    );
 
-        new_conn.execute(&insert_sql, params![machine_id])?;
-        new_conn.execute("DETACH DATABASE old_db", [])?;
-    }
+    new_conn.execute(&insert_sql, params![machine_id])?;
+    new_conn.execute("DETACH DATABASE old_db", [])?;
     Ok(())
 }
 
@@ -1453,6 +1456,50 @@ mod schema_upgrade_tests {
     const LATEST_SCHEMA_VERSION: i64 = ANTIGRAVITY_PROVENANCE_SCHEMA_VERSION;
 
     static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn legacy_migration_selects_only_the_fixed_macos_path() {
+        let home = std::env::temp_dir().join("home");
+
+        assert_eq!(
+            legacy_db_path(Some(&home)),
+            Some(home.join("Desktop/tokenboard/tokenboard.db"))
+        );
+        assert_eq!(legacy_db_path(None), None);
+        assert_eq!(legacy_db_path(Some(Path::new("relative-home"))), None);
+        assert_eq!(legacy_db_path(Some(Path::new(""))), None);
+    }
+
+    #[test]
+    fn legacy_migration_accepts_an_empty_ledger_at_the_fixed_path() {
+        let root = std::env::temp_dir().join(format!(
+            "tokenledger_legacy_migration_{}_{}",
+            std::process::id(),
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let old_db_path = legacy_db_path(Some(&root)).unwrap();
+        let new_db_path = root.join("ledger.db");
+        fs::create_dir_all(old_db_path.parent().unwrap()).unwrap();
+        init_test_db(&new_db_path).unwrap();
+
+        migrate_legacy_db_from(&new_db_path, &old_db_path).unwrap();
+        assert!(!old_db_path.exists());
+
+        Connection::open(&old_db_path)
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE token_logs (
+                    tool TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER,
+                    cached_tokens INTEGER, timestamp TEXT, session_id TEXT, unique_key TEXT
+                );",
+            )
+            .unwrap();
+        migrate_legacy_db_from(&new_db_path, &old_db_path).unwrap();
+        let conn = get_connection(&new_db_path).unwrap();
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+        drop(conn);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn v15_preserves_cumulative_baseline_and_rolls_back_failed_schema() {
