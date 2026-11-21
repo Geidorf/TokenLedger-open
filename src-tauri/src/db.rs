@@ -1471,7 +1471,7 @@ mod schema_upgrade_tests {
     }
 
     #[test]
-    fn legacy_migration_accepts_an_empty_ledger_at_the_fixed_path() {
+    fn legacy_migration_imports_the_fixed_path_without_duplicates() {
         let root = std::env::temp_dir().join(format!(
             "tokenledger_legacy_migration_{}_{}",
             std::process::id(),
@@ -1485,8 +1485,8 @@ mod schema_upgrade_tests {
         migrate_legacy_db_from(&new_db_path, &old_db_path).unwrap();
         assert!(!old_db_path.exists());
 
-        Connection::open(&old_db_path)
-            .unwrap()
+        let old_conn = Connection::open(&old_db_path).unwrap();
+        old_conn
             .execute_batch(
                 "CREATE TABLE token_logs (
                     tool TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER,
@@ -1497,6 +1497,51 @@ mod schema_upgrade_tests {
         migrate_legacy_db_from(&new_db_path, &old_db_path).unwrap();
         let conn = get_connection(&new_db_path).unwrap();
         assert_eq!(table_rows(&conn, "token_logs"), 0);
+
+        old_conn
+            .execute(
+                "INSERT INTO token_logs VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    "gemini",
+                    "fixture-model",
+                    120,
+                    45,
+                    30,
+                    "2026-10-01 12:34:56",
+                    "fixture-session",
+                    "fixture-entry"
+                ],
+            )
+            .unwrap();
+        drop(old_conn);
+
+        for _ in 0..2 {
+            migrate_legacy_db_from(&new_db_path, &old_db_path).unwrap();
+            assert_eq!(table_rows(&conn, "token_logs"), 1);
+            conn.query_row(
+                "SELECT tool, model, input_tokens, output_tokens, cached_tokens, timestamp,
+                        session_id, unique_key, cost_usd, machine_id, sync_status FROM token_logs",
+                [],
+                |row| {
+                    assert_eq!(row.get::<_, String>(0)?, "gemini");
+                    assert_eq!(row.get::<_, String>(1)?, "fixture-model");
+                    assert_eq!(row.get::<_, i64>(2)?, 120);
+                    assert_eq!(row.get::<_, i64>(3)?, 45);
+                    assert_eq!(row.get::<_, i64>(4)?, 30);
+                    assert_eq!(row.get::<_, String>(5)?, "2026-10-01 12:34:56");
+                    assert_eq!(row.get::<_, String>(6)?, "fixture-session");
+                    assert_eq!(row.get::<_, String>(7)?, "fixture-entry");
+                    assert_eq!(row.get::<_, Option<f64>>(8)?, None);
+                    assert_eq!(
+                        row.get::<_, String>(9)?,
+                        crate::device_identity::for_db(&new_db_path).unwrap()
+                    );
+                    assert_eq!(row.get::<_, i64>(10)?, 0);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        }
         drop(conn);
         fs::remove_dir_all(root).unwrap();
     }
