@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Archive, FolderSearch, LogOut, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import { useT, type MessageKey } from '../../i18n';
@@ -156,7 +156,7 @@ export function defaultSections(preview: LocalBackupPreview): Sections {
  * 「数据与帮助」里的本机备份与迁移：把账本、设置、路由组、预算等导出成一个加密文件，
  * 在新电脑上预览后去重合并恢复；可选定期自动备份到本地文件夹。API key 等密钥不进备份。
  */
-export function LocalBackupCard() {
+export function LocalBackupCard({ isActive = true }: { isActive?: boolean }) {
   const t = useT();
   const [status, setStatus] = useState<LocalBackupStatus | null>(null);
   const [dir, setDir] = useState('');
@@ -177,6 +177,17 @@ export function LocalBackupCard() {
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const restoreGeneration = useRef(0);
+
+  useLayoutEffect(() => {
+    if (isActive) return () => { restoreGeneration.current += 1; };
+    setExportPass('');
+    setExportConfirm('');
+    setRestorePass('');
+    setAutoPass('');
+    setPreview(null);
+    setSections(null);
+  }, [isActive]);
 
   const applyAuto = (auto: LocalBackupAutoView) => {
     setAutoEnabled(auto.enabled);
@@ -202,7 +213,7 @@ export function LocalBackupCard() {
   }, [refresh]);
 
   const run = async <T,>(action: Busy, task: () => Promise<T>) => {
-    if (busy) return undefined;
+    if (busy || !isActive) return undefined;
     setBusy(action);
     setError('');
     setNote('');
@@ -218,9 +229,9 @@ export function LocalBackupCard() {
 
   const exportReady = exportPass.length >= MIN_PASSPHRASE && exportPass === exportConfirm && dir.trim() !== '';
   const doExport = () => run('export', async () => {
-    const done = await invoke<LocalBackupExportResult>('local_backup_export', { input: { dir, passphrase: exportPass } });
     setExportPass('');
     setExportConfirm('');
+    const done = await invoke<LocalBackupExportResult>('local_backup_export', { input: { dir, passphrase: exportPass } });
     setNote(t('backup.export.done', { path: done.path, size: prettyBytes(done.bytes), rows: formatNum(done.ledgerRows) }));
   });
 
@@ -236,24 +247,39 @@ export function LocalBackupCard() {
   };
 
   const doPreview = () => run('preview', async () => {
-    const next = await invoke<LocalBackupPreview>('local_backup_preview', { input: { path, passphrase: restorePass } });
-    setPreview(next);
-    setSections(defaultSections(next));
-    setResult(null);
+    const generation = restoreGeneration.current;
+    setPreview(null);
+    setSections(null);
+    try {
+      const next = await invoke<LocalBackupPreview>('local_backup_preview', { input: { path, passphrase: restorePass } });
+      if (generation !== restoreGeneration.current) return;
+      // 确认恢复仍需同一口令；仅在同一次分区访问内保留到确认。
+      setPreview(next);
+      setSections(defaultSections(next));
+      setResult(null);
+    } catch (cause) {
+      if (generation !== restoreGeneration.current) return;
+      setRestorePass('');
+      throw cause;
+    }
   });
 
   const doApply = () => run('apply', async () => {
-    if (!preview || !sections) return;
-    const done = await invoke<LocalBackupApplyResult>('local_backup_apply', {
-      input: { path, passphrase: restorePass, digest: preview.digest, sections, conflict },
-    });
-    setResult(done);
-    setPreview(null);
-    setSections(null);
+    if (!preview || !sections || !restorePass) return;
     setRestorePass('');
+    try {
+      const done = await invoke<LocalBackupApplyResult>('local_backup_apply', {
+        input: { path, passphrase: restorePass, digest: preview.digest, sections, conflict },
+      });
+      setResult(done);
+    } finally {
+      setPreview(null);
+      setSections(null);
+    }
   });
 
   const saveAuto = () => run('saveAuto', async () => {
+    setAutoPass('');
     const view = await invoke<LocalBackupAutoView>('local_backup_save_auto', {
       input: {
         enabled: autoEnabled,
@@ -263,7 +289,6 @@ export function LocalBackupCard() {
         ...(autoPass ? { passphrase: autoPass } : {}),
       },
     });
-    setAutoPass('');
     applyAuto(view);
     setStatus((current) => (current ? { ...current, auto: view } : current));
     setNote(t('backup.auto.saved'));
@@ -349,6 +374,7 @@ export function LocalBackupCard() {
               className="settings-input"
               type="password"
               value={exportPass}
+              disabled={busy === 'export'}
               autoComplete="new-password"
               placeholder={t('backup.field.passphraseHint', { n: MIN_PASSPHRASE })}
               onChange={(e) => setExportPass(e.target.value)}
@@ -356,7 +382,7 @@ export function LocalBackupCard() {
           </label>
           <label className="settings-field">
             <span>{t('backup.field.confirm')}</span>
-            <input className="settings-input" type="password" value={exportConfirm} autoComplete="new-password" onChange={(e) => setExportConfirm(e.target.value)} />
+            <input className="settings-input" type="password" value={exportConfirm} disabled={busy === 'export'} autoComplete="new-password" onChange={(e) => setExportConfirm(e.target.value)} />
           </label>
         </div>
         {exportConfirm !== '' && exportConfirm !== exportPass && (
@@ -381,12 +407,17 @@ export function LocalBackupCard() {
               value={path}
               spellCheck={false}
               placeholder={t('backup.field.fileHint')}
+              disabled={busy === 'preview' || busy === 'apply'}
               onChange={(e) => pickFile(e.target.value)}
             />
           </label>
           <label className="settings-field">
             <span>{t('backup.field.passphrase')}</span>
-            <input className="settings-input" type="password" value={restorePass} autoComplete="current-password" onChange={(e) => setRestorePass(e.target.value)} />
+            <input className="settings-input" type="password" value={restorePass} disabled={busy === 'preview' || busy === 'apply'} autoComplete="current-password" onChange={(e) => {
+              setRestorePass(e.target.value);
+              setPreview(null);
+              setSections(null);
+            }} />
           </label>
         </div>
         {files !== null && (
@@ -397,7 +428,7 @@ export function LocalBackupCard() {
               {files.map((file) => (
                 <li key={file.path}>
                   <label>
-                    <input type="radio" name="local-backup-file" checked={path === file.path} onChange={() => pickFile(file.path)} />
+                    <input type="radio" name="local-backup-file" checked={path === file.path} disabled={busy === 'preview' || busy === 'apply'} onChange={() => pickFile(file.path)} />
                     <span className="settings-peer-name">{file.name}</span>
                     <span className="settings-peer-meta">{prettyBytes(file.bytes)} · {shortTime(file.modified)}</span>
                   </label>
@@ -521,6 +552,7 @@ export function LocalBackupCard() {
               className="settings-input"
               type="password"
               value={autoPass}
+              disabled={busy === 'saveAuto'}
               autoComplete="new-password"
               placeholder={auto?.hasPassphrase ? t('backup.auto.passphraseSaved') : t('backup.field.passphraseHint', { n: MIN_PASSPHRASE })}
               onChange={(e) => setAutoPass(e.target.value)}

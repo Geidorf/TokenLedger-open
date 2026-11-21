@@ -514,7 +514,7 @@ describe('quotaOverviewSummary', () => {
     view.unmount();
   });
 
-  it('公司额度来源保存期间显示动作反馈并锁定重复入口', async () => {
+  it.each(['成功', '失败', '切换分区'])('公司额度草稿按表单生命周期清除（%s）', async (outcome) => {
     const endpoint = {
       id: 'company-3',
       providerId: 'company-openapi-company-3',
@@ -524,20 +524,20 @@ describe('quotaOverviewSummary', () => {
       hasApiKey: true,
       schemaVerified: true,
     };
-    let resolveSave!: (value: unknown) => void;
+    let settleSave!: () => void;
     vi.mocked(invoke).mockImplementation((command) => {
       if (command === 'list_custom_quota_endpoints') return Promise.resolve([]) as never;
-      if (command === 'get_claude_statusline_command') return Promise.resolve('/usr/local/bin/tokenledger --claude-statusline') as never;
       if (command === 'upsert_custom_quota_endpoint') {
-        return new Promise((resolve) => {
-          resolveSave = resolve;
+        return new Promise((resolve, reject) => {
+          settleSave = () => outcome === '失败' ? reject('模拟保存失败') : resolve([endpoint]);
         }) as never;
       }
       return Promise.resolve([]) as never;
     });
 
-    const view = render(
+    const section = (isActive: boolean) => (
       <QuotaSection
+        isActive={isActive}
         appSettings={DEFAULT_SETTINGS}
         cloudStatus={cloudStatus}
         quotaProviders={[]}
@@ -554,12 +554,24 @@ describe('quotaOverviewSummary', () => {
         onClearQuotaSnapshots={vi.fn()}
         onConfirm={vi.fn(async () => true)}
         onCustomQuotaChanged={vi.fn()}
-      />,
+      />
     );
 
-    fireEvent.change(screen.getByRole('textbox', { name: '公司额度来源名称' }), { target: { value: endpoint.displayName } });
-    fireEvent.change(screen.getByRole('textbox', { name: '公司额度查询接口地址' }), { target: { value: endpoint.url } });
-    fireEvent.change(screen.getByLabelText('公司额度 API key'), { target: { value: 'secret' } });
+    const view = render(section(true));
+    const name = screen.getByRole('textbox', { name: '公司额度来源名称' });
+    const url = screen.getByRole('textbox', { name: '公司额度查询接口地址' });
+    const key = screen.getByLabelText('公司额度 API key');
+    fireEvent.change(name, { target: { value: endpoint.displayName } });
+    fireEvent.change(url, { target: { value: endpoint.url } });
+    fireEvent.change(key, { target: { value: 'fixture-draft' } });
+    if (outcome === '切换分区') {
+      view.rerender(section(false));
+      view.rerender(section(true));
+      expect(key).toHaveValue('');
+      expect(name).toHaveValue(endpoint.displayName);
+      expect(url).toHaveValue(endpoint.url);
+      return;
+    }
     fireEvent.click(screen.getByRole('button', { name: '添加并刷新额度' }));
 
     const active = await screen.findByRole('button', { name: '正在添加公司额度来源' });
@@ -571,10 +583,15 @@ describe('quotaOverviewSummary', () => {
     fireEvent.click(active);
 
     await act(async () => {
-      resolveSave([endpoint]);
+      settleSave();
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '添加并刷新额度' })).toBeEnabled());
-    view.unmount();
+    expect(key).toHaveValue('');
+    if (outcome === '失败') {
+      expect(screen.getByText('模拟保存失败')).toBeVisible();
+      expect(name).toHaveValue(endpoint.displayName);
+      expect(url).toHaveValue(endpoint.url);
+    }
   });
 
   it('云端额度快照删除期间显示具体动作反馈并锁定重复入口', async () => {

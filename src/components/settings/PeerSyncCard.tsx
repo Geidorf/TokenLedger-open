@@ -54,7 +54,7 @@ function errorText(cause: unknown) {
  * 把选中的供应商（含 API key）导入 TokenLedger 网关。密码与密钥只存系统钥匙串，
  * 本页面只看到“已保存”与否。
  */
-export function PeerSyncCard() {
+export function PeerSyncCard({ isActive = true }: { isActive?: boolean }) {
   useLang();
   const [config, setConfig] = useState<PeerSyncConfig | null>(null);
   const [url, setUrl] = useState('');
@@ -85,8 +85,15 @@ export function PeerSyncCard() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!isActive) {
+      setPassword('');
+      setPassphrase('');
+    }
+  }, [isActive]);
+
   const run = async <T,>(action: Busy, task: () => Promise<T>) => {
-    if (busy) return undefined;
+    if (busy || !isActive) return undefined;
     setBusy(action);
     setError('');
     setNote('');
@@ -101,6 +108,8 @@ export function PeerSyncCard() {
   };
 
   const save = () => run('save', async () => {
+    setPassword('');
+    setPassphrase('');
     const next = await invoke<PeerSyncConfig>('peer_sync_save_config', {
       input: {
         url,
@@ -113,8 +122,6 @@ export function PeerSyncCard() {
     // 旧预览来自之前的地址或密码，导入会按新设置重新下载，必须重新读取。
     setPreview(null);
     setPicked(new Set());
-    setPassword('');
-    setPassphrase('');
     setNote(t('peerSync.saved'));
   });
 
@@ -164,6 +171,7 @@ export function PeerSyncCard() {
             <input
               className="settings-input"
               type="password"
+              disabled={busy === 'save'}
               value={password}
               autoComplete="new-password"
               placeholder={config?.hasPassword ? t('peerSync.savedPlaceholder') : ''}
@@ -175,6 +183,7 @@ export function PeerSyncCard() {
             <input
               className="settings-input"
               type="password"
+              disabled={busy === 'save'}
               value={passphrase}
               autoComplete="new-password"
               placeholder={config?.hasPassphrase ? t('peerSync.savedPlaceholder') : t('peerSync.passphrasePlaceholder')}
