@@ -336,6 +336,7 @@ export type ContentSamplingMode = 'off' | 'next' | 'filter';
 /** 本机加密内容采样的当前状态；sampleIds 是逻辑请求 ID。 */
 export interface ContentSamplingStatus {
   mode: ContentSamplingMode;
+  paused?: boolean;
   remaining: number | null;
   expiresAt: string | null;
   agent: string | null;

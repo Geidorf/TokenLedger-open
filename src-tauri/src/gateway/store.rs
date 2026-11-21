@@ -147,8 +147,16 @@ pub fn read_provider_key(secrets: &dyn SecretStore, id: &str) -> Result<Option<S
     secrets.get(&provider_account(id))
 }
 
+pub enum SecretReadError {
+    Unavailable,
+    InvalidEncoding,
+}
+
 pub trait SecretStore: Send + Sync {
     fn get(&self, account: &str) -> Result<Option<String>, String>;
+    fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
+        self.get(account).map_err(|_| SecretReadError::Unavailable)
+    }
     fn set(&self, account: &str, value: &str) -> Result<(), String>;
     fn delete(&self, account: &str) -> Result<(), String>;
 }
@@ -168,6 +176,18 @@ impl SecretStore for KeyringSecrets {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(error) => Err(format!("读取系统钥匙串失败：{error}")),
+        }
+    }
+
+    fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
+        match Self::entry(account)
+            .map_err(|_| SecretReadError::Unavailable)?
+            .get_password()
+        {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(keyring::Error::BadEncoding(_)) => Err(SecretReadError::InvalidEncoding),
+            Err(_) => Err(SecretReadError::Unavailable),
         }
     }
 

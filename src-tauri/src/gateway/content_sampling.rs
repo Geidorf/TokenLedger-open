@@ -9,7 +9,7 @@ use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305};
 use serde::{Deserialize, Serialize};
 
 use super::content_capture::CapturedContent;
-use super::store::SecretStore;
+use super::store::{SecretReadError, SecretStore};
 
 const KEY_ACCOUNT: &str = "content-sampling-key";
 const STATE_FILE: &str = "sampling-state-v1.json";
@@ -23,6 +23,8 @@ pub(super) const CONTENT_BUDGET: usize = (MAX_PLAINTEXT - 2048) / 2;
 const RETENTION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const STORE_ERROR: &str = "内容采样存储不可用，已停止采样。";
 const KEY_ERROR: &str = "内容采样密钥不可用，已停止采样并清理样本。";
+const KEY_UNAVAILABLE: &str = "暂时无法读取系统钥匙串；已暂停内容采样和样本读取，未因此清理样本。请恢复钥匙串访问后重试。";
+const KEY_CREATE_ERROR: &str = "未能创建或验证内容采样密钥，未开启采样。";
 const READ_ERROR: &str = "此内容样本不可用或已损坏。";
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -53,6 +55,7 @@ pub struct SamplingInput {
 #[serde(rename_all = "camelCase")]
 pub struct SamplingStatus {
     pub mode: SamplingMode,
+    pub paused: bool,
     pub remaining: Option<u32>,
     pub expires_at: Option<String>,
     pub agent: Option<String>,
@@ -90,6 +93,7 @@ struct Configuration {
 struct Inner {
     configuration: Configuration,
     generation: u64,
+    key_paused: bool,
     error: Option<String>,
 }
 
@@ -207,6 +211,7 @@ impl ContentSampling {
             inner: Mutex::new(Inner {
                 configuration,
                 generation: 0,
+                key_paused: false,
                 error,
             }),
             pending: Arc::new(AtomicUsize::new(0)),
@@ -351,26 +356,28 @@ impl ContentSampling {
     }
 
     fn key(&self, create: bool, inner: &mut Inner) -> Result<LessSafeKey, String> {
-        let read = self.secrets.get(KEY_ACCOUNT);
-        let value = match read {
+        let value = match self.secrets.get_classified(KEY_ACCOUNT) {
             Ok(Some(value)) => value,
-            Ok(None) if create && self.files()?.is_empty() => {
+            Ok(None)
+                if create
+                    && inner.configuration.mode == SamplingMode::Off
+                    && self.files()?.is_empty() =>
+            {
                 let mut bytes = [0u8; 32];
-                getrandom::fill(&mut bytes).map_err(|_| KEY_ERROR.to_string())?;
+                getrandom::fill(&mut bytes).map_err(|_| KEY_CREATE_ERROR.to_string())?;
                 let value: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
                 bytes.fill(0);
                 self.secrets
                     .set(KEY_ACCOUNT, &value)
-                    .map_err(|_| KEY_ERROR.to_string())?;
-                if self.secrets.get(KEY_ACCOUNT).ok().flatten().as_ref() != Some(&value) {
-                    return Err(KEY_ERROR.to_string());
+                    .map_err(|_| KEY_CREATE_ERROR.to_string())?;
+                match self.secrets.get_classified(KEY_ACCOUNT) {
+                    Ok(Some(verified)) if verified == value => value,
+                    Err(SecretReadError::Unavailable) => return Err(self.pause_for_key(inner)),
+                    _ => return Err(KEY_CREATE_ERROR.to_string()),
                 }
-                value
             }
-            _ => {
-                self.key_lost(inner);
-                return Err(inner.error.clone().unwrap_or_else(|| KEY_ERROR.to_string()));
-            }
+            Err(SecretReadError::Unavailable) => return Err(self.pause_for_key(inner)),
+            Ok(None) | Err(SecretReadError::InvalidEncoding) => return Err(self.key_lost(inner)),
         };
         let decoded: Option<Vec<u8>> = (value.len() == 64)
             .then(|| {
@@ -385,24 +392,43 @@ impl ContentSampling {
             })
             .flatten();
         let Some(mut decoded) = decoded else {
-            self.key_lost(inner);
-            return Err(KEY_ERROR.to_string());
+            return Err(self.key_lost(inner));
         };
         let key = UnboundKey::new(&CHACHA20_POLY1305, &decoded);
         decoded.fill(0);
-        key.map(LessSafeKey::new).map_err(|_| KEY_ERROR.to_string())
+        let key = key.map(LessSafeKey::new).map_err(|_| self.key_lost(inner))?;
+        if inner.key_paused {
+            inner.key_paused = false;
+            if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
+                inner.error = None;
+            }
+            self.ready.store(true, Ordering::SeqCst);
+        }
+        Ok(key)
     }
 
-    fn key_lost(&self, inner: &mut Inner) {
+    fn pause_for_key(&self, inner: &mut Inner) -> String {
+        self.ready.store(false, Ordering::SeqCst);
+        inner.generation = inner.generation.wrapping_add(1);
+        inner.key_paused = true;
+        inner.error = Some(KEY_UNAVAILABLE.to_string());
+        KEY_UNAVAILABLE.to_string()
+    }
+
+    fn key_lost(&self, inner: &mut Inner) -> String {
+        self.ready.store(false, Ordering::SeqCst);
+        inner.key_paused = false;
         inner.configuration = Configuration::default();
         inner.generation = inner.generation.wrapping_add(1);
         let cleared = self.clear_files(None).is_ok();
         let persisted = self.persist(inner).is_ok();
-        inner.error = Some(if cleared && persisted {
+        let error = if cleared && persisted {
             KEY_ERROR.to_string()
         } else {
             "内容采样密钥不可用，已停止采样；样本清理尚未完成，请重试删除。".to_string()
-        });
+        };
+        inner.error = Some(error.clone());
+        error
     }
 
     fn maintain(&self, inner: &mut Inner, now: i64) -> Result<Vec<SampleFile>, String> {
@@ -437,6 +463,7 @@ impl ContentSampling {
     fn snapshot(&self, inner: &Inner, files: &[SampleFile]) -> SamplingStatus {
         SamplingStatus {
             mode: inner.configuration.mode,
+            paused: inner.key_paused,
             remaining: inner.configuration.remaining,
             expires_at: inner.configuration.expires_at.and_then(timestamp),
             agent: inner.configuration.agent.clone(),
@@ -461,12 +488,18 @@ impl ContentSampling {
                 Vec::new()
             }
         };
-        if (!files.is_empty() || inner.configuration.mode != SamplingMode::Off)
-            && self.key(false, &mut inner).is_err()
-        {
-            files = self.files().unwrap_or(files);
-            self.ready.store(false, Ordering::SeqCst);
+        let needs_key = !files.is_empty() || inner.configuration.mode != SamplingMode::Off;
+        if needs_key && self.key(false, &mut inner).is_err() {
+            if !inner.key_paused {
+                files = self.files().unwrap_or(files);
+            }
         } else {
+            if !needs_key && inner.key_paused {
+                inner.key_paused = false;
+                if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
+                    inner.error = None;
+                }
+            }
             self.ready.store(true, Ordering::SeqCst);
         }
         if inner.error.is_none() && self.skipped.load(Ordering::SeqCst) {
@@ -515,9 +548,9 @@ impl ContentSampling {
             inner.configuration = configuration;
             self.persist(&mut inner)?;
         }
-        inner.error = None;
+        inner.error = inner.key_paused.then(|| KEY_UNAVAILABLE.to_string());
         self.skipped.store(false, Ordering::SeqCst);
-        self.ready.store(true, Ordering::SeqCst);
+        self.ready.store(!inner.key_paused, Ordering::SeqCst);
         let files = self.maintain(&mut inner, Utc::now().timestamp())?;
         Ok(self.snapshot(&inner, &files))
     }
@@ -530,7 +563,7 @@ impl ContentSampling {
             self.mark_skipped();
             return None;
         };
-        if inner.configuration.mode == SamplingMode::Off {
+        if inner.key_paused || inner.configuration.mode == SamplingMode::Off {
             return None;
         }
         if self
@@ -628,25 +661,6 @@ impl ContentSampling {
         status: u16,
         incomplete: bool,
     ) -> Result<(), String> {
-        let result = self.finish_sample(ticket, response, status, incomplete);
-        if let Err(error) = &result {
-            self.ready.store(false, Ordering::SeqCst);
-            let mut inner = self.lock();
-            inner.configuration = Configuration::default();
-            inner.generation = inner.generation.wrapping_add(1);
-            let _ = self.persist(&mut inner);
-            inner.error = Some(error.clone());
-        }
-        result
-    }
-
-    fn finish_sample(
-        &self,
-        ticket: SampleTicket,
-        response: CapturedContent,
-        status: u16,
-        incomplete: bool,
-    ) -> Result<(), String> {
         let mut inner = self.lock();
         if ticket.generation != inner.generation
             || (ticket.failures_only && status < 400 && !incomplete && !response.failed)
@@ -654,11 +668,39 @@ impl ContentSampling {
             return Ok(());
         }
         let now = Utc::now().timestamp();
-        self.maintain(&mut inner, now)?;
+        if let Err(error) = self.maintain(&mut inner, now) {
+            self.stop_for_store_error(&mut inner);
+            return Err(error);
+        }
         if ticket.generation != inner.generation {
             return Ok(());
         }
         let key = self.key(false, &mut inner)?;
+        let result = self
+            .write_sample(&key, ticket, response, status, incomplete)
+            .and_then(|()| self.maintain(&mut inner, now).map(|_| ()));
+        if result.is_err() {
+            self.stop_for_store_error(&mut inner);
+        }
+        result
+    }
+
+    fn stop_for_store_error(&self, inner: &mut Inner) {
+        self.ready.store(false, Ordering::SeqCst);
+        inner.configuration = Configuration::default();
+        inner.generation = inner.generation.wrapping_add(1);
+        let _ = self.persist(inner);
+        inner.error = Some(STORE_ERROR.to_string());
+    }
+
+    fn write_sample(
+        &self,
+        key: &LessSafeKey,
+        ticket: SampleTicket,
+        response: CapturedContent,
+        status: u16,
+        incomplete: bool,
+    ) -> Result<(), String> {
         let mut sample = ContentSample {
             id: ticket.id,
             created_at: timestamp(ticket.created_at).ok_or_else(|| STORE_ERROR.to_string())?,
@@ -708,9 +750,7 @@ impl ContentSampling {
                 Ok(())
             }
         })
-        .map_err(|_| STORE_ERROR.to_string())?;
-        self.maintain(&mut inner, now)?;
-        Ok(())
+        .map_err(|_| STORE_ERROR.to_string())
     }
 
     pub(super) fn read(&self, id: &str) -> Result<ContentSample, String> {
@@ -772,7 +812,8 @@ impl ContentSampling {
             return false;
         };
         let configuration = &inner.configuration;
-        configuration.mode != SamplingMode::Off
+        !inner.key_paused
+            && configuration.mode != SamplingMode::Off
             && configuration
                 .expires_at
                 .is_none_or(|expires| expires > Utc::now().timestamp())
@@ -787,10 +828,14 @@ impl ContentSampling {
     }
 
     pub(super) fn active(&self) -> bool {
+        if !self.ready.load(Ordering::SeqCst) {
+            return false;
+        }
         let Ok(inner) = self.inner.try_lock() else {
             return self.active_hint.load(Ordering::SeqCst);
         };
-        let active = inner.configuration.mode != SamplingMode::Off
+        let active = !inner.key_paused
+            && inner.configuration.mode != SamplingMode::Off
             && inner
                 .configuration
                 .expires_at
@@ -819,7 +864,7 @@ impl ContentSampling {
             inner.error = Some(error.clone());
             return Err(error);
         }
-        inner.error = None;
+        inner.error = inner.key_paused.then(|| KEY_UNAVAILABLE.to_string());
         let files = self.maintain(&mut inner, Utc::now().timestamp())?;
         Ok(self.snapshot(&inner, &files))
     }

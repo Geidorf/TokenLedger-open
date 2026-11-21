@@ -382,7 +382,7 @@ fn filter_requires_a_condition_and_stays_within_24_hours() {
 }
 
 #[test]
-fn missing_wrong_length_and_unreadable_keys_fail_closed() {
+fn missing_and_wrong_length_keys_fail_closed() {
     let (root, sampling, secrets) = memory_sampling("missing_key");
     sampling.configure(next(2, true)).unwrap();
     begin_and_finish(&sampling, &id(0), "request", "response", 200);
@@ -399,17 +399,36 @@ fn missing_wrong_length_and_unreadable_keys_fail_closed() {
     assert_eq!(sampling.status().mode, SamplingMode::Off);
     assert!(sample_files(&root).is_empty());
     let _ = fs::remove_dir_all(root);
+}
 
-    let root = gateway_dir("unreadable_key");
+#[test]
+fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
+    let root = gateway_dir("temporary_key_read");
     let secrets = Arc::new(UnreadableSecrets::default());
     let sampling = ContentSampling::new(&root, secrets.clone());
-    sampling.configure(next(1, true)).unwrap();
+    sampling.configure(next(3, true)).unwrap();
     begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    let state_path = root.join(STATE_FILE);
+    let state_before = fs::read(&state_path).unwrap();
+    let sample_path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let sample_before = fs::read(&sample_path).unwrap();
+
     secrets.unreadable.store(true, Ordering::SeqCst);
     let status = sampling.status();
-    assert_eq!(status.mode, SamplingMode::Off);
-    assert_eq!(status.error.as_deref(), Some(KEY_ERROR));
-    assert!(sample_files(&root).is_empty());
+    assert_eq!(status.error.as_deref(), Some(KEY_UNAVAILABLE));
+    assert!(status.paused);
+    assert!(!sampling.active());
+    assert!(sampling.reserve().is_none());
+    assert!(sampling.read(&id(0)).is_err());
+    assert_eq!(fs::read(state_path).unwrap(), state_before);
+    assert_eq!(fs::read(sample_path).unwrap(), sample_before);
+
+    secrets.unreadable.store(false, Ordering::SeqCst);
+    let status = sampling.status();
+    assert_eq!(status.remaining, Some(2));
+    assert!(status.error.is_none());
+    assert!(sampling.active());
+    assert_eq!(sampling.read(&id(0)).unwrap().response, "response");
     let _ = fs::remove_dir_all(root);
 }
 
