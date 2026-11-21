@@ -23,7 +23,8 @@ pub(super) const CONTENT_BUDGET: usize = (MAX_PLAINTEXT - 2048) / 2;
 const RETENTION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const STORE_ERROR: &str = "内容采样存储不可用，已停止采样。";
 const KEY_ERROR: &str = "内容采样密钥不可用，已停止采样并清理样本。";
-const KEY_UNAVAILABLE: &str = "暂时无法读取系统钥匙串；已暂停内容采样和样本读取，未因此清理样本。请恢复钥匙串访问后重试。";
+const KEY_UNAVAILABLE: &str =
+    "暂时无法读取系统钥匙串；已暂停内容采样和样本读取，未因此清理样本。请恢复钥匙串访问后重试。";
 const KEY_CREATE_ERROR: &str = "未能创建或验证内容采样密钥，未开启采样。";
 const READ_ERROR: &str = "此内容样本不可用或已损坏。";
 
@@ -396,7 +397,9 @@ impl ContentSampling {
         };
         let key = UnboundKey::new(&CHACHA20_POLY1305, &decoded);
         decoded.fill(0);
-        let key = key.map(LessSafeKey::new).map_err(|_| self.key_lost(inner))?;
+        let key = key
+            .map(LessSafeKey::new)
+            .map_err(|_| self.key_lost(inner))?;
         if inner.key_paused {
             inner.key_paused = false;
             if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {

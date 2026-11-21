@@ -182,12 +182,10 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
 
   const stateLabel = active
     ? t('sampling.state.active')
-    : status?.paused
-      ? (status.error ?? t('sampling.state.off'))
-      : status
-        ? t('sampling.state.off')
+    : status
+      ? t('sampling.state.off')
       : t('sampling.state.loading');
-  const detail = active
+  const detail = authorized
     ? status.mode === 'next'
       ? t('sampling.detail.next', { count: status.remaining ?? 0 })
       : [
@@ -211,7 +209,11 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
               <p>{detail}</p>
             </div>
           </div>
-          <button type="button" role="switch" aria-checked={active} aria-label={t('sampling.switchLabel')} disabled={!status || busy} className={`mw-switch ${active ? 'is-on' : ''}`} onClick={() => (authorized ? openStop() : openEnable())}><span /></button>
+          {authorized && status.paused ? (
+            <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={openStop}>{t('sampling.stop.title')}</button>
+          ) : (
+            <button type="button" role="switch" aria-checked={active} aria-label={t('sampling.switchLabel')} disabled={!status || busy} className={`mw-switch ${active ? 'is-on' : ''}`} onClick={() => (active ? openStop() : openEnable())}><span /></button>
+          )}
         </div>
         <div className="content-sampling-foot">
           <span className={`content-sampling-state${active ? ' is-active' : ''}`}>{stateLabel}</span>
@@ -219,7 +221,7 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
           {!compact && <span>{t('sampling.policy')}</span>}
           <span className="mw-flex" />
           {status && status.storedCount > 0 && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => setDialog('delete')}><Trash2 className="h-3.5 w-3.5" />{t('sampling.deleteAll')}</button>}
-          {!active && status && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={openEnable}>{t('sampling.configure')}</button>}
+          {!authorized && status && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={openEnable}>{t('sampling.configure')}</button>}
         </div>
         {sampling.error && <p className="mw-caption is-danger" role="alert">{sampling.error}</p>}
       </section>

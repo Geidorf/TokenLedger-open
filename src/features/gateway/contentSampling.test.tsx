@@ -47,7 +47,7 @@ const active: ContentSamplingStatus = {
 };
 
 function controller(status: ContentSamplingStatus, replace = vi.fn(), refresh = vi.fn(async () => {})): SamplingController {
-  return { status, error: null, refresh, replace };
+  return { status, error: status.error, refresh, replace };
 }
 
 function sample(overrides: Partial<ContentSample> = {}): ContentSample {
@@ -112,6 +112,19 @@ describe('内容采样状态与控制', () => {
     fireEvent.click(screen.getByRole('switch', { name: '请求内容采样' }));
     fireEvent.click(screen.getByRole('checkbox', { name: /同时删除已有样本/ }));
     expect(screen.getByRole('button', { name: '停止并保留样本' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '停止并保留样本' }));
+    await waitFor(() => expect(mockSet).toHaveBeenCalledWith({ mode: 'off', deleteExisting: false }));
+  });
+
+  it('暂停时显示原因并保留显式停止入口', async () => {
+    const error = '系统钥匙串暂时不可读，已暂停采样。';
+    mockSet.mockResolvedValue(off);
+    render(<ContentSamplingPanel controller={controller({ ...active, paused: true, error })} />);
+    expect(screen.getByRole('alert')).toHaveTextContent(error);
+    expect(screen.getByText('未采样')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: '请求内容采样' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '停止内容采样' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /同时删除已有样本/ }));
     fireEvent.click(screen.getByRole('button', { name: '停止并保留样本' }));
     await waitFor(() => expect(mockSet).toHaveBeenCalledWith({ mode: 'off', deleteExisting: false }));
   });

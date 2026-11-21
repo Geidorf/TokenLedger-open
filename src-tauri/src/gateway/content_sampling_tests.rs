@@ -406,14 +406,24 @@ fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
     let root = gateway_dir("temporary_key_read");
     let secrets = Arc::new(UnreadableSecrets::default());
     let sampling = ContentSampling::new(&root, secrets.clone());
-    sampling.configure(next(3, true)).unwrap();
+    sampling.configure(next(5, true)).unwrap();
     begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    let finishing = sampling
+        .begin(&id(1), None, None, false, captured("request"))
+        .unwrap();
+    let late = sampling
+        .begin(&id(2), None, None, false, captured("request"))
+        .unwrap();
     let state_path = root.join(STATE_FILE);
     let state_before = fs::read(&state_path).unwrap();
     let sample_path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
     let sample_before = fs::read(&sample_path).unwrap();
 
     secrets.unreadable.store(true, Ordering::SeqCst);
+    assert_eq!(
+        sampling.finish(finishing, captured("response"), 200, false),
+        Err(KEY_UNAVAILABLE.to_string())
+    );
     let status = sampling.status();
     assert_eq!(status.error.as_deref(), Some(KEY_UNAVAILABLE));
     assert!(status.paused);
@@ -426,9 +436,16 @@ fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
     secrets.unreadable.store(false, Ordering::SeqCst);
     let status = sampling.status();
     assert_eq!(status.remaining, Some(2));
+    assert!(!status.paused);
     assert!(status.error.is_none());
     assert!(sampling.active());
     assert_eq!(sampling.read(&id(0)).unwrap().response, "response");
+    sampling
+        .finish(late, captured("late response"), 200, false)
+        .unwrap();
+    assert_eq!(sampling.status().sample_ids, vec![id(0)]);
+    begin_and_finish(&sampling, &id(3), "request", "response", 200);
+    assert_eq!(sampling.status().remaining, Some(1));
     let _ = fs::remove_dir_all(root);
 }
 

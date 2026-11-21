@@ -199,7 +199,8 @@ function mockBuckets(base: number, failEvery: number, p95: number): HealthBucket
 let probeSettings: ProbeSettings = { enabled: false, intervalMins: 15 };
 let probeResults: Record<string, ProbeResult[]> = {};
 let contentSampling: ContentSamplingStatus = {
-  mode: 'off',  remaining: null,
+  mode: 'off',
+  remaining: null,
   expiresAt: null,
   agent: null,
   group: null,
