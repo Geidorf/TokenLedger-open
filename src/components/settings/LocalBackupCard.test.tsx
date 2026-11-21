@@ -90,14 +90,14 @@ describe('LocalBackupCard', () => {
   });
 
   it.each([
-    ['导出加密备份', ['备份密码', '再输一次密码']],
-    ['预览备份', ['恢复密码']],
-    ['保存自动备份设置', ['自动备份密码']],
-    [null, ['备份密码', '再输一次密码', '恢复密码', '自动备份密码']],
-  ] as const)('清理备份口令草稿（%s 失败或离开）', async (action, labels) => {
+    ['导出加密备份', 'local_backup_export', ['备份密码', '再输一次密码']],
+    ['预览备份', 'local_backup_preview', ['恢复密码']],
+    ['保存自动备份设置', 'local_backup_save_auto', ['自动备份密码']],
+    [null, null, ['备份密码', '再输一次密码', '恢复密码', '自动备份密码']],
+  ] as const)('清理备份口令草稿（%s 失败或离开）', async (action, failedCommand, labels) => {
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === 'local_backup_status') return status;
-      throw new Error('模拟备份操作失败');
+      if (command === failedCommand) throw new Error('模拟备份操作失败');
+      return status;
     });
     const { rerender } = render(<LocalBackupCard />);
     const [dir] = screen.getAllByLabelText('备份文件夹');
