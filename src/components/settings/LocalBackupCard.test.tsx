@@ -29,7 +29,9 @@ const preview: LocalBackupPreview = {
 };
 
 describe('LocalBackupCard', () => {
-  beforeEach(() => vi.mocked(invoke).mockReset());
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+  });
 
   it('两次密码一致且够长才能导出', async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
