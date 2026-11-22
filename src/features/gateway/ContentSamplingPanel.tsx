@@ -99,7 +99,8 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
   const ownSampling = useContentSamplingStatus(controller == null);
   const sampling = controller ?? ownSampling;
   const status = sampling.status;
-  const active = status != null && status.mode !== 'off';
+  const authorized = status != null && (status.mode !== 'off' || status.pending === true);
+  const active = authorized && !status?.paused;
   const [dialog, setDialog] = useState<Dialog>(null);
   const [mode, setMode] = useState<Exclude<ContentSamplingMode, 'off'>>('next');
   const [count, setCount] = useState(20);
@@ -179,12 +180,14 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
     void run(() => contentSamplingApi.remove(null), t('sampling.notify.deleted'));
   };
 
-  const stateLabel = active
-    ? t('sampling.state.active')
-    : status
-      ? t('sampling.state.off')
-      : t('sampling.state.loading');
-  const detail = active
+  const stateLabel = status?.paused
+    ? t('sampling.state.paused')
+    : active
+      ? t('sampling.state.active')
+      : status
+        ? t('sampling.state.off')
+        : t('sampling.state.loading');
+  const detail = authorized
     ? status.mode === 'next'
       ? t('sampling.detail.next', { count: status.remaining ?? 0 })
       : [
@@ -208,7 +211,7 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
               <p>{detail}</p>
             </div>
           </div>
-          <button type="button" role="switch" aria-checked={active} aria-label={t('sampling.switchLabel')} disabled={!status || busy} className={`mw-switch ${active ? 'is-on' : ''}`} onClick={() => (active ? openStop() : openEnable())}><span /></button>
+          <button type="button" role="switch" aria-checked={authorized} aria-label={t('sampling.switchLabel')} disabled={!status || busy} className={`mw-switch ${authorized ? 'is-on' : ''}`} onClick={() => (authorized ? openStop() : openEnable())}><span /></button>
         </div>
         <div className="content-sampling-foot">
           <span className={`content-sampling-state${active ? ' is-active' : ''}`}>{stateLabel}</span>
@@ -216,7 +219,7 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
           {!compact && <span>{t('sampling.policy')}</span>}
           <span className="mw-flex" />
           {status && status.storedCount > 0 && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={() => setDialog('delete')}><Trash2 className="h-3.5 w-3.5" />{t('sampling.deleteAll')}</button>}
-          {!active && status && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={openEnable}>{t('sampling.configure')}</button>}
+          {!authorized && status && <button type="button" className="mw-btn is-ghost" disabled={busy} onClick={openEnable}>{t('sampling.configure')}</button>}
         </div>
         {sampling.error && <p className="mw-caption is-danger" role="alert">{sampling.error}</p>}
       </section>

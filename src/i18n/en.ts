@@ -321,6 +321,7 @@ export const en: Record<MessageKey, string> = {
   'sampling.state.loading': 'Reading status…',
   'sampling.state.active': 'Sampling',
   'sampling.state.off': 'Not sampling',
+  'sampling.state.paused': 'Sampling paused',
   'sampling.detail.off': 'Off by default. Temporarily capture a few request and response bodies when investigating an answer.',
   'sampling.detail.next': 'Sampling the next {count} requests, then turning off automatically.',
   'sampling.detail.agent': 'Agent: {value}',

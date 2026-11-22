@@ -37,6 +37,7 @@ pub(crate) use codex_config::{atomic_write, line_diff, version};
 pub use codex_config::{
     CodexApplyResult, CodexConfig, CodexInspection, CodexPreview, CodexRestoreResult,
 };
+pub(crate) use content_sampling::SamplingActivity;
 #[cfg(test)]
 pub use content_sampling::SamplingMode;
 pub use content_sampling::{ContentSample, SamplingInput, SamplingStatus};
@@ -850,8 +851,12 @@ impl Gateway {
         self.shared.sampling.status()
     }
 
-    pub fn content_sampling_active(&self) -> bool {
-        self.shared.sampling.active()
+    pub(crate) fn content_sampling_tray_state(&self) -> (SamplingActivity, bool) {
+        self.shared.sampling.tray_state()
+    }
+
+    pub(crate) fn stop_content_sampling_from_tray(&self, report_error: impl FnOnce(String)) {
+        self.shared.sampling.stop_from_tray(report_error);
     }
 
     pub fn set_content_sampling(&self, input: SamplingInput) -> Result<SamplingStatus, String> {

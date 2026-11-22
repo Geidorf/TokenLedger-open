@@ -248,7 +248,8 @@ fn persistence_failure_disables_sampling_and_invalidates_pending_tickets() {
     assert!(sampling
         .begin(&id(1), None, None, false, captured("request"))
         .is_none());
-    assert!(!sampling.active());
+    assert_eq!(sampling.activity(), SamplingActivity::Off);
+    assert_eq!(sampling.pending_count(), 1);
     fs::remove_file(&directory).unwrap();
     fs::create_dir(&directory).unwrap();
     sampling
@@ -382,7 +383,7 @@ fn filter_requires_a_condition_and_stays_within_24_hours() {
 }
 
 #[test]
-fn missing_wrong_length_and_unreadable_keys_fail_closed() {
+fn missing_and_wrong_length_keys_fail_closed() {
     let (root, sampling, secrets) = memory_sampling("missing_key");
     sampling.configure(next(2, true)).unwrap();
     begin_and_finish(&sampling, &id(0), "request", "response", 200);
@@ -393,24 +394,103 @@ fn missing_wrong_length_and_unreadable_keys_fail_closed() {
     assert!(sample_files(&root).is_empty());
     let _ = fs::remove_dir_all(root);
 
-    let (root, sampling, secrets) = memory_sampling("wrong_length_key");
-    secrets.set(KEY_ACCOUNT, "00").unwrap();
-    assert_eq!(sampling.configure(next(1, true)).err().unwrap(), KEY_ERROR);
-    assert_eq!(sampling.status().mode, SamplingMode::Off);
-    assert!(sample_files(&root).is_empty());
-    let _ = fs::remove_dir_all(root);
+    for (name, key) in [
+        ("wrong_length_key", "00".to_string()),
+        ("plus_key", format!("+f{}", "0".repeat(62))),
+        ("non_hex_key", format!("g{}", "0".repeat(63))),
+        ("uppercase_key", "AB".repeat(32)),
+    ] {
+        let (root, sampling, secrets) = memory_sampling(name);
+        secrets.set(KEY_ACCOUNT, &key).unwrap();
+        if name == "uppercase_key" {
+            assert!(sampling.configure(next(1, true)).is_ok());
+            assert_eq!(sampling.status().mode, SamplingMode::Next);
+        } else {
+            assert_eq!(sampling.configure(next(1, true)).err().unwrap(), KEY_ERROR);
+            assert_eq!(sampling.status().mode, SamplingMode::Off);
+            assert!(sample_files(&root).is_empty());
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+}
 
-    let root = gateway_dir("unreadable_key");
+#[test]
+fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
+    let root = gateway_dir("temporary_key_read");
     let secrets = Arc::new(UnreadableSecrets::default());
     let sampling = ContentSampling::new(&root, secrets.clone());
-    sampling.configure(next(1, true)).unwrap();
+    sampling.configure(next(5, true)).unwrap();
     begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    let finishing = sampling
+        .begin(&id(1), None, None, false, captured("request"))
+        .unwrap();
+    let late = sampling
+        .begin(&id(2), None, None, false, captured("request"))
+        .unwrap();
+    let state_path = root.join(STATE_FILE);
+    let state_before = fs::read(&state_path).unwrap();
+    let sample_path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let sample_before = fs::read(&sample_path).unwrap();
+
     secrets.unreadable.store(true, Ordering::SeqCst);
+    assert_eq!(
+        sampling.finish(finishing, captured("response"), 200, false),
+        Err(KEY_UNAVAILABLE.to_string())
+    );
     let status = sampling.status();
-    assert_eq!(status.mode, SamplingMode::Off);
-    assert_eq!(status.error.as_deref(), Some(KEY_ERROR));
-    assert!(sample_files(&root).is_empty());
+    assert_eq!(status.error.as_deref(), Some(KEY_UNAVAILABLE));
+    assert!(status.paused);
+    assert!(!status.pending);
+    assert_eq!(sampling.activity(), SamplingActivity::Paused);
+    let locked = sampling.lock();
+    assert_eq!(sampling.activity(), SamplingActivity::Paused);
+    drop(locked);
+    assert!(sampling.reserve().is_none());
+    assert!(sampling.read(&id(0)).is_err());
+    assert_eq!(fs::read(state_path).unwrap(), state_before);
+    assert_eq!(fs::read(sample_path).unwrap(), sample_before);
+
+    secrets.unreadable.store(false, Ordering::SeqCst);
+    let status = sampling.status();
+    assert_eq!(status.remaining, Some(2));
+    assert!(!status.paused);
+    assert!(status.error.is_none());
+    assert!(sampling.activity() == SamplingActivity::Active);
+    assert_eq!(sampling.read(&id(0)).unwrap().response, "response");
+    sampling
+        .finish(late, captured("late response"), 200, false)
+        .unwrap();
+    assert_eq!(sampling.status().sample_ids, vec![id(0)]);
+    begin_and_finish(&sampling, &id(3), "request", "response", 200);
+    assert_eq!(sampling.status().remaining, Some(1));
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn removing_last_samples_clears_pause_immediately_when_off() {
+    for stop in [true, false] {
+        let root = gateway_dir("remove_paused_samples");
+        let secrets = Arc::new(UnreadableSecrets::default());
+        let sampling = ContentSampling::new(&root, secrets.clone());
+        sampling
+            .configure(next(if stop { 2 } else { 1 }, true))
+            .unwrap();
+        begin_and_finish(&sampling, &id(0), "request", "response", 200);
+        secrets.unreadable.store(true, Ordering::SeqCst);
+        assert!(sampling.status().paused);
+
+        let status = if stop {
+            sampling.configure(SamplingInput::default()).unwrap()
+        } else {
+            sampling.delete(Some(vec![id(0)])).unwrap()
+        };
+        assert_eq!(status.mode, SamplingMode::Off);
+        assert_eq!(status.stored_count, 0);
+        assert!(!status.paused);
+        assert!(status.error.is_none());
+        assert!(sampling.activity() == SamplingActivity::Off);
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[derive(Default)]
@@ -495,6 +575,328 @@ fn ciphertext_and_sample_exchange_fail_without_returning_plaintext() {
     assert!(!first.exists());
     assert!(!second.exists());
     let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(windows)]
+#[test]
+fn temporarily_unreadable_sample_is_retained_and_can_be_retried() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let (root, sampling, _) = memory_sampling("temporarily_unreadable");
+    sampling.configure(next(3, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "first", "response", 200);
+    begin_and_finish(&sampling, &id(1), "second", "response", 200);
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let ciphertext = fs::read(&path).unwrap();
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&path)
+        .unwrap();
+
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(READ_RETRY));
+    assert_eq!(sampling.status().remaining, Some(1));
+    assert_eq!(sampling.status().stored_count, 2);
+    assert_eq!(sampling.read(&id(1)).unwrap().request, "second");
+
+    drop(lock);
+    assert_eq!(fs::read(&path).unwrap(), ciphertext);
+    assert_eq!(sampling.read(&id(0)).unwrap().request, "first");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn an_unreadable_sample_blocks_eviction_at_the_count_or_disk_limit() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    for (name, count, bytes) in [
+        ("unreadable_count_cap", MAX_SAMPLES, 64),
+        (
+            "unreadable_disk_cap",
+            MAX_SAMPLES - 1,
+            MAX_SAMPLE_BYTES as u64,
+        ),
+    ] {
+        let (root, sampling, _) = memory_sampling(name);
+        sampling.configure(next(2, true)).unwrap();
+        let now = Utc::now().timestamp();
+        for number in 0..count {
+            fake_sample(
+                &root,
+                &id(number),
+                now - count as i64 + number as i64,
+                bytes,
+            );
+        }
+        let oldest = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&oldest)
+            .unwrap();
+        let content = "x".repeat(CONTENT_BUDGET);
+
+        begin_and_finish(&sampling, &id(count), &content, &content, 200);
+        let status = sampling.status();
+        assert_eq!(status.stored_count, count);
+        assert!((0..count).all(|number| status.sample_ids.contains(&id(number))));
+        assert!(!status.sample_ids.contains(&id(count)));
+        assert!(status
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("繁忙")));
+        assert_eq!(status.remaining, Some(1));
+
+        drop(lock);
+        begin_and_finish(&sampling, &id(count), &content, &content, 200);
+        let status = sampling.status();
+        assert_eq!(status.stored_count, count);
+        assert!(!status.sample_ids.contains(&id(0)));
+        assert!(status.sample_ids.contains(&id(1)));
+        assert_eq!(sampling.read(&id(count)).unwrap().request, content);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn invalid_sample_header_removes_only_that_sample() {
+    let (root, sampling, _) = memory_sampling("invalid_sample_header");
+    sampling.configure(next(2, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "first", "response", 200);
+    begin_and_finish(&sampling, &id(1), "second", "response", 200);
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let mut ciphertext = fs::read(&path).unwrap();
+    ciphertext[0] ^= 1;
+    fs::write(&path, ciphertext).unwrap();
+
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(READ_ERROR));
+    assert!(!path.exists());
+    assert_eq!(sampling.read(&id(1)).unwrap().request, "second");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn locked_corrupt_sample_does_not_cancel_authorization_or_hide_good_samples() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let (root, sampling, _) = memory_sampling("locked_corrupt_sample");
+    sampling.configure(next(3, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "bad", "response", 200);
+    begin_and_finish(&sampling, &id(1), "good", "response", 200);
+    let bad = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let mut bytes = fs::read(&bad).unwrap();
+    bytes[0] ^= 1;
+    fs::write(&bad, bytes).unwrap();
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(1)
+        .open(&bad)
+        .unwrap();
+
+    let status = sampling.status();
+    assert_eq!(status.mode, SamplingMode::Next);
+    assert_eq!(status.remaining, Some(1));
+    assert!(status.sample_ids.contains(&id(0)));
+    assert!(status.sample_ids.contains(&id(1)));
+    assert_eq!(status.error.as_deref(), Some(CLEANUP_ERROR));
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(CLEANUP_ERROR));
+    assert_eq!(sampling.read(&id(1)).unwrap().request, "good");
+
+    drop(lock);
+    let status = sampling.status();
+    assert_eq!(status.mode, SamplingMode::Next);
+    assert!(!status.sample_ids.contains(&id(0)));
+    assert!(status.sample_ids.contains(&id(1)));
+    assert!(status.error.is_none());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn invalid_sample_cleanup_reports_a_deletion_failure() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_SHARE_READ: u32 = 1;
+    let (root, sampling, _) = memory_sampling("invalid_sample_cleanup");
+    sampling.configure(next(1, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let mut ciphertext = fs::read(&path).unwrap();
+    *ciphertext.last_mut().unwrap() ^= 1;
+    fs::write(&path, &ciphertext).unwrap();
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(&path)
+        .unwrap();
+
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(CLEANUP_ERROR));
+    assert_eq!(fs::read(&path).unwrap(), ciphertext);
+
+    drop(lock);
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(READ_ERROR));
+    assert!(!path.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn tray_can_clear_retained_samples_after_automatic_stop_and_expiry() {
+    let (root, sampling, _) = memory_sampling("tray_retained_samples");
+    sampling.configure(next(1, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+
+    sampling.configure(filter("agent-a", false, 1)).unwrap();
+    sampling.lock().configuration.expires_at = Some(Utc::now().timestamp());
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(sampling.status().mode, SamplingMode::Off);
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+
+    sampling.stop_from_tray(|error| panic!("stopping sampling failed: {error}"));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, false));
+    assert!(sample_files(&root).is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn tray_initial_state_uses_only_sample_directory_entries() {
+    let root = gateway_dir("tray_initial_samples");
+    let secrets = Arc::new(MemorySecrets::default());
+    let directory = root.join(SAMPLE_DIRECTORY);
+    let tray_state = || ContentSampling::new(&root, secrets.clone()).tray_state();
+
+    assert!(tray_state() == (SamplingActivity::Off, false));
+    assert!(!root.exists());
+
+    let sampling = ContentSampling::new_with_listing(&root, secrets.clone(), |path| {
+        assert_eq!(path, directory);
+        Err(io::ErrorKind::PermissionDenied.into())
+    });
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    assert!(!root.exists());
+
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(directory.join("unrelated.bin"), b"unrelated").unwrap();
+    assert!(tray_state() == (SamplingActivity::Off, false));
+    let sample = directory.join(format!("{}.bin", id(0)));
+    fs::write(&sample, b"header not read").unwrap();
+    assert!(tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(fs::read(&sample).unwrap(), b"header not read");
+    fs::remove_file(&sample).unwrap();
+
+    let temporary = directory.join(format!(".{}.bin.tokenledger-001122334455.tmp", id(0)));
+    fs::write(&temporary, b"temporary sample").unwrap();
+    assert!(tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(fs::read(&temporary).unwrap(), b"temporary sample");
+    assert!(!root.join(STATE_FILE).exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn tray_can_clear_when_the_first_sample_listing_is_denied() {
+    let (root, original, secrets) = memory_sampling("tray_unknown_samples");
+    original.configure(next(1, true)).unwrap();
+    begin_and_finish(&original, &id(0), "request", "response", 200);
+    let sampling = ContentSampling::new(&root, secrets.clone());
+
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    let scan = sampling.files_with(|| Err(io::ErrorKind::PermissionDenied.into()));
+    assert_eq!(scan.err().as_deref(), Some(STORE_ERROR));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(sampling.status().sample_ids, vec![id(0)]);
+
+    sampling.stop_from_tray(|error| panic!("stopping sampling failed: {error}"));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, false));
+    let restarted = ContentSampling::new(&root, secrets);
+    assert!(restarted.status().sample_ids.is_empty());
+    assert!(restarted.tray_state() == (SamplingActivity::Off, false));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn tray_reports_cleanup_failure_and_allows_retry() {
+    let (root, sampling, _) = memory_sampling("tray_cleanup_failure");
+    sampling.configure(next(1, true)).unwrap();
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    fs::create_dir(&path).unwrap();
+    let mut reported = None;
+
+    sampling.stop_from_tray(|error| reported = Some(error));
+    assert_eq!(
+        reported.as_deref(),
+        Some("已停止采样，样本清理尚未完成，请重试删除。")
+    );
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+
+    fs::remove_dir(&path).unwrap();
+    sampling.stop_from_tray(|error| panic!("retrying sampling cleanup failed: {error}"));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, false));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn pending_ticket_keeps_activity_and_stop_until_late_finish_is_discarded() {
+    let (root, sampling, _) = memory_sampling("pending_ticket_activity");
+    sampling.configure(next(1, true)).unwrap();
+    let ticket = sampling
+        .begin(&id(0), None, None, false, captured("request"))
+        .unwrap();
+
+    assert!(sampling.status().pending);
+    assert_eq!(sampling.activity(), SamplingActivity::Active);
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Active, true));
+
+    let stopped = sampling.configure(SamplingInput::default()).unwrap();
+    assert_eq!(stopped.mode, SamplingMode::Off);
+    assert!(!stopped.pending);
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
+    assert_eq!(sampling.pending_count(), 1);
+    sampling
+        .finish(ticket, captured("late response"), 200, false)
+        .unwrap();
+    assert!(!sampling.status().pending);
+    assert_eq!(sampling.activity(), SamplingActivity::Off);
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
+    assert!(sample_files(&root).is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_sample_write_keeps_tray_cleanup_available() {
+    let (root, mut sampling, _) = memory_sampling("failed_sample_write_presence");
+    Arc::get_mut(&mut sampling).unwrap().sample_writer = Some(|destination, bytes| {
+        let name = destination.file_name().unwrap().to_str().unwrap();
+        let temporary = destination.with_file_name(format!(".{name}.tokenledger-1234abcdef56.tmp"));
+        // Simulate a failure after temporary ciphertext was written and removal failed.
+        fs::write(temporary, bytes).unwrap();
+        Err(STORE_ERROR.to_string())
+    });
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
+    sampling.configure(next(1, true)).unwrap();
+    let ticket = sampling
+        .begin(&id(0), None, None, false, captured(PLAINTEXT_SENTINEL))
+        .unwrap();
+
+    assert_eq!(
+        sampling.finish(ticket, captured("response"), 200, false),
+        Err(STORE_ERROR.to_string())
+    );
+    let temporary = sampling
+        .directory
+        .join(format!(".{}.bin.tokenledger-1234abcdef56.tmp", id(0)));
+    let ciphertext = fs::read(&temporary).unwrap();
+    assert!(ciphertext.starts_with(MAGIC));
+    assert!(!ciphertext
+        .windows(PLAINTEXT_SENTINEL.len())
+        .any(|bytes| { bytes == PLAINTEXT_SENTINEL.as_bytes() }));
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, true));
+
+    sampling.stop_from_tray(|error| panic!("cleaning up the sample failed: {error}"));
+    assert!(!temporary.exists());
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
