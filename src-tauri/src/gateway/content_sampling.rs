@@ -104,14 +104,24 @@ struct Configuration {
 
 struct Inner {
     configuration: Configuration,
-    generation: u64,
+    // The Arc identity revokes old tickets without releasing their global slots.
+    generation: Arc<AtomicUsize>,
     key_paused: bool,
     error: Option<String>,
 }
 
+impl Inner {
+    fn revoke_tickets(&mut self) {
+        self.generation = Arc::new(AtomicUsize::new(0));
+    }
+
+    fn has_pending_ticket(&self) -> bool {
+        self.generation.load(Ordering::SeqCst) != 0
+    }
+}
+
 pub(super) struct SampleTicket {
-    _slot: PendingSample,
-    generation: u64,
+    slot: PendingSample,
     id: String,
     created_at: i64,
     stream: bool,
@@ -119,11 +129,18 @@ pub(super) struct SampleTicket {
     request: CapturedContent,
 }
 
-pub(super) struct PendingSample(Arc<AtomicUsize>, u64);
+pub(super) struct PendingSample {
+    slots: Arc<AtomicUsize>,
+    generation: Arc<AtomicUsize>,
+    active: bool,
+}
 
 impl Drop for PendingSample {
     fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
+        if self.active {
+            self.generation.fetch_sub(1, Ordering::SeqCst);
+        }
+        self.slots.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -131,6 +148,7 @@ struct SampleFile {
     id: String,
     path: PathBuf,
     created_at: Option<i64>,
+    cleanup_failed: bool,
     bytes: u64,
 }
 
@@ -157,6 +175,9 @@ impl From<io::Error> for SampleReadError {
     }
 }
 
+#[cfg(test)]
+type SampleWriter = fn(&Path, &[u8]) -> Result<(), String>;
+
 pub(super) struct ContentSampling {
     directory: PathBuf,
     state_file: PathBuf,
@@ -167,6 +188,8 @@ pub(super) struct ContentSampling {
     skipped: AtomicBool,
     activity_hint: AtomicU8,
     sample_presence: AtomicU8,
+    #[cfg(test)]
+    sample_writer: Option<SampleWriter>,
 }
 
 fn timestamp(seconds: i64) -> Option<String> {
@@ -307,7 +330,7 @@ impl ContentSampling {
             secrets,
             inner: Mutex::new(Inner {
                 configuration,
-                generation: 0,
+                generation: Arc::new(AtomicUsize::new(0)),
                 key_paused: false,
                 error,
             }),
@@ -316,6 +339,8 @@ impl ContentSampling {
             skipped: AtomicBool::new(false),
             activity_hint: AtomicU8::new(SamplingActivity::Off as u8),
             sample_presence: AtomicU8::new(sample_presence as u8),
+            #[cfg(test)]
+            sample_writer: None,
         }
     }
 
@@ -323,7 +348,7 @@ impl ContentSampling {
         self.inner.lock().unwrap_or_else(|poisoned| {
             let mut state = poisoned.into_inner();
             state.configuration = Configuration::default();
-            state.generation = state.generation.wrapping_add(1);
+            state.revoke_tickets();
             state.error = Some(STORE_ERROR.to_string());
             state
         })
@@ -384,7 +409,7 @@ impl ContentSampling {
         });
         if result.is_err() {
             inner.configuration = Configuration::default();
-            inner.generation = inner.generation.wrapping_add(1);
+            inner.revoke_tickets();
             inner.error = Some(STORE_ERROR.to_string());
             self.ready.store(false, Ordering::SeqCst);
             return Err(STORE_ERROR.to_string());
@@ -458,6 +483,7 @@ impl ContentSampling {
                             id: id.to_string(),
                             path,
                             created_at: None,
+                            cleanup_failed: true,
                             bytes,
                         });
                     }
@@ -469,6 +495,7 @@ impl ContentSampling {
                 id: id.to_string(),
                 path,
                 created_at,
+                cleanup_failed: false,
                 bytes,
             });
         }
@@ -552,7 +579,7 @@ impl ContentSampling {
 
     fn pause_for_key(&self, inner: &mut Inner) -> String {
         self.ready.store(false, Ordering::SeqCst);
-        inner.generation = inner.generation.wrapping_add(1);
+        inner.revoke_tickets();
         inner.key_paused = true;
         self.activity_hint.store(
             if inner.configuration.mode == SamplingMode::Off {
@@ -570,7 +597,7 @@ impl ContentSampling {
         self.ready.store(false, Ordering::SeqCst);
         inner.key_paused = false;
         inner.configuration = Configuration::default();
-        inner.generation = inner.generation.wrapping_add(1);
+        inner.revoke_tickets();
         let cleared = self.clear_files(None).is_ok();
         let persisted = self.persist(inner).is_ok();
         let error = if cleared && persisted {
@@ -590,7 +617,7 @@ impl ContentSampling {
                 .is_none_or(|expires| expires <= now || expires > now + 24 * 3600)
         {
             inner.configuration = Configuration::default();
-            inner.generation = inner.generation.wrapping_add(1);
+            inner.revoke_tickets();
             self.persist(inner)?;
         }
         self.retain(self.files()?, now)
@@ -626,7 +653,7 @@ impl ContentSampling {
         SamplingStatus {
             mode: inner.configuration.mode,
             paused: inner.key_paused,
-            pending: self.pending.load(Ordering::SeqCst) != 0,
+            pending: inner.has_pending_ticket(),
             remaining: inner.configuration.remaining,
             expires_at: inner.configuration.expires_at.and_then(timestamp),
             agent: inner.configuration.agent.clone(),
@@ -635,7 +662,11 @@ impl ContentSampling {
             sample_ids: files.iter().map(|file| file.id.clone()).collect(),
             stored_count: files.len(),
             stored_bytes: files.iter().map(|file| file.bytes).sum(),
-            error: inner.error.clone(),
+            error: if files.iter().any(|file| file.cleanup_failed) {
+                Some(CLEANUP_ERROR.to_string())
+            } else {
+                inner.error.clone()
+            },
         }
     }
 
@@ -655,7 +686,7 @@ impl ContentSampling {
             Ok(files) => files,
             Err(error) => {
                 inner.configuration = Configuration::default();
-                inner.generation = inner.generation.wrapping_add(1);
+                inner.revoke_tickets();
                 let _ = self.persist(&mut inner);
                 inner.error = Some(error);
                 Vec::new()
@@ -679,8 +710,10 @@ impl ContentSampling {
     pub(super) fn configure(&self, input: SamplingInput) -> Result<SamplingStatus, String> {
         let mut inner = self.lock();
         if input.mode == SamplingMode::Off {
-            inner.generation = inner.generation.wrapping_add(1);
+            inner.revoke_tickets();
             inner.configuration = Configuration::default();
+            self.activity_hint
+                .store(SamplingActivity::Off as u8, Ordering::SeqCst);
             self.persist(&mut inner)?;
             if input.delete_existing.unwrap_or(true) && self.clear_files(None).is_err() {
                 let error = "已停止采样，样本清理尚未完成，请重试删除。".to_string();
@@ -712,7 +745,7 @@ impl ContentSampling {
             }
             self.ensure_directory()?;
             self.key(true, &mut inner)?;
-            inner.generation = inner.generation.wrapping_add(1);
+            inner.revoke_tickets();
             inner.configuration = configuration;
             self.persist(&mut inner)?;
         }
@@ -751,7 +784,11 @@ impl ContentSampling {
             self.mark_skipped();
             return None;
         }
-        Some(PendingSample(Arc::clone(&self.pending), inner.generation))
+        Some(PendingSample {
+            slots: Arc::clone(&self.pending),
+            generation: Arc::clone(&inner.generation),
+            active: false,
+        })
     }
 
     pub(super) fn mark_skipped(&self) {
@@ -772,7 +809,7 @@ impl ContentSampling {
 
     pub(super) fn begin_reserved(
         &self,
-        slot: PendingSample,
+        mut slot: PendingSample,
         id: &str,
         agent: Option<&str>,
         group: Option<&str>,
@@ -788,7 +825,7 @@ impl ContentSampling {
         };
         let now = Utc::now().timestamp();
         let configuration = &inner.configuration;
-        if slot.1 != inner.generation
+        if !Arc::ptr_eq(&slot.generation, &inner.generation)
             || !safe_id(id)
             || configuration.mode == SamplingMode::Off
             || configuration
@@ -818,9 +855,10 @@ impl ContentSampling {
                 return None;
             }
         }
+        slot.active = true;
+        slot.generation.fetch_add(1, Ordering::SeqCst);
         Some(SampleTicket {
-            _slot: slot,
-            generation: inner.generation,
+            slot,
             id: id.to_string(),
             created_at: now,
             stream,
@@ -837,7 +875,7 @@ impl ContentSampling {
         incomplete: bool,
     ) -> Result<(), String> {
         let mut inner = self.lock();
-        if ticket.generation != inner.generation
+        if !Arc::ptr_eq(&ticket.slot.generation, &inner.generation)
             || (ticket.failures_only && status < 400 && !incomplete && !response.failed)
         {
             return Ok(());
@@ -850,7 +888,7 @@ impl ContentSampling {
                 return Err(error);
             }
         };
-        if ticket.generation != inner.generation {
+        if !Arc::ptr_eq(&ticket.slot.generation, &inner.generation) {
             return Ok(());
         }
         let key = self.key(false, &mut inner)?;
@@ -873,7 +911,7 @@ impl ContentSampling {
     fn stop_for_store_error(&self, inner: &mut Inner, error: &str) {
         self.ready.store(false, Ordering::SeqCst);
         inner.configuration = Configuration::default();
-        inner.generation = inner.generation.wrapping_add(1);
+        inner.revoke_tickets();
         let _ = self.persist(inner);
         inner.error = Some(error.to_string());
     }
@@ -939,21 +977,30 @@ impl ContentSampling {
         if destination.exists() {
             return Err(STORE_ERROR.to_string());
         }
-        super::atomic_write(&destination, &bytes, || {
+        self.write_sample_file(&destination, &bytes)?;
+        self.set_sample_presence(SamplePresence::Present);
+        Ok(Some(SampleFile {
+            id: sample.id,
+            path: destination,
+            created_at: Some(ticket.created_at),
+            cleanup_failed: false,
+            bytes: bytes.len() as u64,
+        }))
+    }
+
+    fn write_sample_file(&self, destination: &Path, bytes: &[u8]) -> Result<(), String> {
+        #[cfg(test)]
+        if let Some(write) = self.sample_writer {
+            return write(destination, bytes);
+        }
+        super::atomic_write(destination, bytes, || {
             if destination.exists() {
                 Err(STORE_ERROR.to_string())
             } else {
                 Ok(())
             }
         })
-        .map_err(|_| STORE_ERROR.to_string())?;
-        self.set_sample_presence(SamplePresence::Present);
-        Ok(Some(SampleFile {
-            id: sample.id,
-            path: destination,
-            created_at: Some(ticket.created_at),
-            bytes: bytes.len() as u64,
-        }))
+        .map_err(|_| STORE_ERROR.to_string())
     }
 
     pub(super) fn read(&self, id: &str) -> Result<ContentSample, String> {
@@ -966,7 +1013,14 @@ impl ContentSampling {
             .iter()
             .find(|file| file.id == id)
             .ok_or_else(|| READ_ERROR.to_string())?;
-        let created_at = file.created_at.ok_or_else(|| READ_RETRY.to_string())?;
+        let created_at = file.created_at.ok_or_else(|| {
+            if file.cleanup_failed {
+                CLEANUP_ERROR
+            } else {
+                READ_RETRY
+            }
+            .to_string()
+        })?;
         let key = self.key(false, &mut inner)?;
         let result = (|| {
             let metadata = regular_file(&file.path, MAX_SAMPLE_BYTES as u64)?;
@@ -1050,9 +1104,8 @@ impl ContentSampling {
                 _ => SamplingActivity::Off,
             };
         };
-        let activity = if self.pending.load(Ordering::SeqCst) != 0 {
-            SamplingActivity::Active
-        } else if inner.configuration.mode == SamplingMode::Off
+        let activity = if (inner.configuration.mode == SamplingMode::Off
+            && !inner.has_pending_ticket())
             || inner
                 .configuration
                 .expires_at
@@ -1089,7 +1142,7 @@ impl ContentSampling {
         }
         let mut inner = self.lock();
         // 删除也撤销在途采样，避免清空后旧请求的回执又生成文件。
-        inner.generation = inner.generation.wrapping_add(1);
+        inner.revoke_tickets();
         if self.clear_files(ids.as_deref()).is_err() {
             let error = "内容样本删除尚未完成，请重试。".to_string();
             inner.error = Some(error.clone());

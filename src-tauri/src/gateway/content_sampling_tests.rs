@@ -439,9 +439,10 @@ fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
     let status = sampling.status();
     assert_eq!(status.error.as_deref(), Some(KEY_UNAVAILABLE));
     assert!(status.paused);
-    assert!(sampling.activity() == SamplingActivity::Active);
+    assert!(!status.pending);
+    assert_eq!(sampling.activity(), SamplingActivity::Paused);
     let locked = sampling.lock();
-    assert!(sampling.activity() == SamplingActivity::Active);
+    assert_eq!(sampling.activity(), SamplingActivity::Paused);
     drop(locked);
     assert!(sampling.reserve().is_none());
     assert!(sampling.read(&id(0)).is_err());
@@ -698,6 +699,8 @@ fn locked_corrupt_sample_does_not_cancel_authorization_or_hide_good_samples() {
     assert_eq!(status.remaining, Some(1));
     assert!(status.sample_ids.contains(&id(0)));
     assert!(status.sample_ids.contains(&id(1)));
+    assert_eq!(status.error.as_deref(), Some(CLEANUP_ERROR));
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(CLEANUP_ERROR));
     assert_eq!(sampling.read(&id(1)).unwrap().request, "good");
 
     drop(lock);
@@ -705,6 +708,7 @@ fn locked_corrupt_sample_does_not_cancel_authorization_or_hide_good_samples() {
     assert_eq!(status.mode, SamplingMode::Next);
     assert!(!status.sample_ids.contains(&id(0)));
     assert!(status.sample_ids.contains(&id(1)));
+    assert!(status.error.is_none());
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -839,17 +843,19 @@ fn pending_ticket_keeps_activity_and_stop_until_late_finish_is_discarded() {
         .begin(&id(0), None, None, false, captured("request"))
         .unwrap();
 
-    assert_eq!(sampling.status().pending, true);
+    assert!(sampling.status().pending);
     assert_eq!(sampling.activity(), SamplingActivity::Active);
     assert_eq!(sampling.tray_state(), (SamplingActivity::Active, true));
 
-    sampling.configure(SamplingInput::default()).unwrap();
-    assert_eq!(sampling.activity(), SamplingActivity::Active);
-    assert!(sampling.tray_state().1);
+    let stopped = sampling.configure(SamplingInput::default()).unwrap();
+    assert_eq!(stopped.mode, SamplingMode::Off);
+    assert!(!stopped.pending);
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
+    assert_eq!(sampling.pending_count(), 1);
     sampling
         .finish(ticket, captured("late response"), 200, false)
         .unwrap();
-    assert_eq!(sampling.status().pending, false);
+    assert!(!sampling.status().pending);
     assert_eq!(sampling.activity(), SamplingActivity::Off);
     assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
     assert!(sample_files(&root).is_empty());
@@ -858,21 +864,37 @@ fn pending_ticket_keeps_activity_and_stop_until_late_finish_is_discarded() {
 
 #[test]
 fn failed_sample_write_keeps_tray_cleanup_available() {
-    let (root, sampling, _) = memory_sampling("failed_sample_write_presence");
-    sampling.configure(next(2, true)).unwrap();
-    begin_and_finish(&sampling, &id(0), "existing", "response", 200);
+    let (root, mut sampling, _) = memory_sampling("failed_sample_write_presence");
+    sampling.sample_writer = Some(|destination, bytes| {
+        let name = destination.file_name().unwrap().to_str().unwrap();
+        let temporary = destination.with_file_name(format!(".{name}.tokenledger-1234abcdef56.tmp"));
+        // Simulate a failure after temporary ciphertext was written and removal failed.
+        fs::write(temporary, bytes).unwrap();
+        Err(STORE_ERROR.to_string())
+    });
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
     sampling.configure(next(1, true)).unwrap();
     let ticket = sampling
-        .begin(&id(0), None, None, false, captured("request"))
+        .begin(&id(0), None, None, false, captured(PLAINTEXT_SENTINEL))
         .unwrap();
 
-    assert!(sampling
-        .finish(ticket, captured("response"), 200, false)
-        .is_err());
-    assert_eq!(sampling.status().mode, SamplingMode::Off);
-    assert_eq!(sampling.status().sample_ids, vec![id(0)]);
-    assert_eq!(sampling.activity(), SamplingActivity::Off);
-    assert!(sampling.tray_state().1);
+    assert_eq!(
+        sampling.finish(ticket, captured("response"), 200, false),
+        Err(STORE_ERROR.to_string())
+    );
+    let temporary = sampling
+        .directory
+        .join(format!(".{}.bin.tokenledger-1234abcdef56.tmp", id(0)));
+    let ciphertext = fs::read(&temporary).unwrap();
+    assert!(ciphertext.starts_with(MAGIC));
+    assert!(!ciphertext
+        .windows(PLAINTEXT_SENTINEL.len())
+        .any(|bytes| { bytes == PLAINTEXT_SENTINEL.as_bytes() }));
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, true));
+
+    sampling.stop_from_tray(|error| panic!("cleaning up the sample failed: {error}"));
+    assert!(!temporary.exists());
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
     fs::remove_dir_all(root).unwrap();
 }
 
