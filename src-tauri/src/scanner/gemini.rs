@@ -2,7 +2,6 @@ use super::checkpoints::*;
 use super::helpers::*;
 use super::jsonl::{bounded_lines, read_text_capped, MAX_JSON_DOCUMENT_BYTES};
 use super::types::LogRecord;
-use chrono::TimeZone;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -354,11 +353,19 @@ pub(crate) fn gemini_counter_value(value: &Value) -> Option<i64> {
 /// done here directly so a value accepted by validation can never fall back to
 /// the current wall-clock time during normalization.
 pub(crate) fn gemini_timestamp(value: &Value) -> Option<String> {
+    gemini_timestamp_with_timezone(value, &chrono::Local)
+}
+
+fn gemini_timestamp_with_timezone<Tz>(value: &Value, timezone: &Tz) -> Option<String>
+where
+    Tz: chrono::TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
     match value {
         Value::Number(number) => number
             .as_f64()
-            .and_then(gemini_epoch_seconds)
-            .and_then(gemini_format_epoch),
+            .and_then(|seconds| gemini_epoch_seconds(seconds, timezone))
+            .and_then(|seconds| gemini_format_epoch(seconds, timezone)),
         Value::String(raw) => {
             let trimmed = raw.trim();
             if trimmed.is_empty() {
@@ -366,38 +373,52 @@ pub(crate) fn gemini_timestamp(value: &Value) -> Option<String> {
             } else if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(trimmed) {
                 Some(
                     parsed
-                        .with_timezone(&chrono::Local)
+                        .with_timezone(timezone)
                         .format("%Y-%m-%d %H:%M:%S")
                         .to_string(),
                 )
             } else {
-                let cleaned = trimmed.replace('T', " ").replace('Z', "");
-                let (without_fraction, fraction_valid) = match cleaned.split_once('.') {
+                let spaced = trimmed.replace('T', " ");
+                // A trailing `Z` marks UTC; the wall-clock digits must be
+                // converted to local time rather than read as local directly.
+                let (naive_text, is_utc) = match spaced.strip_suffix('Z') {
+                    Some(stripped) => (stripped, true),
+                    None => (spaced.as_str(), false),
+                };
+                let (without_fraction, fraction_valid) = match naive_text.split_once('.') {
                     Some((base, fraction)) => (
                         base,
                         !fraction.is_empty() && fraction.chars().all(|ch| ch.is_ascii_digit()),
                     ),
-                    None => (cleaned.as_str(), true),
+                    None => (naive_text, true),
                 };
                 if fraction_valid {
                     if let Ok(parsed) =
                         chrono::NaiveDateTime::parse_from_str(without_fraction, "%Y-%m-%d %H:%M:%S")
                     {
-                        return Some(parsed.format("%Y-%m-%d %H:%M:%S").to_string());
+                        return Some(if is_utc {
+                            parsed
+                                .and_utc()
+                                .with_timezone(timezone)
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string()
+                        } else {
+                            parsed.format("%Y-%m-%d %H:%M:%S").to_string()
+                        });
                     }
                 }
                 trimmed
                     .parse::<f64>()
                     .ok()
-                    .and_then(gemini_epoch_seconds)
-                    .and_then(gemini_format_epoch)
+                    .and_then(|seconds| gemini_epoch_seconds(seconds, timezone))
+                    .and_then(|seconds| gemini_format_epoch(seconds, timezone))
             }
         }
         _ => None,
     }
 }
 
-fn gemini_epoch_seconds(value: f64) -> Option<f64> {
+fn gemini_epoch_seconds<Tz: chrono::TimeZone>(value: f64, timezone: &Tz) -> Option<f64> {
     if !value.is_finite() || value < 0.0 {
         return None;
     }
@@ -405,14 +426,18 @@ fn gemini_epoch_seconds(value: f64) -> Option<f64> {
     if seconds < i64::MIN as f64 || seconds > i64::MAX as f64 {
         return None;
     }
-    chrono::Local
+    timezone
         .timestamp_opt(seconds as i64, 0)
         .single()
         .map(|_| seconds)
 }
 
-fn gemini_format_epoch(seconds: f64) -> Option<String> {
-    chrono::Local
+fn gemini_format_epoch<Tz>(seconds: f64, timezone: &Tz) -> Option<String>
+where
+    Tz: chrono::TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    timezone
         .timestamp_opt(seconds as i64, 0)
         .single()
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -421,6 +446,7 @@ fn gemini_format_epoch(seconds: f64) -> Option<String> {
 #[cfg(test)]
 mod scanner_gemini_tests {
     use super::*;
+    use chrono::FixedOffset;
     use serde_json::json;
     use std::collections::HashMap as StdHashMap;
 
@@ -861,6 +887,60 @@ mod scanner_gemini_tests {
         assert!(gemini_timestamp(&json!("1e9"))
             .as_deref()
             .is_some_and(|timestamp| timestamp.starts_with("2001-09-09 ")));
+    }
+
+    fn fixed_offset(seconds: i32) -> FixedOffset {
+        FixedOffset::east_opt(seconds).expect("valid fixed offset")
+    }
+
+    #[test]
+    fn non_rfc3339_utc_timestamp_uses_explicit_fixed_timezone() {
+        assert_eq!(
+            gemini_timestamp_with_timezone(
+                &json!("2026-8-19 00:40:03.421Z"),
+                &fixed_offset(-8 * 60 * 60),
+            ),
+            Some("2026-08-18 16:40:03".to_string())
+        );
+        assert_eq!(
+            gemini_timestamp_with_timezone(
+                &json!("2026-8-19 00:40:03"),
+                &fixed_offset(14 * 60 * 60),
+            ),
+            Some("2026-08-19 00:40:03".to_string())
+        );
+        assert_eq!(
+            gemini_timestamp_with_timezone(
+                &json!("2026-8-19T00:40:03.421Z"),
+                &fixed_offset(5 * 60 * 60 + 45 * 60),
+            ),
+            Some("2026-08-19 06:25:03".to_string())
+        );
+    }
+
+    #[test]
+    fn utc_timestamp_fixed_offsets_cover_dst_and_calendar_boundaries() {
+        let cases = [
+            ("2026-1-15 12:00:00Z", -8 * 60 * 60, "2026-01-15 04:00:00"),
+            ("2026-7-15 12:00:00Z", -7 * 60 * 60, "2026-07-15 05:00:00"),
+            ("2026-2-1 00:00:00Z", -8 * 60 * 60, "2026-01-31 16:00:00"),
+            ("2028-3-1 00:00:00Z", -8 * 60 * 60, "2028-02-29 16:00:00"),
+            ("2027-1-1 00:00:00Z", -8 * 60 * 60, "2026-12-31 16:00:00"),
+            ("2026-12-31 10:00:00Z", 14 * 60 * 60, "2027-01-01 00:00:00"),
+            (
+                "2026-1-31 18:30:00Z",
+                5 * 60 * 60 + 45 * 60,
+                "2026-02-01 00:15:00",
+            ),
+        ];
+
+        for (input, offset_seconds, expected) in cases {
+            assert_eq!(
+                gemini_timestamp_with_timezone(&json!(input), &fixed_offset(offset_seconds)),
+                Some(expected.to_string()),
+                "failed for {input} at offset {offset_seconds}",
+            );
+        }
     }
 
     #[test]
