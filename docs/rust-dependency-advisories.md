@@ -11,7 +11,9 @@ cd src-tauri && cargo audit
 
 查某个包是谁带进来的：`cargo tree -i <包名>@<版本> --target all`。
 
-## 当前状态（2026-10-27，cargo-audit 0.22.2，593 个包）
+2026-11-23 复查：SQLite 公告 RUSTSEC-2026-0459 已清除。主分支已有的 RUSTSEC-2026-0592 仍适用（见 #206）。
+
+## 历史快照（2026-10-27，cargo-audit 0.22.2，593 个包）
 
 漏洞 0 项。剩余 9 条提示，全部来自上游框架的传递依赖，应用代码不直接使用，也没有同一主版本内的兼容修复版本：
 
@@ -30,8 +32,6 @@ cd src-tauri && cargo audit
 - 截至 2026-10-27，最新的 tauri-runtime-wry 2.12.3、wry 0.57.1、tray-icon 0.26.1（Tauri 2.12 锁定的是 0.25.1）仍要求 `gtk ^0.18`，gtk 0.18 又锁定 glib 0.18。单独加 glib 0.20 替换不了这条链，强制跨主版本替换会破坏编译。
 - 应用代码不直接使用 glib；锁定版本的 gtk、gdk、gio、webkit2gtk、wry、tao、muda、tray-icon、libappindicator 源码中都没有调用 `VariantStrIter` 或返回它的 `Variant::array_iter_str`，只有 glib 自身定义、导出和测试。
 - 这是源码文本证据，不覆盖动态分派或 C 侧回调；上游 Tauri 换到新 GTK 代际后再升级，届时删除本行。
-
-2026-11-23 复查：SQLite 公告 RUSTSEC-2026-0459 已清除。主分支已有的 RUSTSEC-2026-0592 仍适用（见 #206）。
 
 ### 已处置
 
