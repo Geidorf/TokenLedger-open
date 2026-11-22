@@ -179,6 +179,20 @@ fn safe_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
+fn decode_key(value: &str) -> Option<Vec<u8>> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let hex = std::str::from_utf8(pair).ok()?;
+            u8::from_str_radix(hex, 16).ok()
+        })
+        .collect()
+}
+
 fn temporary_sample_id(filename: &str) -> Option<&str> {
     let (id, suffix) = filename
         .strip_prefix('.')?
@@ -509,18 +523,7 @@ impl ContentSampling {
             Err(SecretReadError::Unavailable) => return Err(self.pause_for_key(inner)),
             Ok(None) | Err(SecretReadError::InvalidEncoding) => return Err(self.key_lost(inner)),
         };
-        let decoded: Option<Vec<u8>> = (value.len() == 64)
-            .then(|| {
-                value
-                    .as_bytes()
-                    .chunks_exact(2)
-                    .map(|pair| {
-                        let hex = std::str::from_utf8(pair).ok()?;
-                        u8::from_str_radix(hex, 16).ok()
-                    })
-                    .collect()
-            })
-            .flatten();
+        let decoded = decode_key(&value);
         let Some(mut decoded) = decoded else {
             return Err(self.key_lost(inner));
         };

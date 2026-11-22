@@ -393,12 +393,24 @@ fn missing_and_wrong_length_keys_fail_closed() {
     assert!(sample_files(&root).is_empty());
     let _ = fs::remove_dir_all(root);
 
-    let (root, sampling, secrets) = memory_sampling("wrong_length_key");
-    secrets.set(KEY_ACCOUNT, "00").unwrap();
-    assert_eq!(sampling.configure(next(1, true)).err().unwrap(), KEY_ERROR);
-    assert_eq!(sampling.status().mode, SamplingMode::Off);
-    assert!(sample_files(&root).is_empty());
-    let _ = fs::remove_dir_all(root);
+    for (name, key) in [
+        ("wrong_length_key", "00".to_string()),
+        ("plus_key", format!("+f{}", "0".repeat(62))),
+        ("non_hex_key", format!("g{}", "0".repeat(63))),
+        ("uppercase_key", "AB".repeat(32)),
+    ] {
+        let (root, sampling, secrets) = memory_sampling(name);
+        secrets.set(KEY_ACCOUNT, &key).unwrap();
+        if name == "uppercase_key" {
+            assert!(sampling.configure(next(1, true)).is_ok());
+            assert_eq!(sampling.status().mode, SamplingMode::Next);
+        } else {
+            assert_eq!(sampling.configure(next(1, true)).err().unwrap(), KEY_ERROR);
+            assert_eq!(sampling.status().mode, SamplingMode::Off);
+            assert!(sample_files(&root).is_empty());
+        }
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[test]
