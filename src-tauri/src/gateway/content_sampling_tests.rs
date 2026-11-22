@@ -591,6 +591,60 @@ fn temporarily_unreadable_sample_is_retained_and_can_be_retried() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn an_unreadable_sample_blocks_eviction_at_the_count_or_disk_limit() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    for (name, count, bytes) in [
+        ("unreadable_count_cap", MAX_SAMPLES, 64),
+        (
+            "unreadable_disk_cap",
+            MAX_SAMPLES - 1,
+            MAX_SAMPLE_BYTES as u64,
+        ),
+    ] {
+        let (root, sampling, _) = memory_sampling(name);
+        sampling.configure(next(2, true)).unwrap();
+        let now = Utc::now().timestamp();
+        for number in 0..count {
+            fake_sample(
+                &root,
+                &id(number),
+                now - count as i64 + number as i64,
+                bytes,
+            );
+        }
+        let oldest = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&oldest)
+            .unwrap();
+        let content = "x".repeat(CONTENT_BUDGET);
+
+        begin_and_finish(&sampling, &id(count), &content, &content, 200);
+        let status = sampling.status();
+        assert_eq!(status.stored_count, count);
+        assert!((0..count).all(|number| status.sample_ids.contains(&id(number))));
+        assert!(!status.sample_ids.contains(&id(count)));
+        assert!(status
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("繁忙")));
+        assert_eq!(status.remaining, Some(1));
+
+        drop(lock);
+        begin_and_finish(&sampling, &id(count), &content, &content, 200);
+        let status = sampling.status();
+        assert_eq!(status.stored_count, count);
+        assert!(!status.sample_ids.contains(&id(0)));
+        assert!(status.sample_ids.contains(&id(1)));
+        assert_eq!(sampling.read(&id(count)).unwrap().request, content);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
 #[test]
 fn invalid_sample_header_removes_only_that_sample() {
     let (root, sampling, _) = memory_sampling("invalid_sample_header");

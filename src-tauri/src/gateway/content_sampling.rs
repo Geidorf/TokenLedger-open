@@ -391,8 +391,7 @@ impl ContentSampling {
                 bytes,
             });
         }
-        // Charge unreadable files against the limits while retaining them until their age is known.
-        files.sort_by_key(|file| (file.created_at.is_none(), file.created_at, file.id.clone()));
+        files.sort_by_key(|file| (file.created_at, file.id.clone()));
         self.has_samples.store(!files.is_empty(), Ordering::SeqCst);
         Ok(files)
     }
@@ -525,15 +524,20 @@ impl ContentSampling {
             inner.generation = inner.generation.wrapping_add(1);
             self.persist(inner)?;
         }
-        let files = self.files()?;
+        self.retain(self.files()?, now)
+    }
+
+    fn retain(&self, mut files: Vec<SampleFile>, now: i64) -> Result<Vec<SampleFile>, String> {
+        files.sort_by(|a, b| (a.created_at, a.id.as_str()).cmp(&(b.created_at, b.id.as_str())));
+        let ages_known = files.iter().all(|file| file.created_at.is_some());
         let mut retained = Vec::new();
         let mut total = 0u64;
         for file in files.into_iter().rev() {
             if file.created_at.is_some_and(|created_at| {
                 created_at < now - RETENTION_SECONDS
                     || created_at > now + 60
-                    || retained.len() >= MAX_SAMPLES
-                    || total + file.bytes > MAX_DISK_BYTES
+                    || (ages_known
+                        && (retained.len() >= MAX_SAMPLES || total + file.bytes > MAX_DISK_BYTES))
             }) {
                 remove_sample(&file.path)?;
             } else {
@@ -766,19 +770,27 @@ impl ContentSampling {
             return Ok(());
         }
         let now = Utc::now().timestamp();
-        if let Err(error) = self.maintain(&mut inner, now) {
-            self.stop_for_store_error(&mut inner, &error);
-            return Err(error);
-        }
+        let mut files = match self.maintain(&mut inner, now) {
+            Ok(files) => files,
+            Err(error) => {
+                self.stop_for_store_error(&mut inner, &error);
+                return Err(error);
+            }
+        };
         if ticket.generation != inner.generation {
             return Ok(());
         }
         let key = self.key(false, &mut inner)?;
         let result = self
-            .write_sample(&key, ticket, response, status, incomplete)
-            .and_then(|()| {
-                self.has_samples.store(true, Ordering::SeqCst);
-                self.maintain(&mut inner, now).map(|_| ())
+            .write_sample(&files, &key, ticket, response, status, incomplete)
+            .and_then(|written| {
+                if let Some(file) = written {
+                    self.has_samples.store(true, Ordering::SeqCst);
+                    // Use the same ages for the capacity check and eviction under the sampling lock.
+                    files.push(file);
+                    self.retain(files, now)?;
+                }
+                Ok(())
             });
         if let Err(error) = &result {
             self.stop_for_store_error(&mut inner, error);
@@ -796,12 +808,13 @@ impl ContentSampling {
 
     fn write_sample(
         &self,
+        files: &[SampleFile],
         key: &LessSafeKey,
         ticket: SampleTicket,
         response: CapturedContent,
         status: u16,
         incomplete: bool,
-    ) -> Result<(), String> {
+    ) -> Result<Option<SampleFile>, String> {
         let mut sample = ContentSample {
             id: ticket.id,
             created_at: timestamp(ticket.created_at).ok_or_else(|| STORE_ERROR.to_string())?,
@@ -825,6 +838,15 @@ impl ContentSampling {
             truncate(&mut sample.response, response_limit);
             sample.truncated = true;
             plaintext = serde_json::to_vec(&sample).map_err(|_| STORE_ERROR.to_string())?;
+        }
+        let sample_bytes = HEADER_BYTES + plaintext.len() + CHACHA20_POLY1305.tag_len();
+        if files.iter().any(|file| file.created_at.is_none())
+            && (files.len() >= MAX_SAMPLES
+                || files.iter().map(|file| file.bytes).sum::<u64>() + sample_bytes as u64
+                    > MAX_DISK_BYTES)
+        {
+            self.mark_skipped();
+            return Ok(None);
         }
         let mut nonce = [0u8; 12];
         getrandom::fill(&mut nonce).map_err(|_| STORE_ERROR.to_string())?;
@@ -851,7 +873,13 @@ impl ContentSampling {
                 Ok(())
             }
         })
-        .map_err(|_| STORE_ERROR.to_string())
+        .map_err(|_| STORE_ERROR.to_string())?;
+        Ok(Some(SampleFile {
+            id: sample.id,
+            path: destination,
+            created_at: Some(ticket.created_at),
+            bytes: bytes.len() as u64,
+        }))
     }
 
     pub(super) fn read(&self, id: &str) -> Result<ContentSample, String> {
