@@ -158,6 +158,7 @@ pub(super) struct ContentSampling {
     ready: AtomicBool,
     skipped: AtomicBool,
     activity_hint: AtomicU8,
+    has_samples: AtomicBool,
 }
 
 fn timestamp(seconds: i64) -> Option<String> {
@@ -257,6 +258,7 @@ impl ContentSampling {
             ready: AtomicBool::new(false),
             skipped: AtomicBool::new(false),
             activity_hint: AtomicU8::new(SamplingActivity::Off as u8),
+            has_samples: AtomicBool::new(false),
         }
     }
 
@@ -339,6 +341,7 @@ impl ContentSampling {
             .try_exists()
             .map_err(|_| READ_RETRY.to_string())?
         {
+            self.has_samples.store(false, Ordering::SeqCst);
             return Ok(Vec::new());
         }
         self.ensure_directory()?;
@@ -347,12 +350,14 @@ impl ContentSampling {
             let entry = entry.map_err(|_| STORE_ERROR.to_string())?;
             let filename = entry.file_name().to_string_lossy().into_owned();
             if temporary_sample_id(&filename).is_some() {
+                self.has_samples.store(true, Ordering::SeqCst);
                 remove_sample(&entry.path())?;
                 continue;
             }
             let Some(id) = filename.strip_suffix(".bin").filter(|id| safe_id(id)) else {
                 continue;
             };
+            self.has_samples.store(true, Ordering::SeqCst);
             let path = entry.path();
             let mut bytes = MAX_SAMPLE_BYTES as u64;
             let header = regular_file(&path, MAX_SAMPLE_BYTES as u64).and_then(|metadata| {
@@ -388,6 +393,7 @@ impl ContentSampling {
         }
         // Charge unreadable files against the limits while retaining them until their age is known.
         files.sort_by_key(|file| (file.created_at.is_none(), file.created_at, file.id.clone()));
+        self.has_samples.store(!files.is_empty(), Ordering::SeqCst);
         Ok(files)
     }
 
@@ -397,6 +403,7 @@ impl ContentSampling {
             .try_exists()
             .map_err(|_| CLEANUP_ERROR.to_string())?
         {
+            self.has_samples.store(false, Ordering::SeqCst);
             return Ok(());
         }
         self.ensure_directory()?;
@@ -411,8 +418,12 @@ impl ContentSampling {
                 continue;
             };
             if ids.is_none_or(|ids| ids.iter().any(|wanted| wanted == id)) {
+                self.has_samples.store(true, Ordering::SeqCst);
                 remove_sample(&entry.path())?;
             }
+        }
+        if ids.is_none() {
+            self.has_samples.store(false, Ordering::SeqCst);
         }
         Ok(())
     }
@@ -530,6 +541,8 @@ impl ContentSampling {
                 retained.push(file);
             }
         }
+        self.has_samples
+            .store(!retained.is_empty(), Ordering::SeqCst);
         Ok(retained)
     }
 
@@ -632,6 +645,12 @@ impl ContentSampling {
         let files = self.maintain(&mut inner, Utc::now().timestamp())?;
         self.clear_pause_if_unused(&mut inner, &files);
         Ok(self.snapshot(&inner, &files))
+    }
+
+    pub(super) fn stop_from_tray(&self, report_error: impl FnOnce(String)) {
+        if let Err(error) = self.configure(SamplingInput::default()) {
+            report_error(error);
+        }
     }
 
     pub(super) fn reserve(&self) -> Option<PendingSample> {
@@ -757,7 +776,10 @@ impl ContentSampling {
         let key = self.key(false, &mut inner)?;
         let result = self
             .write_sample(&key, ticket, response, status, incomplete)
-            .and_then(|()| self.maintain(&mut inner, now).map(|_| ()));
+            .and_then(|()| {
+                self.has_samples.store(true, Ordering::SeqCst);
+                self.maintain(&mut inner, now).map(|_| ())
+            });
         if let Err(error) = &result {
             self.stop_for_store_error(&mut inner, error);
         }
@@ -883,6 +905,9 @@ impl ContentSampling {
                     inner.error = Some(error.clone());
                     return Err(error);
                 }
+                if files.len() == 1 {
+                    self.has_samples.store(false, Ordering::SeqCst);
+                }
                 if inner.error.as_deref() == Some(CLEANUP_ERROR) {
                     inner.error = None;
                 }
@@ -937,6 +962,12 @@ impl ContentSampling {
         };
         self.activity_hint.store(activity as u8, Ordering::SeqCst);
         activity
+    }
+
+    pub(super) fn tray_state(&self) -> (SamplingActivity, bool) {
+        let activity = self.activity();
+        let can_stop = activity != SamplingActivity::Off || self.has_samples.load(Ordering::SeqCst);
+        (activity, can_stop)
     }
 
     #[cfg(test)]

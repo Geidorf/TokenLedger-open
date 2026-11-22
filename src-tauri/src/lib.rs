@@ -844,15 +844,15 @@ pub fn run() {
                 let mut previous = None;
                 loop {
                     use gateway::SamplingActivity;
-                    let activity = sampling_gateway.content_sampling_activity();
-                    if previous != Some(activity) {
+                    let (activity, can_stop) = sampling_gateway.content_sampling_tray_state();
+                    if previous != Some((activity, can_stop)) {
                         let _ = sampling_notice.set_text(match activity {
                             SamplingActivity::Active => "正在采样请求内容",
                             SamplingActivity::Paused => "内容采样已暂停",
                             SamplingActivity::Off => "内容采样已关闭",
                         });
-                        let _ = sampling_stop.set_enabled(activity != SamplingActivity::Off);
-                        previous = Some(activity);
+                        let _ = sampling_stop.set_enabled(can_stop);
+                        previous = Some((activity, can_stop));
                     }
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 }
@@ -909,9 +909,18 @@ pub fn run() {
                         );
                     }
                     "content-sampling-stop" => {
+                        use quota::alerts::{AlertNotifier, TauriNotifier};
+
                         let gateway = app.state::<Arc<gateway::Gateway>>().inner().clone();
+                        let notifier = TauriNotifier(app.clone());
                         std::mem::drop(tauri::async_runtime::spawn_blocking(move || {
-                            let _ = gateway.set_content_sampling(gateway::SamplingInput::default());
+                            gateway.stop_content_sampling_from_tray(|error| {
+                                if notifier.notify("内容采样", &error).is_err() {
+                                    eprintln!(
+                                        "Failed to display the content sampling notification"
+                                    );
+                                }
+                            });
                         }));
                     }
                     "desktop-widget" => {

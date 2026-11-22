@@ -851,8 +851,12 @@ impl Gateway {
         self.shared.sampling.status()
     }
 
-    pub(crate) fn content_sampling_activity(&self) -> SamplingActivity {
-        self.shared.sampling.activity()
+    pub(crate) fn content_sampling_tray_state(&self) -> (SamplingActivity, bool) {
+        self.shared.sampling.tray_state()
+    }
+
+    pub(crate) fn stop_content_sampling_from_tray(&self, report_error: impl FnOnce(String)) {
+        self.shared.sampling.stop_from_tray(report_error);
     }
 
     pub fn set_content_sampling(&self, input: SamplingInput) -> Result<SamplingStatus, String> {

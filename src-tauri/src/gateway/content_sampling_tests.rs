@@ -637,6 +637,46 @@ fn invalid_sample_cleanup_reports_a_deletion_failure() {
 }
 
 #[test]
+fn tray_can_clear_retained_samples_after_automatic_stop_and_expiry() {
+    let (root, sampling, _) = memory_sampling("tray_retained_samples");
+    sampling.configure(next(1, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+
+    sampling.configure(filter("agent-a", false, 1)).unwrap();
+    sampling.lock().configuration.expires_at = Some(Utc::now().timestamp());
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(sampling.status().mode, SamplingMode::Off);
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+
+    sampling.stop_from_tray(|error| panic!("stopping sampling failed: {error}"));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, false));
+    assert!(sample_files(&root).is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn tray_reports_cleanup_failure_and_allows_retry() {
+    let (root, sampling, _) = memory_sampling("tray_cleanup_failure");
+    sampling.configure(next(1, true)).unwrap();
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    fs::create_dir(&path).unwrap();
+    let mut reported = None;
+
+    sampling.stop_from_tray(|error| reported = Some(error));
+    assert_eq!(
+        reported.as_deref(),
+        Some("已停止采样，样本清理尚未完成，请重试删除。")
+    );
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+
+    fs::remove_dir(&path).unwrap();
+    sampling.stop_from_tray(|error| panic!("retrying sampling cleanup failed: {error}"));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, false));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn oversized_content_is_bounded_and_marked_truncated() {
     let (root, sampling, _) = memory_sampling("oversized");
     sampling.configure(next(1, true)).unwrap();
