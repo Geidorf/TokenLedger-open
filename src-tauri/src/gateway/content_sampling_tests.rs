@@ -248,7 +248,8 @@ fn persistence_failure_disables_sampling_and_invalidates_pending_tickets() {
     assert!(sampling
         .begin(&id(1), None, None, false, captured("request"))
         .is_none());
-    assert!(sampling.activity() == SamplingActivity::Active);
+    assert_eq!(sampling.activity(), SamplingActivity::Off);
+    assert_eq!(sampling.pending_count(), 1);
     fs::remove_file(&directory).unwrap();
     fs::create_dir(&directory).unwrap();
     sampling
