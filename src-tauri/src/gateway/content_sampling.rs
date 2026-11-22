@@ -887,6 +887,7 @@ impl ContentSampling {
         status: u16,
         incomplete: bool,
     ) -> Result<Option<SampleFile>, String> {
+        self.set_sample_presence(SamplePresence::Unknown);
         let mut sample = ContentSample {
             id: ticket.id,
             created_at: timestamp(ticket.created_at).ok_or_else(|| STORE_ERROR.to_string())?,
@@ -935,7 +936,6 @@ impl ContentSampling {
         bytes.extend_from_slice(&nonce);
         bytes.extend_from_slice(&plaintext);
         let destination = self.directory.join(format!("{}.bin", sample.id));
-        self.set_sample_presence(SamplePresence::Unknown);
         if destination.exists() {
             return Err(STORE_ERROR.to_string());
         }

@@ -869,6 +869,8 @@ fn failed_sample_write_keeps_tray_cleanup_available() {
     assert!(sampling
         .finish(ticket, captured("response"), 200, false)
         .is_err());
+    assert_eq!(sampling.status().mode, SamplingMode::Off);
+    assert_eq!(sampling.status().sample_ids, vec![id(0)]);
     assert_eq!(sampling.activity(), SamplingActivity::Off);
     assert!(sampling.tray_state().1);
     fs::remove_dir_all(root).unwrap();
