@@ -710,6 +710,40 @@ fn tray_can_clear_retained_samples_after_automatic_stop_and_expiry() {
 }
 
 #[test]
+fn tray_initial_state_uses_only_sample_directory_entries() {
+    let root = gateway_dir("tray_initial_samples");
+    let secrets = Arc::new(MemorySecrets::default());
+    let directory = root.join(SAMPLE_DIRECTORY);
+    let tray_state = || ContentSampling::new(&root, secrets.clone()).tray_state();
+
+    assert!(tray_state() == (SamplingActivity::Off, false));
+    assert!(!root.exists());
+
+    let sampling = ContentSampling::new_with_listing(&root, secrets.clone(), |path| {
+        assert_eq!(path, directory);
+        Err(io::ErrorKind::PermissionDenied.into())
+    });
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    assert!(!root.exists());
+
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(directory.join("unrelated.bin"), b"unrelated").unwrap();
+    assert!(tray_state() == (SamplingActivity::Off, false));
+    let sample = directory.join(format!("{}.bin", id(0)));
+    fs::write(&sample, b"header not read").unwrap();
+    assert!(tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(fs::read(&sample).unwrap(), b"header not read");
+    fs::remove_file(&sample).unwrap();
+
+    let temporary = directory.join(format!(".{}.bin.tokenledger-001122334455.tmp", id(0)));
+    fs::write(&temporary, b"temporary sample").unwrap();
+    assert!(tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(fs::read(&temporary).unwrap(), b"temporary sample");
+    assert!(!root.join(STATE_FILE).exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn tray_can_clear_when_the_first_sample_listing_is_denied() {
     let (root, original, secrets) = memory_sampling("tray_unknown_samples");
     original.configure(next(1, true)).unwrap();

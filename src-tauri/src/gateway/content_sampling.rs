@@ -192,6 +192,29 @@ fn temporary_sample_id(filename: &str) -> Option<&str> {
     .then_some(id)
 }
 
+fn sample_id(filename: &str) -> Option<&str> {
+    filename.strip_suffix(".bin").filter(|id| safe_id(id))
+}
+
+fn initial_sample_presence(entries: io::Result<fs::ReadDir>) -> SamplePresence {
+    let entries = match entries {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return SamplePresence::Empty,
+        Err(_) => return SamplePresence::Unknown,
+    };
+    for entry in entries {
+        let Ok(entry) = entry else {
+            return SamplePresence::Unknown;
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if sample_id(&name).is_some() || temporary_sample_id(&name).is_some() {
+            return SamplePresence::Present;
+        }
+    }
+    SamplePresence::Empty
+}
+
 fn is_link(metadata: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
@@ -233,6 +256,18 @@ fn truncate(text: &mut String, maximum: usize) {
 
 impl ContentSampling {
     pub(super) fn new(gateway_directory: &Path, secrets: Arc<dyn SecretStore>) -> Self {
+        Self::new_with_listing(gateway_directory, secrets, |directory| {
+            fs::read_dir(directory)
+        })
+    }
+
+    fn new_with_listing(
+        gateway_directory: &Path,
+        secrets: Arc<dyn SecretStore>,
+        list: impl FnOnce(&Path) -> io::Result<fs::ReadDir>,
+    ) -> Self {
+        let directory = gateway_directory.join(SAMPLE_DIRECTORY);
+        let sample_presence = initial_sample_presence(list(&directory));
         let state_file = gateway_directory.join(STATE_FILE);
         let (configuration, error) = if !state_file.exists() {
             (Configuration::default(), None)
@@ -252,7 +287,7 @@ impl ContentSampling {
             }
         };
         Self {
-            directory: gateway_directory.join(SAMPLE_DIRECTORY),
+            directory,
             state_file,
             secrets,
             inner: Mutex::new(Inner {
@@ -265,7 +300,7 @@ impl ContentSampling {
             ready: AtomicBool::new(false),
             skipped: AtomicBool::new(false),
             activity_hint: AtomicU8::new(SamplingActivity::Off as u8),
-            sample_presence: AtomicU8::new(SamplePresence::Unknown as u8),
+            sample_presence: AtomicU8::new(sample_presence as u8),
         }
     }
 
@@ -379,7 +414,7 @@ impl ContentSampling {
                 remove_sample(&entry.path())?;
                 continue;
             }
-            let Some(id) = filename.strip_suffix(".bin").filter(|id| safe_id(id)) else {
+            let Some(id) = sample_id(&filename) else {
                 continue;
             };
             let path = entry.path();
@@ -437,11 +472,7 @@ impl ContentSampling {
         for entry in fs::read_dir(&self.directory).map_err(|_| STORE_ERROR.to_string())? {
             let entry = entry.map_err(|_| STORE_ERROR.to_string())?;
             let filename = entry.file_name().to_string_lossy().into_owned();
-            let Some(id) = filename
-                .strip_suffix(".bin")
-                .filter(|id| safe_id(id))
-                .or_else(|| temporary_sample_id(&filename))
-            else {
+            let Some(id) = sample_id(&filename).or_else(|| temporary_sample_id(&filename)) else {
                 continue;
             };
             if ids.is_none_or(|ids| ids.iter().any(|wanted| wanted == id)) {
