@@ -49,7 +49,7 @@ function formatMetric(metric: SplitMetric, value: number | null): string {
 const percent = (value: number | null) => (value === null ? '' : `${(value * 100).toFixed(value >= 0.1 ? 0 : 1)}%`);
 
 /**
- * 用量拆分（对齐 magpie 的 Split by）：同一份数据按 Agent、模型或设备拆，点一行即「只看这一项」，
+ * 用量拆分（按维度拆分，Split by）：同一份数据按 Agent、模型或设备拆，点一行即「只看这一项」，
  * 切到其他维度时列表随之收窄，热力图也跟着换成这一项的逐日用量（由概览接线）。
  */
 export function UsageSplitPanel({

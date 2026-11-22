@@ -9,9 +9,9 @@ import { t } from '../../i18n';
 export type UsageSub = 'overview' | 'requests' | 'sessions' | 'allowances' | 'reports';
 
 /**
- * 用量子页对齐 magpie Usage 页（概览 / 请求 / 会话），额度单列一页：
+ * 用量子页：概览 / 请求 / 会话，额度单列一页：
  * 原「记录」与一级入口「活动明细」合并为「请求」，原「行为分析」改名「会话」。
- * magpie 的 Context 需要逐请求的提示词构成，本机与云端都没有这份数据，暂不设入口。
+ * 逐请求的 Context 构成需要提示词数据，本机与云端都没有，暂不设入口。
  * 侧栏二级入口共用这份定义。
  */
 export const USAGE_SUB_OPTIONS: { id: UsageSub; label: string }[] = [

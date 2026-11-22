@@ -27,7 +27,7 @@ export const USAGE_PROJECTS: UsageEntity[] = [
   { id: 'tokenledger', label: 'TokenLedger', fallback: 'T' },
   { id: 'harbor', label: 'harbor', fallback: 'H' },
   { id: 'bang', label: 'bang', fallback: 'B' },
-  { id: 'magpie-notes', label: 'magpie-notes', fallback: 'M' },
+  { id: 'notes-app', label: 'notes-app', fallback: 'N' },
   { id: 'unattributed', label: '未归属', fallback: '—' },
 ];
 
@@ -39,7 +39,7 @@ const TOOL_SHARE: Record<string, Record<string, number>> = {
   'gemini-3.1-pro': { 'gemini-cli': 0.9, opencode: 0.1 },
   'kimi-k3': { opencode: 0.7, 'claude-code': 0.3 },
 };
-const PROJECT_SHARE: Record<string, number> = { tokenledger: 0.46, harbor: 0.2, bang: 0.14, 'magpie-notes': 0.08, unattributed: 0.12 };
+const PROJECT_SHARE: Record<string, number> = { tokenledger: 0.46, harbor: 0.2, bang: 0.14, 'notes-app': 0.08, unattributed: 0.12 };
 
 function seeded(seed: number) {
   let state = seed;
@@ -210,7 +210,7 @@ export const USAGE_RECORDS: UsageRecord[] = [
   { time: '10/3 14:17:55', tool: 'codex', model: 'kimi-k3', modelIcon: 'moonshot', provider: 'Kimi', route: 'group/coding', project: 'TokenLedger', source: 'gateway', input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, latencyMs: 210, status: 'failed', statusText: '401 · 已转 DeepSeek' },
   { time: '10/3 13:52:40', tool: 'claude-code', model: 'claude-sonnet-5', modelIcon: 'claude-color', provider: null, route: null, project: 'harbor', source: 'log', input: 31_200, output: 4_480, cacheRead: 212_000, cacheWrite: 9_400, cost: 0.2948, latencyMs: null, status: 'ok' },
   { time: '10/3 13:40:12', tool: 'opencode', model: 'deepseek-v4', modelIcon: 'deepseek-color', provider: 'DeepSeek', route: 'group/cheap', project: 'bang', source: 'gateway', input: 6_120, output: 1_880, cacheRead: 18_400, cacheWrite: 0, cost: 0.0050, latencyMs: 2_150, status: 'ok' },
-  { time: '10/3 11:05:47', tool: 'gemini-cli', model: 'gemini-3.1-pro', modelIcon: 'gemini-color', provider: null, route: null, project: 'magpie-notes', source: 'log', input: 44_800, output: 3_960, cacheRead: 61_000, cacheWrite: 0, cost: 0.1493, latencyMs: null, status: 'ok' },
+  { time: '10/3 11:05:47', tool: 'gemini-cli', model: 'gemini-3.1-pro', modelIcon: 'gemini-color', provider: null, route: null, project: 'notes-app', source: 'log', input: 44_800, output: 3_960, cacheRead: 61_000, cacheWrite: 0, cost: 0.1493, latencyMs: null, status: 'ok' },
   { time: '10/3 10:44:19', tool: 'codex', model: 'gpt-5.5-mini', modelIcon: 'openai', provider: 'OpenAI', route: null, project: 'TokenLedger', source: 'gateway', input: 3_400, output: 620, cacheRead: 12_288, cacheWrite: 0, cost: 0.0024, latencyMs: 980, status: 'ok' },
   { time: '10/3 10:02:33', tool: 'cursor', model: 'claude-sonnet-5', modelIcon: 'claude-color', provider: null, route: null, project: '未归属', source: 'log', input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: null, latencyMs: null, status: 'unknown', statusText: '来源未给出用量' },
   { time: '10/3 09:31:06', tool: 'opencode', model: 'kimi-k3', modelIcon: 'moonshot', provider: 'Kimi', route: null, project: 'bang', source: 'gateway', input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, latencyMs: 188, status: 'failed', statusText: '401 · key 无效' },
@@ -233,7 +233,7 @@ export interface UsageSession {
 }
 
 export const USAGE_SESSIONS: UsageSession[] = [
-  { id: 's1', title: '参考 magpie 重做模型与 Agent 工作区，并评估网关方案', project: 'TokenLedger', tool: 'codex', model: 'gpt-5.5', effective: 6_219_000, input: 5_890_000, output: 329_000, cacheRead: 98_400_000, cost: 22.61, ago: '3 小时前', messages: 148, minutes: 312 },
+  { id: 's1', title: '重做模型与 Agent 工作区，并评估网关方案', project: 'TokenLedger', tool: 'codex', model: 'gpt-5.5', effective: 6_219_000, input: 5_890_000, output: 329_000, cacheRead: 98_400_000, cost: 22.61, ago: '3 小时前', messages: 148, minutes: 312 },
   { id: 's2', title: '安卓看板 390×844 截图回归失败排查', project: 'TokenLedger', tool: 'claude-code', model: 'claude-sonnet-5', effective: 4_467_000, input: 4_120_000, output: 347_000, cacheRead: 41_000_000, cost: 30.04, ago: '昨天', messages: 96, minutes: 205 },
   { id: 's3', title: '对比 0.9 与 0.10 的改动并做全局评审', project: 'harbor', tool: 'codex', model: 'gpt-5.5', effective: 3_159_000, input: 2_980_000, output: 179_000, cacheRead: 52_000_000, cost: 12.02, ago: '2 天前', messages: 61, minutes: 140 },
   { id: 's4', title: '复盘：为什么一个简单任务做了 8 个小时', project: 'TokenLedger', tool: 'codex', model: 'gpt-5.5-mini', effective: 2_406_000, input: 2_250_000, output: 156_000, cacheRead: 18_000_000, cost: 1.32, ago: '3 天前', messages: 44, minutes: 96 },

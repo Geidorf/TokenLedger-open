@@ -107,7 +107,7 @@
 .usage-btn:disabled { opacity: 0.6; cursor: default; }
 .usage-more { justify-self: center; }
 
-/* 统一 Split by（对齐 magpie）：维度与指标两组分段、可点选的排行，选中项让其他维度与热力图收窄。 */
+/* 统一按维度拆分（Split by）：维度与指标两组分段、可点选的排行，选中项让其他维度与热力图收窄。 */
 .usage-split { display: grid; gap: 12px; }
 .usage-split-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .usage-split-head .panel-title { margin-right: auto; }

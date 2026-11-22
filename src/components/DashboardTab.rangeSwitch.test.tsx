@@ -289,7 +289,7 @@ function watchInsertions() {
 }
 
 const chartInstances = () => screen.queryAllByTestId('echart').map((node) => node.getAttribute('data-instance'));
-/** 模型排行在「用量拆分」的模型维度下（对齐 magpie 的 Split by）。 */
+/** 模型排行在「用量拆分」的模型维度下（按维度拆分，Split by）。 */
 const modelRanking = () => {
   const byModel = within(screen.getByRole('group', { name: '拆分维度' })).getByRole('button', { name: '模型' });
   if (byModel.getAttribute('aria-pressed') !== 'true') fireEvent.click(byModel);
