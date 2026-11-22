@@ -1752,6 +1752,30 @@ mod schema_upgrade_tests {
     }
 
     #[test]
+    fn legacy_migration_rejects_a_wal_without_touching_files() {
+        let (root, source, target) = legacy_migration_fixture();
+        let old_conn = legacy_migration_source(&source);
+        insert_legacy_fixture_row(&old_conn, "checkpointed-entry");
+        let mode: String = old_conn
+            .query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+        insert_legacy_fixture_row(&old_conn, "wal-entry");
+
+        let before = legacy_migration_source_files(&source);
+        assert!(before[1].is_none());
+        assert!(!before[2].as_ref().unwrap().is_empty());
+        assert!(migrate_legacy_db_for_home(&target, Some(&root)).is_err());
+        assert_eq!(legacy_migration_source_files(&source), before);
+
+        let conn = get_connection(&target).unwrap();
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+        drop(conn);
+        drop(old_conn);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn legacy_migration_rolls_back_an_import_failure() {
         let (root, source, target) = legacy_migration_fixture();
         let old_conn = legacy_migration_source(&source);
