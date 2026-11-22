@@ -248,7 +248,7 @@ fn persistence_failure_disables_sampling_and_invalidates_pending_tickets() {
     assert!(sampling
         .begin(&id(1), None, None, false, captured("request"))
         .is_none());
-    assert!(sampling.activity() == SamplingActivity::Off);
+    assert!(sampling.activity() == SamplingActivity::Active);
     fs::remove_file(&directory).unwrap();
     fs::create_dir(&directory).unwrap();
     sampling
@@ -439,9 +439,9 @@ fn temporary_key_read_failure_preserves_samples_and_remaining_authorization() {
     let status = sampling.status();
     assert_eq!(status.error.as_deref(), Some(KEY_UNAVAILABLE));
     assert!(status.paused);
-    assert!(sampling.activity() == SamplingActivity::Paused);
+    assert!(sampling.activity() == SamplingActivity::Active);
     let locked = sampling.lock();
-    assert!(sampling.activity() == SamplingActivity::Paused);
+    assert!(sampling.activity() == SamplingActivity::Active);
     drop(locked);
     assert!(sampling.reserve().is_none());
     assert!(sampling.read(&id(0)).is_err());
@@ -828,6 +828,49 @@ fn tray_reports_cleanup_failure_and_allows_retry() {
     fs::remove_dir(&path).unwrap();
     sampling.stop_from_tray(|error| panic!("retrying sampling cleanup failed: {error}"));
     assert!(sampling.tray_state() == (SamplingActivity::Off, false));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn pending_ticket_keeps_activity_and_stop_until_late_finish_is_discarded() {
+    let (root, sampling, _) = memory_sampling("pending_ticket_activity");
+    sampling.configure(next(1, true)).unwrap();
+    let ticket = sampling
+        .begin(&id(0), None, None, false, captured("request"))
+        .unwrap();
+
+    assert_eq!(sampling.status().pending, true);
+    assert_eq!(sampling.activity(), SamplingActivity::Active);
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Active, true));
+
+    sampling.configure(SamplingInput::default()).unwrap();
+    assert_eq!(sampling.activity(), SamplingActivity::Active);
+    assert!(sampling.tray_state().1);
+    sampling
+        .finish(ticket, captured("late response"), 200, false)
+        .unwrap();
+    assert_eq!(sampling.status().pending, false);
+    assert_eq!(sampling.activity(), SamplingActivity::Off);
+    assert_eq!(sampling.tray_state(), (SamplingActivity::Off, false));
+    assert!(sample_files(&root).is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_sample_write_keeps_tray_cleanup_available() {
+    let (root, sampling, _) = memory_sampling("failed_sample_write_presence");
+    sampling.configure(next(2, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "existing", "response", 200);
+    sampling.configure(next(1, true)).unwrap();
+    let ticket = sampling
+        .begin(&id(0), None, None, false, captured("request"))
+        .unwrap();
+
+    assert!(sampling
+        .finish(ticket, captured("response"), 200, false)
+        .is_err());
+    assert_eq!(sampling.activity(), SamplingActivity::Off);
+    assert!(sampling.tray_state().1);
     fs::remove_dir_all(root).unwrap();
 }
 

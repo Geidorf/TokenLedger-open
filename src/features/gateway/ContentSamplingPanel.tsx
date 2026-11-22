@@ -99,7 +99,7 @@ export function ContentSamplingPanel({ compact = false, controller, onNotify }: 
   const ownSampling = useContentSamplingStatus(controller == null);
   const sampling = controller ?? ownSampling;
   const status = sampling.status;
-  const authorized = status != null && status.mode !== 'off';
+  const authorized = status != null && (status.mode !== 'off' || status.pending === true);
   const active = authorized && !status?.paused;
   const [dialog, setDialog] = useState<Dialog>(null);
   const [mode, setMode] = useState<Exclude<ContentSamplingMode, 'off'>>('next');

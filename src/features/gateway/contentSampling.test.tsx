@@ -22,6 +22,7 @@ vi.mock('./contentSamplingApi', async (importOriginal) => {
 
 const off: ContentSamplingStatus = {
   mode: 'off',
+  pending: false,
   remaining: null,
   expiresAt: null,
   agent: null,
@@ -35,6 +36,7 @@ const off: ContentSamplingStatus = {
 
 const active: ContentSamplingStatus = {
   mode: 'next',
+  pending: false,
   remaining: 18,
   expiresAt: null,
   agent: null,
@@ -129,6 +131,14 @@ describe('内容采样状态与控制', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /同时删除已有样本/ }));
     fireEvent.click(screen.getByRole('button', { name: '停止并保留样本' }));
     await waitFor(() => expect(mockSet).toHaveBeenCalledWith({ mode: 'off', deleteExisting: false }));
+  });
+
+  it('有未完成票据时保持停止入口', () => {
+    const pending: ContentSamplingStatus = { ...off, pending: true };
+    render(<ContentSamplingPanel controller={controller(pending)} />);
+    expect(screen.getByRole('switch', { name: '请求内容采样' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('switch', { name: '请求内容采样' }));
+    expect(screen.getByRole('button', { name: '停止并删除样本' })).toBeInTheDocument();
   });
 
   it('停止默认删除已有样本，也可明确改为保留', async () => {

@@ -337,6 +337,7 @@ export type ContentSamplingMode = 'off' | 'next' | 'filter';
 export interface ContentSamplingStatus {
   mode: ContentSamplingMode;
   paused?: boolean;
+  pending?: boolean;
   remaining: number | null;
   expiresAt: string | null;
   agent: string | null;

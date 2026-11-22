@@ -40,7 +40,7 @@ pub enum SamplingMode {
     Filter,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SamplingActivity {
     Off,
     Paused,
@@ -67,6 +67,7 @@ pub struct SamplingInput {
 pub struct SamplingStatus {
     pub mode: SamplingMode,
     pub paused: bool,
+    pub pending: bool,
     pub remaining: Option<u32>,
     pub expires_at: Option<String>,
     pub agent: Option<String>,
@@ -625,6 +626,7 @@ impl ContentSampling {
         SamplingStatus {
             mode: inner.configuration.mode,
             paused: inner.key_paused,
+            pending: self.pending.load(Ordering::SeqCst) != 0,
             remaining: inner.configuration.remaining,
             expires_at: inner.configuration.expires_at.and_then(timestamp),
             agent: inner.configuration.agent.clone(),
@@ -933,6 +935,7 @@ impl ContentSampling {
         bytes.extend_from_slice(&nonce);
         bytes.extend_from_slice(&plaintext);
         let destination = self.directory.join(format!("{}.bin", sample.id));
+        self.set_sample_presence(SamplePresence::Unknown);
         if destination.exists() {
             return Err(STORE_ERROR.to_string());
         }
@@ -940,8 +943,6 @@ impl ContentSampling {
             if destination.exists() {
                 Err(STORE_ERROR.to_string())
             } else {
-                // The rename can succeed even if the following directory sync fails.
-                self.set_sample_presence(SamplePresence::Unknown);
                 Ok(())
             }
         })
@@ -1049,7 +1050,9 @@ impl ContentSampling {
                 _ => SamplingActivity::Off,
             };
         };
-        let activity = if inner.configuration.mode == SamplingMode::Off
+        let activity = if self.pending.load(Ordering::SeqCst) != 0 {
+            SamplingActivity::Active
+        } else if inner.configuration.mode == SamplingMode::Off
             || inner
                 .configuration
                 .expires_at
