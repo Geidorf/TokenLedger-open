@@ -37,8 +37,8 @@ pub(crate) use codex_config::{atomic_write, line_diff, version};
 pub use codex_config::{
     CodexApplyResult, CodexConfig, CodexInspection, CodexPreview, CodexRestoreResult,
 };
-#[cfg(test)]
 pub(crate) use content_sampling::SamplingActivity;
+#[cfg(test)]
 pub use content_sampling::SamplingMode;
 pub use content_sampling::{ContentSample, SamplingInput, SamplingStatus};
 pub use health::HealthReport;
