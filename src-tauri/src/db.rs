@@ -299,8 +299,8 @@ fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Res
 
     // Idempotently backfill legacy data even when the new DB already has rows.
     // 测试默认跳过迁移，避免读取开发机上真实的旧账本。
-    if migrate_legacy {
-        migrate_legacy_db(db_path).ok();
+    if migrate_legacy && migrate_legacy_db(db_path).is_err() {
+        log::warn!("旧账本迁移失败，继续启动");
     }
 
     run_schema_upgrades(&conn)?;
@@ -1402,7 +1402,10 @@ fn migrate_legacy_db_from(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source_metadata = match fs::symlink_metadata(old_db_path) {
         Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            log::debug!("未找到旧账本，跳过迁移");
+            return Ok(());
+        }
         Err(error) => return Err(error.into()),
     };
     if !source_metadata.is_file() {
