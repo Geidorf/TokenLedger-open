@@ -187,24 +187,24 @@ pub fn get_connection(db_path: &Path) -> Result<Connection> {
 }
 
 /// Initialize the database, create tables, and perform migrations if necessary.
-pub fn init_db(db_path: &PathBuf) -> Result<()> {
+pub fn init_db(db_path: &Path) -> Result<()> {
     // Unit tests must never inspect developer-machine legacy paths. Production
     // builds retain the one-time migration behaviour.
     init_db_with_legacy_migration(db_path, !cfg!(test))
 }
 
 #[cfg(test)]
-pub(crate) fn init_test_db(db_path: &PathBuf) -> Result<()> {
+pub(crate) fn init_test_db(db_path: &Path) -> Result<()> {
     init_db_with_legacy_migration(db_path, false)
 }
 
 /// A new database with the current schema and no legacy import, for the
 /// repair path that copies a damaged database's rows into it.
-pub(crate) fn init_fresh_db(db_path: &PathBuf) -> Result<()> {
+pub(crate) fn init_fresh_db(db_path: &Path) -> Result<()> {
     init_db_with_legacy_migration(db_path, false)
 }
 
-fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Result<()> {
+fn init_db_with_legacy_migration(db_path: &Path, migrate_legacy: bool) -> Result<()> {
     let conn = get_connection(db_path)?;
 
     let journal_mode: String = conn.query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
