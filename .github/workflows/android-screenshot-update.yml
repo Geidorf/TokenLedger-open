@@ -23,7 +23,7 @@ concurrency:
 jobs:
   update-goldens:
     name: Regenerate Android screenshot goldens (macOS golden host)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     if: ${{ inputs.branch != 'main' }}
     steps:
