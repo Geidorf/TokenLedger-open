@@ -1567,7 +1567,7 @@ mod schema_upgrade_tests {
     }
 
     #[test]
-    fn legacy_migration_imports_the_fixed_path_without_duplicates() {
+    fn legacy_migration_preserves_fields_and_deduplicates() {
         let (root, old_db_path, new_db_path) = legacy_migration_fixture();
         migrate_legacy_db_for_home(&new_db_path, Some(&root)).unwrap();
         assert_eq!(
@@ -1615,13 +1615,18 @@ mod schema_upgrade_tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    fn run_legacy_migration_test_child(test: &str, root: &Path) {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
+    fn run_legacy_migration_test_child(test: &str, root: &Path, home: Option<&Path>) {
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
             .args(["--exact", test])
             .current_dir(root)
-            .env("TOKENLEDGER_LEGACY_MIGRATION_TEST_CHILD", "1")
-            .output()
-            .unwrap();
+            .env("TOKENLEDGER_LEGACY_MIGRATION_TEST_CHILD", "1");
+        if let Some(home) = home {
+            command.env("HOME", home);
+        } else {
+            command.env_remove("HOME");
+        }
+        let output = command.output().unwrap();
         assert!(
             output.status.success()
                 && String::from_utf8_lossy(&output.stdout).contains("running 1 test"),
@@ -1632,37 +1637,47 @@ mod schema_upgrade_tests {
     }
 
     #[test]
-    fn legacy_migration_ignores_current_dir_other_dirs_and_invalid_home() {
+    fn legacy_migration_selects_sources_at_the_production_entry_point() {
         if std::env::var_os("TOKENLEDGER_LEGACY_MIGRATION_TEST_CHILD").is_some() {
-            let root = std::env::current_dir().unwrap();
-            let target = root.join("ledger.db");
-            let valid_home = root.join("valid-home");
-            let conn = get_connection(&target).unwrap();
-            for home in [
-                Some(valid_home.as_path()),
-                Some(Path::new("relative-home")),
-                Some(Path::new("")),
-                None,
-            ] {
-                migrate_legacy_db_for_home(&target, home).unwrap();
-                assert_eq!(table_rows(&conn, "token_logs"), 0);
-            }
+            migrate_legacy_db(Path::new("../ledger.db")).unwrap();
             return;
         }
 
-        let (root, source, _) = legacy_migration_fixture();
-        for path in [
-            root.join("tokenboard.db"),
-            root.join("other/tokenboard.db"),
-            root.join("relative-home/Desktop/tokenboard/tokenboard.db"),
-            source,
+        let test = "db::schema_upgrade_tests::legacy_migration_selects_sources_at_the_production_entry_point";
+        let (root, source, target) = legacy_migration_fixture();
+        let cwd = root.join("work");
+        insert_legacy_fixture_row(&legacy_migration_source(&source), "fixed-source");
+        for (path, key) in [
+            (cwd.join("tokenboard.db"), "working-dir"),
+            (root.join("other/tokenboard.db"), "other-dir"),
+            (
+                cwd.join("relative-home/Desktop/tokenboard/tokenboard.db"),
+                "relative-home",
+            ),
+            (cwd.join("Desktop/tokenboard/tokenboard.db"), "empty-home"),
         ] {
-            insert_legacy_fixture_row(&legacy_migration_source(&path), "outside-valid-home");
+            insert_legacy_fixture_row(&legacy_migration_source(&path), key);
         }
-        run_legacy_migration_test_child(
-            "db::schema_upgrade_tests::legacy_migration_ignores_current_dir_other_dirs_and_invalid_home",
-            &root,
-        );
+
+        let conn = get_connection(&target).unwrap();
+        for home in [Some(Path::new("relative-home")), Some(Path::new("")), None] {
+            run_legacy_migration_test_child(test, &cwd, home);
+            assert_eq!(table_rows(&conn, "token_logs"), 0, "HOME={home:?}");
+        }
+
+        run_legacy_migration_test_child(test, &cwd, Some(&root));
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(table_rows(&conn, "token_logs"), 1);
+            let key: String = conn
+                .query_row("SELECT unique_key FROM token_logs", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(key, "fixed-source");
+        }
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+
+        drop(conn);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1723,6 +1738,7 @@ mod schema_upgrade_tests {
         run_legacy_migration_test_child(
             "db::schema_upgrade_tests::legacy_migration_rejects_a_hot_rollback_journal_without_touching_files",
             &root,
+            None,
         );
         let before = legacy_migration_source_files(&source);
         let hot_journal_magic = [0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7];
