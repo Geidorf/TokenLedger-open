@@ -62,11 +62,7 @@ pub(crate) struct PlanEndpoint {
     pub url: &'static str,
 }
 
-// Inferred, undocumented: magpie 0.1.810 strings
-// `https://open.bigmodel.cn/api/monitor/usage/quota/limit`,
-// `https://api.z.ai/api/monitor/usage/quota/limit`, `/v1/token_plan/remains`
-// with `api.minimaxi.com` / `api.minimax.io`, and `https://api.kimi.com/coding`
-// with `/coding/usages`.
+// Experimental plan sources follow the quota provider contract.
 pub(crate) const PLAN_ENDPOINTS: [PlanEndpoint; 5] = [
     PlanEndpoint {
         vendor: PlanVendor::ZhipuGlm,
