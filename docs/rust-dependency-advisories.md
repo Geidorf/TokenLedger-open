@@ -31,10 +31,13 @@ cd src-tauri && cargo audit
 - 应用代码不直接使用 glib；锁定版本的 gtk、gdk、gio、webkit2gtk、wry、tao、muda、tray-icon、libappindicator 源码中都没有调用 `VariantStrIter` 或返回它的 `Variant::array_iter_str`，只有 glib 自身定义、导出和测试。
 - 这是源码文本证据，不覆盖动态分派或 C 侧回调；上游 Tauri 换到新 GTK 代际后再升级，届时删除本行。
 
+2026-11-23 复查：SQLite 公告 RUSTSEC-2026-0459 已清除。主分支已有的 RUSTSEC-2026-0592 仍适用（见 #206）。
+
 ### 已处置
 
 | 日期 | 公告 | 包 | 做法 |
 |---|---|---|---|
+| 2026-11-23 | RUSTSEC-2026-0459 | libsqlite3-sys 0.30.1 | 升级到 rusqlite 0.41.1、libsqlite3-sys 0.39.1（内置 SQLite 3.54.1）。保留内置库、语句缓存和无符号页统计读取所需特性。回退前停止账本写入，保留覆盖 WAL 的一致快照及可恢复的旧库备份。回退旧依赖会重新引入该公告。 |
 | 2026-10-27 | RUSTSEC-2026-0391 / 0398 / 0403 / 0410（漏洞），0395–0397 / 0399–0402 / 0404–0406（unsound） | zstd 0.13.3、zstd-safe 7.2.4、zstd-sys 2.0.16 | 升级到 zstd 0.14.3（zstd-safe 8.2.0、zstd-sys 2.1.2）。应用用它解压本机会话日志和读写本地备份，属于直接可达；用到的 `encode_all`、`stream::read::Decoder`、`stream::write::Encoder` 接口不变 |
 | 2026-10-27 | RUSTSEC-2024-0436（停止维护） | paste 1.0.15 | `image` 关掉默认格式只留 PNG，去掉 AVIF 编码链（rav1e 等 54 个包）；应用只读写 PNG |
 | 2026-10-27 | RUSTSEC-2025-0075 / 0080 / 0081 / 0098 / 0100（停止维护） | unic-char-property、unic-char-range、unic-common、unic-ucd-ident、unic-ucd-version 0.9.0 | Tauri 2.11.2 → 2.12.5（tauri-build 2.7.4、tauri-utils 2.10.2，插件 notification 2.7.0、single-instance 2.5.4），带入它们的 urlpattern 从 0.3 升到 0.6，改用 icu_properties；前端 `@tauri-apps/api` 与 `@tauri-apps/cli` 同步到 2.12.4，两端主次版本保持一致 |
