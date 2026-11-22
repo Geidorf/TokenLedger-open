@@ -676,6 +676,40 @@ fn invalid_sample_header_removes_only_that_sample() {
 
 #[cfg(windows)]
 #[test]
+fn locked_corrupt_sample_does_not_cancel_authorization_or_hide_good_samples() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let (root, sampling, _) = memory_sampling("locked_corrupt_sample");
+    sampling.configure(next(3, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "bad", "response", 200);
+    begin_and_finish(&sampling, &id(1), "good", "response", 200);
+    let bad = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let mut bytes = fs::read(&bad).unwrap();
+    bytes[0] ^= 1;
+    fs::write(&bad, bytes).unwrap();
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(1)
+        .open(&bad)
+        .unwrap();
+
+    let status = sampling.status();
+    assert_eq!(status.mode, SamplingMode::Next);
+    assert_eq!(status.remaining, Some(1));
+    assert!(status.sample_ids.contains(&id(0)));
+    assert!(status.sample_ids.contains(&id(1)));
+    assert_eq!(sampling.read(&id(1)).unwrap().request, "good");
+
+    drop(lock);
+    let status = sampling.status();
+    assert_eq!(status.mode, SamplingMode::Next);
+    assert!(!status.sample_ids.contains(&id(0)));
+    assert!(status.sample_ids.contains(&id(1)));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
 fn invalid_sample_cleanup_reports_a_deletion_failure() {
     use std::os::windows::fs::OpenOptionsExt;
 

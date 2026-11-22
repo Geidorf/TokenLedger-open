@@ -452,7 +452,14 @@ impl ContentSampling {
                 Err(SampleReadError::Unavailable) => None,
                 Err(SampleReadError::Missing) => continue,
                 Err(SampleReadError::Invalid) => {
-                    remove_sample(&path)?;
+                    if remove_sample(&path).is_err() {
+                        files.push(SampleFile {
+                            id: id.to_string(),
+                            path,
+                            created_at: None,
+                            bytes,
+                        });
+                    }
                     continue;
                 }
                 Err(SampleReadError::Unsafe) => return Err(STORE_ERROR.to_string()),
