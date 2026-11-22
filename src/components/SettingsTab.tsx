@@ -264,7 +264,7 @@ export function SettingsTab(props: SettingsTabProps) {
           hidden={activeSection !== "settings-quota"}
           aria-hidden={activeSection !== "settings-quota"}
         >
-          <QuotaSection {...props.quota} />
+          <QuotaSection {...props.quota} isActive={activeSection === "settings-quota"} />
         </section>
         {activeSection === "settings-budget" && (
           <section>
@@ -298,7 +298,7 @@ export function SettingsTab(props: SettingsTabProps) {
           hidden={activeSection !== "settings-data"}
           aria-hidden={activeSection !== "settings-data"}
         >
-          <DataHelpSection {...props.dataHelp} onOpenCloudSection={openCloud} />
+          <DataHelpSection {...props.dataHelp} isActive={activeSection === "settings-data"} onOpenCloudSection={openCloud} />
         </section>
       </div>
     </div>

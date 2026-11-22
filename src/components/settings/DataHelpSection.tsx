@@ -23,6 +23,8 @@ import { UsageDimensionsCard } from './UsageDimensionsCard';
 import { useT } from '../../i18n';
 
 export interface DataHelpSectionProps {
+  /** 设置分区是否当前可见；隐藏时清理敏感表单草稿。 */
+  isActive?: boolean;
   dbInfo: DbInfo | null;
   dbInfoError: string;
   cloudSetup: {
@@ -190,13 +192,13 @@ export function DataHelpSection(props: DataHelpSectionProps) {
 
       <ProjectDimensionCard />
 
-      <LocalBackupCard />
+      <LocalBackupCard isActive={props.isActive} />
 
       <DatabaseHealthCard />
 
       <MagpieImportCard />
 
-      <PeerSyncCard />
+      <PeerSyncCard isActive={props.isActive} />
 
       <PeerSharedUsageCard />
 

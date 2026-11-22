@@ -40,6 +40,31 @@ describe('PeerSyncCard', () => {
     expect(screen.getByLabelText('外部网关同步密码')).toHaveValue('');
   });
 
+  it.each([true, false])('清理未保存的 WebDAV 密码（提交失败：%s），保留地址和用户名', async (submit) => {
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'peer_sync_save_config') throw new Error('模拟保存失败');
+      return { url: '', user: '初始用户', hasPassword: true, hasPassphrase: true };
+    });
+    const { rerender } = render(<PeerSyncCard />);
+    const user = screen.getByLabelText('用户名');
+    const url = screen.getByLabelText('WebDAV 地址');
+    await waitFor(() => expect(user).toHaveValue('初始用户'));
+    fireEvent.change(url, { target: { value: 'https://dav.example/dav' } });
+    fireEvent.change(user, { target: { value: '测试用户' } });
+    const fields = [screen.getByLabelText('WebDAV 密码'), screen.getByLabelText('外部网关同步密码')];
+    fields.forEach((field) => fireEvent.change(field, { target: { value: 'fixture-draft' } }));
+    if (submit) {
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('模拟保存失败');
+    } else {
+      rerender(<PeerSyncCard isActive={false} />);
+      rerender(<PeerSyncCard />);
+    }
+    fields.forEach((field) => expect(field).toHaveValue(''));
+    expect(user).toHaveValue('测试用户');
+    expect(url).toHaveValue('https://dav.example/dav');
+  });
+
   it('预览只勾选可导入的供应商，导入后提示结果', async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === 'peer_sync_preview') return preview;

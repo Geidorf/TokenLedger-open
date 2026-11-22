@@ -1,5 +1,53 @@
 import type { AppSettings } from '../src/types';
-import { builtInIpc, expect, openPage, reloadSettled, test } from './fixtures';
+import { builtInIpc, expect, expectNoHorizontalOverflow, openPage, reloadSettled, test } from './fixtures';
+
+for (const [width, height] of [[1200, 800], [1280, 860]]) {
+  test(`设置分区清理敏感草稿并保留普通字段（${width}×${height}）`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await openPage(page, 'settings-quota');
+    const directory = page.locator('.settings-directory-list');
+    const quota = directory.getByRole('button', { name: /^订阅额度/ });
+    const data = directory.getByRole('button', { name: /^数据与帮助/ });
+    const key = page.getByLabel('公司额度 API key', { exact: true });
+    const name = page.getByLabel('公司额度来源名称', { exact: true });
+    await name.fill('测试来源');
+    await key.fill('fixture-draft');
+    await expectNoHorizontalOverflow(page);
+    await data.click();
+    const path = page.getByLabel('备份文件', { exact: true });
+    const password = page.getByLabel('WebDAV 密码', { exact: true });
+    const passphrase = page.getByLabel('外部网关同步密码', { exact: true });
+    const backupPass = page.getByLabel('备份密码', { exact: true }).last();
+    await path.fill('/backups/test.tlbackup');
+    for (const field of [password, passphrase, backupPass]) await field.fill('fixture-draft');
+    await expectNoHorizontalOverflow(page);
+    await quota.click();
+    await expect(key).toHaveValue('');
+    await expect(name).toHaveValue('测试来源');
+    await data.click();
+    for (const field of [password, passphrase, backupPass]) await expect(field).toHaveValue('');
+    await expect(path).toHaveValue('/backups/test.tlbackup');
+  });
+}
+
+test('备份恢复预览后可以确认，确认失败清除口令并要求重新预览', async ({ page, ipc }) => {
+  await ipc.override('local_backup_apply', { error: '模拟恢复失败' });
+  await openPage(page, 'settings-data');
+  const path = page.getByLabel('备份文件', { exact: true });
+  const pass = page.getByLabel('备份密码', { exact: true }).last();
+  const preview = page.getByRole('button', { name: '预览备份' });
+  const apply = page.getByRole('button', { name: '恢复选中的部分' });
+  await path.fill('/backups/test.tlbackup');
+  await pass.fill('fixture-draft');
+  await preview.click();
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(page.getByText('模拟恢复失败', { exact: true })).toBeVisible();
+  await expect(pass).toHaveValue('');
+  await expect(path).toHaveValue('/backups/test.tlbackup');
+  await expect(apply).toHaveCount(0);
+  await expect(preview).toBeDisabled();
+});
 
 // 设置页今晚新增的两张卡片：「桌面挂件」里的手机动态壁纸开关（把实时路由同步到手机），
 // 「数据与帮助」里的其他电脑共享用量（按电脑勾选，默认一台都不统计）。

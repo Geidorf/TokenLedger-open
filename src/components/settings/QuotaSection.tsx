@@ -33,6 +33,8 @@ import { QUOTA_ALERT_THRESHOLDS, toggleQuotaAlertThreshold, useQuotaAlertSetting
 import { localized, t, useLang, getLang, type MessageKey } from '../../i18n';
 
 export interface QuotaSectionProps {
+  /** 设置分区是否当前可见；隐藏时清理未提交的密钥草稿。 */
+  isActive?: boolean;
   appSettings: AppSettings;
   cloudStatus: CloudStatus;
   quotaProviders: QuotaProviderEnvelope[];
@@ -716,6 +718,10 @@ export function QuotaSection(props: QuotaSectionProps) {
   );
 
   useEffect(() => {
+    if (props.isActive === false) setCustomApiKey('');
+  }, [props.isActive]);
+
+  useEffect(() => {
     if (!busy.settings) setActiveQuotaRead(null);
   }, [busy.settings]);
 
@@ -803,8 +809,10 @@ export function QuotaSection(props: QuotaSectionProps) {
 
   const saveCustomEndpoint = async (event: FormEvent) => {
     event.preventDefault();
+    if (props.isActive === false || customEndpointBusy || busy.settings) return;
     setCustomEndpointBusy(true);
     setCustomEndpointError('');
+    setCustomApiKey('');
     try {
       const endpoints = await invoke<CustomQuotaEndpointView[]>('upsert_custom_quota_endpoint', {
         input: {
@@ -1397,6 +1405,7 @@ export function QuotaSection(props: QuotaSectionProps) {
                 className="settings-input"
                 type="password"
                 value={customApiKey}
+                disabled={customEndpointSaveBusy}
                 onChange={(event) => setCustomApiKey(event.target.value)}
                 placeholder={customEditingId ? t('qs.custom.keyKeepPlaceholder') : t('qs.custom.keyPlaceholder')}
                 autoComplete="new-password"
