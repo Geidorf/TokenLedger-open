@@ -1326,7 +1326,7 @@ test('CI keeps Android screenshot goldens on the macOS source host', () => {
   const androidScreenshot = workflow.match(/\n  android-screenshot:\n([\s\S]*?)(?=\n  [a-z0-9-]+:\n)/)?.[1] ?? '';
   assert.match(androidTest, /runs-on: ubuntu-latest/);
   assert.doesNotMatch(androidTest, /validateDebugScreenshotTest/);
-  assert.match(androidScreenshot, /runs-on: macos-14/);
+  assert.match(androidScreenshot, /runs-on: macos-15/);
   assert.match(androidScreenshot, /validateDebugScreenshotTest/);
 });
 
