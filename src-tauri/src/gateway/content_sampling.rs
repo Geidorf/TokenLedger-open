@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -19,6 +19,7 @@ const HEADER_BYTES: usize = 28;
 const MAX_SAMPLES: usize = 200;
 const MAX_DISK_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_PLAINTEXT: usize = 256 * 1024;
+const MAX_SAMPLE_BYTES: usize = MAX_PLAINTEXT + HEADER_BYTES + 16;
 pub(super) const CONTENT_BUDGET: usize = (MAX_PLAINTEXT - 2048) / 2;
 const RETENTION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const STORE_ERROR: &str = "内容采样存储不可用，已停止采样。";
@@ -27,6 +28,8 @@ const KEY_UNAVAILABLE: &str =
     "暂时无法读取系统钥匙串；已暂停内容采样和样本读取，未因此清理样本。请恢复钥匙串访问后重试。";
 const KEY_CREATE_ERROR: &str = "未能创建或验证内容采样密钥，未开启采样。";
 const READ_ERROR: &str = "此内容样本不可用或已损坏。";
+const READ_RETRY: &str = "暂时无法读取此内容样本，请重试。";
+const CLEANUP_ERROR: &str = "内容样本清理尚未完成，请重试删除。";
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -126,8 +129,24 @@ impl Drop for PendingSample {
 struct SampleFile {
     id: String,
     path: PathBuf,
-    created_at: i64,
+    created_at: Option<i64>,
     bytes: u64,
+}
+
+enum SampleReadError {
+    Missing,
+    Unsafe,
+    Invalid,
+    Unavailable,
+}
+
+impl From<io::Error> for SampleReadError {
+    fn from(error: io::Error) -> Self {
+        match error.kind() {
+            io::ErrorKind::NotFound => Self::Missing,
+            _ => Self::Unavailable,
+        }
+    }
 }
 
 pub(super) struct ContentSampling {
@@ -177,12 +196,23 @@ fn is_link(metadata: &fs::Metadata) -> bool {
     }
 }
 
-fn regular_file(path: &Path, maximum: u64) -> Result<fs::Metadata, String> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| READ_ERROR.to_string())?;
-    if !metadata.is_file() || is_link(&metadata) || metadata.len() > maximum {
-        return Err(READ_ERROR.to_string());
+fn regular_file(path: &Path, maximum: u64) -> Result<fs::Metadata, SampleReadError> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_file() || is_link(&metadata) {
+        return Err(SampleReadError::Unsafe);
+    }
+    if metadata.len() > maximum {
+        return Err(SampleReadError::Invalid);
     }
     Ok(metadata)
+}
+
+fn remove_sample(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(CLEANUP_ERROR.to_string()),
+    }
 }
 
 fn truncate(text: &mut String, maximum: usize) {
@@ -200,6 +230,7 @@ impl ContentSampling {
             (Configuration::default(), None)
         } else {
             let loaded = regular_file(&state_file, 4096)
+                .map_err(|_| STORE_ERROR.to_string())
                 .and_then(|_| fs::read(&state_file).map_err(|_| STORE_ERROR.to_string()))
                 .and_then(|bytes| {
                     serde_json::from_slice::<Configuration>(&bytes)
@@ -303,7 +334,11 @@ impl ContentSampling {
     }
 
     fn files(&self) -> Result<Vec<SampleFile>, String> {
-        if !self.directory.exists() {
+        if !self
+            .directory
+            .try_exists()
+            .map_err(|_| READ_RETRY.to_string())?
+        {
             return Ok(Vec::new());
         }
         self.ensure_directory()?;
@@ -312,37 +347,56 @@ impl ContentSampling {
             let entry = entry.map_err(|_| STORE_ERROR.to_string())?;
             let filename = entry.file_name().to_string_lossy().into_owned();
             if temporary_sample_id(&filename).is_some() {
-                fs::remove_file(entry.path()).map_err(|_| STORE_ERROR.to_string())?;
+                remove_sample(&entry.path())?;
                 continue;
             }
             let Some(id) = filename.strip_suffix(".bin").filter(|id| safe_id(id)) else {
                 continue;
             };
             let path = entry.path();
-            let metadata = regular_file(&path, (MAX_PLAINTEXT + HEADER_BYTES + 16) as u64)?;
-            let mut header = [0u8; HEADER_BYTES];
-            let valid = fs::File::open(&path)
-                .and_then(|mut file| file.read_exact(&mut header))
-                .is_ok()
-                && &header[..8] == MAGIC;
-            if !valid {
-                fs::remove_file(path).map_err(|_| STORE_ERROR.to_string())?;
-                continue;
-            }
-            let created_at = i64::from_be_bytes(header[8..16].try_into().unwrap_or_default());
+            let mut bytes = MAX_SAMPLE_BYTES as u64;
+            let header = regular_file(&path, MAX_SAMPLE_BYTES as u64).and_then(|metadata| {
+                bytes = metadata.len();
+                if bytes < HEADER_BYTES as u64 {
+                    return Err(SampleReadError::Invalid);
+                }
+                let mut header = [0u8; HEADER_BYTES];
+                fs::File::open(&path)?.read_exact(&mut header)?;
+                if &header[..8] != MAGIC {
+                    return Err(SampleReadError::Invalid);
+                }
+                Ok(i64::from_be_bytes(
+                    header[8..16].try_into().unwrap_or_default(),
+                ))
+            });
+            let created_at = match header {
+                Ok(created_at) => Some(created_at),
+                Err(SampleReadError::Unavailable) => None,
+                Err(SampleReadError::Missing) => continue,
+                Err(SampleReadError::Invalid) => {
+                    remove_sample(&path)?;
+                    continue;
+                }
+                Err(SampleReadError::Unsafe) => return Err(STORE_ERROR.to_string()),
+            };
             files.push(SampleFile {
                 id: id.to_string(),
                 path,
                 created_at,
-                bytes: metadata.len(),
+                bytes,
             });
         }
-        files.sort_by_key(|file| (file.created_at, file.id.clone()));
+        // Charge unreadable files against the limits while retaining them until their age is known.
+        files.sort_by_key(|file| (file.created_at.is_none(), file.created_at, file.id.clone()));
         Ok(files)
     }
 
     fn clear_files(&self, ids: Option<&[String]>) -> Result<(), String> {
-        if !self.directory.exists() {
+        if !self
+            .directory
+            .try_exists()
+            .map_err(|_| CLEANUP_ERROR.to_string())?
+        {
             return Ok(());
         }
         self.ensure_directory()?;
@@ -357,7 +411,7 @@ impl ContentSampling {
                 continue;
             };
             if ids.is_none_or(|ids| ids.iter().any(|wanted| wanted == id)) {
-                fs::remove_file(entry.path()).map_err(|_| STORE_ERROR.to_string())?;
+                remove_sample(&entry.path())?;
             }
         }
         Ok(())
@@ -464,12 +518,13 @@ impl ContentSampling {
         let mut retained = Vec::new();
         let mut total = 0u64;
         for file in files.into_iter().rev() {
-            if file.created_at < now - RETENTION_SECONDS
-                || file.created_at > now + 60
-                || retained.len() >= MAX_SAMPLES
-                || total + file.bytes > MAX_DISK_BYTES
-            {
-                fs::remove_file(file.path).map_err(|_| STORE_ERROR.to_string())?;
+            if file.created_at.is_some_and(|created_at| {
+                created_at < now - RETENTION_SECONDS
+                    || created_at > now + 60
+                    || retained.len() >= MAX_SAMPLES
+                    || total + file.bytes > MAX_DISK_BYTES
+            }) {
+                remove_sample(&file.path)?;
             } else {
                 total += file.bytes;
                 retained.push(file);
@@ -508,11 +563,11 @@ impl ContentSampling {
         let mut inner = self.lock();
         let mut files = match self.maintain(&mut inner, Utc::now().timestamp()) {
             Ok(files) => files,
-            Err(_) => {
+            Err(error) => {
                 inner.configuration = Configuration::default();
                 inner.generation = inner.generation.wrapping_add(1);
-                inner.error = Some(STORE_ERROR.to_string());
                 let _ = self.persist(&mut inner);
+                inner.error = Some(error);
                 Vec::new()
             }
         };
@@ -693,7 +748,7 @@ impl ContentSampling {
         }
         let now = Utc::now().timestamp();
         if let Err(error) = self.maintain(&mut inner, now) {
-            self.stop_for_store_error(&mut inner);
+            self.stop_for_store_error(&mut inner, &error);
             return Err(error);
         }
         if ticket.generation != inner.generation {
@@ -703,18 +758,18 @@ impl ContentSampling {
         let result = self
             .write_sample(&key, ticket, response, status, incomplete)
             .and_then(|()| self.maintain(&mut inner, now).map(|_| ()));
-        if result.is_err() {
-            self.stop_for_store_error(&mut inner);
+        if let Err(error) = &result {
+            self.stop_for_store_error(&mut inner, error);
         }
         result
     }
 
-    fn stop_for_store_error(&self, inner: &mut Inner) {
+    fn stop_for_store_error(&self, inner: &mut Inner, error: &str) {
         self.ready.store(false, Ordering::SeqCst);
         inner.configuration = Configuration::default();
         inner.generation = inner.generation.wrapping_add(1);
         let _ = self.persist(inner);
-        inner.error = Some(STORE_ERROR.to_string());
+        inner.error = Some(error.to_string());
     }
 
     fn write_sample(
@@ -787,44 +842,53 @@ impl ContentSampling {
             .iter()
             .find(|file| file.id == id)
             .ok_or_else(|| READ_ERROR.to_string())?;
+        let created_at = file.created_at.ok_or_else(|| READ_RETRY.to_string())?;
         let key = self.key(false, &mut inner)?;
         let result = (|| {
-            regular_file(&file.path, (MAX_PLAINTEXT + HEADER_BYTES + 16) as u64)?;
+            let metadata = regular_file(&file.path, MAX_SAMPLE_BYTES as u64)?;
             let mut bytes = Vec::new();
-            fs::File::open(&file.path)
-                .and_then(|file| {
-                    file.take((MAX_PLAINTEXT + HEADER_BYTES + 17) as u64)
-                        .read_to_end(&mut bytes)
-                })
-                .map_err(|_| READ_ERROR.to_string())?;
-            if bytes.len() > MAX_PLAINTEXT + HEADER_BYTES + 16 {
-                return Err(READ_ERROR.to_string());
+            fs::File::open(&file.path)?
+                .take((MAX_SAMPLE_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)?;
+            if bytes.len() as u64 != metadata.len() {
+                return Err(SampleReadError::Unavailable);
             }
-            if bytes.len() < HEADER_BYTES + CHACHA20_POLY1305.tag_len() {
-                return Err(READ_ERROR.to_string());
+            if bytes.len() < HEADER_BYTES + CHACHA20_POLY1305.tag_len() || &bytes[..8] != MAGIC {
+                return Err(SampleReadError::Invalid);
             }
             let nonce: [u8; 12] = bytes[16..HEADER_BYTES]
                 .try_into()
-                .map_err(|_| READ_ERROR.to_string())?;
-            let aad = format!("v1\n{id}\n{}", file.created_at);
+                .map_err(|_| SampleReadError::Invalid)?;
+            let aad = format!("v1\n{id}\n{created_at}");
             let plaintext = key
                 .open_in_place(
                     Nonce::assume_unique_for_key(nonce),
                     Aad::from(aad),
                     &mut bytes[HEADER_BYTES..],
                 )
-                .map_err(|_| READ_ERROR.to_string())?;
+                .map_err(|_| SampleReadError::Invalid)?;
             let sample: ContentSample =
-                serde_json::from_slice(plaintext).map_err(|_| READ_ERROR.to_string())?;
-            if sample.id != id || Some(&sample.created_at) != timestamp(file.created_at).as_ref() {
-                return Err(READ_ERROR.to_string());
+                serde_json::from_slice(plaintext).map_err(|_| SampleReadError::Invalid)?;
+            if sample.id != id || Some(&sample.created_at) != timestamp(created_at).as_ref() {
+                return Err(SampleReadError::Invalid);
             }
             Ok(sample)
         })();
-        if result.is_err() {
-            let _ = fs::remove_file(&file.path);
+        match result {
+            Ok(sample) => Ok(sample),
+            Err(SampleReadError::Unavailable) => Err(READ_RETRY.to_string()),
+            Err(SampleReadError::Missing | SampleReadError::Unsafe) => Err(READ_ERROR.to_string()),
+            Err(SampleReadError::Invalid) => {
+                if let Err(error) = remove_sample(&file.path) {
+                    inner.error = Some(error.clone());
+                    return Err(error);
+                }
+                if inner.error.as_deref() == Some(CLEANUP_ERROR) {
+                    inner.error = None;
+                }
+                Err(READ_ERROR.to_string())
+            }
         }
-        result
     }
 
     pub(super) fn eligible(&self, agent: Option<&str>, group: Option<&str>) -> bool {

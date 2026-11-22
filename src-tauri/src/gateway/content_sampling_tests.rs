@@ -563,6 +563,79 @@ fn ciphertext_and_sample_exchange_fail_without_returning_plaintext() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[cfg(windows)]
+#[test]
+fn temporarily_unreadable_sample_is_retained_and_can_be_retried() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let (root, sampling, _) = memory_sampling("temporarily_unreadable");
+    sampling.configure(next(3, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "first", "response", 200);
+    begin_and_finish(&sampling, &id(1), "second", "response", 200);
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let ciphertext = fs::read(&path).unwrap();
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&path)
+        .unwrap();
+
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(READ_RETRY));
+    assert_eq!(sampling.status().remaining, Some(1));
+    assert_eq!(sampling.status().stored_count, 2);
+    assert_eq!(sampling.read(&id(1)).unwrap().request, "second");
+
+    drop(lock);
+    assert_eq!(fs::read(&path).unwrap(), ciphertext);
+    assert_eq!(sampling.read(&id(0)).unwrap().request, "first");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn invalid_sample_header_removes_only_that_sample() {
+    let (root, sampling, _) = memory_sampling("invalid_sample_header");
+    sampling.configure(next(2, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "first", "response", 200);
+    begin_and_finish(&sampling, &id(1), "second", "response", 200);
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let mut ciphertext = fs::read(&path).unwrap();
+    ciphertext[0] ^= 1;
+    fs::write(&path, ciphertext).unwrap();
+
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(READ_ERROR));
+    assert!(!path.exists());
+    assert_eq!(sampling.read(&id(1)).unwrap().request, "second");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn invalid_sample_cleanup_reports_a_deletion_failure() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_SHARE_READ: u32 = 1;
+    let (root, sampling, _) = memory_sampling("invalid_sample_cleanup");
+    sampling.configure(next(1, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    let path = root.join(SAMPLE_DIRECTORY).join(format!("{}.bin", id(0)));
+    let mut ciphertext = fs::read(&path).unwrap();
+    *ciphertext.last_mut().unwrap() ^= 1;
+    fs::write(&path, &ciphertext).unwrap();
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(&path)
+        .unwrap();
+
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(CLEANUP_ERROR));
+    assert_eq!(fs::read(&path).unwrap(), ciphertext);
+
+    drop(lock);
+    assert_eq!(sampling.read(&id(0)).err().as_deref(), Some(READ_ERROR));
+    assert!(!path.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn oversized_content_is_bounded_and_marked_truncated() {
     let (root, sampling, _) = memory_sampling("oversized");
