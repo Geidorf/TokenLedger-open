@@ -346,7 +346,7 @@ pub fn salvage(damaged: &Path, target: &Path) -> Result<SalvageReport, String> {
     for path in [target.to_path_buf(), wal_path(target), shm_path(target)] {
         let _ = fs::remove_file(path);
     }
-    db::init_fresh_db(&target.to_path_buf()).map_err(|error| error.to_string())?;
+    db::init_fresh_db(target).map_err(|error| error.to_string())?;
     let fresh = db::get_connection(target).map_err(|error| error.to_string())?;
     // Migrations run against the empty database queue work of their own,
     // such as a cloud purge for every tool: carried into the rebuilt ledger,

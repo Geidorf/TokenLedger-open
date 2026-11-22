@@ -497,6 +497,8 @@ start_tokenledger.bat --show
 | macOS | `~/Library/Application Support/com.jeidorf.tokenledger` |
 | Linux | `$XDG_DATA_HOME/com.jeidorf.tokenledger`（缺省 `~/.local/share`） |
 
+自动迁移只适用于 macOS 上绝对 `HOME` 下的历史固定位置 `Desktop/tokenboard/tokenboard.db`。请先完全退出旧应用，让它清理 SQLite 日志，再打开新应用。若旧库仍有回滚日志或 WAL，本次会跳过，并在下次启动时重试。
+
 主要文件：
 
 - `tokenboard.db`：本地 SQLite 数据库

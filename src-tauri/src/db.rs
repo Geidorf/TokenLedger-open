@@ -187,24 +187,24 @@ pub fn get_connection(db_path: &Path) -> Result<Connection> {
 }
 
 /// Initialize the database, create tables, and perform migrations if necessary.
-pub fn init_db(db_path: &PathBuf) -> Result<()> {
+pub fn init_db(db_path: &Path) -> Result<()> {
     // Unit tests must never inspect developer-machine legacy paths. Production
     // builds retain the one-time migration behaviour.
     init_db_with_legacy_migration(db_path, !cfg!(test))
 }
 
 #[cfg(test)]
-pub(crate) fn init_test_db(db_path: &PathBuf) -> Result<()> {
+pub(crate) fn init_test_db(db_path: &Path) -> Result<()> {
     init_db_with_legacy_migration(db_path, false)
 }
 
 /// A new database with the current schema and no legacy import, for the
 /// repair path that copies a damaged database's rows into it.
-pub(crate) fn init_fresh_db(db_path: &PathBuf) -> Result<()> {
+pub(crate) fn init_fresh_db(db_path: &Path) -> Result<()> {
     init_db_with_legacy_migration(db_path, false)
 }
 
-fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Result<()> {
+fn init_db_with_legacy_migration(db_path: &Path, migrate_legacy: bool) -> Result<()> {
     let conn = get_connection(db_path)?;
 
     let journal_mode: String = conn.query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
@@ -298,10 +298,9 @@ fn init_db_with_legacy_migration(db_path: &PathBuf, migrate_legacy: bool) -> Res
     init_discovered_models(&conn)?;
 
     // Idempotently backfill legacy data even when the new DB already has rows.
-    // Synthetic tests opt out so they never inspect real legacy paths under
-    // the developer's cwd or HOME.
-    if migrate_legacy {
-        migrate_legacy_db(db_path).ok();
+    // 测试默认跳过迁移，避免读取开发机上真实的旧账本。
+    if migrate_legacy && migrate_legacy_db(db_path).is_err() {
+        log::warn!("旧账本迁移失败，继续启动");
     }
 
     run_schema_upgrades(&conn)?;
@@ -1371,76 +1370,133 @@ pub fn init_local_cache(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn migrate_legacy_db(new_db_path: &PathBuf) -> Result<()> {
-    let current_dir = std::env::current_dir().unwrap_or_default();
+fn legacy_db_path(macos_home: Option<&Path>) -> Option<PathBuf> {
+    macos_home
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join("Desktop/tokenboard/tokenboard.db"))
+}
+
+fn migrate_legacy_db(new_db_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    // 只有 macOS 的历史固定位置支持自动迁移。
     #[cfg(target_os = "macos")]
-    let old_paths = {
-        let mut paths = vec![current_dir.join("tokenboard.db")];
-        if let Some(home) = std::env::var_os("HOME") {
-            paths.push(PathBuf::from(home).join("Desktop/tokenboard/tokenboard.db"));
-        }
-        paths
-    };
+    let macos_home = std::env::var_os("HOME").map(PathBuf::from);
     #[cfg(not(target_os = "macos"))]
-    let old_paths = vec![current_dir.join("tokenboard.db")];
+    let macos_home: Option<PathBuf> = None;
+
+    migrate_legacy_db_for_home(new_db_path, macos_home.as_deref())
+}
+
+fn migrate_legacy_db_for_home(
+    new_db_path: &Path,
+    macos_home: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(old_db_path) = legacy_db_path(macos_home) {
+        migrate_legacy_db_from(new_db_path, &old_db_path)?;
+    }
+    Ok(())
+}
+
+fn migrate_legacy_db_from(
+    new_db_path: &Path,
+    old_db_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source_metadata = match fs::symlink_metadata(old_db_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            log::debug!("未找到旧账本，跳过迁移");
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if !source_metadata.is_file() {
+        log::warn!("已跳过旧账本迁移：来源不是普通文件");
+        return Ok(());
+    }
+    let old_db_path = fs::canonicalize(old_db_path)?;
+    let target_path = fs::canonicalize(new_db_path)?;
+    if old_db_path == target_path {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let target_metadata = fs::metadata(&target_path)?;
+        if source_metadata.dev() == target_metadata.dev()
+            && source_metadata.ino() == target_metadata.ino()
+        {
+            return Ok(());
+        }
+    }
+
+    // Immutable SQLite reads do not lock, recover journals, or write sidecars.
+    // Retry after the old application has closed and checkpointed its ledger.
+    for suffix in ["-journal", "-wal"] {
+        let mut sidecar = old_db_path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        match fs::symlink_metadata(sidecar) {
+            Ok(_) => return Err("旧账本有未清理的 SQLite 日志".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let source_url =
+        reqwest::Url::from_file_path(&old_db_path).map_err(|()| "旧账本路径无法编码")?;
+    let source_uri = if source_url.has_host() {
+        // SQLite expects a UNC path in the URI path, with an empty authority.
+        format!("file://{}?mode=ro&immutable=1", &source_url.as_str()[5..])
+    } else {
+        format!("{source_url}?mode=ro&immutable=1")
+    };
 
     let machine_id = crate::device_identity::for_db_or_unknown(new_db_path);
+    let mut new_conn = Connection::open(new_db_path)?;
+    new_conn.execute("ATTACH DATABASE ? AS old_db", [source_uri])?;
+    let transaction = new_conn.transaction()?;
 
-    for old_p in old_paths {
-        if !old_p.exists() || old_p == *new_db_path {
-            continue;
-        }
-
-        let new_conn = Connection::open(new_db_path)?;
-        new_conn.execute(
-            "ATTACH DATABASE ? AS old_db",
-            [old_p.to_string_lossy().to_string()],
-        )?;
-
-        let table_exists: Result<i64> = new_conn.query_row(
+    let table_exists = transaction
+        .query_row(
             "SELECT 1 FROM old_db.sqlite_master WHERE type='table' AND name='token_logs'",
             [],
-            |r| r.get(0),
-        );
-        if table_exists.is_err() {
-            let _ = new_conn.execute("DETACH DATABASE old_db", []);
-            continue;
-        }
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    if table_exists.is_none() {
+        return Ok(());
+    }
 
-        let mut check_stmt = new_conn.prepare("PRAGMA old_db.table_info(token_logs)")?;
-        let mut check_rows = check_stmt.query([])?;
-        let mut old_has_cost = false;
-        let mut old_has_machine_id = false;
-        while let Some(row) = check_rows.next()? {
-            let name: String = row.get(1)?;
-            match name.as_str() {
-                "cost_usd" => old_has_cost = true,
-                "machine_id" => old_has_machine_id = true,
-                _ => {}
-            }
+    let mut check_stmt = transaction.prepare("PRAGMA old_db.table_info(token_logs)")?;
+    let mut check_rows = check_stmt.query([])?;
+    let mut old_has_cost = false;
+    let mut old_has_machine_id = false;
+    while let Some(row) = check_rows.next()? {
+        let name: String = row.get(1)?;
+        match name.as_str() {
+            "cost_usd" => old_has_cost = true,
+            "machine_id" => old_has_machine_id = true,
+            _ => {}
         }
-        drop(check_rows);
-        drop(check_stmt);
+    }
+    drop(check_rows);
+    drop(check_stmt);
 
-        let cost_expr = if old_has_cost { "cost_usd" } else { "NULL" };
-        let machine_expr = if old_has_machine_id {
-            "COALESCE(NULLIF(machine_id, ''), ?1)"
-        } else {
-            "?1"
-        };
-        // Claude and Codex legacy rows predate their corrected dedup/cache
-        // normalization. Their JSONL sources of truth are rescanned instead.
-        let insert_sql = format!(
-            "INSERT OR IGNORE INTO token_logs
+    let cost_expr = if old_has_cost { "cost_usd" } else { "NULL" };
+    let machine_expr = if old_has_machine_id {
+        "COALESCE(NULLIF(machine_id, ''), ?1)"
+    } else {
+        "?1"
+    };
+    // Claude and Codex legacy rows predate their corrected dedup/cache
+    // normalization. Their JSONL sources of truth are rescanned instead.
+    let insert_sql = format!(
+        "INSERT OR IGNORE INTO token_logs
              (tool, model, input_tokens, output_tokens, cached_tokens, timestamp, session_id, unique_key, cost_usd, machine_id, sync_status)
              SELECT tool, model, input_tokens, output_tokens, cached_tokens, timestamp, session_id, unique_key, {cost_expr}, {machine_expr}, 0
              FROM old_db.token_logs
              WHERE tool NOT IN ('claude', 'codex')"
-        );
+    );
 
-        new_conn.execute(&insert_sql, params![machine_id])?;
-        new_conn.execute("DETACH DATABASE old_db", [])?;
-    }
+    transaction.execute(&insert_sql, params![machine_id])?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -1453,6 +1509,303 @@ mod schema_upgrade_tests {
     const LATEST_SCHEMA_VERSION: i64 = ANTIGRAVITY_PROVENANCE_SCHEMA_VERSION;
 
     static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn legacy_migration_fixture() -> (PathBuf, PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "tokenledger_old_ledger_#%_{}_{}",
+            std::process::id(),
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let old_db_path = root.join("Desktop/tokenboard/tokenboard.db");
+        let new_db_path = root.join("ledger.db");
+        fs::create_dir_all(old_db_path.parent().unwrap()).unwrap();
+        init_test_db(&new_db_path).unwrap();
+
+        (root, old_db_path, new_db_path)
+    }
+
+    fn legacy_migration_source(path: &Path) -> Connection {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE token_logs (
+                    tool TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER,
+                    cached_tokens INTEGER, timestamp TEXT, session_id TEXT, unique_key TEXT
+                );",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert_legacy_fixture_row(conn: &Connection, key: &str) {
+        conn.execute(
+            "INSERT INTO token_logs VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                "gemini",
+                "fixture-model",
+                120,
+                45,
+                30,
+                "2026-10-01 12:34:56",
+                "fixture-session",
+                key
+            ],
+        )
+        .unwrap();
+    }
+
+    fn legacy_migration_source_files(path: &Path) -> [Option<Vec<u8>>; 4] {
+        ["", "-journal", "-wal", "-shm"].map(|suffix| {
+            let mut file = path.as_os_str().to_os_string();
+            file.push(suffix);
+            match fs::read(file) {
+                Ok(bytes) => Some(bytes),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => panic!("could not read legacy fixture: {error}"),
+            }
+        })
+    }
+
+    #[test]
+    fn legacy_migration_preserves_fields_and_deduplicates() {
+        let (root, old_db_path, new_db_path) = legacy_migration_fixture();
+        migrate_legacy_db_for_home(&new_db_path, Some(&root)).unwrap();
+        assert_eq!(
+            legacy_migration_source_files(&old_db_path),
+            [None, None, None, None]
+        );
+
+        let old_conn = legacy_migration_source(&old_db_path);
+        migrate_legacy_db_for_home(&new_db_path, Some(&root)).unwrap();
+        let conn = get_connection(&new_db_path).unwrap();
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+        insert_legacy_fixture_row(&old_conn, "fixture-entry");
+        drop(old_conn);
+        let before = legacy_migration_source_files(&old_db_path);
+
+        for _ in 0..2 {
+            migrate_legacy_db_for_home(&new_db_path, Some(&root)).unwrap();
+            assert_eq!(table_rows(&conn, "token_logs"), 1);
+            assert_eq!(legacy_migration_source_files(&old_db_path), before);
+            conn.query_row(
+                "SELECT tool, model, input_tokens, output_tokens, cached_tokens, timestamp,
+                        session_id, unique_key, cost_usd, machine_id, sync_status FROM token_logs",
+                [],
+                |row| {
+                    assert_eq!(row.get::<_, String>(0)?, "gemini");
+                    assert_eq!(row.get::<_, String>(1)?, "fixture-model");
+                    assert_eq!(row.get::<_, i64>(2)?, 120);
+                    assert_eq!(row.get::<_, i64>(3)?, 45);
+                    assert_eq!(row.get::<_, i64>(4)?, 30);
+                    assert_eq!(row.get::<_, String>(5)?, "2026-10-01 12:34:56");
+                    assert_eq!(row.get::<_, String>(6)?, "fixture-session");
+                    assert_eq!(row.get::<_, String>(7)?, "fixture-entry");
+                    assert_eq!(row.get::<_, Option<f64>>(8)?, None);
+                    assert_eq!(
+                        row.get::<_, String>(9)?,
+                        crate::device_identity::for_db(&new_db_path).unwrap()
+                    );
+                    assert_eq!(row.get::<_, i64>(10)?, 0);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        }
+        drop(conn);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn run_legacy_migration_test_child(test: &str, root: &Path, home: Option<&Path>) {
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", test])
+            .current_dir(root)
+            .env("TOKENLEDGER_LEGACY_MIGRATION_TEST_CHILD", "1");
+        if let Some(home) = home {
+            command.env("HOME", home);
+        } else {
+            command.env_remove("HOME");
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout).contains("running 1 test"),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn legacy_migration_selects_sources_at_the_production_entry_point() {
+        if std::env::var_os("TOKENLEDGER_LEGACY_MIGRATION_TEST_CHILD").is_some() {
+            migrate_legacy_db(Path::new("../ledger.db")).unwrap();
+            return;
+        }
+
+        let test = "db::schema_upgrade_tests::legacy_migration_selects_sources_at_the_production_entry_point";
+        let (root, source, target) = legacy_migration_fixture();
+        let cwd = root.join("work");
+        insert_legacy_fixture_row(&legacy_migration_source(&source), "fixed-source");
+        for (path, key) in [
+            (cwd.join("tokenboard.db"), "working-dir"),
+            (root.join("other/tokenboard.db"), "other-dir"),
+            (
+                cwd.join("relative-home/Desktop/tokenboard/tokenboard.db"),
+                "relative-home",
+            ),
+            (cwd.join("Desktop/tokenboard/tokenboard.db"), "empty-home"),
+        ] {
+            insert_legacy_fixture_row(&legacy_migration_source(&path), key);
+        }
+
+        let conn = get_connection(&target).unwrap();
+        for home in [Some(Path::new("relative-home")), Some(Path::new("")), None] {
+            run_legacy_migration_test_child(test, &cwd, home);
+            assert_eq!(table_rows(&conn, "token_logs"), 0, "HOME={home:?}");
+        }
+
+        run_legacy_migration_test_child(test, &cwd, Some(&root));
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(table_rows(&conn, "token_logs"), 1);
+            let key: String = conn
+                .query_row("SELECT unique_key FROM token_logs", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(key, "fixed-source");
+        }
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+
+        drop(conn);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn legacy_migration_skips_file_symlinks_but_allows_linked_directories() {
+        use std::os::unix::fs::symlink;
+
+        let (root, source, target) = legacy_migration_fixture();
+        let moved = root.join("moved");
+        fs::rename(source.parent().unwrap(), &moved).unwrap();
+        symlink(&moved, source.parent().unwrap()).unwrap();
+
+        let elsewhere = root.join("elsewhere.db");
+        insert_legacy_fixture_row(&legacy_migration_source(&elsewhere), "fixture-entry");
+        symlink(&elsewhere, &source).unwrap();
+        let conn = get_connection(&target).unwrap();
+        migrate_legacy_db_for_home(&target, Some(&root)).unwrap();
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+
+        fs::remove_file(&source).unwrap();
+        fs::rename(&elsewhere, &source).unwrap();
+        migrate_legacy_db_for_home(&target, Some(&root)).unwrap();
+        assert_eq!(table_rows(&conn, "token_logs"), 1);
+        drop(conn);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_migration_skips_the_same_canonical_file() {
+        let (root, source, _) = legacy_migration_fixture();
+        init_test_db(&source).unwrap();
+        // If the alias reached import, this sidecar would reject it.
+        fs::write(source.with_file_name("tokenboard.db-journal"), b"fixture").unwrap();
+        let alias = source.parent().unwrap().join("../tokenboard/tokenboard.db");
+        let before = legacy_migration_source_files(&source);
+        migrate_legacy_db_for_home(&alias, Some(&root)).unwrap();
+        assert_eq!(legacy_migration_source_files(&source), before);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_migration_rejects_a_hot_rollback_journal_without_touching_files() {
+        if std::env::var_os("TOKENLEDGER_LEGACY_MIGRATION_TEST_CHILD").is_some() {
+            let conn = Connection::open("Desktop/tokenboard/tokenboard.db").unwrap();
+            conn.execute_batch(
+                "PRAGMA cache_size = 1;
+                 BEGIN IMMEDIATE;
+                 UPDATE token_logs SET model = hex(zeroblob(65536));",
+            )
+            .unwrap();
+            // Leave SQLite's on-disk transaction open as if the old app crashed.
+            std::process::exit(0);
+        }
+
+        let (root, source, target) = legacy_migration_fixture();
+        insert_legacy_fixture_row(&legacy_migration_source(&source), "fixture-entry");
+        run_legacy_migration_test_child(
+            "db::schema_upgrade_tests::legacy_migration_rejects_a_hot_rollback_journal_without_touching_files",
+            &root,
+            None,
+        );
+        let before = legacy_migration_source_files(&source);
+        let hot_journal_magic = [0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7];
+        assert!(before[1].as_ref().unwrap().starts_with(&hot_journal_magic));
+        assert!(migrate_legacy_db_for_home(&target, Some(&root)).is_err());
+        assert_eq!(legacy_migration_source_files(&source), before);
+        let conn = get_connection(&target).unwrap();
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+        drop(conn);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_migration_rejects_a_wal_without_touching_files() {
+        let (root, source, target) = legacy_migration_fixture();
+        let old_conn = legacy_migration_source(&source);
+        insert_legacy_fixture_row(&old_conn, "checkpointed-entry");
+        let mode: String = old_conn
+            .query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+        insert_legacy_fixture_row(&old_conn, "wal-entry");
+
+        let before = legacy_migration_source_files(&source);
+        assert!(before[1].is_none());
+        assert!(!before[2].as_ref().unwrap().is_empty());
+        assert!(migrate_legacy_db_for_home(&target, Some(&root)).is_err());
+        assert_eq!(legacy_migration_source_files(&source), before);
+
+        let conn = get_connection(&target).unwrap();
+        assert_eq!(table_rows(&conn, "token_logs"), 0);
+        drop(conn);
+        drop(old_conn);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_migration_rolls_back_an_import_failure() {
+        let (root, source, target) = legacy_migration_fixture();
+        let old_conn = legacy_migration_source(&source);
+        insert_legacy_fixture_row(&old_conn, "new-entry");
+        insert_legacy_fixture_row(&old_conn, "rejected-entry");
+        drop(old_conn);
+        let conn = get_connection(&target).unwrap();
+        conn.execute_batch(
+            "INSERT INTO token_logs
+                 (tool, model, input_tokens, output_tokens, timestamp, session_id, unique_key)
+             VALUES ('gemini', 'existing-model', 80, 20, '2026-10-01', 'existing', 'existing');
+             CREATE TRIGGER reject_legacy_row BEFORE INSERT ON token_logs
+             WHEN NEW.unique_key = 'rejected-entry'
+             BEGIN
+                 SELECT CASE WHEN EXISTS(SELECT 1 FROM token_logs WHERE unique_key = 'new-entry')
+                     THEN RAISE(FAIL, 'injected after insert')
+                     ELSE RAISE(ABORT, 'fixture insertion order changed') END;
+             END;",
+        )
+        .unwrap();
+        let source_before = legacy_migration_source_files(&source);
+        let target_before = ledger_snapshot(&conn);
+
+        let error = migrate_legacy_db_for_home(&target, Some(&root)).unwrap_err();
+        assert!(error.to_string().contains("injected after insert"));
+        assert_eq!(legacy_migration_source_files(&source), source_before);
+        assert_eq!(ledger_snapshot(&conn), target_before);
+        drop(conn);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn v15_preserves_cumulative_baseline_and_rolls_back_failed_schema() {
