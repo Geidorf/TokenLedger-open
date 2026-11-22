@@ -1393,8 +1393,29 @@ fn migrate_legacy_db_from(
     new_db_path: &Path,
     old_db_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !old_db_path.exists() || old_db_path == new_db_path {
+    let source_metadata = match fs::symlink_metadata(old_db_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if !source_metadata.is_file() {
+        log::warn!("已跳过旧账本迁移：来源不是普通文件");
         return Ok(());
+    }
+    let old_db_path = fs::canonicalize(old_db_path)?;
+    let target_path = fs::canonicalize(new_db_path)?;
+    if old_db_path == target_path {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let target_metadata = fs::metadata(&target_path)?;
+        if source_metadata.dev() == target_metadata.dev()
+            && source_metadata.ino() == target_metadata.ino()
+        {
+            return Ok(());
+        }
     }
 
     // Immutable SQLite reads do not lock, recover journals, or write sidecars.
@@ -1409,7 +1430,7 @@ fn migrate_legacy_db_from(
         }
     }
     let source_url =
-        reqwest::Url::from_file_path(old_db_path).map_err(|()| "旧账本路径无法编码")?;
+        reqwest::Url::from_file_path(&old_db_path).map_err(|()| "旧账本路径无法编码")?;
     let source_uri = if source_url.has_host() {
         // SQLite expects a UNC path in the URI path, with an empty authority.
         format!("file://{}?mode=ro&immutable=1", &source_url.as_str()[5..])
