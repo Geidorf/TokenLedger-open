@@ -113,7 +113,7 @@ keystore 必须真实可读，Supabase URL 必须为 HTTPS，publishable key 不
 
 ### 同期趋势显示「同期不可用」
 
-同期双序列来自 `get_usage_comparison_v1`。`year` 与 `all` 按契约没有等长对照窗口，成功响应也可以是 `null`，界面会诚实显示“不适用/不可用”；这不等于上一周期为 0。若 `today/week/month` 也不可用，请部署 `20260714162044_tokenledger_stats_v2_details_comparison.sql` 并等待 PostgREST schema cache 刷新。
+同期双序列来自 `get_usage_comparison_v2`（缺失时回退 `get_usage_comparison_v1`）。`year` 与 `all` 按契约没有等长对照窗口，成功响应也可以是 `null`，界面会诚实显示“不适用/不可用”；这不等于上一周期为 0。若 `today/week/month` 也不可用，请部署 `20260714162044_tokenledger_stats_v2_details_comparison.sql` 并等待 PostgREST schema cache 刷新。
 
 ## 验证
 
