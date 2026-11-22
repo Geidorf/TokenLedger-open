@@ -140,6 +140,13 @@ enum SampleReadError {
     Unavailable,
 }
 
+#[repr(u8)]
+enum SamplePresence {
+    Unknown,
+    Empty,
+    Present,
+}
+
 impl From<io::Error> for SampleReadError {
     fn from(error: io::Error) -> Self {
         match error.kind() {
@@ -158,7 +165,7 @@ pub(super) struct ContentSampling {
     ready: AtomicBool,
     skipped: AtomicBool,
     activity_hint: AtomicU8,
-    has_samples: AtomicBool,
+    sample_presence: AtomicU8,
 }
 
 fn timestamp(seconds: i64) -> Option<String> {
@@ -258,7 +265,7 @@ impl ContentSampling {
             ready: AtomicBool::new(false),
             skipped: AtomicBool::new(false),
             activity_hint: AtomicU8::new(SamplingActivity::Off as u8),
-            has_samples: AtomicBool::new(false),
+            sample_presence: AtomicU8::new(SamplePresence::Unknown as u8),
         }
     }
 
@@ -336,28 +343,45 @@ impl ContentSampling {
     }
 
     fn files(&self) -> Result<Vec<SampleFile>, String> {
+        self.files_with(|| fs::read_dir(&self.directory))
+    }
+
+    fn files_with(
+        &self,
+        read_dir: impl FnOnce() -> io::Result<fs::ReadDir>,
+    ) -> Result<Vec<SampleFile>, String> {
+        let result = self.scan_files(read_dir);
+        self.set_sample_presence(match &result {
+            Ok(files) if files.is_empty() => SamplePresence::Empty,
+            Ok(_) => SamplePresence::Present,
+            Err(_) => SamplePresence::Unknown,
+        });
+        result
+    }
+
+    fn scan_files(
+        &self,
+        read_dir: impl FnOnce() -> io::Result<fs::ReadDir>,
+    ) -> Result<Vec<SampleFile>, String> {
         if !self
             .directory
             .try_exists()
             .map_err(|_| READ_RETRY.to_string())?
         {
-            self.has_samples.store(false, Ordering::SeqCst);
             return Ok(Vec::new());
         }
         self.ensure_directory()?;
         let mut files = Vec::new();
-        for entry in fs::read_dir(&self.directory).map_err(|_| STORE_ERROR.to_string())? {
+        for entry in read_dir().map_err(|_| STORE_ERROR.to_string())? {
             let entry = entry.map_err(|_| STORE_ERROR.to_string())?;
             let filename = entry.file_name().to_string_lossy().into_owned();
             if temporary_sample_id(&filename).is_some() {
-                self.has_samples.store(true, Ordering::SeqCst);
                 remove_sample(&entry.path())?;
                 continue;
             }
             let Some(id) = filename.strip_suffix(".bin").filter(|id| safe_id(id)) else {
                 continue;
             };
-            self.has_samples.store(true, Ordering::SeqCst);
             let path = entry.path();
             let mut bytes = MAX_SAMPLE_BYTES as u64;
             let header = regular_file(&path, MAX_SAMPLE_BYTES as u64).and_then(|metadata| {
@@ -392,17 +416,21 @@ impl ContentSampling {
             });
         }
         files.sort_by_key(|file| (file.created_at, file.id.clone()));
-        self.has_samples.store(!files.is_empty(), Ordering::SeqCst);
         Ok(files)
     }
 
+    fn set_sample_presence(&self, presence: SamplePresence) {
+        self.sample_presence.store(presence as u8, Ordering::SeqCst);
+    }
+
     fn clear_files(&self, ids: Option<&[String]>) -> Result<(), String> {
+        self.set_sample_presence(SamplePresence::Unknown);
         if !self
             .directory
             .try_exists()
             .map_err(|_| CLEANUP_ERROR.to_string())?
         {
-            self.has_samples.store(false, Ordering::SeqCst);
+            self.set_sample_presence(SamplePresence::Empty);
             return Ok(());
         }
         self.ensure_directory()?;
@@ -417,12 +445,11 @@ impl ContentSampling {
                 continue;
             };
             if ids.is_none_or(|ids| ids.iter().any(|wanted| wanted == id)) {
-                self.has_samples.store(true, Ordering::SeqCst);
                 remove_sample(&entry.path())?;
             }
         }
         if ids.is_none() {
-            self.has_samples.store(false, Ordering::SeqCst);
+            self.set_sample_presence(SamplePresence::Empty);
         }
         Ok(())
     }
@@ -545,8 +572,11 @@ impl ContentSampling {
                 retained.push(file);
             }
         }
-        self.has_samples
-            .store(!retained.is_empty(), Ordering::SeqCst);
+        self.set_sample_presence(if retained.is_empty() {
+            SamplePresence::Empty
+        } else {
+            SamplePresence::Present
+        });
         Ok(retained)
     }
 
@@ -785,7 +815,6 @@ impl ContentSampling {
             .write_sample(&files, &key, ticket, response, status, incomplete)
             .and_then(|written| {
                 if let Some(file) = written {
-                    self.has_samples.store(true, Ordering::SeqCst);
                     // Use the same ages for the capacity check and eviction under the sampling lock.
                     files.push(file);
                     self.retain(files, now)?;
@@ -870,10 +899,13 @@ impl ContentSampling {
             if destination.exists() {
                 Err(STORE_ERROR.to_string())
             } else {
+                // The rename can succeed even if the following directory sync fails.
+                self.set_sample_presence(SamplePresence::Unknown);
                 Ok(())
             }
         })
         .map_err(|_| STORE_ERROR.to_string())?;
+        self.set_sample_presence(SamplePresence::Present);
         Ok(Some(SampleFile {
             id: sample.id,
             path: destination,
@@ -934,7 +966,7 @@ impl ContentSampling {
                     return Err(error);
                 }
                 if files.len() == 1 {
-                    self.has_samples.store(false, Ordering::SeqCst);
+                    self.set_sample_presence(SamplePresence::Empty);
                 }
                 if inner.error.as_deref() == Some(CLEANUP_ERROR) {
                     inner.error = None;
@@ -994,7 +1026,8 @@ impl ContentSampling {
 
     pub(super) fn tray_state(&self) -> (SamplingActivity, bool) {
         let activity = self.activity();
-        let can_stop = activity != SamplingActivity::Off || self.has_samples.load(Ordering::SeqCst);
+        let can_stop = activity != SamplingActivity::Off
+            || self.sample_presence.load(Ordering::SeqCst) != SamplePresence::Empty as u8;
         (activity, can_stop)
     }
 

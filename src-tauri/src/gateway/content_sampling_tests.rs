@@ -710,6 +710,27 @@ fn tray_can_clear_retained_samples_after_automatic_stop_and_expiry() {
 }
 
 #[test]
+fn tray_can_clear_when_the_first_sample_listing_is_denied() {
+    let (root, original, secrets) = memory_sampling("tray_unknown_samples");
+    original.configure(next(1, true)).unwrap();
+    begin_and_finish(&original, &id(0), "request", "response", 200);
+    let sampling = ContentSampling::new(&root, secrets.clone());
+
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    let scan = sampling.files_with(|| Err(io::ErrorKind::PermissionDenied.into()));
+    assert_eq!(scan.err().as_deref(), Some(STORE_ERROR));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, true));
+    assert_eq!(sampling.status().sample_ids, vec![id(0)]);
+
+    sampling.stop_from_tray(|error| panic!("stopping sampling failed: {error}"));
+    assert!(sampling.tray_state() == (SamplingActivity::Off, false));
+    let restarted = ContentSampling::new(&root, secrets);
+    assert!(restarted.status().sample_ids.is_empty());
+    assert!(restarted.tray_state() == (SamplingActivity::Off, false));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn tray_reports_cleanup_failure_and_allows_retry() {
     let (root, sampling, _) = memory_sampling("tray_cleanup_failure");
     sampling.configure(next(1, true)).unwrap();
