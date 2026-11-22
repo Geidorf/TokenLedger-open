@@ -1376,7 +1376,7 @@ fn legacy_db_path(macos_home: Option<&Path>) -> Option<PathBuf> {
         .map(|home| home.join("Desktop/tokenboard/tokenboard.db"))
 }
 
-fn migrate_legacy_db(new_db_path: &PathBuf) -> Result<()> {
+fn migrate_legacy_db(new_db_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // 只有 macOS 的历史固定位置支持自动迁移。
     #[cfg(target_os = "macos")]
     let macos_home = std::env::var_os("HOME").map(PathBuf::from);
@@ -1389,29 +1389,51 @@ fn migrate_legacy_db(new_db_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn migrate_legacy_db_from(new_db_path: &Path, old_db_path: &Path) -> Result<()> {
+fn migrate_legacy_db_from(
+    new_db_path: &Path,
+    old_db_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     if !old_db_path.exists() || old_db_path == new_db_path {
         return Ok(());
     }
 
-    let machine_id = crate::device_identity::for_db_or_unknown(new_db_path);
-    let new_conn = Connection::open(new_db_path)?;
-    new_conn.execute(
-        "ATTACH DATABASE ? AS old_db",
-        [old_db_path.to_string_lossy().to_string()],
-    )?;
+    // Immutable SQLite reads do not lock, recover journals, or write sidecars.
+    // Retry after the old application has closed and checkpointed its ledger.
+    for suffix in ["-journal", "-wal"] {
+        let mut sidecar = old_db_path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        match fs::symlink_metadata(sidecar) {
+            Ok(_) => return Err("旧账本有未清理的 SQLite 日志".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let source_url =
+        reqwest::Url::from_file_path(old_db_path).map_err(|()| "旧账本路径无法编码")?;
+    let source_uri = if source_url.has_host() {
+        // SQLite expects a UNC path in the URI path, with an empty authority.
+        format!("file://{}?mode=ro&immutable=1", &source_url.as_str()[5..])
+    } else {
+        format!("{source_url}?mode=ro&immutable=1")
+    };
 
-    let table_exists: Result<i64> = new_conn.query_row(
-        "SELECT 1 FROM old_db.sqlite_master WHERE type='table' AND name='token_logs'",
-        [],
-        |r| r.get(0),
-    );
-    if table_exists.is_err() {
-        let _ = new_conn.execute("DETACH DATABASE old_db", []);
+    let machine_id = crate::device_identity::for_db_or_unknown(new_db_path);
+    let mut new_conn = Connection::open(new_db_path)?;
+    new_conn.execute("ATTACH DATABASE ? AS old_db", [source_uri])?;
+    let transaction = new_conn.transaction()?;
+
+    let table_exists = transaction
+        .query_row(
+            "SELECT 1 FROM old_db.sqlite_master WHERE type='table' AND name='token_logs'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    if table_exists.is_none() {
         return Ok(());
     }
 
-    let mut check_stmt = new_conn.prepare("PRAGMA old_db.table_info(token_logs)")?;
+    let mut check_stmt = transaction.prepare("PRAGMA old_db.table_info(token_logs)")?;
     let mut check_rows = check_stmt.query([])?;
     let mut old_has_cost = false;
     let mut old_has_machine_id = false;
@@ -1442,8 +1464,8 @@ fn migrate_legacy_db_from(new_db_path: &Path, old_db_path: &Path) -> Result<()> 
              WHERE tool NOT IN ('claude', 'codex')"
     );
 
-    new_conn.execute(&insert_sql, params![machine_id])?;
-    new_conn.execute("DETACH DATABASE old_db", [])?;
+    transaction.execute(&insert_sql, params![machine_id])?;
+    transaction.commit()?;
     Ok(())
 }
 
