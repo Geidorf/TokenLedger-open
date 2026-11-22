@@ -865,7 +865,7 @@ fn pending_ticket_keeps_activity_and_stop_until_late_finish_is_discarded() {
 #[test]
 fn failed_sample_write_keeps_tray_cleanup_available() {
     let (root, mut sampling, _) = memory_sampling("failed_sample_write_presence");
-    sampling.sample_writer = Some(|destination, bytes| {
+    Arc::get_mut(&mut sampling).unwrap().sample_writer = Some(|destination, bytes| {
         let name = destination.file_name().unwrap().to_str().unwrap();
         let temporary = destination.with_file_name(format!(".{name}.tokenledger-1234abcdef56.tmp"));
         // Simulate a failure after temporary ciphertext was written and removal failed.
