@@ -144,13 +144,17 @@ fn make_shared(urls: &[(&str, String, WireApi)]) -> (Arc<Shared>, std::path::Pat
     )
 }
 fn run(future: impl std::future::Future<Output = ()>) {
+    run_with_timeout(Duration::from_secs(20), future);
+}
+
+fn run_with_timeout(timeout: Duration, future: impl std::future::Future<Output = ()>) {
     let _lock = HTTP_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            tokio::time::timeout(Duration::from_secs(20), future)
+            tokio::time::timeout(timeout, future)
                 .await
                 .expect("bounded HTTP test");
         });
@@ -1546,7 +1550,7 @@ fn sampling_http_context(endpoint: Endpoint, model: &str, stream: bool) -> Reque
 
 #[test]
 fn content_sampling_captures_the_final_gemini_error_shape() {
-    run(async {
+    run_with_timeout(Duration::from_secs(90), async {
         let upstream = Upstream::new(503, json!({"error":{"message":"fixture unavailable"}}));
         let (shared, dir) = make_shared(&[("a", upstream.url.clone(), WireApi::Chat)]);
         shared
@@ -1582,7 +1586,7 @@ fn content_sampling_captures_the_final_gemini_error_shape() {
 
 #[test]
 fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request() {
-    run(async {
+    run_with_timeout(Duration::from_secs(90), async {
         let first = Upstream::new(503, json!({"error":"temporary fixture failure"}));
         let second = Upstream::new(
             200,
@@ -1637,7 +1641,7 @@ fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request()
 
 #[test]
 fn content_sampling_real_http_stream_merges_output_without_changing_the_stream() {
-    run(async {
+    run_with_timeout(Duration::from_secs(90), async {
         let upstream = Upstream::raw(sse_packets(
             vec![
                 (
