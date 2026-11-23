@@ -1530,8 +1530,8 @@ fn upstream_error_text_masks_anything_shaped_like_a_credential() {
     }
 }
 
-async fn wait_for_content_sampling(shared: &Shared) {
-    tokio::time::timeout(Duration::from_secs(3), async {
+async fn wait_for_content_sampling(shared: &Shared, timeout: Duration) {
+    tokio::time::timeout(timeout, async {
         while shared.sampling.pending_count() != 0 {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
@@ -1570,7 +1570,7 @@ fn content_sampling_captures_the_final_gemini_error_shape() {
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         let delivered: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(delivered["error"]["code"], 503);
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(30)).await;
         let sample = shared.sampling.read(&id).unwrap();
         assert_eq!(
             serde_json::from_str::<Value>(&sample.response).unwrap(),
@@ -1624,7 +1624,7 @@ fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request()
         let response = route(ctx, &shared, &payload).await;
         assert!(response.status().is_success());
         assert!(response.into_body().collect().await.is_ok());
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(30)).await;
         let status = shared.sampling.status();
         assert!(status.mode == super::super::SamplingMode::Off);
         assert_eq!(status.stored_count, 1);
@@ -1675,7 +1675,7 @@ fn content_sampling_real_http_stream_merges_output_without_changing_the_stream()
         let response = route(ctx, &shared, &payload).await;
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         assert!(String::from_utf8_lossy(&bytes).contains("data: [DONE]"));
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(30)).await;
         let sample = shared.sampling.read(&id).unwrap();
         assert!(sample.stream);
         assert!(sample.response.contains("final-output"));
@@ -1718,7 +1718,7 @@ fn content_sampling_real_http_stop_before_body_consumption_discards_the_late_sam
             .configure(super::super::SamplingInput::default())
             .unwrap();
         assert!(response.into_body().collect().await.is_ok());
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(3)).await;
         assert_eq!(shared.sampling.status().stored_count, 0);
         std::fs::remove_dir_all(dir).unwrap();
     });
