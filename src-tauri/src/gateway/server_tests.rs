@@ -1536,6 +1536,14 @@ async fn wait_for_content_sampling(shared: &Shared) {
     .expect("bounded sample persistence");
 }
 
+fn sampling_http_context(endpoint: Endpoint, model: &str, stream: bool) -> RequestCtx {
+    let mut ctx = request_ctx(&HeaderMap::new(), endpoint, model.into(), stream);
+    // These tests verify sampling and forwarding, not deadline enforcement.
+    ctx.sampling_ticket_timeout = Duration::from_secs(5);
+    ctx.upstream_headers_timeout = Duration::from_secs(5);
+    ctx
+}
+
 #[test]
 fn content_sampling_captures_the_final_gemini_error_shape() {
     run(async {
@@ -1550,7 +1558,7 @@ fn content_sampling_captures_the_final_gemini_error_shape() {
                 ..Default::default()
             })
             .unwrap();
-        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Gemini, "a/m".into(), false);
+        let ctx = sampling_http_context(Endpoint::Gemini, "a/m", false);
         let id = ctx.request_id.clone();
         let request = json!({"contents":[{"parts":[{"text":"sample prompt"}]}]});
         let payload = gemini::gemini_to_chat(&request, "a/m", false).unwrap();
@@ -1587,7 +1595,7 @@ fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request()
         let payload =
             json!({"model":"b/m","messages":[{"role":"user","content":"sample fixture prompt"}]});
         let response = route(
-            request_ctx(&HeaderMap::new(), Endpoint::Chat, "b/m".into(), false),
+            sampling_http_context(Endpoint::Chat, "b/m", false),
             &shared,
             &payload,
         )
@@ -1606,7 +1614,7 @@ fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request()
                 ..Default::default()
             })
             .unwrap();
-        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false);
+        let ctx = sampling_http_context(Endpoint::Chat, "group/g", false);
         let id = ctx.request_id.clone();
         let payload = json!({"model":"group/g","messages":[{"role":"user","content":"sample fixture prompt"}]});
         let response = route(ctx, &shared, &payload).await;
@@ -1654,7 +1662,7 @@ fn content_sampling_real_http_stream_merges_output_without_changing_the_stream()
                 ..Default::default()
             })
             .unwrap();
-        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Chat, "a/m".into(), true);
+        let ctx = sampling_http_context(Endpoint::Chat, "a/m", true);
         let id = ctx.request_id.clone();
         let payload = json!({"model":"a/m","stream":true,"messages":[{"role":"user","content":[
             {"type":"text","text":"describe fixture"},
