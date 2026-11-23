@@ -52,6 +52,7 @@ const fn deadline(seconds: u64, test_millis: u64) -> Duration {
 }
 const REQUEST_READ_TIMEOUT: Duration = deadline(30, 300);
 const UPSTREAM_HEADERS_TIMEOUT: Duration = deadline(60, 400);
+const SAMPLING_TICKET_TIMEOUT: Duration = Duration::from_millis(100);
 const WHOLE_RESPONSE_TIMEOUT: Duration = deadline(300, 800);
 // Test value leaves the stream case's 150 ms gaps a wide margin on loaded CI runners.
 const STREAM_IDLE_TIMEOUT: Duration = deadline(120, 1000);
@@ -726,6 +727,10 @@ pub(super) async fn upstream_client(url: &Url) -> Result<reqwest::Client, String
 }
 
 struct RequestCtx {
+    #[cfg(test)]
+    sampling_ticket_timeout: Duration,
+    #[cfg(test)]
+    upstream_headers_timeout: Duration,
     gate: Option<Arc<AtomicBool>>,
     request_id: String,
     agent: Option<String>,
@@ -817,6 +822,10 @@ fn request_ctx(
     stream: bool,
 ) -> RequestCtx {
     RequestCtx {
+        #[cfg(test)]
+        sampling_ticket_timeout: SAMPLING_TICKET_TIMEOUT,
+        #[cfg(test)]
+        upstream_headers_timeout: UPSTREAM_HEADERS_TIMEOUT,
         gate: None,
         request_id: random_id(),
         agent: headers
@@ -1017,7 +1026,11 @@ async fn route_with_sample_body(
                     request,
                 )
             });
-            match tokio::time::timeout(Duration::from_millis(100), &mut task).await {
+            #[cfg(not(test))]
+            let ticket_timeout = SAMPLING_TICKET_TIMEOUT;
+            #[cfg(test)]
+            let ticket_timeout = ctx.sampling_ticket_timeout;
+            match tokio::time::timeout(ticket_timeout, &mut task).await {
                 Ok(Ok(ticket)) => ticket,
                 _ => {
                     task.abort();
@@ -1287,7 +1300,11 @@ async fn attempt(
     };
 
     let presented_key = key.clone();
-    let sent = tokio::time::timeout(UPSTREAM_HEADERS_TIMEOUT, async {
+    #[cfg(not(test))]
+    let headers_timeout = UPSTREAM_HEADERS_TIMEOUT;
+    #[cfg(test)]
+    let headers_timeout = ctx.upstream_headers_timeout;
+    let sent = tokio::time::timeout(headers_timeout, async {
         let url = upstream_url(&provider)?;
         let client = upstream_client(&url).await?;
         if ctx

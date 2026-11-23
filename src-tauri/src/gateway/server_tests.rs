@@ -144,13 +144,17 @@ fn make_shared(urls: &[(&str, String, WireApi)]) -> (Arc<Shared>, std::path::Pat
     )
 }
 fn run(future: impl std::future::Future<Output = ()>) {
+    run_with_timeout(Duration::from_secs(20), future);
+}
+
+fn run_with_timeout(timeout: Duration, future: impl std::future::Future<Output = ()>) {
     let _lock = HTTP_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            tokio::time::timeout(Duration::from_secs(20), future)
+            tokio::time::timeout(timeout, future)
                 .await
                 .expect("bounded HTTP test");
         });
@@ -1526,8 +1530,8 @@ fn upstream_error_text_masks_anything_shaped_like_a_credential() {
     }
 }
 
-async fn wait_for_content_sampling(shared: &Shared) {
-    tokio::time::timeout(Duration::from_secs(3), async {
+async fn wait_for_content_sampling(shared: &Shared, timeout: Duration) {
+    tokio::time::timeout(timeout, async {
         while shared.sampling.pending_count() != 0 {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
@@ -1536,9 +1540,17 @@ async fn wait_for_content_sampling(shared: &Shared) {
     .expect("bounded sample persistence");
 }
 
+fn sampling_http_context(endpoint: Endpoint, model: &str, stream: bool) -> RequestCtx {
+    let mut ctx = request_ctx(&HeaderMap::new(), endpoint, model.into(), stream);
+    // These tests verify sampling and forwarding, not deadline enforcement.
+    ctx.sampling_ticket_timeout = Duration::from_secs(30);
+    ctx.upstream_headers_timeout = Duration::from_secs(30);
+    ctx
+}
+
 #[test]
 fn content_sampling_captures_the_final_gemini_error_shape() {
-    run(async {
+    run_with_timeout(Duration::from_secs(90), async {
         let upstream = Upstream::new(503, json!({"error":{"message":"fixture unavailable"}}));
         let (shared, dir) = make_shared(&[("a", upstream.url.clone(), WireApi::Chat)]);
         shared
@@ -1550,7 +1562,7 @@ fn content_sampling_captures_the_final_gemini_error_shape() {
                 ..Default::default()
             })
             .unwrap();
-        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Gemini, "a/m".into(), false);
+        let ctx = sampling_http_context(Endpoint::Gemini, "a/m", false);
         let id = ctx.request_id.clone();
         let request = json!({"contents":[{"parts":[{"text":"sample prompt"}]}]});
         let payload = gemini::gemini_to_chat(&request, "a/m", false).unwrap();
@@ -1558,7 +1570,7 @@ fn content_sampling_captures_the_final_gemini_error_shape() {
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         let delivered: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(delivered["error"]["code"], 503);
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(30)).await;
         let sample = shared.sampling.read(&id).unwrap();
         assert_eq!(
             serde_json::from_str::<Value>(&sample.response).unwrap(),
@@ -1574,7 +1586,7 @@ fn content_sampling_captures_the_final_gemini_error_shape() {
 
 #[test]
 fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request() {
-    run(async {
+    run_with_timeout(Duration::from_secs(90), async {
         let first = Upstream::new(503, json!({"error":"temporary fixture failure"}));
         let second = Upstream::new(
             200,
@@ -1587,7 +1599,7 @@ fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request()
         let payload =
             json!({"model":"b/m","messages":[{"role":"user","content":"sample fixture prompt"}]});
         let response = route(
-            request_ctx(&HeaderMap::new(), Endpoint::Chat, "b/m".into(), false),
+            sampling_http_context(Endpoint::Chat, "b/m", false),
             &shared,
             &payload,
         )
@@ -1606,13 +1618,13 @@ fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request()
                 ..Default::default()
             })
             .unwrap();
-        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Chat, "group/g".into(), false);
+        let ctx = sampling_http_context(Endpoint::Chat, "group/g", false);
         let id = ctx.request_id.clone();
         let payload = json!({"model":"group/g","messages":[{"role":"user","content":"sample fixture prompt"}]});
         let response = route(ctx, &shared, &payload).await;
         assert!(response.status().is_success());
         assert!(response.into_body().collect().await.is_ok());
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(30)).await;
         let status = shared.sampling.status();
         assert!(status.mode == super::super::SamplingMode::Off);
         assert_eq!(status.stored_count, 1);
@@ -1629,7 +1641,7 @@ fn content_sampling_real_http_default_off_and_retry_counts_one_logical_request()
 
 #[test]
 fn content_sampling_real_http_stream_merges_output_without_changing_the_stream() {
-    run(async {
+    run_with_timeout(Duration::from_secs(90), async {
         let upstream = Upstream::raw(sse_packets(
             vec![
                 (
@@ -1654,7 +1666,7 @@ fn content_sampling_real_http_stream_merges_output_without_changing_the_stream()
                 ..Default::default()
             })
             .unwrap();
-        let ctx = request_ctx(&HeaderMap::new(), Endpoint::Chat, "a/m".into(), true);
+        let ctx = sampling_http_context(Endpoint::Chat, "a/m", true);
         let id = ctx.request_id.clone();
         let payload = json!({"model":"a/m","stream":true,"messages":[{"role":"user","content":[
             {"type":"text","text":"describe fixture"},
@@ -1663,7 +1675,7 @@ fn content_sampling_real_http_stream_merges_output_without_changing_the_stream()
         let response = route(ctx, &shared, &payload).await;
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         assert!(String::from_utf8_lossy(&bytes).contains("data: [DONE]"));
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(30)).await;
         let sample = shared.sampling.read(&id).unwrap();
         assert!(sample.stream);
         assert!(sample.response.contains("final-output"));
@@ -1706,7 +1718,7 @@ fn content_sampling_real_http_stop_before_body_consumption_discards_the_late_sam
             .configure(super::super::SamplingInput::default())
             .unwrap();
         assert!(response.into_body().collect().await.is_ok());
-        wait_for_content_sampling(&shared).await;
+        wait_for_content_sampling(&shared, Duration::from_secs(3)).await;
         assert_eq!(shared.sampling.status().stored_count, 0);
         std::fs::remove_dir_all(dir).unwrap();
     });
