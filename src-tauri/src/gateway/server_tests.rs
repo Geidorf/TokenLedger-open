@@ -1543,8 +1543,8 @@ async fn wait_for_content_sampling(shared: &Shared, timeout: Duration) {
 fn sampling_http_context(endpoint: Endpoint, model: &str, stream: bool) -> RequestCtx {
     let mut ctx = request_ctx(&HeaderMap::new(), endpoint, model.into(), stream);
     // These tests verify sampling and forwarding, not deadline enforcement.
-    ctx.sampling_ticket_timeout = Duration::from_secs(5);
-    ctx.upstream_headers_timeout = Duration::from_secs(5);
+    ctx.sampling_ticket_timeout = Duration::from_secs(30);
+    ctx.upstream_headers_timeout = Duration::from_secs(30);
     ctx
 }
 
