@@ -537,7 +537,7 @@ impl ContentSampling {
     fn key(&self, create: bool, inner: &mut Inner) -> Result<LessSafeKey, String> {
         let value = match self.secrets.get_classified(KEY_ACCOUNT) {
             Ok(Some(value)) => value,
-            Ok(None)
+            Ok(None) | Err(SecretReadError::MissingInCurrentStore)
                 if create
                     && inner.configuration.mode == SamplingMode::Off
                     && self.files()?.is_empty() =>
@@ -555,7 +555,9 @@ impl ContentSampling {
                     _ => return Err(KEY_CREATE_ERROR.to_string()),
                 }
             }
-            Err(SecretReadError::Unavailable) => return Err(self.pause_for_key(inner)),
+            Err(SecretReadError::Unavailable | SecretReadError::MissingInCurrentStore) => {
+                return Err(self.pause_for_key(inner));
+            }
             Ok(None) | Err(SecretReadError::InvalidEncoding) => return Err(self.key_lost(inner)),
         };
         let decoded = decode_key(&value);

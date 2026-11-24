@@ -149,6 +149,7 @@ pub fn read_provider_key(secrets: &dyn SecretStore, id: &str) -> Result<Option<S
 
 pub enum SecretReadError {
     Unavailable,
+    MissingInCurrentStore,
     InvalidEncoding,
 }
 
@@ -180,11 +181,16 @@ impl SecretStore for KeyringSecrets {
     }
 
     fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
-        match Self::entry(account)
-            .map_err(|_| SecretReadError::Unavailable)?
-            .get_password()
-        {
+        let entry = Self::entry(account).map_err(|_| SecretReadError::Unavailable)?;
+        let mut result = entry.get_password();
+        if matches!(result, Err(keyring::Error::NoEntry)) && !cfg!(target_os = "macos") {
+            result = entry.get_password();
+        }
+        match result {
             Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) if cfg!(target_os = "macos") => {
+                Err(SecretReadError::MissingInCurrentStore)
+            }
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(keyring::Error::BadEncoding(_)) => Err(SecretReadError::InvalidEncoding),
             Err(_) => Err(SecretReadError::Unavailable),
