@@ -6,6 +6,8 @@
 
 - `effectiveTokens = inputTokens + outputTokens`。
 - `cachedTokens = cacheReadTokens + cacheWriteTokens`（旧数据无法拆分时仅保证 combined）。
+- 小时上传携带可空的 `cache_write_known`。明确已知的写入量为零或正数，明确未知的写入量为 SQL `NULL`。旧上传缺少来源标记时，正缓存合计与零写入的组合仍按未知处理。聚合范围内任一行的拆分未知时，只返回缓存合计。
+- 已同步的历史小时保留原有来源证据，重新上传后才可补齐新标记。旧客户端覆盖写入量可能沿用旧值时，云端按未知处理，避免把上一份记录的写入量用于新数据。
 - 所有当前期与上一期数据使用相同的时区、设备、工具、模型、文本搜索和 Token 模式。
 - 不可得字段应缺失/null，并通过 capability/status 表达；不得填 0 伪装成已知。
 

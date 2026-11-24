@@ -15994,6 +15994,7 @@ async fn sync_to_supabase_locked(
             "output_tokens": output_tokens,
             "cached_tokens": cached_tokens,
             "cache_write_tokens": cache_write_tokens,
+            "cache_write_known": cache_write_tokens.is_some(),
             "timestamp": key.hour_bucket,
             "session_id": "agg",
             "unique_key": unique_key,
@@ -16068,6 +16069,7 @@ async fn sync_to_supabase_locked(
     // column yet; PostgREST rejects unknown keys, so drop the field and
     // retry once, then keep it dropped for the remaining chunks.
     let mut include_cache_write = true;
+    let mut include_cache_provenance = true;
     let mut include_gateway_requests = true;
     for chunk in sync_logs.chunks(SYNC_BATCH_SIZE) {
         loop {
@@ -16080,6 +16082,9 @@ async fn sync_to_supabase_locked(
                     obj.remove("raw_ids");
                     if !include_cache_write {
                         obj.remove("cache_write_tokens");
+                    }
+                    if !include_cache_provenance {
+                        obj.remove("cache_write_known");
                     }
                     if !include_gateway_requests {
                         obj.remove("gateway_requests");
@@ -16094,6 +16099,10 @@ async fn sync_to_supabase_locked(
                 .header("Authorization", format!("Bearer {}", session.access_token))
                 .header("Content-Type", "application/json")
                 .header("Prefer", "resolution=merge-duplicates,return=minimal")
+                .header(
+                    "x-tokenledger-cache-provenance",
+                    if include_cache_provenance { "1" } else { "0" },
+                )
                 .json(&payload)
                 .send()
                 .await
@@ -16106,11 +16115,16 @@ async fn sync_to_supabase_locked(
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
             session_lease.ensure_current(app)?;
+            if include_cache_provenance && body.contains("cache_write_known") {
+                include_cache_provenance = false;
+                continue;
+            }
             if include_cache_write && body.contains("cache_write_tokens") {
                 log::warn!(
                     "Cloud schema predates cache_write_tokens; retrying without the column. Apply the repository migrations (`supabase db push`, see supabase/README.md) to enable split cache sync; supabase/schema.sql is a stale baseline and must not be executed directly."
                 );
                 include_cache_write = false;
+                include_cache_provenance = false;
                 continue;
             }
             if include_gateway_requests && body.contains("gateway_requests") {

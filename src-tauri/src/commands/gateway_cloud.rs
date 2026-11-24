@@ -78,6 +78,7 @@ impl Aggregate {
             "output_tokens": self.output_tokens,
             "cached_tokens": self.cached_tokens,
             "cache_write_tokens": self.cache_write_known.then_some(self.cache_write_tokens),
+            "cache_write_known": self.cache_write_known,
             "timestamp": self.hour,
             "session_id": "agg",
             "unique_key": self.unique_key(),

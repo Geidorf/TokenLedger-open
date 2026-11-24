@@ -1135,6 +1135,29 @@ declare
   v_item jsonb;
   v_tool text;
 begin
+  -- Simulate the relevant PostgREST headers for a new writer and a legacy
+  -- replacement that omits provenance. The replacement must clear it.
+  perform set_config('request.headers', '{"x-tokenledger-cache-provenance":"1"}', true);
+  update public.token_logs set cache_write_tokens = 0, cache_write_known = true
+    where unique_key = 'stats-v2-prov-historical-zero';
+  v_query := '{"range":"today","timezone":"UTC","machines":[],"tools":["ProvHistoricalZero"],"models":[],"search":null,"tokenMode":"effective"}'::jsonb;
+  v_dashboard := public.get_dashboard_stats_v2('11111111-1111-1111-1111-111111111111', v_query);
+  if (v_dashboard #>> '{summary,cacheWriteTokens}')::bigint is distinct from 0::bigint
+     or (v_dashboard #>> '{summary,cacheReadTokens}')::bigint is distinct from 70::bigint then
+    raise exception 'proven zero with positive cache was lost: %', v_dashboard;
+  end if;
+  perform set_config('request.headers', '{}', true);
+  update public.token_logs set cached_tokens = 80
+    where unique_key = 'stats-v2-prov-historical-zero';
+  if not exists (select 1 from public.token_logs where unique_key = 'stats-v2-prov-historical-zero' and cache_write_known is false) then
+    raise exception 'legacy replacement without a write count must invalidate provenance';
+  end if;
+  update public.token_logs set cache_write_tokens = 0
+    where unique_key = 'stats-v2-prov-historical-zero';
+  if exists (select 1 from public.token_logs where unique_key = 'stats-v2-prov-historical-zero' and cache_write_known is not null) then
+    raise exception 'legacy replacement kept stale provenance';
+  end if;
+  perform set_config('request.headers', '', true);
   if (
     select t.cache_write_tokens is not null
     from public.token_logs t
@@ -1144,6 +1167,10 @@ begin
   end if;
 
   v_query := '{"range":"today","timezone":"UTC","machines":[],"tools":["ProvKnownZero"],"models":[],"search":null,"tokenMode":"effective"}'::jsonb;
+  v_details := public.get_usage_details_v2('11111111-1111-1111-1111-111111111111', v_query, null, 25);
+  if (v_details #>> '{items,0,cacheWriteTokens}')::bigint is distinct from 0::bigint then
+    raise exception 'a known zero must remain numeric in the details: %', v_details;
+  end if;
   v_dashboard := public.get_dashboard_stats_v2(
     '11111111-1111-1111-1111-111111111111', v_query
   );
@@ -1200,6 +1227,10 @@ begin
     v_dashboard := public.get_dashboard_stats_v2(
       '11111111-1111-1111-1111-111111111111', v_query
     );
+    v_details := public.get_usage_details_v2('11111111-1111-1111-1111-111111111111', v_query, null, 25);
+    if (v_details -> 'filteredSummary') ?| array['cacheReadTokens', 'cacheWriteTokens'] then
+      raise exception 'an unknown member must keep the detail aggregate combined-only for %: %', v_tool, v_details;
+    end if;
     select item into v_machine
     from pg_catalog.jsonb_array_elements(v_dashboard -> 'machineDistribution') as e(item)
     limit 1;

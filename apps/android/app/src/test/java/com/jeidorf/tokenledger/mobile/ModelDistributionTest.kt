@@ -168,6 +168,8 @@ class ModelDistributionTest {
             rows.map { it.model.name }
         )
         assertEquals(0.0, rows.first { it.model.name == "known-free" }.cost)
+        assertEquals(30L, stats.models.getValue("known-free").cacheRead)
+        assertEquals(0L, stats.models.getValue("known-free").cacheWrite)
         assertNull(rows.first { it.model.name == "unknown-cost-combined-cache" }.cost)
         assertEquals(0.0, rows.first { it.model.name == "known-free" }.costSharePercent)
         assertNull(rows.first { it.model.name == "unknown-cost-combined-cache" }.costSharePercent)
