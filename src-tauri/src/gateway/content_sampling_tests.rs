@@ -499,9 +499,14 @@ struct UnreadableSecrets {
     values: Mutex<HashMap<String, String>>,
     unreadable: AtomicBool,
     missing_in_current_store: AtomicBool,
+    changing_scope: bool,
 }
 
 impl SecretStore for UnreadableSecrets {
+    fn sampling_key_scope_can_change(&self) -> bool {
+        self.changing_scope
+    }
+
     fn get(&self, account: &str) -> Result<Option<String>, String> {
         if self.unreadable.load(Ordering::SeqCst) {
             return Err("test keychain unavailable".to_string());
@@ -533,12 +538,16 @@ impl SecretStore for UnreadableSecrets {
 #[test]
 fn missing_in_current_store_preserves_samples_across_restart() {
     let root = gateway_dir("missing_in_current_store");
-    let secrets = Arc::new(UnreadableSecrets::default());
+    let secrets = Arc::new(UnreadableSecrets {
+        changing_scope: true,
+        ..Default::default()
+    });
     let sampling = ContentSampling::new(&root, secrets.clone());
     sampling.configure(next(2, true)).unwrap();
     begin_and_finish(&sampling, &id(0), "request", "response", 200);
     let state_path = root.join(STATE_FILE);
     let state_before = fs::read(&state_path).unwrap();
+    let original = secrets.get(KEY_ACCOUNT).unwrap().unwrap();
     let sample_path = sampling.directory.join(format!("{}.bin", id(0)));
     let sample_before = fs::read(&sample_path).unwrap();
     drop(sampling);
@@ -557,6 +566,13 @@ fn missing_in_current_store_preserves_samples_across_restart() {
     secrets
         .missing_in_current_store
         .store(false, Ordering::SeqCst);
+    for other in [String::new(), "ab".repeat(32)] {
+        secrets.set(KEY_ACCOUNT, &other).unwrap();
+        assert!(sampling.status().paused);
+        assert!(sampling.read(&id(0)).is_err());
+        assert_eq!(fs::read(&sample_path).unwrap(), sample_before);
+    }
+    secrets.set(KEY_ACCOUNT, &original).unwrap();
     let resumed = sampling.status();
     assert!(!resumed.paused);
     assert_eq!(resumed.remaining, Some(1));

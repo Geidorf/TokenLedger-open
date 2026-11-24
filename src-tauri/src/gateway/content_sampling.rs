@@ -107,6 +107,7 @@ struct Inner {
     // The Arc identity revokes old tickets without releasing their global slots.
     generation: Arc<AtomicUsize>,
     key_paused: bool,
+    verified_key_digest: Option<ring::digest::Digest>,
     error: Option<String>,
 }
 
@@ -156,6 +157,7 @@ enum SampleReadError {
     Missing,
     Unsafe,
     Invalid,
+    AuthenticationFailed,
     Unavailable,
 }
 
@@ -332,6 +334,7 @@ impl ContentSampling {
                 configuration,
                 generation: Arc::new(AtomicUsize::new(0)),
                 key_paused: false,
+                verified_key_digest: None,
                 error,
             }),
             pending: Arc::new(AtomicUsize::new(0)),
@@ -489,7 +492,9 @@ impl ContentSampling {
                     }
                     continue;
                 }
-                Err(SampleReadError::Unsafe) => return Err(STORE_ERROR.to_string()),
+                Err(SampleReadError::Unsafe | SampleReadError::AuthenticationFailed) => {
+                    return Err(STORE_ERROR.to_string());
+                }
             };
             files.push(SampleFile {
                 id: id.to_string(),
@@ -535,6 +540,7 @@ impl ContentSampling {
     }
 
     fn key(&self, create: bool, inner: &mut Inner) -> Result<LessSafeKey, String> {
+        let scope_can_change = self.secrets.sampling_key_scope_can_change();
         let value = match self.secrets.get_classified(KEY_ACCOUNT) {
             Ok(Some(value)) => value,
             Ok(None) | Err(SecretReadError::MissingInCurrentStore)
@@ -558,17 +564,45 @@ impl ContentSampling {
             Err(SecretReadError::Unavailable | SecretReadError::MissingInCurrentStore) => {
                 return Err(self.pause_for_key(inner));
             }
+            Err(SecretReadError::InvalidEncoding) if scope_can_change => {
+                return Err(self.pause_for_key(inner));
+            }
             Ok(None) | Err(SecretReadError::InvalidEncoding) => return Err(self.key_lost(inner)),
         };
         let decoded = decode_key(&value);
         let Some(mut decoded) = decoded else {
-            return Err(self.key_lost(inner));
+            return Err(if scope_can_change {
+                self.pause_for_key(inner)
+            } else {
+                self.key_lost(inner)
+            });
         };
+        let digest =
+            scope_can_change.then(|| ring::digest::digest(&ring::digest::SHA256, &decoded));
         let key = UnboundKey::new(&CHACHA20_POLY1305, &decoded);
         decoded.fill(0);
         let key = key
             .map(LessSafeKey::new)
             .map_err(|_| self.key_lost(inner))?;
+        if let Some(digest) = digest {
+            let known_key = inner
+                .verified_key_digest
+                .as_ref()
+                .is_some_and(|verified| verified.as_ref() == digest.as_ref());
+            if !known_key {
+                let files = self.files()?;
+                if !files.is_empty()
+                    && !files.iter().take(MAX_SAMPLES).any(|file| {
+                        file.created_at.is_some_and(|created_at| {
+                            Self::open_sample(file, created_at, &key).is_ok()
+                        })
+                    })
+                {
+                    return Err(self.pause_for_key(inner));
+                }
+                inner.verified_key_digest = Some(digest);
+            }
+        }
         if inner.key_paused {
             inner.key_paused = false;
             if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
@@ -1005,6 +1039,41 @@ impl ContentSampling {
         .map_err(|_| STORE_ERROR.to_string())
     }
 
+    fn open_sample(
+        file: &SampleFile,
+        created_at: i64,
+        key: &LessSafeKey,
+    ) -> Result<ContentSample, SampleReadError> {
+        let metadata = regular_file(&file.path, MAX_SAMPLE_BYTES as u64)?;
+        let mut bytes = Vec::new();
+        fs::File::open(&file.path)?
+            .take((MAX_SAMPLE_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 != metadata.len() {
+            return Err(SampleReadError::Unavailable);
+        }
+        if bytes.len() < HEADER_BYTES + CHACHA20_POLY1305.tag_len() || &bytes[..8] != MAGIC {
+            return Err(SampleReadError::Invalid);
+        }
+        let nonce: [u8; 12] = bytes[16..HEADER_BYTES]
+            .try_into()
+            .map_err(|_| SampleReadError::Invalid)?;
+        let aad = format!("v1\n{}\n{created_at}", file.id);
+        let plaintext = key
+            .open_in_place(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(aad),
+                &mut bytes[HEADER_BYTES..],
+            )
+            .map_err(|_| SampleReadError::AuthenticationFailed)?;
+        let sample: ContentSample =
+            serde_json::from_slice(plaintext).map_err(|_| SampleReadError::Invalid)?;
+        if sample.id != file.id || Some(&sample.created_at) != timestamp(created_at).as_ref() {
+            return Err(SampleReadError::Invalid);
+        }
+        Ok(sample)
+    }
+
     pub(super) fn read(&self, id: &str) -> Result<ContentSample, String> {
         if !safe_id(id) {
             return Err(READ_ERROR.to_string());
@@ -1024,41 +1093,17 @@ impl ContentSampling {
             .to_string()
         })?;
         let key = self.key(false, &mut inner)?;
-        let result = (|| {
-            let metadata = regular_file(&file.path, MAX_SAMPLE_BYTES as u64)?;
-            let mut bytes = Vec::new();
-            fs::File::open(&file.path)?
-                .take((MAX_SAMPLE_BYTES + 1) as u64)
-                .read_to_end(&mut bytes)?;
-            if bytes.len() as u64 != metadata.len() {
-                return Err(SampleReadError::Unavailable);
-            }
-            if bytes.len() < HEADER_BYTES + CHACHA20_POLY1305.tag_len() || &bytes[..8] != MAGIC {
-                return Err(SampleReadError::Invalid);
-            }
-            let nonce: [u8; 12] = bytes[16..HEADER_BYTES]
-                .try_into()
-                .map_err(|_| SampleReadError::Invalid)?;
-            let aad = format!("v1\n{id}\n{created_at}");
-            let plaintext = key
-                .open_in_place(
-                    Nonce::assume_unique_for_key(nonce),
-                    Aad::from(aad),
-                    &mut bytes[HEADER_BYTES..],
-                )
-                .map_err(|_| SampleReadError::Invalid)?;
-            let sample: ContentSample =
-                serde_json::from_slice(plaintext).map_err(|_| SampleReadError::Invalid)?;
-            if sample.id != id || Some(&sample.created_at) != timestamp(created_at).as_ref() {
-                return Err(SampleReadError::Invalid);
-            }
-            Ok(sample)
-        })();
+        let result = Self::open_sample(file, created_at, &key);
         match result {
             Ok(sample) => Ok(sample),
             Err(SampleReadError::Unavailable) => Err(READ_RETRY.to_string()),
             Err(SampleReadError::Missing | SampleReadError::Unsafe) => Err(READ_ERROR.to_string()),
-            Err(SampleReadError::Invalid) => {
+            Err(SampleReadError::AuthenticationFailed)
+                if self.secrets.sampling_key_scope_can_change() =>
+            {
+                Err(READ_RETRY.to_string())
+            }
+            Err(SampleReadError::Invalid | SampleReadError::AuthenticationFailed) => {
                 if let Err(error) = remove_sample(&file.path) {
                     inner.error = Some(error.clone());
                     return Err(error);

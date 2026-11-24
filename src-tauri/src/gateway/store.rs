@@ -154,6 +154,10 @@ pub enum SecretReadError {
 }
 
 pub trait SecretStore: Send + Sync {
+    fn sampling_key_scope_can_change(&self) -> bool {
+        false
+    }
+
     fn get(&self, account: &str) -> Result<Option<String>, String>;
     fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
         self.get(account).map_err(|_| SecretReadError::Unavailable)
@@ -172,6 +176,10 @@ impl KeyringSecrets {
 }
 
 impl SecretStore for KeyringSecrets {
+    fn sampling_key_scope_can_change(&self) -> bool {
+        cfg!(target_os = "macos")
+    }
+
     fn get(&self, account: &str) -> Result<Option<String>, String> {
         match Self::entry(account)?.get_password() {
             Ok(value) => Ok(Some(value)),
