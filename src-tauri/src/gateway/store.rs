@@ -181,6 +181,12 @@ impl SecretStore for KeyringSecrets {
     }
 
     fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
+        #[cfg(target_os = "linux")]
+        let entry = keyring::Entry::new_with_credential(Box::new(
+            keyring::secret_service::SsCredential::new_with_target(None, KEYRING_SERVICE, account)
+                .map_err(|_| SecretReadError::Unavailable)?,
+        ));
+        #[cfg(not(target_os = "linux"))]
         let entry = Self::entry(account).map_err(|_| SecretReadError::Unavailable)?;
         let mut result = entry.get_password();
         if matches!(result, Err(keyring::Error::NoEntry)) && !cfg!(target_os = "macos") {
