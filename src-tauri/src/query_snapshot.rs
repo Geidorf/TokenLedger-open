@@ -294,7 +294,7 @@ fn open_database(path: &Path) -> Result<Connection, Box<dyn std::error::Error>> 
     use rusqlite::OpenFlags;
 
     check_header(fs::File::open(path)?)?;
-    let url = reqwest::Url::from_file_path(&path).map_err(|()| UNAVAILABLE)?;
+    let url = reqwest::Url::from_file_path(path).map_err(|()| UNAVAILABLE)?;
     let location = if url.has_host() {
         format!("file://{}", &url.as_str()[5..])
     } else {
