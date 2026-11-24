@@ -38,7 +38,7 @@ the TokenLedger desktop app or `tokenledger-cli scan`; this server never scans o
 
 /// 服务入口：读标准输入直到 EOF，返回进程退出码。
 pub fn run_stdio() -> i32 {
-    let app = AppContext::new();
+    let app = AppContext::for_query();
     let mut server = Server::new(&app);
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();

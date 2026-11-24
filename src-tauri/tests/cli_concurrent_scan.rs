@@ -138,3 +138,34 @@ fn concurrent_scans_from_separate_processes_count_each_record_once() {
     assert_eq!(again["inserted"].as_u64(), Some(0));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn mcp_handshake_does_not_create_the_app_data_directory() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let root = temp_root("mcp_handshake");
+    let home = root.join("home");
+    let data = root.join("data");
+    let mut child = cli(&home, &data, &["mcp"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05", "capabilities": {}}
+        })
+    )
+    .unwrap();
+    drop(stdin);
+    let output = child.wait_with_output().unwrap();
+    assert!(json(&output)["result"]["serverInfo"].is_object());
+    assert!(!data.exists());
+    fs::remove_dir_all(root).unwrap();
+}
