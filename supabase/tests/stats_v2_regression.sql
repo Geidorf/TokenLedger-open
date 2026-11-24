@@ -1157,6 +1157,19 @@ begin
   if exists (select 1 from public.token_logs where unique_key = 'stats-v2-prov-historical-zero' and cache_write_known is not null) then
     raise exception 'legacy replacement kept stale provenance';
   end if;
+  -- Legacy upsert leaves the preceding positive count in place, but invalidates its evidence.
+  insert into public.token_logs (user_id, tool, model, input_tokens, output_tokens, cached_tokens, timestamp, session_id, unique_key, machine_id, requests)
+  select user_id, tool, model, input_tokens, output_tokens, 90, timestamp, session_id, unique_key, machine_id, requests
+    from public.token_logs where unique_key = 'stats-v2-prov-explicit-write'
+  on conflict (user_id, unique_key) do update set cached_tokens = excluded.cached_tokens;
+  if not exists (select 1 from public.token_logs where unique_key = 'stats-v2-prov-explicit-write' and cache_write_tokens = 20 and cache_write_known is false) then
+    raise exception 'legacy upsert without a write count must invalidate the carried count';
+  end if;
+  update public.token_logs set cached_tokens = 100, cache_write_tokens = 20
+    where unique_key = 'stats-v2-prov-explicit-write';
+  if not exists (select 1 from public.token_logs where unique_key = 'stats-v2-prov-explicit-write' and cache_write_known is null) then
+    raise exception 'legacy explicit write must retain existing positive-count inference';
+  end if;
   perform set_config('request.headers', '', true);
   if (
     select t.cache_write_tokens is not null
