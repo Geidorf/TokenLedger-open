@@ -1,5 +1,6 @@
 package com.jeidorf.tokenledger.mobile.coordinator
 
+import com.jeidorf.tokenledger.mobile.DashboardAuthExpiredException
 import com.jeidorf.tokenledger.mobile.DashboardDataSource
 import com.jeidorf.tokenledger.mobile.DashboardRequestIdentity
 import com.jeidorf.tokenledger.mobile.DashboardSessionState
@@ -96,7 +97,13 @@ internal class SessionCoordinator(
     ) {
         // Capture before either remote sign-in or the IO activation can suspend. A later logout
         // or account switch advances the persistent generation and makes activation fail its CAS.
-        val expectedPersistenceGeneration = repository.sessionPersistenceGeneration()
+        val expectedPersistenceGeneration = try {
+            repository.sessionPersistenceGeneration()
+        } catch (_: Exception) {
+            _sessionState.value = DashboardSessionState.SignedOut
+            onError(DashboardUiError.Unexpected("无法读取本地登录状态，请重试登录"))
+            return
+        }
         restoreJob?.cancel()
         signInJob?.cancel()
         _sessionState.value = DashboardSessionState.SignedOut
@@ -147,24 +154,35 @@ internal class SessionCoordinator(
     ) {
         val uiSession = currentSession()
         // The committed session is preferred: a background refresh may have rotated past the UI copy.
-        val revoked = revokeAndEnqueueClear() ?: uiSession
-        revoked?.let(::launchRemoteRevoke)
-        val userId = uiSession?.userId
-        advanceSessionGeneration()
-        restoreJob?.cancel()
-        signInJob?.cancel()
-        _sessionState.value = DashboardSessionState.SignedOut
-        onSignOutCleanup(userId)
+        try {
+            val revoked = revokeAndEnqueueClear() ?: uiSession
+            revoked?.let(::launchRemoteRevoke)
+        } finally {
+            advanceSessionGeneration()
+            cancelActiveAuthJobs()
+            _sessionState.value = DashboardSessionState.SignedOut
+            onSignOutCleanup(uiSession?.userId)
+        }
     }
 
     fun handleAuthExpired(
         userId: String,
+        expiry: DashboardAuthExpiredException? = null,
         onExpiredCleanup: (userId: String) -> Unit
-    ) {
-        enqueueSessionClear()
-        advanceSessionGeneration()
-        _sessionState.value = DashboardSessionState.Expired()
-        onExpiredCleanup(userId)
+    ): Boolean {
+        var accepted = true
+        try {
+            val revoke = expiry?.revokeIfCurrent
+            if (revoke == null) enqueueSessionClear() else accepted = revoke()
+        } finally {
+            if (accepted) {
+                advanceSessionGeneration()
+                cancelActiveAuthJobs()
+                _sessionState.value = DashboardSessionState.Expired()
+                onExpiredCleanup(userId)
+            }
+        }
+        return accepted
     }
 
     fun enqueueSessionClear(): Job {

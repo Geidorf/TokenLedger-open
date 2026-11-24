@@ -295,6 +295,7 @@ private fun TokenLedgerApp(
     val widgetContext = LocalContext.current.applicationContext
     LaunchedEffect(
         state.session?.userId,
+        state.sessionState == DashboardSessionState.Restoring,
         state.lastUpdatedEpochMillis,
         state.quotaSnapshot?.epoch,
         state.quotaSnapshot?.revision
@@ -302,10 +303,11 @@ private fun TokenLedgerApp(
         if (state.session != null) {
             WidgetScheduler.ensurePeriodicRefresh(widgetContext)
             WidgetRefresher.notifyDataChanged(widgetContext)
-        } else if (
-            shouldCancelWidgetRefresh(WidgetConfigStore.backgroundConsumerCount(widgetContext))
-        ) {
-            WidgetScheduler.cancelPeriodicRefresh(widgetContext)
+        } else if (state.sessionState != DashboardSessionState.Restoring) {
+            WidgetRefresher.notifyDataChanged(widgetContext)
+            if (shouldCancelWidgetRefresh(WidgetConfigStore.backgroundConsumerCount(widgetContext))) {
+                WidgetScheduler.cancelPeriodicRefresh(widgetContext)
+            }
         }
     }
 

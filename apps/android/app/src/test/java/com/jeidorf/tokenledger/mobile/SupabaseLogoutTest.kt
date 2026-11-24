@@ -81,6 +81,21 @@ class SupabaseLogoutTest {
     }
 
     @Test
+    fun tokenResponsesRejectMissingBlankAndNonStringCredentials() = runBlocking {
+        val malformed = listOf(
+            """{"refresh_token":"refresh","user":{"id":"user-a"}}""",
+            """{"access_token":"access","refresh_token":" ","user":{"id":"user-a"}}""",
+            """{"access_token":42,"refresh_token":"refresh","user":{"id":"user-a"}}""",
+            """{"access_token":"access","refresh_token":"refresh","user":{"id":null}}"""
+        )
+        malformed.forEach { payload ->
+            respond = { 200 to payload }
+            assertEquals(true, runCatching { gateway.signIn("a@example.com", "fixture") }.isFailure)
+            assertEquals(true, runCatching { gateway.refresh("old-token") }.isFailure)
+        }
+    }
+
+    @Test
     fun logoutEndsOnlyThisDeviceSessionWithTheAccessToken() = runBlocking {
         gateway.revokeSession(session)
 

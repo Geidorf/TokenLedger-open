@@ -12,7 +12,9 @@ internal interface SessionPersistence {
     fun generation(): Long
     fun snapshot(): SessionSnapshot
     fun activate(expectedGeneration: Long, session: MobileSession): Boolean
-    fun revoke(): SessionSnapshot
+    /** Commit the next generation and return the session actually revoked. */
+    fun revoke(): MobileSession?
+    fun revokeIfCurrent(expected: SessionSnapshot): Boolean
     fun replace(expected: SessionSnapshot, session: MobileSession): Boolean
     /** Check the durable lifecycle and commit without releasing the revocation lock. */
     fun writeIfCurrent(expected: SessionSnapshot, write: () -> Unit): Boolean
@@ -50,11 +52,11 @@ internal class SessionAuthority(
 
     /** Called synchronously at the start of logout/expiry, before any suspended cleanup. */
     fun revokeNow(): MobileSession? {
-        // Reading is only for the server-side logout; it must never block the local tombstone.
-        val previous = runCatching { persistence.snapshot().session }.getOrNull()
-        persistence.revoke()
-        synchronized(knownSessions) { knownSessions.clear() }
-        return previous
+        try {
+            return persistence.revoke()
+        } finally {
+            synchronized(knownSessions) { knownSessions.clear() }
+        }
     }
 
     // Fetch paths already persist a rotation before returning. A later caller may only confirm
@@ -75,6 +77,20 @@ internal class SessionAuthority(
         if (persistence.snapshot().generation != lease.generation) throw SessionRevokedException()
     }
 
+    fun requireCurrentToken(lease: SessionSnapshot, requested: MobileSession) {
+        val current = persistence.snapshot()
+        if (current.generation != lease.generation || current.session != requested) {
+            throw SessionRevokedException()
+        }
+    }
+
+    fun expired(lease: SessionSnapshot, requested: MobileSession, cause: Throwable): DashboardAuthExpiredException {
+        requireCurrentToken(lease, requested)
+        return DashboardAuthExpiredException(cause).apply {
+            revokeIfCurrent = { persistence.revokeIfCurrent(SessionSnapshot(lease.generation, requested)) }
+        }
+    }
+
     suspend fun ensureFresh(lease: SessionSnapshot): MobileSession {
         val session = lease.session ?: throw SessionRevokedException()
         requireCurrent(lease)
@@ -91,12 +107,16 @@ internal class SessionAuthority(
                 throw SessionRevokedException()
             }
             if (SessionRefreshPolicy.shouldReusePersisted(requested, current.session, nowEpochSeconds())) {
-                return@withLock current.session!!
+                return@withLock current.session
             }
             // A queued caller must rotate the latest committed token, never spend the old one.
-            val token = current.session?.refreshToken ?: throw SessionRevokedException()
+            val currentSession = current.session
             withContext(NonCancellable) {
-                val refreshed = refresh(token)
+                val refreshed = try {
+                    refresh(currentSession.refreshToken)
+                } catch (error: DashboardAuthExpiredException) {
+                    throw expired(lease, currentSession, error)
+                }
                 if (refreshed.userId != requested.userId || !persistence.replace(current, refreshed)) {
                     throw SessionRevokedException()
                 }

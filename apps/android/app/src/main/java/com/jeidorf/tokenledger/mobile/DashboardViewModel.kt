@@ -159,8 +159,8 @@ class DashboardViewModel internal constructor(
         onSessionUpdated = { freshSession ->
             mutableUiState.update { it.copy(sessionState = DashboardSessionState.Authenticated(freshSession)) }
         },
-        onAuthExpired = { userId ->
-            handleAuthExpired(userId)
+        onAuthExpired = { userId, expiry ->
+            handleAuthExpired(userId, expiry)
         }
     )
 
@@ -188,8 +188,8 @@ class DashboardViewModel internal constructor(
         onSessionUpdated = { freshSession ->
             mutableUiState.update { it.copy(sessionState = DashboardSessionState.Authenticated(freshSession)) }
         },
-        onAuthExpired = { userId ->
-            handleAuthExpired(userId)
+        onAuthExpired = { userId, expiry ->
+            handleAuthExpired(userId, expiry)
         },
         onPresetCalendarPublish = { reqKey, stats, showingCached ->
             calendarCoordinator.publishPresetCalendarHeatmap(
@@ -232,7 +232,7 @@ class DashboardViewModel internal constructor(
         viewModelScope.launch {
             statsCoordinator.statsState.collect { s ->
                 mutableUiState.update {
-                    it.copy(
+                    if (it.session == null) it else it.copy(
                         data = s.data,
                         cachedData = s.cachedData,
                         loadingMode = s.loadingMode,
@@ -690,14 +690,14 @@ class DashboardViewModel internal constructor(
     }
 
     fun signOut() {
-        try {
+        val error = try {
             sessionCoordinator.signOut { uid ->
                 uid?.let { statsCoordinator.enqueueCacheClear(it) }
                 uid?.let { quotaCoordinator.enqueueQuotaInvalidation(it) }
             }
-        } catch (_: Throwable) {
-            mutableUiState.update { it.copy(error = DashboardUiError.Unexpected("无法保存退出登录状态，请重试")) }
-            return
+            null
+        } catch (_: Exception) {
+            DashboardUiError.Unexpected("无法保存退出登录状态，请重试登录以清除旧会话")
         }
         sessionCoordinator.advanceSessionGeneration()
         sessionCoordinator.cancelActiveAuthJobs()
@@ -714,7 +714,8 @@ class DashboardViewModel internal constructor(
         mutableUiState.value = DashboardUiState(
             configured = repository.isConfigured,
             sessionState = DashboardSessionState.SignedOut,
-            loadingMode = DashboardLoadingMode.Idle
+            loadingMode = DashboardLoadingMode.Idle,
+            error = error
         )
     }
 
@@ -765,15 +766,15 @@ class DashboardViewModel internal constructor(
         )
     }
 
-    private fun handleAuthExpired(userId: String) {
-        try {
-            sessionCoordinator.handleAuthExpired(userId) { uid ->
+    private fun handleAuthExpired(userId: String, expiry: DashboardAuthExpiredException?) {
+        val error = try {
+            if (!sessionCoordinator.handleAuthExpired(userId, expiry) { uid ->
                 statsCoordinator.enqueueCacheClear(uid)
                 quotaCoordinator.enqueueQuotaInvalidation(uid)
-            }
-        } catch (_: Throwable) {
-            mutableUiState.update { it.copy(error = DashboardUiError.Unexpected("登录已失效，但无法清除本地会话，请重试退出登录")) }
-            return
+            }) return
+            null
+        } catch (_: Exception) {
+            DashboardUiError.Unexpected("登录已失效，请重试登录以清除旧会话")
         }
         sessionCoordinator.advanceSessionGeneration()
         statsCoordinator.invalidateDashboardRequest()
@@ -789,7 +790,8 @@ class DashboardViewModel internal constructor(
         mutableUiState.value = DashboardUiState(
             configured = repository.isConfigured,
             sessionState = DashboardSessionState.Expired(),
-            loadingMode = DashboardLoadingMode.Idle
+            loadingMode = DashboardLoadingMode.Idle,
+            error = error
         )
     }
 

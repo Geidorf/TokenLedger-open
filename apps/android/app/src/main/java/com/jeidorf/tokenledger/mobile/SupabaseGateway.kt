@@ -686,16 +686,20 @@ class SupabaseGateway(
 
     private fun parseSession(raw: String): MobileSession {
         val root = JSONObject(raw)
-        val user = root.optJSONObject("user") ?: JSONObject()
+        val user = root.optJSONObject("user") ?: error("登录响应缺少账号信息")
         val expiresIn = root.longValue("expires_in").takeIf { it > 0 } ?: 3600L
         return MobileSession(
-            accessToken = root.optString("access_token"),
-            refreshToken = root.optString("refresh_token"),
-            userId = user.optString("id"),
+            accessToken = sessionField(root, "access_token"),
+            refreshToken = sessionField(root, "refresh_token"),
+            userId = sessionField(user, "id"),
             email = user.optString("email"),
             expiresAtEpochSeconds = epochSeconds() + expiresIn
         )
     }
+
+    private fun sessionField(json: JSONObject, key: String): String =
+        (json.opt(key) as? String)?.takeIf(String::isNotBlank)
+            ?: error("登录响应缺少有效会话字段：$key")
 
     private fun request(
         path: String,

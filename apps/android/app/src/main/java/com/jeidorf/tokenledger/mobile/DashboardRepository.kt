@@ -105,11 +105,9 @@ class DashboardRepository(context: Context) : DashboardDataSource {
 
     override suspend fun revokeRemoteSession(session: MobileSession) = gateway.revokeSession(session)
 
-    override suspend fun clearSession() {
-        withContext(Dispatchers.IO) {
-            if (sessionAuthority.restore() != null) sessionAuthority.revokeNow()
-        }
-    }
+    // The coordinator already committed its tombstone synchronously. A delayed
+    // clear here could revoke a newer account activated by another caller.
+    override suspend fun clearSession() = Unit
 
     override suspend fun fetchStats(
         session: MobileSession,
@@ -145,7 +143,7 @@ class DashboardRepository(context: Context) : DashboardDataSource {
                 requestStats(freshSession, query, entity, timezone)
             } catch (retryError: SupabaseHttpException) {
                 if (retryError.status == 401) {
-                    throw DashboardAuthExpiredException(retryError)
+                    throw sessionAuthority.expired(lease, freshSession, retryError)
                 }
                 throw retryError
             }
@@ -182,7 +180,9 @@ class DashboardRepository(context: Context) : DashboardDataSource {
             try {
                 gateway.fetchUsageDetails(freshSession, query, entity, timezone, cursor)
             } catch (retryError: SupabaseHttpException) {
-                if (retryError.status == 401) throw DashboardAuthExpiredException(retryError)
+                if (retryError.status == 401) {
+                    throw sessionAuthority.expired(lease, freshSession, retryError)
+                }
                 throw retryError
             }
         }
@@ -209,7 +209,9 @@ class DashboardRepository(context: Context) : DashboardDataSource {
             try {
                 read(freshSession)
             } catch (retryError: SupabaseHttpException) {
-                if (retryError.status == 401) throw DashboardAuthExpiredException(retryError)
+                if (retryError.status == 401) {
+                    throw sessionAuthority.expired(lease, freshSession, retryError)
+                }
                 throw retryError
             }
         }

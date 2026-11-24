@@ -176,7 +176,7 @@ data class DashboardUiState(
 
     val userVisibleError: String?
         get() = when (val currentSession = sessionState) {
-            is DashboardSessionState.Expired -> currentSession.message
+            is DashboardSessionState.Expired -> error?.message ?: currentSession.message
             else -> error?.message
         }
 
@@ -188,4 +188,6 @@ data class DashboardUiState(
 }
 
 class DashboardAuthExpiredException(cause: Throwable? = null) :
-    IllegalStateException("Session expired", cause)
+    IllegalStateException("Session expired", cause) {
+    internal var revokeIfCurrent: (() -> Boolean)? = null
+}
