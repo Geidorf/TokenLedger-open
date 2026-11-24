@@ -129,7 +129,15 @@ pub(super) fn aggregate_hour(
         entry.output_tokens += row.output_tokens;
         entry.cached_tokens += row.cached_tokens;
         entry.cache_write_tokens += row.cache_write_tokens;
-        entry.cache_write_known &= row.cache_write_known != Some(false);
+        entry.cache_write_known &= if row.gateway {
+            super::cache_split_is_proven(row.cached_tokens, row.cache_write_tokens, Some(true))
+        } else {
+            super::cache_split_is_proven(
+                row.cached_tokens,
+                row.cache_write_tokens,
+                row.cache_write_known,
+            )
+        };
         entry.requests += 1;
         entry.gateway_requests += i64::from(row.gateway);
         entry.cost_usd += cost_of(row);

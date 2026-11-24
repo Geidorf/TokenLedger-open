@@ -2420,21 +2420,23 @@ impl StatRow {
     }
 
     fn cache_split_is_proven(&self) -> bool {
-        if let Some(known) = self.cache_write_known {
-            return known
-                && self.cached_tokens >= 0
-                && self.cache_write_tokens >= 0
-                && self.cache_write_tokens <= self.cached_tokens;
-        }
-        (self.cached_tokens == 0 && self.cache_write_tokens == 0)
-            || (self.cached_tokens > 0
-                && self.cache_write_tokens > 0
-                && self.cache_write_tokens <= self.cached_tokens)
+        cache_split_is_proven(
+            self.cached_tokens,
+            self.cache_write_tokens,
+            self.cache_write_known,
+        )
     }
 
     fn cache_read_tokens(&self) -> i64 {
         (self.cached_tokens - self.cache_write_tokens).max(0)
     }
+}
+
+fn cache_split_is_proven(cached: i64, write: i64, known: Option<bool>) -> bool {
+    if cached < 0 || write < 0 || write > cached {
+        return false;
+    }
+    known.unwrap_or(cached == 0 || write > 0)
 }
 
 fn config_path(app: &AppContext) -> Result<std::path::PathBuf, String> {
@@ -15563,14 +15565,17 @@ const PENDING_SYNC_WORK_SQL: &str = "SELECT EXISTS(
      )";
 
 // Unknown writes poison the complete hourly bucket, including zero-read rows.
-fn scan_cache_write_projection(rows: impl IntoIterator<Item = (i64, Option<bool>)>) -> Option<i64> {
-    let mut total = 0;
-    let mut known = true;
-    for (write, provenance) in rows {
-        total += write;
-        known &= provenance != Some(false);
-    }
-    known.then_some(total)
+fn scan_cache_write_projection(
+    rows: impl IntoIterator<Item = (i64, i64, Option<bool>)>,
+) -> Option<i64> {
+    rows.into_iter()
+        .try_fold(0_i64, |total, (cached, write, provenance)| {
+            if cache_split_is_proven(cached, write, provenance) {
+                total.checked_add(write)
+            } else {
+                None
+            }
+        })
 }
 
 const RAW_SYNC_LOGS_SQL: &str =
@@ -15936,7 +15941,7 @@ async fn sync_to_supabase_locked(
         let cache_write_tokens = scan_cache_write_projection(
             group_rows
                 .iter()
-                .map(|r| (r.cache_write_tokens, r.cache_write_known)),
+                .map(|r| (r.cached_tokens, r.cache_write_tokens, r.cache_write_known)),
         );
         let mut cost_usd = 0.0;
         let mut raw_ids = Vec::new();
