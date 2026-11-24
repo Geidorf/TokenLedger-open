@@ -305,6 +305,89 @@ fn usage_details_mark_gateway_source_and_capability() {
 }
 
 #[test]
+fn published_snapshot_keeps_both_ledgers_available_offline() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let conn = db::get_connection(&db_path).unwrap();
+    insert_scan(&conn, "duplicate", "s1", "2026-10-04 10:00:05", 200, 80);
+    insert_scan(&conn, "scan-only", "s2", "2026-10-04 10:30:00", 5, 5);
+    drop(conn);
+
+    let mut duplicate: LedgerRecord = serde_json::from_value(ledger_line(
+        "accounting-duplicate",
+        Some("s1"),
+        local_ts(10, 0, 10),
+        200,
+        80,
+    ))
+    .unwrap();
+    duplicate.provider = "fixture-account".into();
+    accounting::append(&gateway_dir(&db_path), &duplicate).unwrap();
+    let mut unique = duplicate;
+    unique.request_id = "accounting-only".into();
+    unique.session = None;
+    unique.ts = local_ts(11, 0, 0).with_timezone(&Utc).to_rfc3339();
+    unique.input = 40;
+    unique.output = 2;
+    accounting::append(&gateway_dir(&db_path), &unique).unwrap();
+    publish_query_snapshot(&app).unwrap();
+
+    // Make the source paths unavailable after publishing, including sidecars.
+    let parked = root.join("offline-sources");
+    fs::create_dir(&parked).unwrap();
+    fs::rename(gateway_dir(&db_path), parked.join("gateway")).unwrap();
+    for entry in fs::read_dir(app.app_data_dir()).unwrap() {
+        let entry = entry.unwrap();
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("tokenboard.db")
+        {
+            fs::rename(entry.path(), parked.join(entry.file_name())).unwrap();
+        }
+    }
+    let (conn, freshness, gateway) = open_query_connection(&db_path).unwrap();
+    assert!(!freshness.stale);
+    assert!(gateway);
+    let totals: (i64, i64) = conn
+        .query_row(
+            "SELECT COUNT(*), SUM(input_tokens + output_tokens) FROM token_logs",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(totals, (3, 332));
+    let raw_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM main.token_logs", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(raw_count, 2);
+    assert_eq!(
+        conn.execute("DELETE FROM main.token_logs", [])
+            .unwrap_err()
+            .sqlite_error_code(),
+        Some(rusqlite::ErrorCode::ReadOnly)
+    );
+    let (providers, _) = query_provider_and_context(&conn).unwrap();
+    assert_eq!(providers.len(), 2);
+    assert!(providers
+        .values()
+        .all(|provider| provider == "fixture-account"));
+    let usage = crate::cli::args::UsageArgs {
+        range: crate::cli::args::RangeArg::Named("all".into()),
+        by: Some(crate::cli::args::UsageGroup::Account),
+        tools: Vec::new(),
+        models: Vec::new(),
+    };
+    let result = crate::cli::usage_json(&app, &usage).unwrap();
+    assert_eq!(result["summary"]["totalTokens"], 332);
+    assert_eq!(result["breakdown"]["rows"][0]["id"], "fixture-account");
+    assert!(!db_path.exists());
+    assert!(!gateway_dir(&db_path).exists());
+    drop(conn);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn permanent_stats_survive_diagnostic_rotation_and_revision_invalidates_cache() {
     let (app, root) = test_app();
     let db_path = db::get_db_path(&app);
