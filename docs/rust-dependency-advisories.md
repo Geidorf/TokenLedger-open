@@ -11,7 +11,7 @@ cd src-tauri && cargo audit
 
 查某个包是谁带进来的：`cargo tree -i <包名>@<版本> --target all`。
 
-2026-11-23 复查：SQLite 公告 RUSTSEC-2026-0459 已清除。主分支已有的 RUSTSEC-2026-0592 仍适用（见 #206）。
+2026-11-24 复查：SQLite 公告 RUSTSEC-2026-0459 、URL 公告 RUSTSEC-2026-0592 与 Cookie 公告 RUSTSEC-2026-0594 均已清除。
 
 ## 历史快照（2026-10-27，cargo-audit 0.22.2，593 个包）
 
@@ -34,6 +34,8 @@ cd src-tauri && cargo audit
 - 这是源码文本证据，不覆盖动态分派或 C 侧回调；上游 Tauri 换到新 GTK 代际后再升级，届时删除本行。
 
 ### 已处置
+
+URL 依赖由 2.5.8 升至 2.5.9，form_urlencoded 随之升至 1.2.3（#206）。cookie 升至 0.18.3，清除同次复查新增的 RUSTSEC-2026-0594。
 
 | 日期 | 公告 | 包 | 做法 |
 |---|---|---|---|
