@@ -107,7 +107,7 @@ struct Inner {
     // The Arc identity revokes old tickets without releasing their global slots.
     generation: Arc<AtomicUsize>,
     key_paused: bool,
-    verified_key_digest: Option<ring::digest::Digest>,
+    verified_key_digest: Option<[u8; 32]>,
     error: Option<String>,
 }
 
@@ -546,6 +546,7 @@ impl ContentSampling {
             Ok(None) | Err(SecretReadError::MissingInCurrentStore)
                 if create
                     && inner.configuration.mode == SamplingMode::Off
+                    && !inner.has_pending_ticket()
                     && self.files()?.is_empty() =>
             {
                 let mut bytes = [0u8; 32];
@@ -585,23 +586,8 @@ impl ContentSampling {
             .map(LessSafeKey::new)
             .map_err(|_| self.key_lost(inner))?;
         if let Some(digest) = digest {
-            let known_key = inner
-                .verified_key_digest
-                .as_ref()
-                .is_some_and(|verified| verified.as_ref() == digest.as_ref());
-            if !known_key {
-                let files = self.files()?;
-                if !files.is_empty()
-                    && !files.iter().take(MAX_SAMPLES).any(|file| {
-                        file.created_at.is_some_and(|created_at| {
-                            Self::open_sample(file, created_at, &key).is_ok()
-                        })
-                    })
-                {
-                    return Err(self.pause_for_key(inner));
-                }
-                inner.verified_key_digest = Some(digest);
-            }
+            let bytes = digest.as_ref().try_into().expect("SHA-256 digest length");
+            self.verify_key_scope(create, inner, &key, bytes)?;
         }
         if inner.key_paused {
             inner.key_paused = false;
@@ -611,6 +597,49 @@ impl ContentSampling {
             self.ready.store(true, Ordering::SeqCst);
         }
         Ok(key)
+    }
+
+    fn verify_key_scope(
+        &self,
+        create: bool,
+        inner: &mut Inner,
+        key: &LessSafeKey,
+        digest: [u8; 32],
+    ) -> Result<(), String> {
+        let path = self.state_file.with_file_name("sampling-key-check-v1");
+        let recorded = match inner.verified_key_digest {
+            Some(known) => Some(known),
+            None => match regular_file(&path, digest.len() as u64) {
+                Ok(_) => Some(
+                    fs::read(&path)
+                        .ok()
+                        .and_then(|bytes| bytes.try_into().ok())
+                        .ok_or_else(|| self.pause_for_key(inner))?,
+                ),
+                Err(SampleReadError::Missing) => None,
+                Err(_) => return Err(self.pause_for_key(inner)),
+            },
+        };
+        if recorded == Some(digest) {
+            inner.verified_key_digest = recorded;
+            return Ok(());
+        }
+        let files = self.files()?;
+        let new_authorization = create
+            && inner.configuration.mode == SamplingMode::Off
+            && !inner.has_pending_ticket()
+            && files.is_empty();
+        let verified_legacy = recorded.is_none()
+            && files.iter().take(MAX_SAMPLES).any(|file| {
+                file.created_at
+                    .is_some_and(|created_at| Self::open_sample(file, created_at, key).is_ok())
+            });
+        if !new_authorization && !verified_legacy {
+            return Err(self.pause_for_key(inner));
+        }
+        super::atomic_write(&path, &digest, || Ok(())).map_err(|_| self.pause_for_key(inner))?;
+        inner.verified_key_digest = Some(digest);
+        Ok(())
     }
 
     fn pause_for_key(&self, inner: &mut Inner) -> String {

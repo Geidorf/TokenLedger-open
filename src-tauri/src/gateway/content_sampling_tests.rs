@@ -536,6 +536,30 @@ impl SecretStore for UnreadableSecrets {
 }
 
 #[test]
+fn changed_sampling_key_cannot_take_over_empty_authorization_after_restart() {
+    let root = gateway_dir("empty_sampling_authorization");
+    let secrets = Arc::new(UnreadableSecrets {
+        changing_scope: true,
+        ..Default::default()
+    });
+    let sampling = ContentSampling::new(&root, secrets.clone());
+    sampling.configure(next(2, true)).unwrap();
+    let original = secrets.get(KEY_ACCOUNT).unwrap().unwrap();
+    secrets.set(KEY_ACCOUNT, &"ab".repeat(32)).unwrap();
+    assert!(sampling.status().paused);
+    drop(sampling);
+
+    let sampling = ContentSampling::new(&root, secrets.clone());
+    let paused = sampling.status();
+    assert!(paused.paused);
+    assert_eq!(paused.remaining, Some(2));
+    assert!(sampling.reserve().is_none());
+    secrets.set(KEY_ACCOUNT, &original).unwrap();
+    assert!(!sampling.status().paused);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn missing_in_current_store_preserves_samples_across_restart() {
     let root = gateway_dir("missing_in_current_store");
     let secrets = Arc::new(UnreadableSecrets {
