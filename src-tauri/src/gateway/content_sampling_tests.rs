@@ -395,6 +395,7 @@ fn missing_and_wrong_length_keys_fail_closed() {
     let _ = fs::remove_dir_all(root);
 
     for (name, key) in [
+        ("empty_key", String::new()),
         ("wrong_length_key", "00".to_string()),
         ("plus_key", format!("+f{}", "0".repeat(62))),
         ("non_hex_key", format!("g{}", "0".repeat(63))),
@@ -497,14 +498,27 @@ fn removing_last_samples_clears_pause_immediately_when_off() {
 struct UnreadableSecrets {
     values: Mutex<HashMap<String, String>>,
     unreadable: AtomicBool,
+    missing_in_current_store: AtomicBool,
+    changing_scope: bool,
 }
 
 impl SecretStore for UnreadableSecrets {
+    fn sampling_key_scope_can_change(&self) -> bool {
+        self.changing_scope
+    }
+
     fn get(&self, account: &str) -> Result<Option<String>, String> {
         if self.unreadable.load(Ordering::SeqCst) {
             return Err("test keychain unavailable".to_string());
         }
         Ok(self.values.lock().unwrap().get(account).cloned())
+    }
+
+    fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
+        if self.missing_in_current_store.load(Ordering::SeqCst) {
+            return Err(SecretReadError::MissingInCurrentStore);
+        }
+        self.get(account).map_err(|_| SecretReadError::Unavailable)
     }
 
     fn set(&self, account: &str, value: &str) -> Result<(), String> {
@@ -519,6 +533,75 @@ impl SecretStore for UnreadableSecrets {
         self.values.lock().unwrap().remove(account);
         Ok(())
     }
+}
+
+#[test]
+fn changed_sampling_key_cannot_take_over_empty_authorization_after_restart() {
+    let root = gateway_dir("empty_sampling_authorization");
+    let secrets = Arc::new(UnreadableSecrets {
+        changing_scope: true,
+        ..Default::default()
+    });
+    let sampling = ContentSampling::new(&root, secrets.clone());
+    sampling.configure(next(2, true)).unwrap();
+    let original = secrets.get(KEY_ACCOUNT).unwrap().unwrap();
+    secrets.set(KEY_ACCOUNT, &"ab".repeat(32)).unwrap();
+    assert!(sampling.status().paused);
+    drop(sampling);
+
+    let sampling = ContentSampling::new(&root, secrets.clone());
+    let paused = sampling.status();
+    assert!(paused.paused);
+    assert_eq!(paused.remaining, Some(2));
+    assert!(sampling.reserve().is_none());
+    secrets.set(KEY_ACCOUNT, &original).unwrap();
+    assert!(!sampling.status().paused);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn missing_in_current_store_preserves_samples_across_restart() {
+    let root = gateway_dir("missing_in_current_store");
+    let secrets = Arc::new(UnreadableSecrets {
+        changing_scope: true,
+        ..Default::default()
+    });
+    let sampling = ContentSampling::new(&root, secrets.clone());
+    sampling.configure(next(2, true)).unwrap();
+    begin_and_finish(&sampling, &id(0), "request", "response", 200);
+    let state_path = root.join(STATE_FILE);
+    let state_before = fs::read(&state_path).unwrap();
+    let original = secrets.get(KEY_ACCOUNT).unwrap().unwrap();
+    let sample_path = sampling.directory.join(format!("{}.bin", id(0)));
+    let sample_before = fs::read(&sample_path).unwrap();
+    drop(sampling);
+
+    secrets
+        .missing_in_current_store
+        .store(true, Ordering::SeqCst);
+    let sampling = ContentSampling::new(&root, secrets.clone());
+    let paused = sampling.status();
+    assert!(paused.paused);
+    assert_eq!(paused.remaining, Some(1));
+    assert!(sampling.read(&id(0)).is_err());
+    assert_eq!(fs::read(&state_path).unwrap(), state_before);
+    assert_eq!(fs::read(&sample_path).unwrap(), sample_before);
+
+    secrets
+        .missing_in_current_store
+        .store(false, Ordering::SeqCst);
+    for other in [String::new(), "ab".repeat(32)] {
+        secrets.set(KEY_ACCOUNT, &other).unwrap();
+        assert!(sampling.status().paused);
+        assert!(sampling.read(&id(0)).is_err());
+        assert_eq!(fs::read(&sample_path).unwrap(), sample_before);
+    }
+    secrets.set(KEY_ACCOUNT, &original).unwrap();
+    let resumed = sampling.status();
+    assert!(!resumed.paused);
+    assert_eq!(resumed.remaining, Some(1));
+    assert_eq!(sampling.read(&id(0)).unwrap().response, "response");
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
