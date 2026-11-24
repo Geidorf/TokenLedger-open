@@ -13,6 +13,8 @@
 
 ## 工具
 
+统计快照包含主账本和网关会计账本的数据，跨账本重复记录只计一次。网关探活和近期路由仍反映查询时的本机状态。
+
 所有工具都标了只读（`readOnlyHint: true`），返回 JSON：`structuredContent` 是对象，`content[0].text` 是同一份 JSON 文本，字段与 [命令行 JSON](cli.md) 相同（`schemaVersion: 1`）。参数不对时返回 `isError: true` 和原因，Agent 可以据此改正重试。
 
 | 工具 | 参数 | 返回 | 对应命令 |
