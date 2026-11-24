@@ -180,17 +180,6 @@ pub(crate) fn existing_db_path(app: &AppContext) -> PathBuf {
     app.app_data_dir().join("tokenboard.db")
 }
 
-pub(crate) fn open_read_only(db_path: &Path) -> std::result::Result<Connection, String> {
-    if !db_path.try_exists().map_err(|error| error.to_string())? {
-        return Err("本机账本尚未建立。请先在桌面端或用 scan 命令扫描。".into());
-    }
-    let conn = Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| error.to_string())?;
-    conn.busy_timeout(Duration::from_secs(5))
-        .map_err(|error| error.to_string())?;
-    Ok(conn)
-}
-
 /// Establish a connection to the database.
 pub fn get_connection(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;

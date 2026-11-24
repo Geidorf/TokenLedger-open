@@ -18,6 +18,7 @@ fn test_app(label: &str) -> AppContext {
     let _ = fs::remove_dir_all(&path);
     let app = AppContext::for_test(path);
     db::init_db(&db::get_db_path(&app)).expect("init db");
+    crate::commands::publish_query_snapshot(&app).unwrap();
     app
 }
 
@@ -30,6 +31,8 @@ fn seed_today(app: &AppContext) {
         ('claude','claude-sonnet-4',300,100,0,0,'{now}','secret-session-2','k2','m',0.25);"
     ))
     .unwrap();
+    drop(conn);
+    crate::commands::publish_query_snapshot(app).unwrap();
 }
 
 /// 额度：一个百分比窗口带账号标签和动作，用来确认脱敏。

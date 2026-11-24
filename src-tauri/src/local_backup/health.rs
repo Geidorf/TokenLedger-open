@@ -382,6 +382,8 @@ fn rebuild(app: &AppContext, db_path: &Path, automatic: bool) -> Result<RepairNo
     let stamp = Local::now().format("%Y%m%d-%H%M%S");
     let rebuilt = db_path.with_extension("db.rebuilt");
     let report = salvage(db_path, &rebuilt)?;
+    let _snapshot_writer = crate::query_snapshot::writer();
+    crate::query_snapshot::invalidate(app.app_data_dir())?;
     let damaged_copy = db_path.with_extension(format!("db.damaged-{stamp}"));
     if db_path.exists() {
         fs::rename(db_path, &damaged_copy)

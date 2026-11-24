@@ -400,9 +400,14 @@ fn read_local_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
     } else {
         Vec::new()
     };
+    merge_imported_rows(db_path, &mut rows)?;
+    Ok(rows)
+}
+
+fn merge_imported_rows(db_path: &Path, rows: &mut Vec<GatewayRow>) -> Result<(), String> {
     let imported = super::magpie_import::read_rows(db_path)?;
     if imported.is_empty() {
-        return Ok(rows);
+        return Ok(());
     }
     let as_scans: Vec<ScanCandidate> = imported
         .iter()
@@ -416,13 +421,13 @@ fn read_local_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
             cached_tokens: row.cached_tokens,
         })
         .collect();
-    let duplicates = superseded_scan_ids(&rows, &as_scans, DEDUPE_WINDOW_SECS);
+    let duplicates = superseded_scan_ids(rows, &as_scans, DEDUPE_WINDOW_SECS);
     rows.extend(
         imported
             .into_iter()
             .filter(|row| !duplicates.contains(&row.id)),
     );
-    Ok(rows)
+    Ok(())
 }
 
 /// This computer's rows, then other computers' shared rows: those are
@@ -436,10 +441,17 @@ fn read_merged_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
 fn read_gateway_rows(db_path: &Path) -> Result<Vec<GatewayRow>, String> {
     let dir = gateway_dir(db_path);
     let (_, through) = accounting::horizon(&dir)?;
+    gather_gateway_rows(through, |after| accounting::read_page(&dir, after, through))
+}
+
+fn gather_gateway_rows(
+    through: i64,
+    mut read_page: impl FnMut(i64) -> Result<Vec<(i64, LedgerRecord)>, String>,
+) -> Result<Vec<GatewayRow>, String> {
     let mut after = 0;
     let mut rows = Vec::new();
-    loop {
-        let page = accounting::read_page(&dir, after, through)?;
+    while after < through {
+        let page = read_page(after)?;
         if page.is_empty() {
             break;
         }
@@ -542,15 +554,24 @@ fn install_overlay_for_machine(
     gateway: &[GatewayRow],
     machine: Option<&str>,
 ) -> rusqlite::Result<()> {
+    let machine_id = machine.map(str::to_string).unwrap_or_else(|| {
+        crate::device_identity::for_connection(conn)
+            .unwrap_or_else(|_| crate::device_identity::UNKNOWN_MACHINE.to_string())
+    });
+    install_overlay_with_identity(conn, gateway, machine, &machine_id)
+}
+
+fn install_overlay_with_identity(
+    conn: &Connection,
+    gateway: &[GatewayRow],
+    machine: Option<&str>,
+    machine_id: &str,
+) -> rusqlite::Result<()> {
     let OverlayResolution { superseded, held } = resolve_overlay(
         gateway,
         &scan_candidates_for_machine(conn, gateway, machine)?,
         DEDUPE_WINDOW_SECS,
     );
-    let machine_id = machine.map(str::to_string).unwrap_or_else(|| {
-        crate::device_identity::for_connection(conn)
-            .unwrap_or_else(|_| crate::device_identity::UNKNOWN_MACHINE.to_string())
-    });
     conn.execute_batch(
         "CREATE TEMP TABLE gw_rows (
              id INTEGER PRIMARY KEY, tool TEXT NOT NULL, model TEXT NOT NULL,
@@ -584,7 +605,7 @@ fn install_overlay_for_machine(
             row.cache_write_tokens,
             row.timestamp,
             row.session_id,
-            row.machine_id.as_deref().unwrap_or(&machine_id),
+            row.machine_id.as_deref().unwrap_or(machine_id),
             row.provider,
             row.source.as_str(),
             row.latency_ms,
@@ -600,8 +621,74 @@ fn install_overlay_for_machine(
     Ok(())
 }
 
-/// Read-only stats connection. With a gateway ledger present the connection
-/// sees the merged view; otherwise it is a plain connection.
+pub(crate) fn publish_query_snapshot(app: &crate::app_paths::AppContext) -> Result<(), String> {
+    let _writer = crate::query_snapshot::writer();
+    let captured_at = Utc::now();
+    let path = db::existing_db_path(app);
+    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
+        .map_err(|error| error.to_string())?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|error| error.to_string())?;
+    conn.pragma_update(None, "temp_store", "MEMORY")
+        .map_err(|error| error.to_string())?;
+    let signature = ledger_signature(&path);
+    let rows = signature
+        .as_ref()
+        .map(|signature| gateway_rows_cached(&path, signature))
+        .transpose()?;
+    crate::query_snapshot::publish(
+        app.app_data_dir(),
+        &conn,
+        signature.is_some(),
+        captured_at,
+        |conn| {
+            if let Some(rows) = rows {
+                install_overlay(conn, &rows)?;
+            }
+            Ok(())
+        },
+    )
+}
+
+pub(super) fn open_query_connection(
+    db_path: &Path,
+) -> Result<(Connection, crate::query_snapshot::Freshness, bool), String> {
+    let dir = db_path.parent().ok_or("统计快照目录不可用。")?;
+    let (conn, freshness, gateway) = crate::query_snapshot::open(dir)?;
+    if gateway {
+        conn.execute_batch(
+            "CREATE TEMP VIEW token_logs AS
+                SELECT id,tool,model,input_tokens,output_tokens,cached_tokens,cache_write_tokens,
+                       timestamp,session_id,cost_usd,machine_id,cache_write_known,usage_provenance
+                  FROM main.token_logs WHERE id NOT IN (SELECT id FROM main.gateway_superseded)
+                UNION ALL
+                SELECT id,tool,model,input_tokens,output_tokens,cached_tokens,cache_write_tokens,
+                       timestamp,session_id,cost_usd,machine_id,NULL,'reported' FROM main.gateway_rows;",
+        ).map_err(|error| error.to_string())?;
+    }
+    Ok((conn, freshness, gateway))
+}
+
+type QueryBreakdown = (HashMap<i64, String>, HashMap<i64, ContextSize>);
+
+pub(super) fn query_provider_and_context(conn: &Connection) -> Result<QueryBreakdown, String> {
+    let mut stmt = conn
+        .prepare("SELECT id,provider,context FROM main.gateway_rows")
+        .map_err(|error| error.to_string())?;
+    let mut rows = stmt.query([]).map_err(|error| error.to_string())?;
+    let mut providers = HashMap::new();
+    let mut contexts = HashMap::new();
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        let id = row.get(0).map_err(|error| error.to_string())?;
+        providers.insert(id, row.get(1).map_err(|error| error.to_string())?);
+        let context: Option<String> = row.get(2).map_err(|error| error.to_string())?;
+        if let Some(context) = context.and_then(|value| serde_json::from_str(&value).ok()) {
+            contexts.insert(id, context);
+        }
+    }
+    Ok((providers, contexts))
+}
+
 pub(super) fn open_stats_connection(db_path: &Path) -> Result<Connection, String> {
     let conn = db::get_connection(db_path).map_err(|error| error.to_string())?;
     if let Some(signature) = ledger_signature(db_path) {
@@ -639,10 +726,15 @@ pub(super) fn row_providers(
     db_path: &Path,
     signature: &str,
 ) -> Result<HashMap<i64, String>, String> {
-    Ok(gateway_rows_cached(db_path, signature)?
-        .iter()
+    Ok(providers_from_rows(&gateway_rows_cached(
+        db_path, signature,
+    )?))
+}
+
+pub(super) fn providers_from_rows(rows: &[GatewayRow]) -> HashMap<i64, String> {
+    rows.iter()
         .map(|row| (row.id, row.provider.clone()))
-        .collect())
+        .collect()
 }
 
 /// 带 Context 构成的网关行（行 id → 构成），供概览汇总平均构成。读已缓存的网关行；
@@ -651,10 +743,15 @@ pub(super) fn row_contexts(
     db_path: &Path,
     signature: &str,
 ) -> Result<HashMap<i64, ContextSize>, String> {
-    Ok(gateway_rows_cached(db_path, signature)?
-        .iter()
+    Ok(contexts_from_rows(&gateway_rows_cached(
+        db_path, signature,
+    )?))
+}
+
+pub(super) fn contexts_from_rows(rows: &[GatewayRow]) -> HashMap<i64, ContextSize> {
+    rows.iter()
         .filter_map(|row| row.context.map(|context| (row.id, context)))
-        .collect())
+        .collect()
 }
 
 #[derive(Debug, PartialEq)]

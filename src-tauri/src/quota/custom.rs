@@ -577,6 +577,26 @@ fn last_good_file_name(config: &CustomQuotaEndpointConfig) -> String {
     )
 }
 
+pub(super) fn read_saved_providers(
+    dir: &Path,
+    configs: &[CustomQuotaEndpointConfig],
+    now: DateTime<Utc>,
+) -> Vec<QuotaProviderEnvelope> {
+    configs
+        .iter()
+        .filter(|config| config.enabled)
+        .filter_map(move |config| {
+            super::read_persisted_last_good(
+                dir,
+                &last_good_file_name(config),
+                &provider_id(&config.id),
+                now,
+            )
+            .ok()
+        })
+        .collect()
+}
+
 fn rate_limit_file_name(config: &CustomQuotaEndpointConfig) -> String {
     format!(
         "quota_rate_custom_{}_{}.json",

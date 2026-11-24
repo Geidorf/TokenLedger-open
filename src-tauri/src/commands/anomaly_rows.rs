@@ -8,8 +8,8 @@
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};
 
 use super::{
-    behavior_session_id, db, gateway_overlay, load_prices, query_bounds, read_local_rows_filtered,
-    rows_in_timezone, BehaviorPricer, LocalStatsQuery, NormalizedStatsQuery,
+    behavior_session_id, db, gateway_overlay, load_prices, query_bounds, read_local_rows_on,
+    rows_in_timezone, BehaviorPricer, LocalStatsQuery, NormalizedStatsQuery, QueryLedger,
 };
 use crate::app_paths::AppContext;
 use crate::usage_anomaly::{GatewayOutcome, UsageRow};
@@ -19,6 +19,7 @@ pub(crate) fn local_usage_rows(
     app: &AppContext,
     start: NaiveDate,
     now: DateTime<Local>,
+    snapshot: Option<&QueryLedger>,
 ) -> Result<Vec<UsageRow>, String> {
     let query = NormalizedStatsQuery::from_query(LocalStatsQuery {
         range: "custom".to_string(),
@@ -36,11 +37,20 @@ pub(crate) fn local_usage_rows(
     })?;
     let zoned_now = now.with_timezone(&query.tz);
     let bounds = query_bounds(query.range, zoned_now)?;
-    let db_path = db::get_db_path(app);
-    db::init_db(&db_path).map_err(|error| error.to_string())?;
+    let desktop_conn;
+    let desktop_prices;
+    let (conn, prices) = if let Some(snapshot) = snapshot {
+        (&snapshot.connection, &snapshot.prices)
+    } else {
+        let db_path = db::get_db_path(app);
+        db::init_db(&db_path).map_err(|error| error.to_string())?;
+        desktop_conn = gateway_overlay::open_stats_connection(&db_path)?;
+        desktop_prices = load_prices(app);
+        (&desktop_conn, &desktop_prices)
+    };
     let rows = rows_in_timezone(
-        &read_local_rows_filtered(
-            &db_path,
+        &read_local_rows_on(
+            conn,
             &query,
             bounds.current_start.as_ref(),
             &bounds.current_end,
@@ -48,8 +58,7 @@ pub(crate) fn local_usage_rows(
         )?,
         query.tz,
     )?;
-    let prices = load_prices(app);
-    let mut pricer = BehaviorPricer::new(&prices);
+    let mut pricer = BehaviorPricer::new(prices);
     Ok(rows
         .iter()
         .filter_map(|row| {
@@ -75,7 +84,7 @@ pub(crate) fn local_gateway_outcomes(
     app: &AppContext,
     since: NaiveDateTime,
 ) -> Result<Option<Vec<GatewayOutcome>>, String> {
-    let db_path = db::get_db_path(app);
+    let db_path = db::existing_db_path(app);
     if !gateway_overlay::accounting_present(&db_path) {
         return Ok(None);
     }
@@ -146,7 +155,7 @@ mod tests {
             Some(0.5),
         );
 
-        let rows = local_usage_rows(&app, start, now).unwrap();
+        let rows = local_usage_rows(&app, start, now, None).unwrap();
         assert_eq!(rows.len(), 2);
         let row = rows.iter().find(|row| row.session_id.is_some()).unwrap();
         assert_eq!(row.session_id.as_deref(), Some("s-1"));

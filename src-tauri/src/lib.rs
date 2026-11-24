@@ -38,6 +38,7 @@ mod gateway;
 mod local_backup;
 mod models_dev;
 mod project_index;
+mod query_snapshot;
 mod quota;
 pub use quota::run_claude_statusline_helper;
 mod macos_wallpaper_window;
@@ -292,6 +293,12 @@ fn lower_background_thread_priority() {
 #[cfg(not(target_os = "windows"))]
 fn lower_background_thread_priority() {}
 
+fn publish_query_snapshot(ctx: &AppContext) {
+    if let Err(error) = commands::publish_query_snapshot(ctx) {
+        log::warn!("query snapshot refresh failed: {error}");
+    }
+}
+
 fn start_background_scheduler(
     ctx: Arc<AppContext>,
     settings_state: Arc<Mutex<AppSettings>>,
@@ -319,6 +326,7 @@ fn start_background_scheduler(
         if !initial.background_scan_paused {
             let _ = scan_sync_and_notify(&ctx, &app_handle, false);
         }
+        publish_query_snapshot(&ctx);
         // 冷启动无论有没有新行，托盘文字都要先落一次“今日”数字。
         refresh_tray_status(&ctx, &app_handle);
         // Quota transport has its own five-minute cadence. Deferring the first
@@ -340,6 +348,7 @@ fn start_background_scheduler(
         let mut next_cloud_sync_retry = now + Duration::from_secs(15 * 60);
         let mut next_desktop = now + Duration::from_secs(initial.desktop_interval_secs);
         let mut next_quota_sync = now + Duration::from_secs(5 * 60);
+        let mut next_query_snapshot = now + Duration::from_secs(5 * 60);
         #[cfg(target_os = "windows")]
         let mut next_lockscreen = now + Duration::from_secs(initial.lockscreen_interval_secs);
         let mut current_day = chrono::Local::now().date_naive();
@@ -400,6 +409,10 @@ fn start_background_scheduler(
                 next_scan = now + Duration::from_secs(cfg.scan_interval_secs);
             }
 
+            if now >= next_query_snapshot {
+                publish_query_snapshot(&ctx);
+                next_query_snapshot = Instant::now() + Duration::from_secs(5 * 60);
+            }
             if now >= next_quota_sync {
                 // The main window only polls quotas while visible; a tray-resident
                 // app still needs a fresh local read for alerts. No keychain retry.
