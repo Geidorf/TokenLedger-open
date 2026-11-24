@@ -4697,7 +4697,7 @@ struct DiscoveredModelPrice {
 }
 
 fn load_discovered_model_prices(app: &AppContext) -> Vec<DiscoveredModelPrice> {
-    let db_path = db::get_db_path(app);
+    let db_path = db::existing_db_path(app);
     if !db_path.exists() {
         return Vec::new();
     }
@@ -4909,6 +4909,18 @@ fn load_prices(app: &AppContext) -> Value {
     let prices = load_saved_prices(app);
     let discovered = load_discovered_model_prices(app);
     merge_discovered_prices(prices, &discovered)
+}
+
+fn load_prices_read_only(app: &AppContext) -> Value {
+    let defaults = price_feed::effective_defaults(app.app_data_dir());
+    let prices = fs::read(app.app_data_dir().join(PRICE_OVERRIDES_FILE))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Map<String, Value>>(&bytes).ok())
+        .map_or_else(
+            || defaults.clone(),
+            |overrides| apply_price_overrides(&defaults, &overrides),
+        );
+    merge_discovered_prices(prices, &load_discovered_model_prices(app))
 }
 
 pub(crate) fn auto_discovered_price_keys(app: &AppContext) -> HashSet<String> {
@@ -11689,10 +11701,8 @@ pub(crate) fn export_ledger_impl(
         }
         None => None,
     };
-    let db_path = db::get_db_path(app);
-    db::init_db(&db_path).map_err(|e| e.to_string())?;
-    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
-    let prices = load_prices(app);
+    let conn = db::open_read_only(&db::existing_db_path(app))?;
+    let prices = load_prices_read_only(app);
     match format {
         LedgerExportFormat::Csv => ledger_csv_window(&conn, &prices, window.as_ref()),
         LedgerExportFormat::Json => {

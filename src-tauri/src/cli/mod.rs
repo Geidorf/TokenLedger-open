@@ -54,7 +54,11 @@ pub fn run_cli(args: Vec<String>) -> i32 {
         }
         _ => {}
     }
-    let app = AppContext::new();
+    let app = if matches!(&invocation.command, Command::Export(_)) {
+        AppContext::for_query()
+    } else {
+        AppContext::new()
+    };
     match execute(&app, &invocation) {
         Ok(output) => {
             let mut stdout = std::io::stdout().lock();

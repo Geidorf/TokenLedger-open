@@ -140,6 +140,19 @@ fn concurrent_scans_from_separate_processes_count_each_record_once() {
 }
 
 #[test]
+fn export_with_no_ledger_does_not_create_the_app_data_directory() {
+    let root = temp_root("export_no_ledger");
+    let data = root.join("data");
+    let output = cli(&root, &data, &["export", "--format", "json"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("scan"));
+    assert!(!data.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn mcp_handshake_does_not_create_the_app_data_directory() {
     use std::io::Write;
     use std::process::Stdio;
