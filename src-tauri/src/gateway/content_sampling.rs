@@ -591,9 +591,7 @@ impl ContentSampling {
         }
         if inner.key_paused {
             inner.key_paused = false;
-            if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
-                inner.error = None;
-            }
+            inner.error = None;
             self.ready.store(true, Ordering::SeqCst);
         }
         Ok(key)
@@ -607,16 +605,23 @@ impl ContentSampling {
         digest: [u8; 32],
     ) -> Result<(), String> {
         let path = self.state_file.with_file_name("sampling-key-check-v1");
+        let new_authorization = create
+            && inner.configuration.mode == SamplingMode::Off
+            && !inner.has_pending_ticket()
+            && self.files()?.is_empty();
         let recorded = match inner.verified_key_digest {
             Some(known) => Some(known),
             None => match regular_file(&path, digest.len() as u64) {
-                Ok(_) => Some(
-                    fs::read(&path)
-                        .ok()
-                        .and_then(|bytes| bytes.try_into().ok())
-                        .ok_or_else(|| self.pause_for_key(inner))?,
-                ),
+                Ok(_) => {
+                    let bytes = fs::read(&path).map_err(|_| self.pause_for_key(inner))?;
+                    match bytes.try_into() {
+                        Ok(digest) => Some(digest),
+                        Err(_) if new_authorization => None,
+                        Err(_) => return Err(self.pause_for_key(inner)),
+                    }
+                }
                 Err(SampleReadError::Missing) => None,
+                Err(SampleReadError::Invalid) if new_authorization => None,
                 Err(_) => return Err(self.pause_for_key(inner)),
             },
         };
@@ -625,17 +630,19 @@ impl ContentSampling {
             return Ok(());
         }
         let files = self.files()?;
-        let new_authorization = create
-            && inner.configuration.mode == SamplingMode::Off
-            && !inner.has_pending_ticket()
-            && files.is_empty();
         let verified_legacy = recorded.is_none()
             && files.iter().take(MAX_SAMPLES).any(|file| {
                 file.created_at
                     .is_some_and(|created_at| Self::open_sample(file, created_at, key).is_ok())
             });
         if !new_authorization && !verified_legacy {
-            return Err(self.pause_for_key(inner));
+            let error = self.pause_for_key(inner);
+            if recorded.is_none() && files.is_empty() {
+                let message = "无法确认旧采样授权的密钥。请停止采样后重新授权。".to_string();
+                inner.error = Some(message.clone());
+                return Err(message);
+            }
+            return Err(error);
         }
         super::atomic_write(&path, &digest, || Ok(())).map_err(|_| self.pause_for_key(inner))?;
         inner.verified_key_digest = Some(digest);
@@ -738,9 +745,7 @@ impl ContentSampling {
     fn clear_pause_if_unused(&self, inner: &mut Inner, files: &[SampleFile]) {
         if inner.key_paused && inner.configuration.mode == SamplingMode::Off && files.is_empty() {
             inner.key_paused = false;
-            if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
-                inner.error = None;
-            }
+            inner.error = None;
             self.ready.store(true, Ordering::SeqCst);
         }
     }
