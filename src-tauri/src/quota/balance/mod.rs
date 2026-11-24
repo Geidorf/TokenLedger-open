@@ -168,6 +168,16 @@ fn last_good_file_name(provider_id: &str) -> String {
     format!("quota_lkg_balance_{}.json", file_slug(provider_id))
 }
 
+pub(super) fn read_saved_providers(dir: &Path, now: DateTime<Utc>) -> Vec<QuotaProviderEnvelope> {
+    let mut ids: Vec<_> = enabled_provider_ids(dir).into_iter().collect();
+    ids.sort();
+    ids.into_iter()
+        .filter_map(|id| {
+            super::read_persisted_last_good(dir, &last_good_file_name(&id), &id, now).ok()
+        })
+        .collect()
+}
+
 fn rate_limit_file_name(provider_id: &str) -> String {
     format!("quota_rate_balance_{}.json", file_slug(provider_id))
 }

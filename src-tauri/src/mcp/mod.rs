@@ -33,12 +33,12 @@ const INSTRUCTIONS: &str = "TokenLedger is the user's local AI token ledger. \
 All tools are read-only and return JSON. Effective tokens = input + output; cached tokens are \
 reported separately and never added to the effective total. Costs are estimates in USD. \
 Call get_status for a quick overview (today's usage, the tightest budget and quota window); \
-call get_quota before starting a long or expensive task. Numbers reflect the last scan made by \
-the TokenLedger desktop app or `tokenledger-cli scan`; this server never scans or writes.";
+call get_quota before starting a long or expensive task. Usage and quota reflect the snapshots \
+saved by the TokenLedger desktop app; start it and refresh if a snapshot is unavailable.";
 
 /// 服务入口：读标准输入直到 EOF，返回进程退出码。
 pub fn run_stdio() -> i32 {
-    let app = AppContext::new();
+    let app = AppContext::for_query();
     let mut server = Server::new(&app);
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
@@ -560,14 +560,23 @@ pub(crate) fn quota_view(quota: &Value) -> Value {
         "command": "quota",
         "providers": providers,
         "tightest": crate::cli::tightest_quota_window(quota),
+        "message": quota.get("message"),
     })
 }
 
 // ---------------------------------------------------------------- 异常
 
 fn anomalies_report(app: &AppContext) -> Result<Value, String> {
-    let report = crate::usage_anomaly::evaluate_local(app, chrono::Local::now())?;
-    let value = serde_json::to_value(report).map_err(|error| error.to_string())?;
+    let snapshot = crate::commands::QueryLedger::open(app)?;
+    let freshness = &snapshot.freshness;
+    let report = crate::usage_anomaly::evaluate_local_with_snapshot(
+        app,
+        chrono::Local::now(),
+        Some(&snapshot),
+    )?;
+    let mut value = serde_json::to_value(report).map_err(|error| error.to_string())?;
+    value["snapshot"] = json!(freshness);
+    value["snapshotMessage"] = json!(freshness.text());
     Ok(anomalies_view(value))
 }
 

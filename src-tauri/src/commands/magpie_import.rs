@@ -462,6 +462,10 @@ pub(crate) fn import_from(db_path: &Path, source: &Path) -> Result<ImportMeta, S
 
 /// Removes the imported store; magpie's own file is untouched.
 pub(crate) fn clear(db_path: &Path) -> Result<(), String> {
+    let _snapshot_writer = crate::query_snapshot::writer();
+    if let Some(dir) = db_path.parent() {
+        crate::query_snapshot::invalidate(dir)?;
+    }
     for path in [store_path(db_path), meta_path(db_path)] {
         match fs::remove_file(&path) {
             Ok(()) => {}
@@ -544,6 +548,7 @@ pub async fn magpie_import_clear(
         let db_path = db::get_db_path(&app);
         clear(&db_path)?;
         cache::invalidate_all(&db_path);
+        crate::publish_query_snapshot(&app);
         Ok::<(), String>(())
     })
     .await

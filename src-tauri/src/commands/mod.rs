@@ -4697,7 +4697,7 @@ struct DiscoveredModelPrice {
 }
 
 fn load_discovered_model_prices(app: &AppContext) -> Vec<DiscoveredModelPrice> {
-    let db_path = db::get_db_path(app);
+    let db_path = db::existing_db_path(app);
     if !db_path.exists() {
         return Vec::new();
     }
@@ -4705,6 +4705,10 @@ fn load_discovered_model_prices(app: &AppContext) -> Vec<DiscoveredModelPrice> {
     else {
         return Vec::new();
     };
+    discovered_model_prices_on(&conn)
+}
+
+fn discovered_model_prices_on(conn: &Connection) -> Vec<DiscoveredModelPrice> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT MIN(tool), model_key, MIN(model),
                 GROUP_CONCAT(DISTINCT tool), MIN(first_seen_at), MAX(last_seen_at)
@@ -4909,6 +4913,18 @@ fn load_prices(app: &AppContext) -> Value {
     let prices = load_saved_prices(app);
     let discovered = load_discovered_model_prices(app);
     merge_discovered_prices(prices, &discovered)
+}
+
+fn load_prices_read_only(app: &AppContext, conn: &Connection) -> Value {
+    let defaults = price_feed::effective_defaults(app.app_data_dir());
+    let prices = fs::read(app.app_data_dir().join(PRICE_OVERRIDES_FILE))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Map<String, Value>>(&bytes).ok())
+        .map_or_else(
+            || defaults.clone(),
+            |overrides| apply_price_overrides(&defaults, &overrides),
+        );
+    merge_discovered_prices(prices, &discovered_model_prices_on(conn))
 }
 
 pub(crate) fn auto_discovered_price_keys(app: &AppContext) -> HashSet<String> {
@@ -6909,6 +6925,16 @@ fn read_local_rows_filtered(
     entity: Option<&NormalizedEntitySelector>,
 ) -> Result<Vec<StatRow>, String> {
     let conn = gateway_overlay::open_stats_connection(db_path)?;
+    read_local_rows_on(&conn, query, start, end, entity)
+}
+
+fn read_local_rows_on(
+    conn: &Connection,
+    query: &NormalizedStatsQuery,
+    start: Option<&DateTime<Tz>>,
+    end: &DateTime<Tz>,
+    entity: Option<&NormalizedEntitySelector>,
+) -> Result<Vec<StatRow>, String> {
     let mut sql = "SELECT id, tool, model, input_tokens, output_tokens, cached_tokens, \
                    cache_write_tokens, timestamp, session_id, cost_usd, machine_id, cache_write_known, usage_provenance \
                    FROM token_logs WHERE 1 = 1"
@@ -6930,6 +6956,8 @@ pub(crate) mod anomaly_rows;
 mod device_cloud_move;
 mod gateway_cloud;
 mod gateway_overlay;
+
+pub(crate) use gateway_overlay::publish_query_snapshot;
 pub mod gateway_request_log;
 pub mod magpie_import;
 pub mod peer_shared;
@@ -7281,13 +7309,29 @@ fn get_local_stats_v2_snapshot_with_entity_at(
     entity: Option<&NormalizedEntitySelector>,
     now: DateTime<Local>,
 ) -> Result<LocalStatsSnapshot, String> {
+    get_local_stats_v2_snapshot_with_entity_at_mode(app, query, entity, now, None)
+}
+
+fn get_local_stats_v2_snapshot_with_entity_at_mode(
+    app: &AppContext,
+    query: NormalizedStatsQuery,
+    entity: Option<&NormalizedEntitySelector>,
+    now: DateTime<Local>,
+    snapshot: Option<&QueryLedger>,
+) -> Result<LocalStatsSnapshot, String> {
     let zoned_now = now.with_timezone(&query.tz);
     let bounds = query_bounds(query.range, zoned_now)?;
-    let db_path = db::get_db_path(app);
-    db::init_db(&db_path).map_err(|e| e.to_string())?;
-    let prices = load_prices(app);
-    let storage_rows = read_local_rows_filtered(
-        &db_path,
+    let db_path = db::existing_db_path(app);
+    let desktop_connection;
+    let (conn, prices) = if let Some(snapshot) = snapshot {
+        (&snapshot.connection, snapshot.prices.clone())
+    } else {
+        db::init_db(&db::get_db_path(app)).map_err(|error| error.to_string())?;
+        desktop_connection = gateway_overlay::open_stats_connection(&db_path)?;
+        (&desktop_connection, load_prices(app))
+    };
+    let storage_rows = read_local_rows_on(
+        conn,
         &query,
         earliest_query_start(&bounds),
         &bounds.current_end,
@@ -7305,25 +7349,49 @@ fn get_local_stats_v2_snapshot_with_entity_at(
     insert_stats_v2_fields(
         &mut stats, &rows, &bounds, &query, &prices, zoned_now, entity,
     );
-    if let Some(signature) = gateway_overlay::ledger_signature(&db_path) {
+    if let Some(freshness) = snapshot.map(|snapshot| &snapshot.freshness) {
+        stats["meta"]["snapshot"] = json!(freshness);
+        stats["meta"]["snapshotMessage"] = json!(freshness.text());
+    }
+    if snapshot.is_some_and(|snapshot| snapshot.gateway) {
         stats["meta"]["capabilities"]["gatewayLedger"] = json!(true);
-        if entity.is_none() {
-            let providers = gateway_overlay::row_providers(&db_path, &signature)?;
-            stats["providers"] = aggregate_provider_split(
-                &rows,
-                &providers,
-                &prices,
-                bounds.current_start.as_ref().map(DateTime::naive_local),
-                bounds.current_end.naive_local(),
-            );
-            let contexts = gateway_overlay::row_contexts(&db_path, &signature)?;
-            if let Some(composition) = aggregate_context_composition(
-                &rows,
-                &contexts,
-                bounds.current_start.as_ref().map(DateTime::naive_local),
-                bounds.current_end.naive_local(),
-            ) {
-                stats["contextComposition"] = composition;
+        let (providers, contexts) = gateway_overlay::query_provider_and_context(conn)?;
+        stats["providers"] = aggregate_provider_split(
+            &rows,
+            &providers,
+            &prices,
+            bounds.current_start.as_ref().map(DateTime::naive_local),
+            bounds.current_end.naive_local(),
+        );
+        if let Some(composition) = aggregate_context_composition(
+            &rows,
+            &contexts,
+            bounds.current_start.as_ref().map(DateTime::naive_local),
+            bounds.current_end.naive_local(),
+        ) {
+            stats["contextComposition"] = composition;
+        }
+    } else if snapshot.is_none() {
+        if let Some(signature) = gateway_overlay::ledger_signature(&db_path) {
+            stats["meta"]["capabilities"]["gatewayLedger"] = json!(true);
+            if entity.is_none() {
+                let providers = gateway_overlay::row_providers(&db_path, &signature)?;
+                stats["providers"] = aggregate_provider_split(
+                    &rows,
+                    &providers,
+                    &prices,
+                    bounds.current_start.as_ref().map(DateTime::naive_local),
+                    bounds.current_end.naive_local(),
+                );
+                let contexts = gateway_overlay::row_contexts(&db_path, &signature)?;
+                if let Some(composition) = aggregate_context_composition(
+                    &rows,
+                    &contexts,
+                    bounds.current_start.as_ref().map(DateTime::naive_local),
+                    bounds.current_end.naive_local(),
+                ) {
+                    stats["contextComposition"] = composition;
+                }
             }
         }
     }
@@ -7341,6 +7409,40 @@ fn get_local_stats_v2_snapshot_with_entity_at(
 #[allow(dead_code)]
 pub fn get_local_stats_v2_impl(app: &AppContext, query: LocalStatsQuery) -> Result<Value, String> {
     get_local_stats_v2_impl_at(app, query, Local::now())
+}
+
+pub(crate) struct QueryLedger {
+    connection: Connection,
+    prices: Value,
+    pub(crate) freshness: crate::query_snapshot::Freshness,
+    gateway: bool,
+}
+
+impl QueryLedger {
+    pub(crate) fn open(app: &AppContext) -> Result<Self, String> {
+        let (connection, freshness, gateway) =
+            gateway_overlay::open_query_connection(&db::existing_db_path(app))?;
+        let prices = load_prices_read_only(app, &connection);
+        Ok(Self {
+            connection,
+            prices,
+            freshness,
+            gateway,
+        })
+    }
+
+    pub(crate) fn stats(
+        &self,
+        app: &AppContext,
+        query: LocalStatsQuery,
+        now: DateTime<Local>,
+    ) -> Result<Value, String> {
+        let query = NormalizedStatsQuery::from_query(query)?;
+        Ok(
+            get_local_stats_v2_snapshot_with_entity_at_mode(app, query, None, now, Some(self))?
+                .stats,
+        )
+    }
 }
 
 /// 聚合本机完整账本的行为分析数据。这里故意不复用 Stats v2 的 `history`
@@ -11689,10 +11791,8 @@ pub(crate) fn export_ledger_impl(
         }
         None => None,
     };
-    let db_path = db::get_db_path(app);
-    db::init_db(&db_path).map_err(|e| e.to_string())?;
-    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
-    let prices = load_prices(app);
+    let (conn, _, _) = crate::query_snapshot::open(app.app_data_dir())?;
+    let prices = load_prices_read_only(app, &conn);
     match format {
         LedgerExportFormat::Csv => ledger_csv_window(&conn, &prices, window.as_ref()),
         LedgerExportFormat::Json => {
@@ -12373,6 +12473,8 @@ pub fn cleanup_db_impl(app: &AppContext, date: String) -> Result<Value, String> 
         return Err("日期格式必须为 YYYY-MM-DD".to_string());
     }
 
+    let snapshot_writer = crate::query_snapshot::writer();
+    crate::query_snapshot::invalidate(app.app_data_dir())?;
     let db_path = db::get_db_path(app);
     let mut conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
 
@@ -12386,6 +12488,8 @@ pub fn cleanup_db_impl(app: &AppContext, date: String) -> Result<Value, String> 
         .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     drop(conn);
+    drop(snapshot_writer);
+    crate::publish_query_snapshot(app);
 
     let mut message = format!("成功清理了 {} 条在 {} 之前的记录", affected, date);
     if affected > 0 {
@@ -12558,7 +12662,9 @@ mod post_scan_sync_tests {
 }
 
 pub fn refresh_scan_impl(app: &AppContext) -> Result<Value, String> {
-    refresh_scan_with(app, true)
+    let result = refresh_scan_with(app, true)?;
+    crate::publish_query_snapshot(app);
+    Ok(result)
 }
 
 /// `post_scan_cloud_sync` 为假时只扫描入库，不在后台线程里推云端：命令行进程扫完就退出，

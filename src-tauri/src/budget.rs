@@ -51,7 +51,7 @@ pub enum BudgetPeriod {
 }
 
 impl BudgetPeriod {
-    fn stats_range(self) -> &'static str {
+    pub(crate) fn stats_range(self) -> &'static str {
         match self {
             Self::Day => "today",
             Self::Week => "week",

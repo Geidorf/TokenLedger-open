@@ -575,11 +575,14 @@ fn load_settings_raw_result_unlocked(app: &AppContext) -> Result<AppSettings, St
 fn load_settings_raw_with_migration_unlocked(
     app: &AppContext,
 ) -> Result<(AppSettings, bool), String> {
-    let path = settings_path(app)?;
-    if !path.exists() {
-        return Ok((AppSettings::default(), false));
-    }
-    let content = fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    let path = app.app_data_dir().join(SETTINGS_FILE);
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((AppSettings::default(), false));
+        }
+        Err(error) => return Err(error.to_string()),
+    };
     parse_settings_with_migration(&content)
 }
 

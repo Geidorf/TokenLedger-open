@@ -218,6 +218,10 @@ pub(crate) fn read_meta(db_path: &Path) -> Option<SharedMeta> {
 
 /// Removes the kept shared usage.
 pub(crate) fn clear(db_path: &Path) -> Result<(), String> {
+    let _snapshot_writer = crate::query_snapshot::writer();
+    if let Some(dir) = db_path.parent() {
+        crate::query_snapshot::invalidate(dir)?;
+    }
     for path in [store_path(db_path), meta_path(db_path)] {
         match fs::remove_file(&path) {
             Ok(()) => {}
@@ -377,9 +381,15 @@ pub async fn peer_sync_shared_clear(
     peer_sync::ensure_main(&window)?;
     let app = state.inner().clone();
     peer_sync::save_shared_selection(app.app_data_dir(), &[])?;
-    let db_path = db::get_db_path(&app);
-    clear(&db_path)?;
-    cache::invalidate_all(&db_path);
+    tauri::async_runtime::spawn_blocking(move || {
+        let db_path = db::get_db_path(&app);
+        clear(&db_path)?;
+        cache::invalidate_all(&db_path);
+        crate::publish_query_snapshot(&app);
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     emit_stats_updated(&app_handle);
     Ok(())
 }

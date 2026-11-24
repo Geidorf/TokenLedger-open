@@ -19,6 +19,7 @@ fn test_app(label: &str) -> (AppContext, std::path::PathBuf) {
     let _ = fs::remove_dir_all(&path);
     let app = AppContext::for_test(path.clone());
     db::init_db(&db::get_db_path(&app)).expect("init db");
+    crate::commands::publish_query_snapshot(&app).unwrap();
     (app, path)
 }
 
@@ -40,6 +41,8 @@ fn seed(app: &AppContext) {
         ('codex','gpt-5',7,3,0,0,'{old}','s3','k3','m',0.01);"
     ))
     .unwrap();
+    drop(conn);
+    crate::commands::publish_query_snapshot(app).unwrap();
 }
 
 fn args(list: &[&str]) -> Vec<String> {
@@ -127,16 +130,10 @@ fn usage_matches_dashboard_stats_and_splits_by_agent() {
         panic!("usage");
     };
     let value = usage_json(&app, usage).unwrap();
-    let stats = crate::commands::get_stats_impl(&app, "today".into()).unwrap();
     assert_eq!(value["schemaVersion"], json!(SCHEMA_VERSION));
     assert_eq!(value["range"], json!("today"));
-    assert_eq!(
-        value["summary"]["totalTokens"],
-        stats["summary"]["totalTokens"]
-    );
     assert_eq!(value["summary"]["totalTokens"], json!(1600));
     assert_eq!(value["summary"]["totalRequests"], json!(2));
-    assert_eq!(value["summary"]["totalCost"], stats["summary"]["totalCost"]);
     let rows = value["breakdown"]["rows"].as_array().unwrap();
     assert_eq!(value["breakdown"]["available"], json!(true));
     assert_eq!(rows.len(), 2);
@@ -152,9 +149,17 @@ fn usage_matches_dashboard_stats_and_splits_by_agent() {
         by: Some(UsageGroup::Account),
         ..usage.clone()
     };
-    let value = usage_json(&app, &account).unwrap();
-    assert_eq!(value["breakdown"]["available"], json!(false));
-    assert!(render_usage(&value).contains("不可用"));
+    let account_value = usage_json(&app, &account).unwrap();
+    assert_eq!(account_value["breakdown"]["available"], json!(false));
+    assert!(render_usage(&account_value).contains("不可用"));
+
+    // The desktop initializes WAL mode, so compare it after the query fixture.
+    let stats = crate::commands::get_stats_impl(&app, "today".into()).unwrap();
+    assert_eq!(
+        value["summary"]["totalTokens"],
+        stats["summary"]["totalTokens"]
+    );
+    assert_eq!(value["summary"]["totalCost"], stats["summary"]["totalCost"]);
     let _ = fs::remove_dir_all(root);
 }
 
@@ -235,7 +240,10 @@ fn budget_reports_rules_with_their_scope() {
     assert!(render_budget(&value).contains("接近上限"));
 
     let status = status_json(&app, false).unwrap();
-    assert_eq!(status["text"], json!("今日 1.60K · $0.75 | 预算 80%"));
+    assert!(status["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("今日 1.60K · $0.75 | 预算 80% | 统计快照 "));
     assert!(status["quota"].is_null());
     let _ = fs::remove_dir_all(root);
 }

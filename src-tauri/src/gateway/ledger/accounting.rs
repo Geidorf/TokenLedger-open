@@ -516,6 +516,14 @@ pub(crate) fn read_page(
         .map_err(|error| error.to_string())?;
     conn.busy_timeout(Duration::from_secs(5))
         .map_err(|error| error.to_string())?;
+    read_page_on(&conn, after_sequence, through_sequence)
+}
+
+pub(crate) fn read_page_on(
+    conn: &Connection,
+    after_sequence: i64,
+    through_sequence: i64,
+) -> Result<Vec<(i64, LedgerRecord)>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT a.sequence,a.request_id,a.logical_request_id,a.ts,a.agent,a.session,a.provider,a.model,
@@ -593,8 +601,15 @@ pub(crate) fn horizon(dir: &Path) -> Result<(Coverage, i64), String> {
         return Err("旧网关账本导入待处理，新用量已持久化；历史统计暂不完整。".into());
     }
     let tx = conn.transaction().map_err(|error| error.to_string())?;
-    let coverage = read_coverage(&tx)?;
-    let last = tx
+    read_horizon_on(&tx)
+}
+
+pub(crate) fn read_horizon_on(conn: &Connection) -> Result<(Coverage, i64), String> {
+    let coverage = read_coverage(conn)?;
+    if coverage.import_pending {
+        return Err("网关账本仍有旧记录待导入。请先启动桌面端，再重试。".into());
+    }
+    let last = conn
         .query_row("SELECT MAX(sequence) FROM accounting_rows", [], |row| {
             row.get(0)
         })

@@ -54,7 +54,11 @@ pub fn run_cli(args: Vec<String>) -> i32 {
         }
         _ => {}
     }
-    let app = AppContext::new();
+    let app = if matches!(&invocation.command, Command::Scan) {
+        AppContext::new()
+    } else {
+        AppContext::for_query()
+    };
     match execute(&app, &invocation) {
         Ok(output) => {
             let mut stdout = std::io::stdout().lock();
@@ -173,7 +177,7 @@ fn stats_query(range: &RangeArg, tools: &[String], models: &[String]) -> LocalSt
 }
 
 fn local_stats(app: &AppContext, query: LocalStatsQuery) -> Result<Value, String> {
-    crate::commands::get_local_stats_v2_impl(app, query)
+    crate::commands::QueryLedger::open(app)?.stats(app, query, chrono::Local::now())
 }
 
 // ---------------------------------------------------------------- usage
@@ -238,6 +242,8 @@ pub(crate) fn usage_json(app: &AppContext, usage: &UsageArgs) -> Result<Value, S
         "range": meta.get("range").cloned().unwrap_or(Value::Null),
         "timezone": meta.get("timezone").cloned().unwrap_or(Value::Null),
         "generatedAt": meta.get("generatedAt").cloned().unwrap_or(Value::Null),
+        "snapshot": meta["snapshot"],
+        "snapshotMessage": meta["snapshotMessage"],
         "summary": summary_json(&stats),
     });
     if let RangeArg::Custom { start, end } = &usage.range {
@@ -345,19 +351,30 @@ fn render_usage(value: &Value) -> String {
             out.push_str("注：只统计经本机网关与导入的记录，扫描记录没有账号，合计可小于总量。\n");
         }
     }
+    append_snapshot_message(&mut out, value);
     out
+}
+
+fn append_snapshot_message(out: &mut String, value: &Value) {
+    if let Some(message) = value["snapshotMessage"].as_str() {
+        out.push_str(message);
+        out.push('\n');
+    }
 }
 
 // ---------------------------------------------------------------- quota
 
 pub(crate) fn quota_json(app: &AppContext) -> Value {
-    let providers =
-        tauri::async_runtime::block_on(crate::quota::get_local_quota_providers_impl(app));
-    json!({
+    let providers = crate::quota::get_local_quota_snapshots_only(app);
+    let mut value = json!({
         "schemaVersion": SCHEMA_VERSION,
         "command": "quota",
         "providers": providers,
-    })
+    });
+    if providers.is_empty() {
+        value["message"] = json!("没有可读的本机额度快照。请先启动桌面端并刷新额度。");
+    }
+    value
 }
 
 /// 百分比窗口的剩余百分比；其他单位返回 `None`。
@@ -417,7 +434,7 @@ fn status_label(status: &str) -> &str {
 fn render_quota(value: &Value) -> String {
     let providers = value["providers"].as_array().cloned().unwrap_or_default();
     if providers.is_empty() {
-        return "没有可用的额度来源。可在桌面端「设置 · 订阅额度」里开启。\n".to_string();
+        return format!("{}\n", value["message"].as_str().unwrap_or_default());
     }
     let mut table = Table::new(&[
         ("来源", Align::Left),
@@ -465,8 +482,24 @@ fn render_quota(value: &Value) -> String {
 // ---------------------------------------------------------------- budget
 
 pub(crate) fn budget_json(app: &AppContext) -> Result<Value, String> {
+    let ledger = crate::commands::QueryLedger::open(app)?;
+    budget_from(app, &ledger, chrono::Local::now())
+}
+
+fn budget_from(
+    app: &AppContext,
+    ledger: &crate::commands::QueryLedger,
+    now: chrono::DateTime<chrono::Local>,
+) -> Result<Value, String> {
     let settings = crate::budget::load_settings(app.app_data_dir());
-    let report = crate::budget::evaluate_report(app, &settings);
+    let snapshot = &ledger.freshness;
+    let statuses = crate::budget::evaluate(&settings, now.date_naive(), |period| {
+        ledger.stats(
+            app,
+            stats_query(&RangeArg::Named(period.stats_range().into()), &[], &[]),
+            now,
+        )
+    });
     let rules: Map<String, Value> = settings
         .rules
         .iter()
@@ -477,8 +510,7 @@ pub(crate) fn budget_json(app: &AppContext) -> Result<Value, String> {
             )
         })
         .collect();
-    let statuses: Vec<Value> = report
-        .statuses
+    let statuses: Vec<Value> = statuses
         .iter()
         .map(|status| {
             let mut value = serde_json::to_value(status).unwrap_or(Value::Null);
@@ -493,7 +525,9 @@ pub(crate) fn budget_json(app: &AppContext) -> Result<Value, String> {
     Ok(json!({
         "schemaVersion": SCHEMA_VERSION,
         "command": "budget",
-        "generatedAt": report.generated_at,
+        "generatedAt": now.with_timezone(&chrono::Utc).to_rfc3339(),
+        "snapshot": snapshot,
+        "snapshotMessage": snapshot.text(),
         "statuses": statuses,
     }))
 }
@@ -522,7 +556,9 @@ fn level_label(level: &str) -> &str {
 fn render_budget(value: &Value) -> String {
     let statuses = value["statuses"].as_array().cloned().unwrap_or_default();
     if statuses.is_empty() {
-        return "还没有启用的预算。可在桌面端「设置 · 预算」里添加。\n".to_string();
+        let mut text = "还没有启用的预算。可在桌面端「设置 · 预算」里添加。\n".to_string();
+        append_snapshot_message(&mut text, value);
+        return text;
     }
     let mut table = Table::new(&[
         ("预算", Align::Left),
@@ -561,7 +597,9 @@ fn render_budget(value: &Value) -> String {
             level_label(status["level"].as_str().unwrap_or_default()).to_string(),
         ]);
     }
-    table.render()
+    let mut text = table.render();
+    append_snapshot_message(&mut text, value);
+    text
 }
 
 // ---------------------------------------------------------------- gateway
@@ -613,7 +651,7 @@ pub(crate) fn gateway_json(
     let gateway = crate::gateway::Gateway::new(&dir, std::sync::Arc::new(NoSecrets), port);
     let status = gateway.status();
     let running = probe(port);
-    let settings = crate::settings::load_settings(app);
+    let settings = crate::settings::load_settings_result(app)?;
     let groups = gateway.list_routing_groups();
     let recent: Vec<Value> = gateway
         .recent_requests(args.limit)?
@@ -825,9 +863,15 @@ pub(crate) fn status_json(app: &AppContext, with_quota: bool) -> Result<Value, S
 
 /// 同 `status_json`，额度由调用方给（`None` 表示不看额度）；MCP 服务借此替换额度来源。
 pub(crate) fn status_from(app: &AppContext, quota: Option<&Value>) -> Result<Value, String> {
-    let today = local_stats(app, stats_query(&RangeArg::Named("today".into()), &[], &[]))?;
+    let ledger = crate::commands::QueryLedger::open(app)?;
+    let now = chrono::Local::now();
+    let today = ledger.stats(
+        app,
+        stats_query(&RangeArg::Named("today".into()), &[], &[]),
+        now,
+    )?;
     let summary = summary_json(&today);
-    let budget = budget_json(app)?;
+    let budget = budget_from(app, &ledger, now)?;
     let tightest_budget = budget["statuses"]
         .as_array()
         .into_iter()
@@ -862,13 +906,22 @@ pub(crate) fn status_from(app: &AppContext, quota: Option<&Value>) -> Result<Val
             fmt_percent(window["remainingPercent"].as_f64().unwrap_or(0.0))
         ));
     }
+    if let Some(message) = quota.and_then(|value| value["message"].as_str()) {
+        parts.push(message.to_string());
+    }
+    if let Some(message) = today["meta"]["snapshotMessage"].as_str() {
+        parts.push(message.to_string());
+    }
     Ok(json!({
         "schemaVersion": SCHEMA_VERSION,
         "command": "status",
         "text": parts.join(" | "),
         "today": summary,
+        "snapshot": today["meta"]["snapshot"],
+        "snapshotMessage": today["meta"]["snapshotMessage"],
         "budget": tightest_budget,
         "quota": tightest_quota,
+        "quotaMessage": quota.and_then(|value| value.get("message")),
     }))
 }
 

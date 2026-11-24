@@ -173,7 +173,11 @@ const PROJECT_INDEX_V13_SQL: &str = "
 pub fn get_db_path(app: &AppContext) -> PathBuf {
     let app_dir = app.app_data_dir().to_path_buf();
     fs::create_dir_all(&app_dir).ok();
-    app_dir.join("tokenboard.db")
+    existing_db_path(app)
+}
+
+pub(crate) fn existing_db_path(app: &AppContext) -> PathBuf {
+    app.app_data_dir().join("tokenboard.db")
 }
 
 /// Establish a connection to the database.

@@ -347,8 +347,17 @@ pub(crate) fn evaluate_local(
     app: &AppContext,
     now: DateTime<Local>,
 ) -> Result<AnomalyReport, String> {
+    evaluate_local_with_snapshot(app, now, None)
+}
+
+pub(crate) fn evaluate_local_with_snapshot(
+    app: &AppContext,
+    now: DateTime<Local>,
+    snapshot: Option<&crate::commands::QueryLedger>,
+) -> Result<AnomalyReport, String> {
     let today = now.date_naive();
-    let rows = crate::commands::anomaly_rows::local_usage_rows(app, window_start(today), now)?;
+    let rows =
+        crate::commands::anomaly_rows::local_usage_rows(app, window_start(today), now, snapshot)?;
     let gateway_since = hour_floor(now.naive_local())
         - Duration::hours(RECENT_HOURS - 1)
         - Duration::days(GATEWAY_BASELINE_DAYS);

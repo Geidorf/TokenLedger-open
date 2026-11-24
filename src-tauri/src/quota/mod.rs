@@ -175,9 +175,84 @@ async fn get_quota_providers_impl_with_retry_flag(
     }
 }
 
-/// Produce local observations from persisted authorization only. The sync
-/// producer calls this path so a cloud snapshot can never be echoed back as a
-/// fresh device observation.
+/// Read saved observations using the current local authorization.
+pub(crate) fn get_local_quota_snapshots_only(
+    app: &crate::app_paths::AppContext,
+) -> Vec<QuotaProviderEnvelope> {
+    let app_data_dir = app.app_data_dir();
+    let Ok(settings) = crate::settings::load_settings_result(app) else {
+        return Vec::new();
+    };
+    let now = Utc::now();
+    let mut providers = Vec::new();
+    let builtins = [
+        (
+            CODEX_PROVIDER_ID,
+            CODEX_LAST_GOOD_FILE,
+            settings.quota_codex_local_enabled,
+        ),
+        (
+            CLAUDE_PROVIDER_ID,
+            CLAUDE_LAST_GOOD_FILE,
+            settings.quota_claude_enabled,
+        ),
+        (
+            ANTIGRAVITY_PROVIDER_ID,
+            ANTIGRAVITY_LAST_GOOD_FILE,
+            settings.quota_antigravity_local_enabled,
+        ),
+    ];
+    for (provider_id, file_name, enabled) in builtins {
+        if !enabled {
+            continue;
+        }
+        if let Ok(snapshot) = read_persisted_last_good(app_data_dir, file_name, provider_id, now) {
+            providers.push(snapshot);
+        }
+    }
+    providers.extend(custom::read_saved_providers(
+        app_data_dir,
+        &settings.quota_custom_endpoints,
+        now,
+    ));
+    providers.extend(balance::read_saved_providers(app_data_dir, now));
+    for envelope in &mut providers {
+        for window in &mut envelope.windows {
+            if window.status != QuotaWindowStatus::Ok {
+                continue;
+            }
+            let expired = DateTime::parse_from_rfc3339(&window.observed_at)
+                .ok()
+                .and_then(|observed| {
+                    let ttl = i64::try_from(window.stale_after_seconds).ok()?;
+                    observed.checked_add_signed(chrono::Duration::try_seconds(ttl)?)
+                })
+                .is_none_or(|until| until <= now);
+            let reset = window
+                .resets_at
+                .as_deref()
+                .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+                .is_some_and(|until| until <= now);
+            if expired || reset {
+                window.status = QuotaWindowStatus::Stale;
+                window.reason_code = Some("observation_stale".into());
+            }
+        }
+        if envelope
+            .windows
+            .iter()
+            .any(|window| window.status == QuotaWindowStatus::Stale)
+        {
+            envelope.status = QuotaStatus::Stale;
+            envelope
+                .reason_code
+                .get_or_insert_with(|| "observation_stale".into());
+        }
+    }
+    providers
+}
+
+/// Read local sources authorized by this device for display and sync.
 pub(crate) async fn get_local_quota_providers_impl(
     app: &crate::app_paths::AppContext,
 ) -> Vec<QuotaProviderEnvelope> {
@@ -4497,6 +4572,14 @@ pub(crate) fn write_private_app_data_file(
 ) -> Result<(), String> {
     atomic_write_private(app_data_dir, file_name, bytes)
         .map_err(|_| "Unable to save app settings safely.".to_string())
+}
+
+pub(crate) fn private_app_data_path(dir: &Path, file: &str) -> Result<(PathBuf, PathBuf), String> {
+    secure_snapshot_path(dir, file, false).map_err(|_| "无法定位私有应用数据。".into())
+}
+
+pub(crate) fn replace_private_app_data_file(source: &Path, target: &Path) -> Result<(), String> {
+    atomic_replace(source, target).map_err(|_| "无法发布私有应用数据。".into())
 }
 
 pub(crate) fn read_private_app_data_file(

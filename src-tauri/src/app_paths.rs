@@ -10,9 +10,15 @@ pub struct AppContext {
 
 impl AppContext {
     pub fn new() -> Self {
-        let app_data_dir = resolve_app_data_dir();
-        let _ = fs::create_dir_all(&app_data_dir);
-        Self { app_data_dir }
+        let context = Self::for_query();
+        let _ = fs::create_dir_all(context.app_data_dir());
+        context
+    }
+
+    pub(crate) fn for_query() -> Self {
+        Self {
+            app_data_dir: resolve_app_data_dir(),
+        }
     }
 
     pub fn app_data_dir(&self) -> &Path {
