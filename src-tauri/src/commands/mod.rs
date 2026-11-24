@@ -2420,21 +2420,23 @@ impl StatRow {
     }
 
     fn cache_split_is_proven(&self) -> bool {
-        if let Some(known) = self.cache_write_known {
-            return known
-                && self.cached_tokens >= 0
-                && self.cache_write_tokens >= 0
-                && self.cache_write_tokens <= self.cached_tokens;
-        }
-        (self.cached_tokens == 0 && self.cache_write_tokens == 0)
-            || (self.cached_tokens > 0
-                && self.cache_write_tokens > 0
-                && self.cache_write_tokens <= self.cached_tokens)
+        cache_split_is_proven(
+            self.cached_tokens,
+            self.cache_write_tokens,
+            self.cache_write_known,
+        )
     }
 
     fn cache_read_tokens(&self) -> i64 {
         (self.cached_tokens - self.cache_write_tokens).max(0)
     }
+}
+
+fn cache_split_is_proven(cached: i64, write: i64, known: Option<bool>) -> bool {
+    if cached < 0 || write < 0 || write > cached {
+        return false;
+    }
+    known.unwrap_or(cached == 0 || write > 0)
 }
 
 fn config_path(app: &AppContext) -> Result<std::path::PathBuf, String> {
@@ -15563,14 +15565,17 @@ const PENDING_SYNC_WORK_SQL: &str = "SELECT EXISTS(
      )";
 
 // Unknown writes poison the complete hourly bucket, including zero-read rows.
-fn scan_cache_write_projection(rows: impl IntoIterator<Item = (i64, Option<bool>)>) -> Option<i64> {
-    let mut total = 0;
-    let mut known = true;
-    for (write, provenance) in rows {
-        total += write;
-        known &= provenance != Some(false);
-    }
-    known.then_some(total)
+fn scan_cache_write_projection(
+    rows: impl IntoIterator<Item = (i64, i64, Option<bool>)>,
+) -> Option<i64> {
+    rows.into_iter()
+        .try_fold(0_i64, |total, (cached, write, provenance)| {
+            if cache_split_is_proven(cached, write, provenance) {
+                total.checked_add(write)
+            } else {
+                None
+            }
+        })
 }
 
 const RAW_SYNC_LOGS_SQL: &str =
@@ -15936,7 +15941,7 @@ async fn sync_to_supabase_locked(
         let cache_write_tokens = scan_cache_write_projection(
             group_rows
                 .iter()
-                .map(|r| (r.cache_write_tokens, r.cache_write_known)),
+                .map(|r| (r.cached_tokens, r.cache_write_tokens, r.cache_write_known)),
         );
         let mut cost_usd = 0.0;
         let mut raw_ids = Vec::new();
@@ -15989,6 +15994,7 @@ async fn sync_to_supabase_locked(
             "output_tokens": output_tokens,
             "cached_tokens": cached_tokens,
             "cache_write_tokens": cache_write_tokens,
+            "cache_write_known": cache_write_tokens.is_some(),
             "timestamp": key.hour_bucket,
             "session_id": "agg",
             "unique_key": unique_key,
@@ -16063,6 +16069,7 @@ async fn sync_to_supabase_locked(
     // column yet; PostgREST rejects unknown keys, so drop the field and
     // retry once, then keep it dropped for the remaining chunks.
     let mut include_cache_write = true;
+    let mut include_cache_provenance = true;
     let mut include_gateway_requests = true;
     for chunk in sync_logs.chunks(SYNC_BATCH_SIZE) {
         loop {
@@ -16075,6 +16082,9 @@ async fn sync_to_supabase_locked(
                     obj.remove("raw_ids");
                     if !include_cache_write {
                         obj.remove("cache_write_tokens");
+                    }
+                    if !include_cache_provenance {
+                        obj.remove("cache_write_known");
                     }
                     if !include_gateway_requests {
                         obj.remove("gateway_requests");
@@ -16089,6 +16099,10 @@ async fn sync_to_supabase_locked(
                 .header("Authorization", format!("Bearer {}", session.access_token))
                 .header("Content-Type", "application/json")
                 .header("Prefer", "resolution=merge-duplicates,return=minimal")
+                .header(
+                    "x-tokenledger-cache-provenance",
+                    if include_cache_provenance { "1" } else { "0" },
+                )
                 .json(&payload)
                 .send()
                 .await
@@ -16101,11 +16115,16 @@ async fn sync_to_supabase_locked(
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
             session_lease.ensure_current(app)?;
+            if include_cache_provenance && body.contains("cache_write_known") {
+                include_cache_provenance = false;
+                continue;
+            }
             if include_cache_write && body.contains("cache_write_tokens") {
                 log::warn!(
                     "Cloud schema predates cache_write_tokens; retrying without the column. Apply the repository migrations (`supabase db push`, see supabase/README.md) to enable split cache sync; supabase/schema.sql is a stale baseline and must not be executed directly."
                 );
                 include_cache_write = false;
+                include_cache_provenance = false;
                 continue;
             }
             if include_gateway_requests && body.contains("gateway_requests") {

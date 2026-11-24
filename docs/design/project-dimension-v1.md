@@ -539,7 +539,7 @@ T10.156 的 `docs/design/analytics-ia-v2.md` 与本文并行撰写，可直接�
 | D1 | Rust 去重不变 | 同一组 fixture 在开关开启与关闭时，写入的 `token_logs` 行数、`unique_key` 集合和各行数值完全一致；检查点与游标不变 |
 | M1 | Rust 迁移 | 从 v12 升级只建空表、不回填；重复初始化幂等；孤儿回收 SQL 在清理旧数据和 Codex 重建交换之后生效 |
 | C1 | Rust 契约 | §5.3 的五条不变量；关闭时不含项目字段；`projects` 过滤对所有维度一致生效；关闭时带过滤返回 `project_dimension_disabled`；截断与余量；与 v1.1 的 `missing_session` 口径一致 |
-| G1 | Rust 同步守卫 | 在含 `CANARY_PROJECT_LABEL` 的库上生成同步载荷，断言键集合严格等于现有 13 个键（`user_id`、`tool`、`model`、`input_tokens`、`output_tokens`、`cached_tokens`、`cache_write_tokens`、`timestamp`、`session_id`、`unique_key`、`cost_usd`、`machine_id`、`requests`），且序列化结果里没有金丝雀。需要先把载荷构造抽成纯函数 |
+| G1 | Rust 同步守卫 | 精确校验小时上传字段白名单，包含缓存写入来源与网关请求计数，并校验序列化结果不含项目标签。 |
 | G2 | 静态 | `RAW_SYNC_LOGS_SQL` 与 `PENDING_SYNC_WORK_SQL` 不引用 `local_session_projects` 或 `project` |
 | G3 | Rust | CSV 导出表头为固定列清单（T10.196 起 16 列），不含项目列，内容里没有金丝雀 |
 | G4 | 前端 | 分享与 HTML 简报的构造函数只接收 `StatsData`；类型或静态断言禁止引入 `BehaviorAnalysis` 的项目字段 |

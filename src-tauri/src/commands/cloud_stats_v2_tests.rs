@@ -178,6 +178,8 @@ fn shared_dashboard_fixtures_preserve_v1_v2_and_additive_compatibility() {
     let provenance = dashboard_fixture("unknown-cost-cache-provenance-v2.json");
     assert!(has_valid_stats_v1_core(&provenance));
     assert_eq!(provenance["models"]["known-free"]["cost"], json!(0));
+    assert_eq!(provenance["models"]["known-free"]["cacheRead"], json!(30));
+    assert_eq!(provenance["models"]["known-free"]["cacheWrite"], json!(0));
     assert!(provenance["models"]["unknown-cost-combined-cache"]
         .as_object()
         .expect("unknown cost model")

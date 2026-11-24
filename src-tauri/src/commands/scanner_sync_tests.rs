@@ -457,7 +457,11 @@ fn antigravity_ordinary_upload_projection_includes_all_members_and_nulls_unknown
     let mut stmt = conn.prepare(RAW_SYNC_LOGS_SQL).unwrap();
     let members = stmt
         .query_map(params!["user-a", "machine"], |r| {
-            Ok((r.get::<_, i64>(6)?, r.get::<_, Option<bool>>(13)?))
+            Ok((
+                r.get::<_, i64>(5)?,
+                r.get::<_, i64>(6)?,
+                r.get::<_, Option<bool>>(13)?,
+            ))
         })
         .unwrap()
         .collect::<Result<Vec<_>>>()
@@ -465,12 +469,16 @@ fn antigravity_ordinary_upload_projection_includes_all_members_and_nulls_unknown
     assert_eq!(members.len(), 2);
     assert_eq!(crate::commands::scan_cache_write_projection(members), None);
     assert_eq!(
-        crate::commands::scan_cache_write_projection([(0, Some(true)), (5, Some(true))]),
+        crate::commands::scan_cache_write_projection([(20, 0, Some(true)), (20, 5, Some(true))]),
         Some(5)
     );
     assert_eq!(
-        crate::commands::scan_cache_write_projection([(0, None)]),
+        crate::commands::scan_cache_write_projection([(0, 0, None)]),
         Some(0)
+    );
+    assert_eq!(
+        crate::commands::scan_cache_write_projection([(20, 0, None), (20, 5, Some(true))]),
+        None
     );
 }
 

@@ -668,6 +668,7 @@ fn antigravity_unknown_cache_write_survives_hourly_merge_and_fingerprint() {
     known.cache_write_known = Some(true);
     let mixed = aggregate_hour(HOUR, &[unknown.clone(), known.clone()], &|_| 0.5);
     assert!(mixed[0].payload("user")["cache_write_tokens"].is_null());
+    assert_eq!(mixed[0].payload("user")["cache_write_known"], false);
     assert_eq!(mixed[0].input_tokens, 20);
     assert_eq!(mixed[0].cached_tokens, 20);
     let before = aggregate_hour(HOUR, &[unknown.clone()], &|_| 0.5);
@@ -677,9 +678,18 @@ fn antigravity_unknown_cache_write_survives_hourly_merge_and_fingerprint() {
     assert_eq!(after[0].payload("user")["cache_write_tokens"], 0);
     known.cache_write_known = None;
     assert_eq!(
-        aggregate_hour(HOUR, &[known], &|_| 0.5)[0].payload("user")["cache_write_tokens"],
+        aggregate_hour(HOUR, std::slice::from_ref(&known), &|_| 0.5)[0].payload("user")
+            ["cache_write_tokens"],
         5
     );
+    let mut historical_zero = known.clone();
+    historical_zero.cache_write_tokens = 0;
+    let mixed = aggregate_hour(HOUR, &[historical_zero.clone(), known], &|_| 0.5);
+    assert!(mixed[0].payload("user")["cache_write_tokens"].is_null());
+    historical_zero.cache_write_known = Some(true);
+    let proven_zero = aggregate_hour(HOUR, &[historical_zero], &|_| 0.5);
+    assert_eq!(proven_zero[0].payload("user")["cache_write_tokens"], 0);
+    assert_eq!(proven_zero[0].payload("user")["cache_write_known"], true);
 }
 
 #[test]

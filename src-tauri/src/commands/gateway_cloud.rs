@@ -78,6 +78,7 @@ impl Aggregate {
             "output_tokens": self.output_tokens,
             "cached_tokens": self.cached_tokens,
             "cache_write_tokens": self.cache_write_known.then_some(self.cache_write_tokens),
+            "cache_write_known": self.cache_write_known,
             "timestamp": self.hour,
             "session_id": "agg",
             "unique_key": self.unique_key(),
@@ -129,7 +130,15 @@ pub(super) fn aggregate_hour(
         entry.output_tokens += row.output_tokens;
         entry.cached_tokens += row.cached_tokens;
         entry.cache_write_tokens += row.cache_write_tokens;
-        entry.cache_write_known &= row.cache_write_known != Some(false);
+        entry.cache_write_known &= if row.gateway {
+            super::cache_split_is_proven(row.cached_tokens, row.cache_write_tokens, Some(true))
+        } else {
+            super::cache_split_is_proven(
+                row.cached_tokens,
+                row.cache_write_tokens,
+                row.cache_write_known,
+            )
+        };
         entry.requests += 1;
         entry.gateway_requests += i64::from(row.gateway);
         entry.cost_usd += cost_of(row);
