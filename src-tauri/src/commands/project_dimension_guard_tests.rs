@@ -139,6 +139,7 @@ fn g1_sync_payload_and_aggregation_key_are_fixed() {
             "output_tokens",
             "cached_tokens",
             "cache_write_tokens",
+            "cache_write_known",
             "timestamp",
             "session_id",
             "unique_key",
