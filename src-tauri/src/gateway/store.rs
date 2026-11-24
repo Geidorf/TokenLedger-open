@@ -149,10 +149,15 @@ pub fn read_provider_key(secrets: &dyn SecretStore, id: &str) -> Result<Option<S
 
 pub enum SecretReadError {
     Unavailable,
+    MissingInCurrentStore,
     InvalidEncoding,
 }
 
 pub trait SecretStore: Send + Sync {
+    fn sampling_key_scope_can_change(&self) -> bool {
+        false
+    }
+
     fn get(&self, account: &str) -> Result<Option<String>, String>;
     fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
         self.get(account).map_err(|_| SecretReadError::Unavailable)
@@ -171,6 +176,10 @@ impl KeyringSecrets {
 }
 
 impl SecretStore for KeyringSecrets {
+    fn sampling_key_scope_can_change(&self) -> bool {
+        cfg!(target_os = "macos")
+    }
+
     fn get(&self, account: &str) -> Result<Option<String>, String> {
         match Self::entry(account)?.get_password() {
             Ok(value) => Ok(Some(value)),
@@ -180,11 +189,22 @@ impl SecretStore for KeyringSecrets {
     }
 
     fn get_classified(&self, account: &str) -> Result<Option<String>, SecretReadError> {
-        match Self::entry(account)
-            .map_err(|_| SecretReadError::Unavailable)?
-            .get_password()
-        {
+        #[cfg(target_os = "linux")]
+        let entry = keyring::Entry::new_with_credential(Box::new(
+            keyring::secret_service::SsCredential::new_with_target(None, KEYRING_SERVICE, account)
+                .map_err(|_| SecretReadError::Unavailable)?,
+        ));
+        #[cfg(not(target_os = "linux"))]
+        let entry = Self::entry(account).map_err(|_| SecretReadError::Unavailable)?;
+        let mut result = entry.get_password();
+        if matches!(result, Err(keyring::Error::NoEntry)) && !cfg!(target_os = "macos") {
+            result = entry.get_password();
+        }
+        match result {
             Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) if cfg!(target_os = "macos") => {
+                Err(SecretReadError::MissingInCurrentStore)
+            }
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(keyring::Error::BadEncoding(_)) => Err(SecretReadError::InvalidEncoding),
             Err(_) => Err(SecretReadError::Unavailable),

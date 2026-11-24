@@ -107,6 +107,7 @@ struct Inner {
     // The Arc identity revokes old tickets without releasing their global slots.
     generation: Arc<AtomicUsize>,
     key_paused: bool,
+    verified_key_digest: Option<[u8; 32]>,
     error: Option<String>,
 }
 
@@ -156,6 +157,7 @@ enum SampleReadError {
     Missing,
     Unsafe,
     Invalid,
+    AuthenticationFailed,
     Unavailable,
 }
 
@@ -332,6 +334,7 @@ impl ContentSampling {
                 configuration,
                 generation: Arc::new(AtomicUsize::new(0)),
                 key_paused: false,
+                verified_key_digest: None,
                 error,
             }),
             pending: Arc::new(AtomicUsize::new(0)),
@@ -489,7 +492,9 @@ impl ContentSampling {
                     }
                     continue;
                 }
-                Err(SampleReadError::Unsafe) => return Err(STORE_ERROR.to_string()),
+                Err(SampleReadError::Unsafe | SampleReadError::AuthenticationFailed) => {
+                    return Err(STORE_ERROR.to_string());
+                }
             };
             files.push(SampleFile {
                 id: id.to_string(),
@@ -535,11 +540,13 @@ impl ContentSampling {
     }
 
     fn key(&self, create: bool, inner: &mut Inner) -> Result<LessSafeKey, String> {
+        let scope_can_change = self.secrets.sampling_key_scope_can_change();
         let value = match self.secrets.get_classified(KEY_ACCOUNT) {
             Ok(Some(value)) => value,
-            Ok(None)
+            Ok(None) | Err(SecretReadError::MissingInCurrentStore)
                 if create
                     && inner.configuration.mode == SamplingMode::Off
+                    && !inner.has_pending_ticket()
                     && self.files()?.is_empty() =>
             {
                 let mut bytes = [0u8; 32];
@@ -555,26 +562,91 @@ impl ContentSampling {
                     _ => return Err(KEY_CREATE_ERROR.to_string()),
                 }
             }
-            Err(SecretReadError::Unavailable) => return Err(self.pause_for_key(inner)),
+            Err(SecretReadError::Unavailable | SecretReadError::MissingInCurrentStore) => {
+                return Err(self.pause_for_key(inner));
+            }
+            Err(SecretReadError::InvalidEncoding) if scope_can_change => {
+                return Err(self.pause_for_key(inner));
+            }
             Ok(None) | Err(SecretReadError::InvalidEncoding) => return Err(self.key_lost(inner)),
         };
         let decoded = decode_key(&value);
         let Some(mut decoded) = decoded else {
-            return Err(self.key_lost(inner));
+            return Err(if scope_can_change {
+                self.pause_for_key(inner)
+            } else {
+                self.key_lost(inner)
+            });
         };
+        let digest =
+            scope_can_change.then(|| ring::digest::digest(&ring::digest::SHA256, &decoded));
         let key = UnboundKey::new(&CHACHA20_POLY1305, &decoded);
         decoded.fill(0);
         let key = key
             .map(LessSafeKey::new)
             .map_err(|_| self.key_lost(inner))?;
+        if let Some(digest) = digest {
+            let bytes = digest.as_ref().try_into().expect("SHA-256 digest length");
+            self.verify_key_scope(create, inner, &key, bytes)?;
+        }
         if inner.key_paused {
             inner.key_paused = false;
-            if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
-                inner.error = None;
-            }
+            inner.error = None;
             self.ready.store(true, Ordering::SeqCst);
         }
         Ok(key)
+    }
+
+    fn verify_key_scope(
+        &self,
+        create: bool,
+        inner: &mut Inner,
+        key: &LessSafeKey,
+        digest: [u8; 32],
+    ) -> Result<(), String> {
+        let path = self.state_file.with_file_name("sampling-key-check-v1");
+        let new_authorization = create
+            && inner.configuration.mode == SamplingMode::Off
+            && !inner.has_pending_ticket()
+            && self.files()?.is_empty();
+        let recorded = match inner.verified_key_digest {
+            Some(known) => Some(known),
+            None => match regular_file(&path, digest.len() as u64) {
+                Ok(_) => {
+                    let bytes = fs::read(&path).map_err(|_| self.pause_for_key(inner))?;
+                    match bytes.try_into() {
+                        Ok(digest) => Some(digest),
+                        Err(_) if new_authorization => None,
+                        Err(_) => return Err(self.pause_for_key(inner)),
+                    }
+                }
+                Err(SampleReadError::Missing) => None,
+                Err(SampleReadError::Invalid) if new_authorization => None,
+                Err(_) => return Err(self.pause_for_key(inner)),
+            },
+        };
+        if recorded == Some(digest) {
+            inner.verified_key_digest = recorded;
+            return Ok(());
+        }
+        let files = self.files()?;
+        let verified_legacy = recorded.is_none()
+            && files.iter().take(MAX_SAMPLES).any(|file| {
+                file.created_at
+                    .is_some_and(|created_at| Self::open_sample(file, created_at, key).is_ok())
+            });
+        if !new_authorization && !verified_legacy {
+            let error = self.pause_for_key(inner);
+            if recorded.is_none() && files.is_empty() {
+                let message = "无法确认旧采样授权的密钥。请停止采样后重新授权。".to_string();
+                inner.error = Some(message.clone());
+                return Err(message);
+            }
+            return Err(error);
+        }
+        super::atomic_write(&path, &digest, || Ok(())).map_err(|_| self.pause_for_key(inner))?;
+        inner.verified_key_digest = Some(digest);
+        Ok(())
     }
 
     fn pause_for_key(&self, inner: &mut Inner) -> String {
@@ -673,9 +745,7 @@ impl ContentSampling {
     fn clear_pause_if_unused(&self, inner: &mut Inner, files: &[SampleFile]) {
         if inner.key_paused && inner.configuration.mode == SamplingMode::Off && files.is_empty() {
             inner.key_paused = false;
-            if inner.error.as_deref() == Some(KEY_UNAVAILABLE) {
-                inner.error = None;
-            }
+            inner.error = None;
             self.ready.store(true, Ordering::SeqCst);
         }
     }
@@ -1003,6 +1073,41 @@ impl ContentSampling {
         .map_err(|_| STORE_ERROR.to_string())
     }
 
+    fn open_sample(
+        file: &SampleFile,
+        created_at: i64,
+        key: &LessSafeKey,
+    ) -> Result<ContentSample, SampleReadError> {
+        let metadata = regular_file(&file.path, MAX_SAMPLE_BYTES as u64)?;
+        let mut bytes = Vec::new();
+        fs::File::open(&file.path)?
+            .take((MAX_SAMPLE_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 != metadata.len() {
+            return Err(SampleReadError::Unavailable);
+        }
+        if bytes.len() < HEADER_BYTES + CHACHA20_POLY1305.tag_len() || &bytes[..8] != MAGIC {
+            return Err(SampleReadError::Invalid);
+        }
+        let nonce: [u8; 12] = bytes[16..HEADER_BYTES]
+            .try_into()
+            .map_err(|_| SampleReadError::Invalid)?;
+        let aad = format!("v1\n{}\n{created_at}", file.id);
+        let plaintext = key
+            .open_in_place(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(aad),
+                &mut bytes[HEADER_BYTES..],
+            )
+            .map_err(|_| SampleReadError::AuthenticationFailed)?;
+        let sample: ContentSample =
+            serde_json::from_slice(plaintext).map_err(|_| SampleReadError::Invalid)?;
+        if sample.id != file.id || Some(&sample.created_at) != timestamp(created_at).as_ref() {
+            return Err(SampleReadError::Invalid);
+        }
+        Ok(sample)
+    }
+
     pub(super) fn read(&self, id: &str) -> Result<ContentSample, String> {
         if !safe_id(id) {
             return Err(READ_ERROR.to_string());
@@ -1022,41 +1127,17 @@ impl ContentSampling {
             .to_string()
         })?;
         let key = self.key(false, &mut inner)?;
-        let result = (|| {
-            let metadata = regular_file(&file.path, MAX_SAMPLE_BYTES as u64)?;
-            let mut bytes = Vec::new();
-            fs::File::open(&file.path)?
-                .take((MAX_SAMPLE_BYTES + 1) as u64)
-                .read_to_end(&mut bytes)?;
-            if bytes.len() as u64 != metadata.len() {
-                return Err(SampleReadError::Unavailable);
-            }
-            if bytes.len() < HEADER_BYTES + CHACHA20_POLY1305.tag_len() || &bytes[..8] != MAGIC {
-                return Err(SampleReadError::Invalid);
-            }
-            let nonce: [u8; 12] = bytes[16..HEADER_BYTES]
-                .try_into()
-                .map_err(|_| SampleReadError::Invalid)?;
-            let aad = format!("v1\n{id}\n{created_at}");
-            let plaintext = key
-                .open_in_place(
-                    Nonce::assume_unique_for_key(nonce),
-                    Aad::from(aad),
-                    &mut bytes[HEADER_BYTES..],
-                )
-                .map_err(|_| SampleReadError::Invalid)?;
-            let sample: ContentSample =
-                serde_json::from_slice(plaintext).map_err(|_| SampleReadError::Invalid)?;
-            if sample.id != id || Some(&sample.created_at) != timestamp(created_at).as_ref() {
-                return Err(SampleReadError::Invalid);
-            }
-            Ok(sample)
-        })();
+        let result = Self::open_sample(file, created_at, &key);
         match result {
             Ok(sample) => Ok(sample),
             Err(SampleReadError::Unavailable) => Err(READ_RETRY.to_string()),
             Err(SampleReadError::Missing | SampleReadError::Unsafe) => Err(READ_ERROR.to_string()),
-            Err(SampleReadError::Invalid) => {
+            Err(SampleReadError::AuthenticationFailed)
+                if self.secrets.sampling_key_scope_can_change() =>
+            {
+                Err(READ_RETRY.to_string())
+            }
+            Err(SampleReadError::Invalid | SampleReadError::AuthenticationFailed) => {
                 if let Err(error) = remove_sample(&file.path) {
                     inner.error = Some(error.clone());
                     return Err(error);
