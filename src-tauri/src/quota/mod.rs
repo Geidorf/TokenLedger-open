@@ -194,7 +194,7 @@ pub(crate) fn get_local_quota_snapshots_only(
         (
             CLAUDE_PROVIDER_ID,
             CLAUDE_LAST_GOOD_FILE,
-            settings.quota_claude_statusline_enabled || settings.quota_claude_codexbar_enabled,
+            settings.quota_claude_enabled,
         ),
         (
             ANTIGRAVITY_PROVIDER_ID,
