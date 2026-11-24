@@ -372,7 +372,17 @@ export function findDrift(stage, root) {
   for (const output of expectedOutputs()) {
     const generated = join(stage, output);
     const current = join(root, output);
-    if (!existsSync(current) || !readFileSync(current).equals(readFileSync(generated))) drift.push(output);
+    if (!existsSync(current)) {
+      drift.push(output);
+      continue;
+    }
+    const actual = readFileSync(current);
+    const expected = readFileSync(generated);
+    const isText = /\.(?:kt|svg|ts|xml)$/.test(output);
+    const matches = isText
+      ? actual.toString('utf8').replaceAll('\r\n', '\n') === expected.toString('utf8')
+      : actual.equals(expected);
+    if (!matches) drift.push(output);
   }
   return drift;
 }

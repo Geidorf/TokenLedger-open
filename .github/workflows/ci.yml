@@ -91,6 +91,8 @@ jobs:
       - name: Verify versions, paths, lint, types, contracts, unit tests and production bundle
         run: |
           npm run version:check
+          npm run icons:check
+          npm run test:icons
           npm run check:paths
           npm run typecheck
           npm run lint

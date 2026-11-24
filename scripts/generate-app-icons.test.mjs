@@ -114,6 +114,9 @@ test('漂移检查能指出变化的派生文件', () => {
     writeOutputSet(stage, 'same');
     writeOutputSet(root, 'same');
     assert.deepEqual(findDrift(stage, root), []);
+    writeFileSync(join(stage, 'public/tokenledger-icon.svg'), '<svg />\n');
+    writeFileSync(join(root, 'public/tokenledger-icon.svg'), '<svg />\r\n');
+    assert.deepEqual(findDrift(stage, root), []);
     const changed = expectedOutputs()[3];
     writeFileSync(join(root, changed), 'changed');
     assert.deepEqual(findDrift(stage, root), [changed]);
