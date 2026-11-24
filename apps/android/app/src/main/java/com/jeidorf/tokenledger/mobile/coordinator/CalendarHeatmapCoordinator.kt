@@ -80,7 +80,7 @@ internal class CalendarHeatmapCoordinator(
     private val getCurrentSession: () -> MobileSession?,
     private val getSessionGeneration: () -> Long,
     private val onSessionUpdated: (MobileSession) -> Unit,
-    private val onAuthExpired: (String) -> Unit
+    private val onAuthExpired: (String, DashboardAuthExpiredException?) -> Unit
 ) {
     private val _calendarState = MutableStateFlow<CalendarHeatmapUiState>(CalendarHeatmapUiState.Idle)
     val calendarState: StateFlow<CalendarHeatmapUiState> = _calendarState.asStateFlow()
@@ -182,7 +182,10 @@ internal class CalendarHeatmapCoordinator(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (expired: DashboardAuthExpiredException) {
-                handleCalendarAuthExpired(requestKey, query, entity, dayReviewReturn)
+                if (calendarIsCurrent(requestKey, query, entity, dayReviewReturn)) {
+                    _calendarState.value = CalendarHeatmapUiState.Unavailable(requestKey.query, "登录状态已更新，请重试")
+                }
+                handleCalendarAuthExpired(requestKey, query, entity, dayReviewReturn, expired)
                 return@launch
             } catch (error: Throwable) {
                 if (!calendarIsCurrent(requestKey, query, entity, dayReviewReturn)) return@launch
@@ -307,10 +310,11 @@ internal class CalendarHeatmapCoordinator(
         requestKey: CalendarHeatmapRequestKey,
         currentQuery: DashboardQuery,
         currentEntity: DashboardEntity?,
-        dayReviewReturn: DashboardNavigationSnapshot?
+        dayReviewReturn: DashboardNavigationSnapshot?,
+        expiry: DashboardAuthExpiredException? = null
     ) {
         if (!calendarIsCurrent(requestKey, currentQuery, currentEntity, dayReviewReturn)) return
-        onAuthExpired(requestKey.userId)
+        onAuthExpired(requestKey.userId, expiry)
     }
 
     private fun StatsData.toCalendarHeatmapState(

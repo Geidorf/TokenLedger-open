@@ -123,7 +123,8 @@ internal class SessionStore internal constructor(
         }
     }
 
-    override fun revoke(): SessionSnapshot = synchronized(STORE_LOCK) {
+    override fun revoke(): MobileSession? = synchronized(STORE_LOCK) {
+        val previous = if (uncommittedState) null else runCatching { loadLocked() }.getOrNull()
         val generation = nextGeneration()
         val committed = prefs.edit()
             .putLong(KEY_GENERATION, generation)
@@ -135,7 +136,13 @@ internal class SessionStore internal constructor(
             error("退出登录未可靠落盘，请重试")
         }
         uncommittedState = false
-        SessionSnapshot(generation, null)
+        previous
+    }
+
+    override fun revokeIfCurrent(expected: SessionSnapshot): Boolean = synchronized(STORE_LOCK) {
+        if (snapshot() != expected) return@synchronized false
+        revoke()
+        true
     }
 
     fun clear() { revoke() }

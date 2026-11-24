@@ -107,6 +107,20 @@ class SessionAuthorityTest {
     }
 
     @Test
+    fun delayedUnauthorizedCannotRevokeRotatedTokenFromSameAccount() = runTest {
+        val storage = MemoryStorage()
+        val authority = SessionAuthority(storage, { rotated }, { now })
+        assertTrue(authority.activate(old, authority.generation()))
+        val lease = authority.lease(old)
+        val rejected = authority.expired(lease, old, IllegalStateException())
+        assertEquals(rotated, authority.rotate(lease, old))
+        assertEquals(false, rejected.revokeIfCurrent!!.invoke())
+        assertEquals(rotated, authority.restore())
+        assertEquals(true, authority.expired(lease, rotated, IllegalStateException()).revokeIfCurrent!!.invoke())
+        assertNull(authority.restore())
+    }
+
+    @Test
     fun revokeNowHandsBackTheCommittedSessionForServerLogout() {
         val storage = MemoryStorage()
         val authority = SessionAuthority(storage, { error("unexpected refresh") }, { now })
@@ -217,7 +231,14 @@ class SessionAuthorityTest {
             true
         }
 
-        override fun revoke(): SessionSnapshot = synchronized(this) {
+        override fun revokeIfCurrent(expected: SessionSnapshot): Boolean = synchronized(this) {
+            if (snapshot() != expected) return@synchronized false
+            revoke()
+            true
+        }
+
+        override fun revoke(): MobileSession? = synchronized(this) {
+            val previous = if (poisoned) null else value.session
             value = SessionSnapshot(value.generation + 1, null)
             if (failRevoke) {
                 poisoned = true
@@ -225,7 +246,7 @@ class SessionAuthorityTest {
             }
             disk = value
             poisoned = false
-            value
+            previous
         }
 
         override fun writeIfCurrent(expected: SessionSnapshot, write: () -> Unit): Boolean = synchronized(this) {

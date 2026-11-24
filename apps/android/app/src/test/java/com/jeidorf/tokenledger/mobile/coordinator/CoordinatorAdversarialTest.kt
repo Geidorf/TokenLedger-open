@@ -254,7 +254,7 @@ class CoordinatorAdversarialTest {
             getCurrentSession = { currentSession },
             onSessionPersist = { _, _ -> true },
             onSessionUpdated = { currentSession = it },
-            onAuthExpired = {},
+            onAuthExpired = { _, _ -> },
             onPresetCalendarPublish = { _, _, _ -> },
             onCalendarSynchronize = { _, _, _ -> },
             onQuotaTrigger = { _, _ -> },
@@ -333,7 +333,7 @@ class CoordinatorAdversarialTest {
             getCurrentSession = { currentSession },
             onSessionPersist = { _, _ -> true },
             onSessionUpdated = { currentSession = it },
-            onAuthExpired = {},
+            onAuthExpired = { _, _ -> },
             onPresetCalendarPublish = { _, _, _ -> },
             onCalendarSynchronize = { _, _, _ -> },
             onQuotaTrigger = { _, _ -> },
@@ -386,7 +386,7 @@ class CoordinatorAdversarialTest {
                 sessionCoordinator.persistSessionIfCurrent(freshSession, isCurrent)
             },
             onSessionUpdated = { currentSession = it },
-            onAuthExpired = {},
+            onAuthExpired = { _, _ -> },
             onPresetCalendarPublish = { _, _, _ -> },
             onCalendarSynchronize = { _, _, _ -> },
             onQuotaTrigger = { _, _ -> },
@@ -750,7 +750,7 @@ class CoordinatorAdversarialTest {
             getCurrentSession = { DUMMY_SESSION },
             getSessionGeneration = { 1L },
             onSessionUpdated = {},
-            onAuthExpired = {}
+            onAuthExpired = { _, _ -> }
         )
 
         // Query for year 2025 custom range

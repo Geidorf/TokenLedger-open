@@ -73,7 +73,7 @@ internal class DashboardStatsCoordinator(
     private val getCurrentSession: () -> MobileSession?,
     private val onSessionPersist: suspend (MobileSession, () -> Boolean) -> Boolean,
     private val onSessionUpdated: (MobileSession) -> Unit,
-    private val onAuthExpired: (String) -> Unit,
+    private val onAuthExpired: (String, DashboardAuthExpiredException?) -> Unit,
     private val onPresetCalendarPublish: (requestKey: DashboardRequestKey, stats: StatsData, showingCachedData: Boolean) -> Unit,
     private val onCalendarSynchronize: (query: DashboardQuery, entity: DashboardEntity?, session: MobileSession) -> Unit,
     private val onQuotaTrigger: (session: MobileSession, force: Boolean) -> Unit,
@@ -198,7 +198,10 @@ internal class DashboardStatsCoordinator(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (expired: DashboardAuthExpiredException) {
-                handleAuthExpired(requestKey, currentQuery, currentEntity)
+                if (isCurrent(requestKey, currentQuery, currentEntity)) {
+                    _statsState.update { it.afterRequestFailure(expired, targetContentIdentity) }
+                }
+                handleAuthExpired(requestKey, currentQuery, currentEntity, expired)
                 return@launch
             } catch (error: Throwable) {
                 if (!isCurrent(requestKey, currentQuery, currentEntity)) return@launch
@@ -338,7 +341,8 @@ internal class DashboardStatsCoordinator(
                 throw cancelled
             } catch (expired: DashboardAuthExpiredException) {
                 if (paginationIsCurrent(requestKey)) {
-                    onAuthExpired(session.userId)
+                    _statsState.update { it.copy(loadingMore = false) }
+                    onAuthExpired(session.userId, expired)
                 }
                 return@launch
             } catch (error: Throwable) {
@@ -515,10 +519,11 @@ internal class DashboardStatsCoordinator(
     private fun handleAuthExpired(
         requestKey: DashboardRequestKey,
         currentQuery: DashboardQuery,
-        currentEntity: DashboardEntity?
+        currentEntity: DashboardEntity?,
+        expiry: DashboardAuthExpiredException? = null
     ) {
         if (!isCurrent(requestKey, currentQuery, currentEntity)) return
-        onAuthExpired(requestKey.userId)
+        onAuthExpired(requestKey.userId, expiry)
     }
 
     private fun Throwable.toUiError(
