@@ -835,6 +835,7 @@ fn select_codex_rollout(
 fn codex_parent_signatures_before(
     parent_id: &str,
     cutoff: DateTime<Utc>,
+    child_events: &[ParsedCodexTokenEvent],
     index: &CodexRolloutIndex,
     cache: &mut CodexParseCache,
 ) -> std::result::Result<Vec<CodexUsageSignature>, String> {
@@ -849,12 +850,17 @@ fn codex_parent_signatures_before(
             "parent Codex rollout {parent_id} has token_count without timestamp"
         ));
     }
-    if parent
-        .max_timestamp
-        .is_none_or(|max_timestamp| max_timestamp < cutoff)
+    // An idle parent may end before the fork. Only the child's copied history
+    // needs to fall within the time span covered by the parent snapshot.
+    if parent.max_timestamp.is_none_or(|latest| latest < cutoff)
+        && child_events.iter().any(|event| {
+            event.timestamp_utc.is_some_and(|timestamp| {
+                timestamp <= cutoff && parent.max_timestamp.is_none_or(|latest| timestamp > latest)
+            })
+        })
     {
         return Err(format!(
-            "parent Codex rollout {parent_id} has not reached the child fork timestamp"
+            "parent Codex rollout {parent_id} ends before the child's pre-fork usage"
         ));
     }
     Ok(parent
@@ -971,7 +977,7 @@ fn codex_deferred_reason(error: &str) -> CodexDeferredReason {
         CodexDeferredReason::CandidateDivergence
     } else if error.contains("missing parent Codex rollout") {
         CodexDeferredReason::MissingParent
-    } else if error.contains("has not reached the child fork timestamp") {
+    } else if error.contains("ends before the child's pre-fork usage") {
         CodexDeferredReason::ParentCutoff
     } else if error.contains("parent Codex rollout") {
         CodexDeferredReason::InvalidParentMeta
@@ -1143,7 +1149,13 @@ pub(crate) fn scan_codex_roots_checkpointed(
                     );
                     continue;
                 };
-                match codex_parent_signatures_before(parent_id, cutoff, &index, &mut cache) {
+                match codex_parent_signatures_before(
+                    parent_id,
+                    cutoff,
+                    &parsed.token_events,
+                    &index,
+                    &mut cache,
+                ) {
                     Ok(parent) => codex_replay_prefix(&parsed.token_events, &parent),
                     Err(error) => {
                         batch.defer(codex_deferred_reason(&error), candidates.len());
