@@ -490,7 +490,6 @@ fn auto_discovered_entries_count_as_fallback_and_pin_the_d7_write_multiplier() {
     // 输入 × 1.0，与预估费用缺写价时的 1.25 不一致。统一成哪一个另行决定；这里只固定
     // 现状，并确认这类条目一律计入兜底（方案 §4.2）。
     let discovered = |tool: &str, model: &str| DiscoveredModelPrice {
-        tool: tool.to_string(),
         model_key: model.to_ascii_lowercase(),
         model: model.to_string(),
         tools: vec![tool.to_string()],
