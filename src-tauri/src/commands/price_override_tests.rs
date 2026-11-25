@@ -44,12 +44,41 @@ fn discover(app: &AppContext, tool: &str, model: &str) {
 
 fn discovered(tool: &str, model: &str) -> DiscoveredModelPrice {
     DiscoveredModelPrice {
-        tool: tool.to_string(),
         model_key: model.to_string(),
         model: model.to_string(),
         tools: vec![tool.to_string()],
         first_seen_at: "2026-09-01 10:00:00".to_string(),
         last_seen_at: "2026-09-20 10:00:00".to_string(),
+    }
+}
+
+#[test]
+fn shared_discovered_prices_follow_the_model_family_or_a_generic_rate() {
+    let app = test_app("shared-fallback");
+    let known_model = "claude-future-test";
+    let unknown_model = "vendor-future-test";
+    for (model, tools) in [
+        (known_model, ["aggregate", "claude"]),
+        (unknown_model, ["claude", "other"]),
+    ] {
+        for tool in tools.into_iter().rev() {
+            discover(&app, tool, model);
+        }
+    }
+
+    let prices = load_prices(&app);
+    for (model, fallback, tools) in [
+        (known_model, "claude-unknown", ["aggregate", "claude"]),
+        (unknown_model, "default", ["claude", "other"]),
+    ] {
+        assert_eq!(prices[model]["_meta"]["fallback_key"], json!(fallback));
+        assert_eq!(prices[model]["_meta"]["tools"], json!(tools));
+        for tool in tools {
+            let (price, source) = lookup_model_price_with_source(&prices, tool, model);
+            assert_eq!(source, PriceSource::AutoDiscovered);
+            assert_eq!(price["input"], prices[fallback]["input"]);
+            assert_eq!(price["output"], prices[fallback]["output"]);
+        }
     }
 }
 
@@ -1063,7 +1092,9 @@ fn changing_a_fallback_price_moves_untouched_pending_models_along() {
 fn legacy_file_is_migrated_once_and_backed_up() {
     let app = test_app("legacy");
     for model in pending_models() {
-        discover(&app, &model.tool, &model.model);
+        for tool in &model.tools {
+            discover(&app, tool, &model.model);
+        }
     }
     let legacy = override_file_from_old_version();
     let original = write_override_file(&app, &legacy);

@@ -3574,7 +3574,6 @@ fn discovered_fallback_rates(explicit: &Value, fallback_key: &str) -> Map<String
         .or_else(|| explicit.get("default"))
         .unwrap_or(&Value::Null);
     let placeholder = DiscoveredModelPrice {
-        tool: String::new(),
         model_key: String::new(),
         model: String::new(),
         tools: Vec::new(),
@@ -4690,7 +4689,6 @@ pub fn dismiss_price_migration_notice_impl(app: &AppContext, id: &str) -> Result
 
 #[derive(Debug)]
 struct DiscoveredModelPrice {
-    tool: String,
     model_key: String,
     model: String,
     tools: Vec<String>,
@@ -4712,7 +4710,7 @@ fn load_discovered_model_prices(app: &AppContext) -> Vec<DiscoveredModelPrice> {
 
 fn discovered_model_prices_on(conn: &Connection) -> Vec<DiscoveredModelPrice> {
     let Ok(mut stmt) = conn.prepare(
-        "SELECT MIN(tool), model_key, MIN(model),
+        "SELECT model_key, MIN(model),
                 GROUP_CONCAT(DISTINCT tool), MIN(first_seen_at), MAX(last_seen_at)
          FROM discovered_models
          GROUP BY model_key
@@ -4721,14 +4719,15 @@ fn discovered_model_prices_on(conn: &Connection) -> Vec<DiscoveredModelPrice> {
         return Vec::new();
     };
     let Ok(rows) = stmt.query_map([], |row| {
-        let tools: String = row.get(3)?;
+        let tools: String = row.get(2)?;
+        let mut tools = tools.split(',').map(str::to_string).collect::<Vec<_>>();
+        tools.sort_unstable();
         Ok(DiscoveredModelPrice {
-            tool: row.get(0)?,
-            model_key: row.get(1)?,
-            model: row.get(2)?,
-            tools: tools.split(',').map(str::to_string).collect(),
-            first_seen_at: row.get(4)?,
-            last_seen_at: row.get(5)?,
+            model_key: row.get(0)?,
+            model: row.get(1)?,
+            tools,
+            first_seen_at: row.get(3)?,
+            last_seen_at: row.get(4)?,
         })
     }) else {
         return Vec::new();
@@ -4841,6 +4840,26 @@ fn tool_fallback_price_key(tool: &str) -> &'static str {
     }
 }
 
+fn discovered_fallback_price_key(entry: &DiscoveredModelPrice) -> &'static str {
+    let mut tool_keys = entry.tools.iter().map(|tool| tool_fallback_price_key(tool));
+    let first_key = tool_keys.next().unwrap_or("default");
+    if entry.tools.len() < 2 {
+        return first_key;
+    }
+
+    // One pending price serves all observations of the model. A known family
+    // gets its own estimate, and ambiguous families use a shared or generic rate.
+    let family = entry.model_key.split_once('-').map(|(family, _)| family);
+    match family {
+        Some("gpt") => tool_fallback_price_key("codex"),
+        Some(family @ ("claude" | "gemini" | "grok" | "deepseek" | "kimi" | "minimax")) => {
+            tool_fallback_price_key(family)
+        }
+        _ if tool_keys.all(|key| key == first_key) => first_key,
+        _ => "default",
+    }
+}
+
 fn materialize_discovered_price(
     fallback: &Value,
     fallback_key: &str,
@@ -4897,7 +4916,7 @@ fn merge_discovered_prices(mut prices: Value, discovered: &[DiscoveredModelPrice
         {
             continue;
         }
-        let fallback_key = tool_fallback_price_key(&entry.tool);
+        let fallback_key = discovered_fallback_price_key(entry);
         let fallback = explicit_prices
             .get(fallback_key)
             .or_else(|| explicit_prices.get("default"))
@@ -5374,7 +5393,6 @@ mod estimate_cost_tests {
 
     fn discovered(tool: &str, model: &str) -> DiscoveredModelPrice {
         DiscoveredModelPrice {
-            tool: tool.to_string(),
             model_key: model.to_ascii_lowercase(),
             model: model.to_string(),
             tools: vec![tool.to_string()],

@@ -1,5 +1,7 @@
 {
   "claude-opus-5-5": { "input": 4.0, "output": 20.0, "cache_input": 0.2, "cache_write": 5.0 },
+  "claude-sonnet-5-5": { "input": 2.0, "output": 10.0, "cache_input": 0.1, "cache_write": 2.5 },
+  "claude-haiku-5-5": { "input": 0.1, "output": 0.5, "cache_input": 0.01, "cache_write": 0.125, "tiers": [{"above_prompt_tokens": 100000, "multipliers": {"input": 5, "cache_input": 5, "cache_write": 5, "output": 5}}] },
   "claude-opus-5": { "input": 5.0, "output": 25.0, "cache_input": 0.5, "cache_write": 6.25 },
   "claude-opus-4-8": { "input": 5.0, "output": 25.0, "cache_input": 0.5, "cache_write": 6.25 },
   "claude-opus-4-7": { "input": 5.0, "output": 25.0, "cache_input": 0.5, "cache_write": 6.25 },
@@ -22,6 +24,9 @@
   "claude-3-opus": { "input": 15.0, "output": 75.0 },
   "claude-unknown": { "input": 3.0, "output": 15.0, "cache_input": 0.3, "cache_write": 3.75 },
 
+  "gpt-6.2-astra": { "input": 8.0, "output": 40.0, "cache_input": 0.4, "cache_write": 10.0, "tiers": [{"above_prompt_tokens": 272000, "multipliers": {"input": 2, "cache_input": 2, "cache_write": 2, "output": 1.5}}] },
+  "gpt-6.2-sol": { "input": 2.0, "output": 10.0, "cache_input": 0.1, "cache_write": 2.5, "tiers": [{"above_prompt_tokens": 272000, "multipliers": {"input": 2, "cache_input": 2, "cache_write": 2, "output": 1.5}}] },
+  "gpt-6.1-terra": { "input": 1.0, "output": 5.0, "cache_input": 0.05, "cache_write": 1.25, "tiers": [{"above_prompt_tokens": 272000, "multipliers": {"input": 2, "cache_input": 2, "cache_write": 2, "output": 1.5}}] },
   "gpt-6-astra": { "input": 10.0, "output": 50.0, "cache_input": 1.0, "cache_write": 12.5, "tiers": [{"above_prompt_tokens": 272000, "multipliers": {"input": 2, "cache_input": 2, "cache_write": 2, "output": 1.5}}] },
   "gpt-6-sol": { "input": 2.0, "output": 10.0, "cache_input": 0.2, "cache_write": 2.5, "tiers": [{"above_prompt_tokens": 272000, "multipliers": {"input": 2, "cache_input": 2, "cache_write": 2, "output": 1.5}}] },
   "gpt-6-luna": { "input": 0.1, "output": 0.5, "cache_input": 0.01, "cache_write": 0.125, "tiers": [{"above_prompt_tokens": 272000, "multipliers": {"input": 2, "cache_input": 2, "cache_write": 2, "output": 1.5}}] },
@@ -73,6 +78,9 @@
   "doubao-embedding-large": { "input": 0.1, "output": 0.0 },
   "doubao-embedding-vision": { "input": 0.25, "output": 0.0 },
 
+  "gemini-4-neon": { "input": 3.0, "output": 15.0, "cache_input": 0.15, "cache_write": 3.0 },
+  "gemini-4-hydrogen": { "input": 1.5, "output": 7.5, "cache_input": 0.075, "cache_write": 1.5 },
+  "gemini-4-carbon": { "input": 2.0, "output": 10.0, "cache_input": 0.1, "cache_write": 2.0 },
   "gemini-3.8-flash": { "input": 0.75, "output": 3.75, "cache_input": 0.075, "cache_write": 0.75 },
   "gemini-3.7-flash": { "input": 0.75, "output": 3.75, "cache_input": 0.075, "cache_write": 0.75 },
   "gemini-3.6-flash": { "input": 0.75, "output": 3.75, "cache_input": 0.075, "cache_write": 0.75 },

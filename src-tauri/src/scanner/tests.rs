@@ -934,10 +934,10 @@ mod scanner_codex_tests {
     }
 
     #[test]
-    fn fork_replay_is_skipped_but_child_usage_is_kept() {
-        let root = temp_root();
-        let parent_path = rollout_path(&root, PARENT_ID);
-        let child_path = rollout_path(&root, CHILD_ID);
+    fn fork_of_an_idle_parent_deduplicates_replay_and_checkpoints_child_usage() {
+        let mut fixture = CheckpointFixture::new("idle-parent-fork");
+        let parent_path = rollout_path(&fixture.root, PARENT_ID);
+        fixture.rollout = rollout_path(&fixture.root, CHILD_ID);
         let inherited_a = token_event_with(
             Some("2026-07-15T00:00:01Z"),
             (1_000, 800, 100),
@@ -965,7 +965,7 @@ mod scanner_codex_tests {
                 parent_only,
                 inherited_b.clone(),
                 serde_json::json!({
-                    "timestamp": "2026-07-15T00:00:05Z",
+                    "timestamp": "2026-07-15T00:00:04Z",
                     "type": "event_msg",
                     "payload": { "type": "task_complete" }
                 }),
@@ -978,7 +978,7 @@ mod scanner_codex_tests {
             Some("lane-a"),
         );
         write_rollout_values(
-            &child_path,
+            &fixture.rollout,
             &[
                 session_meta(
                     CHILD_ID,
@@ -991,21 +991,60 @@ mod scanner_codex_tests {
                 inherited_a,
                 inherited_b,
                 child_usage,
+                token_event_with(
+                    Some("2026-07-15T00:00:07Z"),
+                    (3_000, 2_000, 330),
+                    None,
+                    None,
+                ),
             ],
         );
 
-        let mut logs = Vec::new();
-        let batch = scan_codex_roots(std::slice::from_ref(&root), &mut logs);
+        let batch = scan_codex_roots_checkpointed(
+            std::slice::from_ref(&fixture.root),
+            &HashMap::new(),
+            false,
+        );
         assert!(batch.complete);
-        let child_logs = logs
+        let child_logs = batch
+            .logs
             .iter()
             .filter(|log| log.session_id == CHILD_ID)
             .collect::<Vec<_>>();
-        assert_eq!(child_logs.len(), 1);
+        assert_eq!(batch.checkpoints.len(), 2);
+        assert_eq!(
+            batch
+                .logs
+                .iter()
+                .filter(|log| log.session_id == PARENT_ID)
+                .count(),
+            3
+        );
+        assert_eq!(child_logs.len(), 2);
         assert_eq!(child_logs[0].unique_key, format!("codex_v2_{CHILD_ID}_3"));
         assert_eq!(child_logs[0].input_tokens, 200);
         assert_eq!(child_logs[0].cached_tokens, 400);
-        let _ = fs::remove_dir_all(root);
+        assert_eq!(child_logs[1].unique_key, format!("codex_v2_{CHILD_ID}_4"));
+        assert_eq!(child_logs[1].input_tokens, 100);
+        assert_eq!(child_logs[1].cached_tokens, 100);
+        assert_eq!(child_logs[1].output_tokens, 30);
+
+        let outcome = persist_scan_batch(
+            &fixture.db_path,
+            batch.logs,
+            batch.checkpoints,
+            Vec::new(),
+            None,
+        )
+        .expect("persist fork usage and checkpoints");
+        assert_eq!(outcome.inserted, 5);
+        assert_eq!(fixture.row_count(), 5);
+        let checkpoint = fixture.checkpoint();
+        assert_eq!(checkpoint.processed_offset, checkpoint.size_bytes);
+        let (repeated, stats) = scan_checkpoint_fixture(&fixture.root, &fixture.db_path)
+            .expect("rescan the same parent and fork");
+        assert_eq!(repeated.inserted, 0);
+        assert_eq!(stats.skipped_files, 2);
     }
 
     #[test]
@@ -1022,7 +1061,7 @@ mod scanner_codex_tests {
                     None,
                 ),
                 serde_json::json!({
-                    "timestamp": "2026-07-15T00:00:05Z",
+                    "timestamp": "2026-07-15T00:00:02Z",
                     "type": "event_msg",
                     "payload": { "type": "task_complete" }
                 }),
@@ -1049,10 +1088,66 @@ mod scanner_codex_tests {
         let mut logs = Vec::new();
         let batch = scan_codex_roots(std::slice::from_ref(&root), &mut logs);
         assert!(batch.complete);
+        assert_eq!(batch.checkpoints.len(), 2);
         assert_eq!(
             logs.iter().filter(|log| log.session_id == CHILD_ID).count(),
             1
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn replay_past_parent_snapshot_waits_until_the_missing_usage_arrives() {
+        let root = temp_root();
+        let parent_path = rollout_path(&root, PARENT_ID);
+        let child_path = rollout_path(&root, CHILD_ID);
+        let parent_meta = session_meta(PARENT_ID, "2026-07-15T00:00:00Z", None, None, None);
+        let first = token_event_with(Some("2026-07-15T00:00:01Z"), (100, 50, 10), None, None);
+        let copied = token_event_with(Some("2026-07-15T00:00:02Z"), (200, 100, 20), None, None);
+        write_rollout_values(&parent_path, &[parent_meta.clone(), first.clone()]);
+        write_rollout_values(
+            &child_path,
+            &[
+                session_meta(
+                    CHILD_ID,
+                    "2026-07-15T00:00:03Z",
+                    Some(PARENT_ID),
+                    None,
+                    None,
+                ),
+                first.clone(),
+                copied.clone(),
+                token_event_with(Some("2026-07-15T00:00:04Z"), (300, 150, 30), None, None),
+            ],
+        );
+
+        let roots = std::slice::from_ref(&root);
+        let batch = scan_codex_roots_checkpointed(roots, &HashMap::new(), false);
+        assert!(!batch.complete);
+        assert_eq!(
+            batch
+                .deferred_reasons
+                .get(&CodexDeferredReason::ParentCutoff),
+            Some(&1)
+        );
+        assert_eq!(batch.checkpoints.len(), 1);
+        assert_eq!(batch.logs.len(), 1);
+        assert_eq!(batch.logs[0].session_id, PARENT_ID);
+
+        write_rollout_values(&parent_path, &[parent_meta, first, copied]);
+        let batch = scan_codex_roots_checkpointed(roots, &HashMap::new(), false);
+        assert!(batch.complete);
+        assert_eq!(batch.checkpoints.len(), 2);
+        assert_eq!(batch.logs.len(), 3);
+        let child = batch
+            .logs
+            .iter()
+            .find(|log| log.session_id == CHILD_ID)
+            .unwrap();
+        assert_eq!(child.unique_key, format!("codex_v2_{CHILD_ID}_3"));
+        assert_eq!(child.input_tokens, 50);
+        assert_eq!(child.cached_tokens, 50);
+        assert_eq!(child.output_tokens, 10);
         let _ = fs::remove_dir_all(root);
     }
 
