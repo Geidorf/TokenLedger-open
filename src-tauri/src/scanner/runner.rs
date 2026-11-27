@@ -15,8 +15,8 @@ use super::pi::*;
 use super::qwen::*;
 use super::reasonix::*;
 use super::types::{
-    AntigravityRecordProvenance, AntigravityUsageProvenance, CoordinatedScanOutcome, LogRecord,
-    ScanOptions, ScanOutcome,
+    AntigravityRecordProvenance, AntigravityUsageProvenance, CheckpointScanStats,
+    CoordinatedScanOutcome, DetectedScanAgent, LogRecord, ScanOptions, ScanOutcome,
 };
 use chrono::Local;
 use rusqlite::{params, OptionalExtension, Result};
@@ -290,141 +290,196 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
     };
     let mut pending_cursors = Vec::new();
 
-    let (claude_roots, claude_scan) = timed_scan_step!(
-        "claude",
-        scan_claude(db_path, &mut logs, &mut pending_checkpoints)
-    )?;
-    log::debug!(
-        "Claude checkpoint scan discovered {} roots, parsed {} files / {} records, skipped {}, failed {}",
-        claude_roots,
-        claude_scan.parsed_files,
-        claude_scan.parsed_records,
-        claude_scan.skipped_files,
-        claude_scan.failed_files
-    );
-    let (codex_scan, codex_rebuild_plan, codex_rebuild_deferred) = timed_scan_step!(
-        "codex",
-        scan_codex(
-            db_path,
-            &options.codex_extra_dirs,
-            &mut logs,
-            &mut pending_checkpoints
-        )
-    )?;
-    log::debug!(
-        "Codex checkpoint scan parsed {} files / {} records, skipped {}, failed {}",
-        codex_scan.parsed_files,
-        codex_scan.parsed_records,
-        codex_scan.skipped_files,
-        codex_scan.failed_files
-    );
-    timed_scan_step!(
-        "opencode",
-        scan_opencode_like(
-            &mut logs,
+    if options.is_tool_enabled("claude") {
+        let (claude_roots, claude_scan) = timed_scan_step!(
+            "claude",
+            scan_claude(db_path, &mut logs, &mut pending_checkpoints)
+        )?;
+        log::debug!(
+            "Claude checkpoint scan discovered {} roots, parsed {} files / {} records, skipped {}, failed {}",
+            claude_roots,
+            claude_scan.parsed_files,
+            claude_scan.parsed_records,
+            claude_scan.skipped_files,
+            claude_scan.failed_files
+        );
+    }
+    let (codex_scan, codex_rebuild_plan, codex_rebuild_deferred) =
+        if options.is_tool_enabled("codex") {
+            let (codex_scan, codex_rebuild_plan, codex_rebuild_deferred) = timed_scan_step!(
+                "codex",
+                scan_codex(
+                    db_path,
+                    &options.codex_extra_dirs,
+                    &mut logs,
+                    &mut pending_checkpoints
+                )
+            )?;
+            log::debug!(
+                "Codex checkpoint scan parsed {} files / {} records, skipped {}, failed {}",
+                codex_scan.parsed_files,
+                codex_scan.parsed_records,
+                codex_scan.skipped_files,
+                codex_scan.failed_files
+            );
+            (codex_scan, codex_rebuild_plan, codex_rebuild_deferred)
+        } else {
+            (CheckpointScanStats::default(), None, false)
+        };
+    if options.is_tool_enabled("opencode") {
+        timed_scan_step!(
             "opencode",
-            &opencode_like_db_path("opencode"),
-            &scan_cursors,
-            &mut pending_cursors,
-        )
-    );
-    timed_scan_step!(
-        "kilo",
-        scan_opencode_like(
-            &mut logs,
+            scan_opencode_like(
+                &mut logs,
+                "opencode",
+                &opencode_like_db_path("opencode"),
+                &scan_cursors,
+                &mut pending_cursors,
+            )
+        );
+    }
+    if options.is_tool_enabled("kilo") {
+        timed_scan_step!(
             "kilo",
-            &opencode_like_db_path("kilo"),
-            &scan_cursors,
-            &mut pending_cursors,
-        )
-    );
-    let antigravity_batch =
-        timed_scan_step!("antigravity", scan_antigravity(&antigravity_checkpoints));
-    logs.extend(antigravity_batch.logs);
-    pending_checkpoints.extend(antigravity_batch.checkpoints);
-    // Framework-backed rows in ~/.mavis mirror requests that the native
-    // opencode/kilo scanners already cover. Skip them iff the native DB file
-    // exists — a stable rule that cannot flip between scan passes.
-    let opencode_db_exists = opencode_like_db_path("opencode").exists();
-    let kilo_db_exists = opencode_like_db_path("kilo").exists();
-    timed_scan_step!(
-        "minimax",
-        scan_minimax_marvis_incremental(
-            &mut logs,
-            opencode_db_exists,
-            kilo_db_exists,
-            &scan_cursors,
-            &mut pending_cursors,
-        )
-    );
-    timed_scan_step!(
-        "tencent-marvis",
-        scan_tencent_marvis(&mut logs, &scan_cursors, &mut pending_cursors)
-    );
-    timed_scan_step!(
-        "workbuddy",
-        scan_workbuddy(&mut logs, &workbuddy_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!("qclaw", scan_qclaw(&mut logs));
-    timed_scan_step!("hermes", scan_hermes(&mut logs));
-    timed_scan_step!("reasonix", scan_reasonix(&mut logs));
-    timed_scan_step!(
-        "trae",
-        scan_trae(&mut logs, &trae_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "deepseekgui",
-        scan_deepseekgui(
-            &mut logs,
-            &deepseekgui_checkpoints,
-            &mut pending_checkpoints
-        )
-    );
-    timed_scan_step!(
-        "dsh",
-        scan_dsh(&mut logs, &dsh_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "grok",
-        scan_grok(&mut logs, &grok_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "gemini",
-        scan_gemini(&mut logs, &gemini_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!("zcode", scan_zcode(&mut logs));
-    timed_scan_step!(
-        "kimi",
-        scan_kimi(&mut logs, &kimi_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "kimidesktop",
-        scan_kimi_desktop(
-            &mut logs,
-            &kimidesktop_checkpoints,
-            &mut pending_checkpoints
-        )
-    );
-    timed_scan_step!(
-        "pi",
-        scan_pi(&mut logs, &pi_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "qwen",
-        scan_qwen(&mut logs, &qwen_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "copilot",
-        scan_copilot(&mut logs, &copilot_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "cline",
-        scan_cline_family(&mut logs, &cline_checkpoints, &mut pending_checkpoints)
-    );
-    timed_scan_step!(
-        "goose",
-        scan_goose(&mut logs, &scan_cursors, &mut pending_cursors)
-    );
+            scan_opencode_like(
+                &mut logs,
+                "kilo",
+                &opencode_like_db_path("kilo"),
+                &scan_cursors,
+                &mut pending_cursors,
+            )
+        );
+    }
+    let antigravity_provenance = if options.is_tool_enabled("antigravity") {
+        let antigravity_batch =
+            timed_scan_step!("antigravity", scan_antigravity(&antigravity_checkpoints));
+        logs.extend(antigravity_batch.logs);
+        pending_checkpoints.extend(antigravity_batch.checkpoints);
+        antigravity_batch.provenance
+    } else {
+        HashMap::new()
+    };
+    if options.is_tool_enabled("minimax") {
+        // Framework-backed rows in ~/.mavis mirror requests that the native
+        // opencode/kilo scanners already cover. Skip them iff the native DB file
+        // exists — a stable rule that cannot flip between scan passes.
+        let opencode_db_exists = opencode_like_db_path("opencode").exists();
+        let kilo_db_exists = opencode_like_db_path("kilo").exists();
+        timed_scan_step!(
+            "minimax",
+            scan_minimax_marvis_incremental(
+                &mut logs,
+                opencode_db_exists,
+                kilo_db_exists,
+                &scan_cursors,
+                &mut pending_cursors,
+            )
+        );
+    }
+    if options.is_tool_enabled("tencent-marvis") {
+        timed_scan_step!(
+            "tencent-marvis",
+            scan_tencent_marvis(&mut logs, &scan_cursors, &mut pending_cursors)
+        );
+    }
+    if options.is_tool_enabled("workbuddy") {
+        timed_scan_step!(
+            "workbuddy",
+            scan_workbuddy(&mut logs, &workbuddy_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("qclaw") {
+        timed_scan_step!("qclaw", scan_qclaw(&mut logs));
+    }
+    if options.is_tool_enabled("hermes") {
+        timed_scan_step!("hermes", scan_hermes(&mut logs));
+    }
+    if options.is_tool_enabled("reasonix") {
+        timed_scan_step!("reasonix", scan_reasonix(&mut logs));
+    }
+    if options.is_tool_enabled("trae") {
+        timed_scan_step!(
+            "trae",
+            scan_trae(&mut logs, &trae_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("deepseekgui") {
+        timed_scan_step!(
+            "deepseekgui",
+            scan_deepseekgui(
+                &mut logs,
+                &deepseekgui_checkpoints,
+                &mut pending_checkpoints
+            )
+        );
+    }
+    if options.is_tool_enabled("dsh") {
+        timed_scan_step!(
+            "dsh",
+            scan_dsh(&mut logs, &dsh_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("grok") {
+        timed_scan_step!(
+            "grok",
+            scan_grok(&mut logs, &grok_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("gemini") {
+        timed_scan_step!(
+            "gemini",
+            scan_gemini(&mut logs, &gemini_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("zcode") {
+        timed_scan_step!("zcode", scan_zcode(&mut logs));
+    }
+    if options.is_tool_enabled("kimi") {
+        timed_scan_step!(
+            "kimi",
+            scan_kimi(&mut logs, &kimi_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("kimidesktop") {
+        timed_scan_step!(
+            "kimidesktop",
+            scan_kimi_desktop(
+                &mut logs,
+                &kimidesktop_checkpoints,
+                &mut pending_checkpoints
+            )
+        );
+    }
+    if options.is_tool_enabled("pi") {
+        timed_scan_step!(
+            "pi",
+            scan_pi(&mut logs, &pi_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("qwen") {
+        timed_scan_step!(
+            "qwen",
+            scan_qwen(&mut logs, &qwen_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("copilot") {
+        timed_scan_step!(
+            "copilot",
+            scan_copilot(&mut logs, &copilot_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("cline") {
+        timed_scan_step!(
+            "cline",
+            scan_cline_family(&mut logs, &cline_checkpoints, &mut pending_checkpoints)
+        );
+    }
+    if options.is_tool_enabled("goose") {
+        timed_scan_step!(
+            "goose",
+            scan_goose(&mut logs, &scan_cursors, &mut pending_cursors)
+        );
+    }
 
     let mut outcome = timed_scan_step!(
         "persist",
@@ -434,7 +489,7 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
             pending_checkpoints,
             pending_cursors,
             codex_rebuild_plan,
-            &antigravity_batch.provenance,
+            &antigravity_provenance,
         )
     )?;
     // Opt-in project index (T10.165): a no-op unless the user enabled it;
@@ -447,6 +502,80 @@ pub fn run_scan_with_options(db_path: &Path, options: &ScanOptions) -> Result<Sc
         0
     };
     Ok(outcome)
+}
+
+/// Read-only non-intrusive probe of common local agent data/config directories.
+/// Never spawns subprocesses or reads credential contents.
+pub fn detect_local_agents() -> Vec<DetectedScanAgent> {
+    let home = get_home_dir();
+    let config_home = xdg_config_home();
+    let candidates: [(&str, &str, bool); 24] = [
+        ("claude", "Claude Code", home.join(".claude").exists()),
+        ("codex", "Codex", home.join(".codex").exists()),
+        (
+            "opencode",
+            "OpenCode",
+            config_home.join("opencode").exists() || opencode_like_db_path("opencode").exists(),
+        ),
+        (
+            "kilo",
+            "Kilo",
+            config_home.join("kilo").exists() || opencode_like_db_path("kilo").exists(),
+        ),
+        (
+            "antigravity",
+            "Antigravity",
+            home.join(".gemini").join("antigravity").exists(),
+        ),
+        (
+            "minimax",
+            "MiniMax",
+            home.join(".minimax").exists() || home.join(".mavis").exists(),
+        ),
+        (
+            "tencent-marvis",
+            "Tencent Marvis",
+            home.join(".marvis").exists(),
+        ),
+        ("workbuddy", "WorkBuddy", home.join(".workbuddy").exists()),
+        ("qclaw", "QClaw", home.join(".qclaw").exists()),
+        ("hermes", "Hermes", home.join(".hermes").exists()),
+        ("reasonix", "Reasonix", home.join(".reasonix").exists()),
+        ("trae", "Trae", home.join(".trae").exists()),
+        (
+            "deepseekgui",
+            "DeepSeek GUI",
+            home.join(".deepseekgui").exists(),
+        ),
+        ("dsh", "DSH", home.join(".dsh").exists()),
+        ("grok", "Grok", home.join(".grok").exists()),
+        ("gemini", "Gemini CLI", home.join(".gemini").exists()),
+        ("zcode", "ZCode", home.join(".zcode").exists()),
+        ("kimi", "Kimi CLI", home.join(".kimi").exists()),
+        (
+            "kimidesktop",
+            "Kimi Desktop",
+            home.join(".kimidesktop").exists(),
+        ),
+        ("pi", "Pi", home.join(".pi").exists()),
+        ("qwen", "Qwen Code", home.join(".qwen").exists()),
+        ("copilot", "Copilot CLI", home.join(".copilot").exists()),
+        ("cline", "Cline", home.join(".cline").exists()),
+        (
+            "goose",
+            "Goose",
+            config_home.join("goose").exists() || home.join(".config").join("goose").exists(),
+        ),
+    ];
+
+    candidates
+        .into_iter()
+        .map(|(id, label, detected)| DetectedScanAgent {
+            id: id.to_string(),
+            label: label.to_string(),
+            detected,
+        })
+        .collect()
 }
 
 #[cfg(test)]

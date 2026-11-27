@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use chrono::{
     DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime,
-    TimeZone, Utc,
+    TimeZone, Timelike, Utc,
 };
 use chrono_tz::Tz;
 use reqwest::Url;
@@ -799,6 +799,11 @@ pub fn cleanup_wallpaper(state: tauri::State<'_, Arc<AppContext>>) -> Result<Val
         "wallpaperRemoved": wallpaper_removed,
         "lockscreenRemoved": lockscreen_removed
     }))
+}
+
+#[tauri::command]
+pub fn detect_scan_agents() -> Vec<scanner::DetectedScanAgent> {
+    scanner::detect_local_agents()
 }
 
 #[tauri::command]
@@ -6078,11 +6083,36 @@ fn resolve_wall_time(
 }
 
 fn query_bounds(range: StatsRange, now: DateTime<Tz>) -> Result<QueryBounds, String> {
+    query_bounds_with_rollover(range, now, 0)
+}
+
+fn query_bounds_with_rollover(
+    range: StatsRange,
+    now: DateTime<Tz>,
+    rollover_hour: u8,
+) -> Result<QueryBounds, String> {
     let timezone = now.timezone();
-    let today_start = resolve_wall_time(timezone, midnight(now.date_naive()), BoundarySide::Start)?;
+    let rollover = rollover_hour.min(6);
+    let (logical_today, day_start_time) = if rollover == 0 {
+        (now.date_naive(), NaiveTime::MIN)
+    } else {
+        let day_start =
+            NaiveTime::from_hms_opt(u32::from(rollover), 0, 0).expect("valid rollover hour");
+        let date = if now.time().hour() < u32::from(rollover) {
+            now.date_naive() - Duration::days(1)
+        } else {
+            now.date_naive()
+        };
+        (date, day_start)
+    };
+    let today_start = resolve_wall_time(
+        timezone,
+        logical_today.and_time(day_start_time),
+        BoundarySide::Start,
+    )?;
     let bounds = match range {
         StatsRange::Today => {
-            let previous_date = now.date_naive() - Duration::days(1);
+            let previous_logical_date = logical_today - Duration::days(1);
             QueryBounds {
                 current_start: Some(today_start),
                 current_end: now,
@@ -6094,29 +6124,29 @@ fn query_bounds(range: StatsRange, now: DateTime<Tz>) -> Result<QueryBounds, Str
                     current_end: now,
                     previous_start: resolve_wall_time(
                         timezone,
-                        midnight(previous_date),
+                        previous_logical_date.and_time(day_start_time),
                         BoundarySide::Start,
                     )?,
                     // Calendar-wall-clock alignment deliberately avoids
                     // subtracting a fixed 24 hours across DST changes.
                     previous_end: resolve_wall_time(
                         timezone,
-                        previous_date.and_time(now.time()),
+                        (now.date_naive() - Duration::days(1)).and_time(now.time()),
                         BoundarySide::End,
                     )?,
                 }),
             }
         }
         StatsRange::Week => {
-            let days_since_monday = now.weekday().num_days_from_monday() as i64;
+            let days_since_monday = logical_today.weekday().num_days_from_monday() as i64;
             let current_start = resolve_wall_time(
                 timezone,
-                midnight(now.date_naive() - Duration::days(days_since_monday)),
+                (logical_today - Duration::days(days_since_monday)).and_time(day_start_time),
                 BoundarySide::Start,
             )?;
             let previous_start = resolve_wall_time(
                 timezone,
-                midnight(now.date_naive() - Duration::days(days_since_monday + 7)),
+                (logical_today - Duration::days(days_since_monday + 7)).and_time(day_start_time),
                 BoundarySide::Start,
             )?;
             QueryBounds {
@@ -7283,7 +7313,8 @@ fn get_local_stats_v2_snapshot_with_entity_at(
     now: DateTime<Local>,
 ) -> Result<LocalStatsSnapshot, String> {
     let zoned_now = now.with_timezone(&query.tz);
-    let bounds = query_bounds(query.range, zoned_now)?;
+    let rollover_hour = settings::load_settings(app).day_rollover_hour;
+    let bounds = query_bounds_with_rollover(query.range, zoned_now, rollover_hour)?;
     let db_path = db::get_db_path(app);
     db::init_db(&db_path).map_err(|e| e.to_string())?;
     let prices = load_prices(app);
@@ -17606,7 +17637,17 @@ async fn get_cached_stats_query_impl(
             }
         },
     };
-    let key = cache::CacheKey::for_query(scope.as_str(), query.range.as_str(), &fingerprint);
+    let rollover_hour = if scope == StatsScope::Local {
+        settings::load_settings(app).day_rollover_hour
+    } else {
+        0
+    };
+    let cache_scope = if scope == StatsScope::Local && rollover_hour > 0 {
+        format!("local_v2_r{rollover_hour}")
+    } else {
+        scope.as_str().to_string()
+    };
+    let key = cache::CacheKey::for_query(&cache_scope, query.range.as_str(), &fingerprint);
 
     if let Some(cached) = cache::read(&db_path, &key) {
         if let Some((_, lease)) = cloud_partition.as_ref() {

@@ -298,3 +298,58 @@ fn an_overlong_line_is_skipped_without_holding_it_whole() {
     buffer.clear();
     assert_eq!(read_line_capped(&mut reader, &mut buffer).unwrap(), 0);
 }
+
+#[test]
+fn incremental_sync_skips_unchanged_file_and_updates_on_append() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let custom_dir = root.join("peer-home");
+    fs::create_dir_all(&custom_dir).unwrap();
+    let source = custom_dir.join(SOURCE_FILE);
+
+    let make_record = |rid: &str, input: i64, output: i64| {
+        json!({
+            "t": local_ts(11, 0, 0).with_timezone(&Utc).to_rfc3339(),
+            "agent": "claude",
+            "provider": "anthropic",
+            "model": "claude-sonnet-5",
+            "in": input,
+            "out": output,
+            "cache_read": 0,
+            "cache_write": 0,
+            "ms": 1500,
+            "status": 200,
+            "session": "sess-inc",
+            "rid": rid
+        })
+    };
+
+    fs::write(&source, format!("{}\n", make_record("r1", 40, 10))).unwrap();
+    let custom = custom_dir.to_str().unwrap();
+
+    // First sync imports the initial record and records source metadata.
+    assert_eq!(sync_local_usage_if_changed(&app, Some(custom)).unwrap(), 1);
+    assert_eq!(merged_totals(&db_path), (1, 50));
+    let first_meta = read_meta(&db_path).expect("meta written after import");
+    assert!(first_meta.source_len.is_some());
+    assert!(first_meta.source_mtime_ms.is_some());
+
+    // Unchanged file returns 0 immediately without rewriting meta.
+    assert_eq!(sync_local_usage_if_changed(&app, Some(custom)).unwrap(), 0);
+    assert_eq!(
+        read_meta(&db_path).unwrap().imported_at,
+        first_meta.imported_at
+    );
+
+    // Appending a new line triggers re-import and updates totals.
+    let updated = format!(
+        "{}{}\n",
+        fs::read_to_string(&source).unwrap(),
+        make_record("r2", 30, 5)
+    );
+    fs::write(&source, updated).unwrap();
+    assert_eq!(sync_local_usage_if_changed(&app, Some(custom)).unwrap(), 2);
+    assert_eq!(merged_totals(&db_path), (2, 85));
+
+    let _ = fs::remove_dir_all(root);
+}

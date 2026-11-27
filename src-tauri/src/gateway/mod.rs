@@ -25,7 +25,7 @@ mod server;
 mod store;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use serde::{Deserialize, Serialize};
@@ -91,11 +91,13 @@ pub struct Gateway {
     shared: Arc<Shared>,
     dir: PathBuf,
     store: ProviderStore,
-    port: u16,
+    port: AtomicU16,
     state: Mutex<RunState>,
     load_error: Option<String>,
     /// 模型接入总开关（U-112）；为假时不监听。启动时由 lib.rs 按设置写入。
     enabled: AtomicBool,
+    /// 临时暂停开关；为真时不监听但不修改总开关。
+    paused: AtomicBool,
     /// Taken and aborted under the `state` lock.
     listener: Mutex<Option<ListenerRun>>,
     prober: Arc<Prober>,
@@ -105,6 +107,7 @@ pub struct Gateway {
 #[serde(rename_all = "camelCase")]
 pub struct GatewayStatus {
     pub running: bool,
+    pub paused: bool,
     pub port: u16,
     pub base_url: Option<String>,
     pub token_hint: Option<String>,
@@ -245,6 +248,7 @@ impl Gateway {
         let router = Router::new(dir);
         let load_error = load_error.or_else(|| router.load_error.clone());
         let prober = Arc::new(Prober::new(dir));
+        let port = if port >= 1024 { port } else { DEFAULT_PORT };
         Self {
             shared: Arc::new(Shared {
                 providers: RwLock::new(providers),
@@ -260,10 +264,11 @@ impl Gateway {
             }),
             dir: dir.to_path_buf(),
             store,
-            port,
+            port: AtomicU16::new(port),
             state: Mutex::new(RunState::Stopped),
             load_error,
             enabled: AtomicBool::new(true),
+            paused: AtomicBool::new(false),
             listener: Mutex::new(None),
             prober,
         }
@@ -278,6 +283,78 @@ impl Gateway {
         } else {
             self.stop();
         }
+    }
+
+    pub fn set_paused(&self, paused: bool) {
+        self.paused.store(paused, Ordering::SeqCst);
+        if paused {
+            self.stop();
+        } else if self.enabled.load(Ordering::SeqCst) {
+            self.start_if_needed();
+        }
+    }
+
+    pub fn set_port(&self, port: u16) -> Result<u16, String> {
+        if port < 1024 {
+            return Err("端口必须大于等于 1024".to_string());
+        }
+        let current_port = self.port.load(Ordering::SeqCst);
+        if current_port == port {
+            return Ok(port);
+        }
+        let was_running = matches!(
+            *self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+            RunState::Running { .. }
+        );
+        let should_restart =
+            was_running || (self.enabled.load(Ordering::SeqCst) && !self.paused.load(Ordering::SeqCst));
+        if should_restart {
+            match std::net::TcpListener::bind(("127.0.0.1", port)) {
+                Ok(probe_listener) => drop(probe_listener),
+                Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                    return Err(format!(
+                        "端口 {port} 已被本机其他程序占用，请更换端口或先关闭占用程序"
+                    ));
+                }
+                Err(error) => {
+                    return Err(format!("端口 {port} 不可用：{error}"));
+                }
+            }
+        }
+        self.port.store(port, Ordering::SeqCst);
+        if should_restart {
+            self.stop();
+            self.start_if_needed();
+        }
+        Ok(port)
+    }
+
+    pub fn restore_connected_agents(&self) -> Result<usize, String> {
+        let mut restored = 0usize;
+        if self
+            .dir
+            .join("codex-backup-v1")
+            .join("manifest.json")
+            .is_file()
+        {
+            CodexConfig::discover(&self.dir)?.restore(false)?;
+            restored += 1;
+        }
+        let agent_backup_root = self.dir.join("agent-backup-v1");
+        if let Ok(entries) = std::fs::read_dir(&agent_backup_root) {
+            for entry in entries.flatten() {
+                if entry.path().join("manifest.json").is_file() {
+                    if let Some(agent) = entry.file_name().to_str() {
+                        self.agent_config(agent)?.restore(false)?;
+                        restored += 1;
+                    }
+                }
+            }
+        }
+        Ok(restored)
     }
 
     fn stop(&self) {
@@ -360,6 +437,7 @@ impl Gateway {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if !self.enabled.load(Ordering::SeqCst)
+            || self.paused.load(Ordering::SeqCst)
             || matches!(*state, RunState::Running { .. })
             || !self.providers().iter().any(|provider| provider.enabled)
         {
@@ -376,19 +454,20 @@ impl Gateway {
                 return;
             }
         };
-        let listener = match std::net::TcpListener::bind(("127.0.0.1", self.port))
+        let target_port = self.port.load(Ordering::SeqCst);
+        let listener = match std::net::TcpListener::bind(("127.0.0.1", target_port))
             .and_then(|listener| listener.set_nonblocking(true).map(|_| listener))
         {
             Ok(listener) => listener,
             Err(error) => {
-                *state = RunState::Failed(format!("无法监听 127.0.0.1:{}：{error}", self.port));
+                *state = RunState::Failed(format!("无法监听 127.0.0.1:{target_port}：{error}"));
                 return;
             }
         };
         let port = listener
             .local_addr()
             .map(|addr| addr.port())
-            .unwrap_or(self.port);
+            .unwrap_or(target_port);
         let shared = self.shared.clone();
         let token_hint = format!("tl-…{}", &token[token.len() - 4..]);
         let token: Arc<str> = Arc::from(token);
@@ -412,17 +491,19 @@ impl Gateway {
 
     pub fn status(&self) -> GatewayStatus {
         let providers = self.providers();
+        let configured_port = self.port.load(Ordering::SeqCst);
         let state = self
             .state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let (running, port, token_hint, error) = match &*state {
             RunState::Running { port, token_hint } => (true, *port, Some(token_hint.clone()), None),
-            RunState::Failed(error) => (false, self.port, None, Some(error.clone())),
-            RunState::Stopped => (false, self.port, None, self.load_error.clone()),
+            RunState::Failed(error) => (false, configured_port, None, Some(error.clone())),
+            RunState::Stopped => (false, configured_port, None, self.load_error.clone()),
         };
         GatewayStatus {
             running,
+            paused: self.paused.load(Ordering::SeqCst),
             port,
             base_url: running.then(|| format!("http://127.0.0.1:{port}/v1")),
             token_hint,
@@ -566,7 +647,7 @@ impl Gateway {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let port = match &*state {
             RunState::Running { port, .. } => *port,
-            _ => self.port,
+            _ => self.port.load(Ordering::SeqCst),
         };
         format!("http://127.0.0.1:{port}/v1")
     }
@@ -957,6 +1038,51 @@ pub fn gateway_status(
 ) -> Result<GatewayStatus, String> {
     ensure_main(&window)?;
     Ok(gateway.status())
+}
+
+#[tauri::command]
+pub fn gateway_set_port(
+    window: tauri::WebviewWindow,
+    app: tauri::State<'_, Arc<crate::app_paths::AppContext>>,
+    settings_state: tauri::State<'_, Arc<Mutex<crate::settings::AppSettings>>>,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+    port: u16,
+) -> Result<crate::settings::AppSettings, String> {
+    ensure_main(&window)?;
+    let port = gateway.set_port(port)?;
+    let settings = crate::settings::update_gateway_port(&app, port)?;
+    settings_state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .gateway_port = settings.gateway_port;
+    Ok(settings)
+}
+
+#[tauri::command]
+pub fn gateway_set_paused(
+    window: tauri::WebviewWindow,
+    app: tauri::State<'_, Arc<crate::app_paths::AppContext>>,
+    settings_state: tauri::State<'_, Arc<Mutex<crate::settings::AppSettings>>>,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+    paused: bool,
+) -> Result<crate::settings::AppSettings, String> {
+    ensure_main(&window)?;
+    let settings = crate::settings::update_gateway_paused(&app, paused)?;
+    settings_state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .gateway_paused = settings.gateway_paused;
+    gateway.set_paused(settings.gateway_paused);
+    Ok(settings)
+}
+
+#[tauri::command]
+pub fn gateway_restore_connected_agents(
+    window: tauri::WebviewWindow,
+    gateway: tauri::State<'_, Arc<Gateway>>,
+) -> Result<usize, String> {
+    ensure_main(&window)?;
+    gateway.restore_connected_agents()
 }
 
 #[tauri::command]

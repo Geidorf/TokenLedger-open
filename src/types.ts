@@ -768,6 +768,30 @@ export interface AppSettings {
    */
   readonly model_access_enabled?: boolean;
   readonly model_access_version?: number;
+  colorblind_palette: boolean;
+  reduced_motion: string;
+  tray_click_action: string;
+  preferred_terminal: string;
+  panel_shortcut: string;
+  quota_display_mode: string;
+  quota_refresh_policy: string;
+  display_currency: string;
+  number_unit_style: string;
+  day_rollover_hour: number;
+  disabled_scan_tools: string[];
+  known_scan_tools: string[];
+  scan_auto_enable_new_agents: boolean;
+  peer_data_dir: string | null;
+  peer_auto_import_enabled: boolean;
+  gateway_port: number;
+  gateway_quit_protection: string;
+  gateway_paused: boolean;
+}
+
+export interface DetectedScanAgent {
+  id: string;
+  label: string;
+  detected: boolean;
 }
 
 export interface DbInfo {
@@ -1125,6 +1149,24 @@ export const DEFAULT_SETTINGS: AppSettings = {
   quota_antigravity_codexbar_enabled: false,
   quota_custom_endpoints: [],
   quota_snapshot_sync_enabled: false,
+  colorblind_palette: false,
+  reduced_motion: 'system',
+  tray_click_action: 'panel',
+  preferred_terminal: 'auto',
+  panel_shortcut: '',
+  quota_display_mode: 'remaining',
+  quota_refresh_policy: 'auto',
+  display_currency: 'USD',
+  number_unit_style: 'en',
+  day_rollover_hour: 0,
+  disabled_scan_tools: [],
+  known_scan_tools: [],
+  scan_auto_enable_new_agents: true,
+  peer_data_dir: null,
+  peer_auto_import_enabled: true,
+  gateway_port: 3462,
+  gateway_quit_protection: 'ask',
+  gateway_paused: false,
 };
 
 // Tool -> chart-slot mapping, shared with Android (T10.178, user decision

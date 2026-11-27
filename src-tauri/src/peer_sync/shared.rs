@@ -18,7 +18,7 @@ use super::backup::{self, Opener};
 use super::dav::{DavClient, FOLDER};
 use crate::commands::peer_shared::{parse_call, SharedCall, SharedComputer};
 use crate::peer_wire::{
-    config_dir, DAV_USAGE_FOLDER, LOCAL_COMPUTER_FILE, SHARED_USAGE_CACHE, USAGE_FILE_EXT,
+    resolve_config_dir, DAV_USAGE_FOLDER, LOCAL_COMPUTER_FILE, SHARED_USAGE_CACHE, USAGE_FILE_EXT,
 };
 
 /// The peer keeps this many days on the server.
@@ -58,14 +58,18 @@ pub fn parse_name(name: &str) -> Option<(String, NaiveDate)> {
 
 /// The peer's id for this computer, whose own usage TokenLedger reads from
 /// its local file and must not count twice.
-pub fn local_computer() -> Option<String> {
+pub fn local_computer_in(custom_dir: Option<&str>) -> Option<String> {
     #[derive(Deserialize)]
     struct Local {
         id: String,
     }
-    let path = config_dir()?.join(LOCAL_COMPUTER_FILE);
+    let path = resolve_config_dir(custom_dir)?.join(LOCAL_COMPUTER_FILE);
     let local: Local = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
     Some(local.id.trim().to_ascii_lowercase()).filter(|id| !id.is_empty())
+}
+
+pub fn local_computer() -> Option<String> {
+    local_computer_in(None)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -201,19 +205,22 @@ fn read_cached_day(id: &str, path: &Path) -> Result<(String, Vec<SharedCall>), S
     parse_plain_day(id, &plain)
 }
 
-fn local_days() -> Result<Option<CachedDays>, String> {
-    let Some(dir) = config_dir() else {
+fn local_days_in(custom_dir: Option<&str>) -> Result<Option<CachedDays>, String> {
+    let Some(dir) = resolve_config_dir(custom_dir) else {
         return Ok(None);
     };
     cached_days(
         &dir.join(SHARED_USAGE_CACHE),
-        local_computer().as_deref(),
+        local_computer_in(custom_dir).as_deref(),
         chrono::Local::now().date_naive(),
     )
 }
 
-pub fn cached_computers(selected: &[String]) -> Result<Option<Vec<RemoteComputer>>, String> {
-    let Some(days) = local_days()? else {
+pub fn cached_computers_in(
+    custom_dir: Option<&str>,
+    selected: &[String],
+) -> Result<Option<Vec<RemoteComputer>>, String> {
+    let Some(days) = local_days_in(custom_dir)? else {
         return Ok(None);
     };
     days.iter()
@@ -231,13 +238,24 @@ pub fn cached_computers(selected: &[String]) -> Result<Option<Vec<RemoteComputer
         .map(Some)
 }
 
-pub fn pull_cached(
+pub fn cached_computers(selected: &[String]) -> Result<Option<Vec<RemoteComputer>>, String> {
+    cached_computers_in(None, selected)
+}
+
+pub fn pull_cached_in(
+    custom_dir: Option<&str>,
     selected: &[String],
 ) -> Result<Option<(Vec<SharedCall>, Vec<SharedComputer>)>, String> {
-    let Some(days) = local_days()? else {
+    let Some(days) = local_days_in(custom_dir)? else {
         return Ok(None);
     };
     pull_cached_days(&days, selected).map(Some)
+}
+
+pub fn pull_cached(
+    selected: &[String],
+) -> Result<Option<(Vec<SharedCall>, Vec<SharedComputer>)>, String> {
+    pull_cached_in(None, selected)
 }
 
 fn pull_cached_days(

@@ -4,7 +4,7 @@
 
 ## 迁移清单
 
-`supabase/migrations/` 共 28 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
+`supabase/migrations/` 共 30 条，按文件名顺序重放；下表是索引，细节见各节与迁移文件头注释。旧版“Schema vN”标题保留为历史章节名，不再代表当前版本。
 
 | 迁移 | 内容 |
 |---|---|
@@ -37,6 +37,7 @@
 | `20261024050000_budget_snapshot_sync` | 预算状态快照中转与读取 |
 | `20261024060000_usage_dimensions_cloud_v1` | 云端用量维度：会话、账号白名单、Context 构成（保留 90 天） |
 | `20261118010000_shared_usage_cloud` | WebDAV 共享用量代传、设备归属和小时汇总接管 |
+| `20261118020000_shared_usage_day_takeover` | WebDAV 共享用量按源设备自然日整日接管去重 |
 
 ## 2026-10-24 云端用量维度：会话、账号、Context 构成（usage-dimensions-cloud-v1）
 

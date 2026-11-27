@@ -2191,6 +2191,19 @@ export function installDevMockTauri() {
       case 'gateway_set_model_access':
         mockSettings = { ...mockSettings, model_access_enabled: Boolean(payload.enabled), model_access_version: 1 };
         return mockSettings;
+      case 'gateway_set_port': {
+        const port = Number(payload.port);
+        if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+          throw new Error('端口必须大于等于 1024');
+        }
+        mockSettings = { ...mockSettings, gateway_port: port };
+        return mockSettings;
+      }
+      case 'gateway_set_paused':
+        mockSettings = { ...mockSettings, gateway_paused: Boolean(payload.paused) };
+        return mockSettings;
+      case 'gateway_restore_connected_agents':
+        return 0;
       case 'tray_panel_toggle': {
         const enabled = Boolean(payload.enabled);
         if (payload.target === 'gateway' && !enabled) throw new Error('关闭网关请在主窗口「模型接入」完成');
@@ -2386,6 +2399,18 @@ export function installDevMockTauri() {
         return "\"command\": \"'/Applications/TokenLedger.app/Contents/MacOS/tokenledger' --claude-statusline\"";
       case 'detect_quota_sources':
         return mockQuotaSourceDetections();
+      case 'detect_scan_agents':
+        return [
+          { id: 'claude', label: 'Claude Code', detected: true },
+          { id: 'codex', label: 'Codex', detected: true },
+          { id: 'opencode', label: 'OpenCode', detected: false },
+          { id: 'gemini', label: 'Gemini CLI', detected: false },
+          { id: 'kimi', label: 'Kimi CLI', detected: false },
+          { id: 'pi', label: 'Pi', detected: false },
+          { id: 'qwen', label: 'Qwen Code', detected: false },
+          { id: 'copilot', label: 'Copilot CLI', detected: false },
+          { id: 'goose', label: 'Goose', detected: false },
+        ];
       case 'list_quota_balance_sources':
         return mockBalanceSources;
       case 'set_quota_balance_source':

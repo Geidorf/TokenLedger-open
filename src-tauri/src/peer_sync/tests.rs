@@ -458,3 +458,54 @@ fn importing_needs_the_backup_that_was_previewed() {
     assert!(check_digest(&previewed, &backup_digest(&swapped)).is_err());
     assert!(check_digest("", &previewed).is_err());
 }
+
+#[test]
+fn cached_computers_in_and_pull_cached_in_read_custom_dir_and_exclude_local() {
+    let dir = temp_dir();
+    let today = chrono::Local::now().date_naive().to_string();
+    fs::write(
+        dir.join(crate::peer_wire::LOCAL_COMPUTER_FILE),
+        r#"{"id":"aa"}"#,
+    )
+    .unwrap();
+    let cache_root = dir.join(crate::peer_wire::SHARED_USAGE_CACHE);
+    fs::create_dir_all(cache_root.join("aa")).unwrap();
+    fs::create_dir_all(cache_root.join("bb")).unwrap();
+    let payload = |computer: &str, name: &str, input: i64| {
+        serde_json::json!({
+            "computer": computer,
+            "name": name,
+            "calls": [{"t": "2026-11-17T10:00:00Z", "provider": "p", "model": "m", "in": input}]
+        })
+        .to_string()
+    };
+    fs::write(
+        cache_root.join("aa").join(format!("{today}.json")),
+        payload("aa", "self", 99),
+    )
+    .unwrap();
+    fs::write(
+        cache_root.join("bb").join(format!("{today}.json")),
+        payload("bb", "remote-box", 42),
+    )
+    .unwrap();
+
+    let custom = dir.to_str().unwrap();
+    let computers = shared::cached_computers_in(Some(custom), &["bb".into()])
+        .unwrap()
+        .expect("cache dir exists");
+    assert_eq!(computers.len(), 1);
+    assert_eq!(computers[0].id, "bb");
+    assert_eq!(computers[0].name, "remote-box");
+    assert!(computers[0].enabled);
+
+    let (calls, pulled) = shared::pull_cached_in(Some(custom), &["bb".into()])
+        .unwrap()
+        .expect("cache dir exists");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].input, 42);
+    assert_eq!(pulled.len(), 1);
+    assert_eq!(pulled[0].id, "bb");
+
+    let _ = fs::remove_dir_all(dir);
+}

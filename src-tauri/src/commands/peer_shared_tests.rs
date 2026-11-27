@@ -181,3 +181,41 @@ fn corrupt_store_is_an_error_not_dropped() {
     assert!(gateway_overlay::open_stats_connection(&db_path).is_err());
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn refresh_local_shared_cache_reads_selected_computers_from_custom_dir() {
+    let (app, root) = test_app();
+    let db_path = db::get_db_path(&app);
+    let peer_dir = root.join("peer-data");
+    let today = Local::now().date_naive().to_string();
+    let other_dir = peer_dir
+        .join(crate::peer_wire::SHARED_USAGE_CACHE)
+        .join("aa");
+    fs::create_dir_all(&other_dir).unwrap();
+    let day_json = json!({
+        "computer": "aa",
+        "name": "studio",
+        "calls": [{
+            "t": local_ts(10, 0, 0).with_timezone(&Utc).to_rfc3339(),
+            "agent": "claude",
+            "provider": "anthropic",
+            "model": "claude-sonnet-5",
+            "in": 60,
+            "out": 15,
+            "ms": 1000,
+            "status": 200,
+            "rid": "shared-1"
+        }]
+    });
+    fs::write(other_dir.join(format!("{today}.json")), day_json.to_string()).unwrap();
+
+    let custom = peer_dir.to_str().unwrap();
+    // No selection yet -> returns 0 and leaves store empty.
+    assert_eq!(refresh_local_shared_cache(&app, Some(custom)).unwrap(), 0);
+
+    peer_sync::save_shared_selection(app.app_data_dir(), &["aa".into()]).unwrap();
+    assert_eq!(refresh_local_shared_cache(&app, Some(custom)).unwrap(), 1);
+    assert_eq!(merged(&db_path), vec![(60, "peer:aa".to_string())]);
+
+    let _ = fs::remove_dir_all(root);
+}

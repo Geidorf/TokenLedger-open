@@ -291,6 +291,42 @@ pub struct AppSettings {
     /// 一次性迁移标记：0 表示托盘挂件还停在旧默认板式「用量详情」时，要换成新默认「托盘面板」。
     #[serde(default)]
     pub widget_panel_version: u32,
+    #[serde(default)]
+    pub colorblind_palette: bool,
+    #[serde(default = "default_reduced_motion")]
+    pub reduced_motion: String,
+    #[serde(default = "default_tray_click_action")]
+    pub tray_click_action: String,
+    #[serde(default = "default_preferred_terminal")]
+    pub preferred_terminal: String,
+    #[serde(default)]
+    pub panel_shortcut: String,
+    #[serde(default = "default_quota_display_mode")]
+    pub quota_display_mode: String,
+    #[serde(default = "default_quota_refresh_policy")]
+    pub quota_refresh_policy: String,
+    #[serde(default = "default_display_currency")]
+    pub display_currency: String,
+    #[serde(default = "default_number_unit_style")]
+    pub number_unit_style: String,
+    #[serde(default)]
+    pub day_rollover_hour: u8,
+    #[serde(default)]
+    pub disabled_scan_tools: Vec<String>,
+    #[serde(default)]
+    pub known_scan_tools: Vec<String>,
+    #[serde(default = "default_scan_auto_enable_new_agents")]
+    pub scan_auto_enable_new_agents: bool,
+    #[serde(default)]
+    pub peer_data_dir: Option<String>,
+    #[serde(default = "default_peer_auto_import_enabled")]
+    pub peer_auto_import_enabled: bool,
+    #[serde(default = "default_gateway_port")]
+    pub gateway_port: u16,
+    #[serde(default = "default_gateway_quit_protection")]
+    pub gateway_quit_protection: String,
+    #[serde(default)]
+    pub gateway_paused: bool,
 }
 
 pub const WIDGET_PANEL_VERSION: u32 = 1;
@@ -328,6 +364,73 @@ pub const DEFAULT_POPOVER_LAYOUT: &str = "panel";
 pub const TRAY_TEXT_METRICS: [&str; 2] = ["cost", "quota"];
 pub const WIDGET_THEMES: [&str; 3] = ["system", "light", "dark"];
 pub const WIDGET_RANGES: [&str; 3] = ["today", "week", "month"];
+pub const REDUCED_MOTIONS: [&str; 3] = ["system", "on", "off"];
+pub const TRAY_CLICK_ACTIONS: [&str; 2] = ["panel", "window"];
+pub const PREFERRED_TERMINALS: [&str; 10] = [
+    "auto",
+    "wt",
+    "powershell",
+    "cmd",
+    "iterm2",
+    "terminal",
+    "warp",
+    "ghostty",
+    "kitty",
+    "alacritty",
+];
+pub const QUOTA_DISPLAY_MODES: [&str; 2] = ["remaining", "used"];
+pub const QUOTA_REFRESH_POLICIES: [&str; 2] = ["auto", "on_demand"];
+pub const DISPLAY_CURRENCIES: [&str; 2] = ["USD", "CNY"];
+pub const NUMBER_UNIT_STYLES: [&str; 2] = ["en", "zh"];
+pub const GATEWAY_QUIT_PROTECTIONS: [&str; 3] = ["ask", "restore", "keep"];
+pub const DEFAULT_GATEWAY_PORT: u16 = 3462;
+const SCAN_TOOL_LIST_MAX: usize = 64;
+const PEER_DATA_DIR_MAX_LEN: usize = 1024;
+const PANEL_SHORTCUT_MAX_BYTES: usize = 64;
+
+fn default_reduced_motion() -> String {
+    REDUCED_MOTIONS[0].to_string()
+}
+
+fn default_tray_click_action() -> String {
+    TRAY_CLICK_ACTIONS[0].to_string()
+}
+
+fn default_preferred_terminal() -> String {
+    PREFERRED_TERMINALS[0].to_string()
+}
+
+fn default_quota_display_mode() -> String {
+    QUOTA_DISPLAY_MODES[0].to_string()
+}
+
+fn default_quota_refresh_policy() -> String {
+    QUOTA_REFRESH_POLICIES[0].to_string()
+}
+
+fn default_display_currency() -> String {
+    DISPLAY_CURRENCIES[0].to_string()
+}
+
+fn default_number_unit_style() -> String {
+    NUMBER_UNIT_STYLES[0].to_string()
+}
+
+fn default_scan_auto_enable_new_agents() -> bool {
+    true
+}
+
+fn default_peer_auto_import_enabled() -> bool {
+    true
+}
+
+fn default_gateway_port() -> u16 {
+    DEFAULT_GATEWAY_PORT
+}
+
+fn default_gateway_quit_protection() -> String {
+    GATEWAY_QUIT_PROTECTIONS[0].to_string()
+}
 
 fn default_widget_layout() -> String {
     WIDGET_LAYOUTS[0].to_string()
@@ -409,6 +512,24 @@ impl Default for AppSettings {
             model_access_enabled: false,
             model_access_version: MODEL_ACCESS_VERSION,
             widget_panel_version: WIDGET_PANEL_VERSION,
+            colorblind_palette: false,
+            reduced_motion: default_reduced_motion(),
+            tray_click_action: default_tray_click_action(),
+            preferred_terminal: default_preferred_terminal(),
+            panel_shortcut: String::new(),
+            quota_display_mode: default_quota_display_mode(),
+            quota_refresh_policy: default_quota_refresh_policy(),
+            display_currency: default_display_currency(),
+            number_unit_style: default_number_unit_style(),
+            day_rollover_hour: 0,
+            disabled_scan_tools: Vec::new(),
+            known_scan_tools: Vec::new(),
+            scan_auto_enable_new_agents: default_scan_auto_enable_new_agents(),
+            peer_data_dir: None,
+            peer_auto_import_enabled: default_peer_auto_import_enabled(),
+            gateway_port: default_gateway_port(),
+            gateway_quit_protection: default_gateway_quit_protection(),
+            gateway_paused: false,
         }
     }
 }
@@ -496,8 +617,99 @@ impl AppSettings {
             .filter(|value| !value.trim().is_empty());
         // 订阅设置：不合法的条目丢弃并只记条数，从不改写成默认值（T10.188）。
         cost_model::sanitize_stored(&mut self);
+        self.reduced_motion =
+            sanitize_enum(&self.reduced_motion, &REDUCED_MOTIONS, REDUCED_MOTIONS[0]);
+        self.tray_click_action = sanitize_enum(
+            &self.tray_click_action,
+            &TRAY_CLICK_ACTIONS,
+            TRAY_CLICK_ACTIONS[0],
+        );
+        self.preferred_terminal = sanitize_enum(
+            &self.preferred_terminal,
+            &PREFERRED_TERMINALS,
+            PREFERRED_TERMINALS[0],
+        );
+        self.panel_shortcut = sanitize_panel_shortcut(&self.panel_shortcut);
+        self.quota_display_mode = sanitize_enum(
+            &self.quota_display_mode,
+            &QUOTA_DISPLAY_MODES,
+            QUOTA_DISPLAY_MODES[0],
+        );
+        self.quota_refresh_policy = sanitize_enum(
+            &self.quota_refresh_policy,
+            &QUOTA_REFRESH_POLICIES,
+            QUOTA_REFRESH_POLICIES[0],
+        );
+        self.display_currency = sanitize_enum(
+            &self.display_currency,
+            &DISPLAY_CURRENCIES,
+            DISPLAY_CURRENCIES[0],
+        );
+        self.number_unit_style = sanitize_enum(
+            &self.number_unit_style,
+            &NUMBER_UNIT_STYLES,
+            NUMBER_UNIT_STYLES[0],
+        );
+        self.day_rollover_hour = self.day_rollover_hour.min(6);
+        self.disabled_scan_tools = sanitize_scan_tool_list(&self.disabled_scan_tools);
+        self.known_scan_tools = sanitize_scan_tool_list(&self.known_scan_tools);
+        self.peer_data_dir = sanitize_peer_data_dir(self.peer_data_dir.take());
+        if self.gateway_port < 1024 {
+            self.gateway_port = DEFAULT_GATEWAY_PORT;
+        }
+        self.gateway_quit_protection = sanitize_enum(
+            &self.gateway_quit_protection,
+            &GATEWAY_QUIT_PROTECTIONS,
+            GATEWAY_QUIT_PROTECTIONS[0],
+        );
         self
     }
+}
+
+fn sanitize_panel_shortcut(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || !trimmed.is_ascii()
+        || trimmed.len() > PANEL_SHORTCUT_MAX_BYTES
+        || trimmed.chars().any(|ch| ch.is_control())
+    {
+        String::new()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn sanitize_scan_tool_list(entries: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for entry in entries {
+        let normalized = entry.trim().to_ascii_lowercase();
+        if normalized.is_empty()
+            || normalized.len() > 64
+            || normalized.contains('\0')
+            || kept.iter().any(|existing| existing == &normalized)
+        {
+            continue;
+        }
+        kept.push(normalized);
+        if kept.len() == SCAN_TOOL_LIST_MAX {
+            break;
+        }
+    }
+    kept
+}
+
+fn sanitize_peer_data_dir(value: Option<String>) -> Option<String> {
+    value.and_then(|raw| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty()
+            || trimmed.chars().count() > PEER_DATA_DIR_MAX_LEN
+            || trimmed.contains('\0')
+        {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
 }
 
 const CODEX_EXTRA_DIRS_MAX: usize = 16;
@@ -784,6 +996,48 @@ pub(crate) fn update_model_access_enabled(
     })
 }
 
+/// 内置网关端口的专用读改写：只改这一项，其余字段保留磁盘上的值。
+pub(crate) fn update_gateway_port(app: &AppContext, port: u16) -> Result<AppSettings, String> {
+    with_settings_write_lock(app, || {
+        let mut current = load_settings_result_unlocked(app)?;
+        current.gateway_port = sanitize_gateway_port(port);
+        save_settings_file_unlocked(app, &current)?;
+        Ok(current)
+    })
+}
+
+/// 内置网关暂停状态的专用读改写：只改这一项，其余字段保留磁盘上的值。
+pub(crate) fn update_gateway_paused(app: &AppContext, paused: bool) -> Result<AppSettings, String> {
+    with_settings_write_lock(app, || {
+        let mut current = load_settings_result_unlocked(app)?;
+        current.gateway_paused = paused;
+        save_settings_file_unlocked(app, &current)?;
+        Ok(current)
+    })
+}
+
+pub(crate) fn update_gateway_port(app: &AppContext, port: u16) -> Result<AppSettings, String> {
+    with_settings_write_lock(app, || {
+        let mut current = load_settings_result_unlocked(app)?;
+        current.gateway_port = if port >= 1024 {
+            port
+        } else {
+            DEFAULT_GATEWAY_PORT
+        };
+        save_settings_file_unlocked(app, &current)?;
+        Ok(current)
+    })
+}
+
+pub(crate) fn update_gateway_paused(app: &AppContext, paused: bool) -> Result<AppSettings, String> {
+    with_settings_write_lock(app, || {
+        let mut current = load_settings_result_unlocked(app)?;
+        current.gateway_paused = paused;
+        save_settings_file_unlocked(app, &current)?;
+        Ok(current)
+    })
+}
+
 /// 托盘面板快捷开关里的两项后台暂停：只改这一项，其余字段保留磁盘上的值。
 pub(crate) fn update_background_pause(
     app: &AppContext,
@@ -932,6 +1186,24 @@ pub(crate) fn save_general_settings_preserving_quota_sync(
         merge_changed_field!(quota_claude_codexbar_enabled);
         merge_changed_field!(quota_antigravity_local_enabled);
         merge_changed_field!(quota_antigravity_codexbar_enabled);
+        merge_changed_field!(colorblind_palette);
+        merge_changed_field!(reduced_motion);
+        merge_changed_field!(tray_click_action);
+        merge_changed_field!(preferred_terminal);
+        merge_changed_field!(panel_shortcut);
+        merge_changed_field!(quota_display_mode);
+        merge_changed_field!(quota_refresh_policy);
+        merge_changed_field!(display_currency);
+        merge_changed_field!(number_unit_style);
+        merge_changed_field!(day_rollover_hour);
+        merge_changed_field!(disabled_scan_tools);
+        merge_changed_field!(known_scan_tools);
+        merge_changed_field!(scan_auto_enable_new_agents);
+        merge_changed_field!(peer_data_dir);
+        merge_changed_field!(peer_auto_import_enabled);
+        merge_changed_field!(gateway_port);
+        merge_changed_field!(gateway_quit_protection);
+        merge_changed_field!(gateway_paused);
         // 合并后再收敛一次：另一进程刚关掉总开关时，陈旧的实验来源改动不能单独生效。
         next.normalize_claude_quota_toggles();
         // quota_custom_endpoints is intentionally never accepted through the
@@ -971,6 +1243,9 @@ pub(crate) fn restored_settings(current: &AppSettings, incoming: AppSettings) ->
         model_access_enabled,
         model_access_version,
         cost_profile_revision,
+        peer_data_dir,
+        gateway_port,
+        gateway_paused,
     );
     // Every quota source switch (`quota_*_enabled`) is an authorization given
     // on this computer, as is cloud quota sync: all stay as they are here.
@@ -1946,5 +2221,76 @@ mod tests {
         assert!(!merged.quota_claude_enabled);
         assert!(!merged.quota_claude_codexbar_enabled);
         let _ = fs::remove_dir_all(app.app_data_dir());
+    }
+
+    #[test]
+    fn legacy_json_deserializes_with_stage_2b_defaults() {
+        let parsed: AppSettings = serde_json::from_str(
+            r#"{"scan_interval_secs":900,"desktop_interval_secs":60,"lockscreen_interval_secs":300,
+                "wallpaper_desktop_enabled":false,"wallpaper_lockscreen_enabled":false,
+                "autostart_enabled":false,"start_minimized":false,"wallpaper_use_cloud":false}"#,
+        )
+        .expect("parse legacy settings json");
+        let sanitized = parsed.sanitized();
+        assert!(!sanitized.colorblind_palette);
+        assert_eq!(sanitized.reduced_motion, "system");
+        assert_eq!(sanitized.tray_click_action, "panel");
+        assert_eq!(sanitized.preferred_terminal, "auto");
+        assert_eq!(sanitized.panel_shortcut, "");
+        assert_eq!(sanitized.quota_display_mode, "remaining");
+        assert_eq!(sanitized.quota_refresh_policy, "auto");
+        assert_eq!(sanitized.display_currency, "USD");
+        assert_eq!(sanitized.number_unit_style, "en");
+        assert_eq!(sanitized.day_rollover_hour, 0);
+        assert!(sanitized.disabled_scan_tools.is_empty());
+        assert!(sanitized.known_scan_tools.is_empty());
+        assert!(sanitized.scan_auto_enable_new_agents);
+        assert_eq!(sanitized.peer_data_dir, None);
+        assert!(sanitized.peer_auto_import_enabled);
+        assert_eq!(sanitized.gateway_port, 3462);
+        assert_eq!(sanitized.gateway_quit_protection, "ask");
+        assert!(!sanitized.gateway_paused);
+    }
+
+    #[test]
+    fn stage_2b_fields_are_sanitized_to_bounds() {
+        let settings = AppSettings {
+            reduced_motion: "unknown".to_string(),
+            tray_click_action: "invalid".to_string(),
+            preferred_terminal: "unknown-term".to_string(),
+            panel_shortcut: "  Ctrl+Shift+T\n ".to_string(),
+            quota_display_mode: "bogus".to_string(),
+            quota_refresh_policy: "bogus".to_string(),
+            display_currency: "EUR".to_string(),
+            number_unit_style: "jp".to_string(),
+            day_rollover_hour: 23,
+            disabled_scan_tools: vec![
+                "  Claude  ".to_string(),
+                "claude".to_string(),
+                "".to_string(),
+            ],
+            known_scan_tools: (0..80).map(|idx| format!(" Tool-{idx} ")).collect(),
+            peer_data_dir: Some("   ".to_string()),
+            gateway_port: 80,
+            gateway_quit_protection: "invalid".to_string(),
+            ..AppSettings::default()
+        }
+        .sanitized();
+
+        assert_eq!(settings.reduced_motion, "system");
+        assert_eq!(settings.tray_click_action, "panel");
+        assert_eq!(settings.preferred_terminal, "auto");
+        assert_eq!(settings.panel_shortcut, "");
+        assert_eq!(settings.quota_display_mode, "remaining");
+        assert_eq!(settings.quota_refresh_policy, "auto");
+        assert_eq!(settings.display_currency, "USD");
+        assert_eq!(settings.number_unit_style, "en");
+        assert_eq!(settings.day_rollover_hour, 6);
+        assert_eq!(settings.disabled_scan_tools, vec!["claude".to_string()]);
+        assert_eq!(settings.known_scan_tools.len(), 64);
+        assert_eq!(settings.known_scan_tools[0], "tool-0");
+        assert_eq!(settings.peer_data_dir, None);
+        assert_eq!(settings.gateway_port, 3462);
+        assert_eq!(settings.gateway_quit_protection, "ask");
     }
 }

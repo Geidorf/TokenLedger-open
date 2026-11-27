@@ -14,18 +14,67 @@ pub struct LogRecord {
 }
 
 /// User settings that change where a scan looks.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ScanOptions {
     /// Extra Codex homes or session directories from settings.
     pub codex_extra_dirs: Vec<String>,
+    pub disabled_tools: std::collections::BTreeSet<String>,
+    pub known_tools: std::collections::BTreeSet<String>,
+    pub auto_enable_new_agents: bool,
+}
+
+impl Default for ScanOptions {
+    fn default() -> Self {
+        Self {
+            codex_extra_dirs: Vec::new(),
+            disabled_tools: std::collections::BTreeSet::new(),
+            known_tools: std::collections::BTreeSet::new(),
+            auto_enable_new_agents: true,
+        }
+    }
 }
 
 impl ScanOptions {
     pub fn from_settings(settings: &crate::settings::AppSettings) -> Self {
         Self {
             codex_extra_dirs: settings.codex_extra_dirs.clone(),
+            disabled_tools: settings
+                .disabled_scan_tools
+                .iter()
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            known_tools: settings
+                .known_scan_tools
+                .iter()
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            auto_enable_new_agents: settings.scan_auto_enable_new_agents,
         }
     }
+
+    pub fn is_tool_enabled(&self, tool: &str) -> bool {
+        let normalized = tool.trim().to_ascii_lowercase();
+        if self.disabled_tools.contains(&normalized) {
+            return false;
+        }
+        if !self.auto_enable_new_agents
+            && !self.known_tools.is_empty()
+            && !self.known_tools.contains(&normalized)
+        {
+            return false;
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectedScanAgent {
+    pub id: String,
+    pub label: String,
+    pub detected: bool,
 }
 
 #[derive(Debug, Default, Clone)]

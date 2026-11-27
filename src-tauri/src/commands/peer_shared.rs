@@ -418,6 +418,30 @@ pub async fn peer_sync_shared_clear(
     Ok(())
 }
 
+/// Refreshes `imports/peer-shared-v1.jsonl` silently from the local peer's
+/// `usage-others` cache directory for the currently selected computers.
+pub(crate) fn refresh_local_shared_cache(
+    app: &AppContext,
+    custom_dir: Option<&str>,
+) -> Result<usize, String> {
+    let picked = peer_sync::shared_selection(app.app_data_dir());
+    if picked.is_empty() {
+        return Ok(0);
+    }
+    let Some((calls, computers)) = peer_sync::shared::pull_cached_in(custom_dir, &picked)? else {
+        return Ok(0);
+    };
+    if calls.is_empty() && computers.is_empty() {
+        return Ok(0);
+    }
+    let db_path = db::get_db_path(app);
+    db::init_db(&db_path).map_err(|error| error.to_string())?;
+    let count = calls.len();
+    write_store(&db_path, &calls, computers)?;
+    cache::invalidate_all(&db_path);
+    Ok(count)
+}
+
 #[cfg(test)]
 #[path = "peer_shared_tests.rs"]
 mod tests;

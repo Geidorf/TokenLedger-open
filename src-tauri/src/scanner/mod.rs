@@ -28,5 +28,6 @@ mod tests;
 pub use helpers::clean_model_name;
 pub(crate) use reasonix::reasonix_root_session_id;
 pub(crate) use runner::model_discovery_key;
+pub use runner::detect_local_agents;
 pub use runner::run_scan_singleflight;
-pub use types::ScanOptions;
+pub use types::{DetectedScanAgent, ScanOptions};

@@ -45,13 +45,7 @@ const SYNTHETIC_SESSION_PREFIX: &str = "magpie:";
 /// `appdir.Config`). A portable magpie keeps its folder beside its binary and
 /// is not found here.
 pub(crate) fn magpie_config_dir() -> Option<PathBuf> {
-    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
-        let xdg = PathBuf::from(xdg);
-        if xdg.is_absolute() {
-            return Some(xdg.join("magpie"));
-        }
-    }
-    dirs::home_dir().map(|home| home.join(".config").join("magpie"))
+    crate::peer_wire::resolve_config_dir(None)
 }
 
 /// One magpie `usage.jsonl` line, only the fields TokenLedger reads.
@@ -399,6 +393,22 @@ pub(crate) struct ImportMeta {
     pub matched_scans: usize,
     /// Imported calls left out because more than one scanned row fit.
     pub held: usize,
+    #[serde(default)]
+    pub source_len: Option<u64>,
+    #[serde(default)]
+    pub source_mtime_ms: Option<u128>,
+}
+
+fn source_stamp(source: &Path) -> (Option<u64>, Option<u128>) {
+    let Ok(meta) = fs::metadata(source) else {
+        return (None, None);
+    };
+    let mtime_ms = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis());
+    (Some(meta.len()), mtime_ms)
 }
 
 fn read_meta(db_path: &Path) -> Option<ImportMeta> {
@@ -440,9 +450,10 @@ fn merge_report(db_path: &Path) -> Result<(usize, usize, usize), String> {
     ))
 }
 
-/// Reads `source` (a magpie `usage.jsonl`) into the imported store, replacing
-/// any earlier import, and reports how it merges.
+/// Reads `source` (an external gateway `usage.jsonl`) into the imported store,
+/// replacing any earlier import, and reports how it merges.
 pub(crate) fn import_from(db_path: &Path, source: &Path) -> Result<ImportMeta, String> {
+    let (source_len, source_mtime_ms) = source_stamp(source);
     let (calls, counts) = parse_usage(source)?;
     write_store(db_path, &calls)?;
     let (duplicate_of_gateway, matched_scans, held) = merge_report(db_path)?;
@@ -454,10 +465,42 @@ pub(crate) fn import_from(db_path: &Path, source: &Path) -> Result<ImportMeta, S
         duplicate_of_gateway,
         matched_scans,
         held,
+        source_len,
+        source_mtime_ms,
     };
     let body = serde_json::to_vec_pretty(&meta).map_err(|error| error.to_string())?;
     write_atomic(&meta_path(db_path), &body)?;
     Ok(meta)
+}
+
+/// Incrementally syncs the local external gateway ledger when `usage.jsonl`
+/// exists and its length or modification timestamp has changed.
+pub(crate) fn sync_local_usage_if_changed(
+    app: &AppContext,
+    custom_dir: Option<&str>,
+) -> Result<usize, String> {
+    let Some(dir) = crate::peer_wire::detect_existing_dir(custom_dir) else {
+        return Ok(0);
+    };
+    let source = dir.join(SOURCE_FILE);
+    if !source.is_file() {
+        return Ok(0);
+    }
+    let db_path = db::get_db_path(app);
+    let (source_len, source_mtime_ms) = source_stamp(&source);
+    if let (Some(len), Some(mtime_ms)) = (source_len, source_mtime_ms) {
+        if store_path(&db_path).is_file() {
+            if let Some(meta) = read_meta(&db_path) {
+                if meta.source_len == Some(len) && meta.source_mtime_ms == Some(mtime_ms) {
+                    return Ok(0);
+                }
+            }
+        }
+    }
+    db::init_db(&db_path).map_err(|error| error.to_string())?;
+    let meta = import_from(&db_path, &source)?;
+    cache::invalidate_all(&db_path);
+    Ok(meta.counts.imported)
 }
 
 /// Removes the imported store; magpie's own file is untouched.

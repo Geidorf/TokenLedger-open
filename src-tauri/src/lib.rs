@@ -666,10 +666,11 @@ pub fn run() {
         init_local_cache(&db_path);
     }
 
+    let loaded_settings = settings::load_settings(&app_ctx);
     let gateway_state = Arc::new(gateway::Gateway::new(
         &app_ctx.app_data_dir().join("gateway"),
         Arc::new(gateway::KeyringSecrets),
-        gateway::DEFAULT_PORT,
+        loaded_settings.gateway_port,
     ));
     // Reconcile crash leftovers even when model access is switched off.
     // Conflicts retain the journal/backups; enabling cannot start the listener
@@ -677,10 +678,9 @@ pub fn run() {
     if let Err(error) = gateway_state.recover_pending_configs() {
         log::warn!("pending gateway configuration recovery failed: {error}");
     }
-    let settings =
-        settings::migrate_model_access_once(&app_ctx, settings::load_settings(&app_ctx), || {
-            gateway_state.was_in_use()
-        });
+    let settings = settings::migrate_model_access_once(&app_ctx, loaded_settings, || {
+        gateway_state.was_in_use()
+    });
     let settings = settings::move_device_filters(
         &app_ctx,
         settings,
@@ -688,6 +688,7 @@ pub fn run() {
         &commands::local_machine_id(&app_ctx),
     );
     let model_access_at_launch = settings.model_access_enabled;
+    let gateway_paused_at_launch = settings.gateway_paused;
     let settings_state = Arc::new(Mutex::new(settings.clone()));
     let tray_state = Arc::new(TrayWindowState::new());
     autostart::sync_on_launch(settings.autostart_enabled);
@@ -894,6 +895,24 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "quit" => {
+                        let (model_access_enabled, quit_protection) = settings_state_for_menu
+                            .lock()
+                            .map(|guard| {
+                                (
+                                    guard.model_access_enabled,
+                                    guard.gateway_quit_protection.clone(),
+                                )
+                            })
+                            .unwrap_or((false, "ask".to_string()));
+                        let gateway = app.state::<Arc<gateway::Gateway>>();
+                        if model_access_enabled
+                            && quit_protection == "restore"
+                            && gateway.was_in_use()
+                        {
+                            if let Err(error) = gateway.restore_connected_agents() {
+                                log::warn!("failed to restore connected agents on quit: {error}");
+                            }
+                        }
                         desktop_state_for_menu.mark_exiting();
                         app.exit(0);
                     }
@@ -937,12 +956,24 @@ pub fn run() {
                         position,
                         ..
                     } => {
-                        let anchor = widget_window::Anchor::point(position.x, position.y);
-                        let _ = widget_window::toggle_on_main_thread(
-                            tray.app_handle(),
-                            &popover_state_for_icon,
-                            Some(anchor),
-                        );
+                        let action = settings_state_for_icon
+                            .lock()
+                            .map(|guard| guard.tray_click_action.clone())
+                            .unwrap_or_else(|_| "panel".to_string());
+                        if action == "window" {
+                            let _ = widget_window::dismiss_on_main_thread(
+                                tray.app_handle(),
+                                &popover_state_for_icon,
+                            );
+                            show_main_window_from_tray(tray.app_handle(), &tray_state_for_icon);
+                        } else {
+                            let anchor = widget_window::Anchor::point(position.x, position.y);
+                            let _ = widget_window::toggle_on_main_thread(
+                                tray.app_handle(),
+                                &popover_state_for_icon,
+                                Some(anchor),
+                            );
+                        }
                     }
                     tauri::tray::TrayIconEvent::DoubleClick {
                         button: tauri::tray::MouseButton::Left,
@@ -1019,6 +1050,7 @@ pub fn run() {
                 app.handle().clone(),
             );
             commands::start_price_table_updates(app_ctx_for_setup.clone(), app.handle().clone());
+            gateway_for_setup.set_paused(gateway_paused_at_launch);
             gateway_for_setup.set_enabled(model_access_at_launch);
             gateway_for_setup.spawn_probe_loop();
             routing_publish::start(
@@ -1083,6 +1115,9 @@ pub fn run() {
             gateway::gateway_legacy_restore,
             gateway::gateway_set_model_access,
             gateway::gateway_status,
+            gateway::gateway_set_port,
+            gateway::gateway_set_paused,
+            gateway::gateway_restore_connected_agents,
             gateway::gateway_list_providers,
             gateway::gateway_upsert_provider,
             gateway::gateway_set_provider_key,
@@ -1121,6 +1156,7 @@ pub fn run() {
             commands::restore_claude_statusline_setup,
             commands::get_claude_quota_setup,
             commands::detect_quota_sources,
+            commands::detect_scan_agents,
             commands::list_quota_balance_sources,
             commands::set_quota_balance_source,
             commands::list_quota_experimental_plans,
